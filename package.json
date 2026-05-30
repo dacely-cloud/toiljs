@@ -75,7 +75,7 @@
     "dependencies": {
         "@btc-vision/as-bignum": "^1.0.0",
         "@btc-vision/as-loader": "^0.0.0",
-        "toilscript": "^0.1.1",
+        "toilscript": "^0.2.0",
         "@vitejs/plugin-react": "^6.0.2",
         "vite": "^8.0.14"
     },

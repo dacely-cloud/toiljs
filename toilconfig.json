@@ -1,5 +1,5 @@
 {
-    "entries": ["src/backend/index.ts"],
+    "entries": ["src/backend/main.ts"],
     "targets": {
         "release": {
             "outFile": "build/backend/release.wasm",
