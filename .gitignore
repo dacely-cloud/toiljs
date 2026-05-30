@@ -415,3 +415,8 @@ output.wat
 
 # Test coverage output
 coverage
+
+# Toil client compiler working dir + example build output
+.toil
+examples/*/dist
+examples/*/.toil
