@@ -1,5 +1,5 @@
 /**
- * AssemblyScript backend entry, compiled by the `toilscript` fork via `asc`.
+ * AssemblyScript server (WASM) entry, compiled by the `toilscript` fork via `asc`.
  *
  * Placeholder module: a trivial exported function that compiles with the stock fork std.
  * Custom native instructions/decorators (e.g. `@main`) ship from the `toilscript`

@@ -1,0 +1,4 @@
+{
+    "extends": "toiljs/tsconfig",
+    "include": ["client", ".toil"]
+}

@@ -1,9 +1,9 @@
 {
-    "entries": ["src/backend/main.ts"],
+    "entries": ["src/server/main.ts"],
     "targets": {
         "release": {
-            "outFile": "build/backend/release.wasm",
-            "textFile": "build/backend/release.wat"
+            "outFile": "build/server/release.wasm",
+            "textFile": "build/server/release.wat"
         }
     },
     "options": {
