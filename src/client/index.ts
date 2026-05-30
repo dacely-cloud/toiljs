@@ -1,7 +1,10 @@
 /**
- * toiljs client library entry. Framework runtime exports live here.
- * Native framework types are injected ambiently (see std/client) — no imports needed in user code.
+ * toiljs client runtime, published as `toiljs/client`. Provides the router (mount/Router/Link),
+ * navigation hooks, and route types consumed by the compiler-generated entry. Zero imports
+ * needed in user route files beyond this package.
  */
 
-export { App } from './runtime.js';
-export type { AppProps } from './runtime.js';
+export { mount, Router, Link, navigate, useParams, useNavigate, useLocation } from './runtime.js';
+export type { RouteDef, LayoutLoader } from './runtime.js';
+export { matchRoute } from './match.js';
+export type { RouteParams } from './match.js';
