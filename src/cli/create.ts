@@ -170,9 +170,17 @@ async function writeFiles(dir: string, files: Record<string, string>): Promise<v
 
 function run(cmd: string, args: string[], cwd: string): Promise<void> {
     return new Promise((resolve, reject) => {
-        const child = spawn(cmd, args, { cwd, stdio: 'ignore', shell: process.platform === 'win32' });
+        // On Windows `npm`/`pnpm`/`yarn` are `.cmd` shims that need a shell to launch. Passing an
+        // args array together with `shell: true` is deprecated (DEP0190), so pass the whole command
+        // as one string there (the args are fixed, not user input). POSIX runs it directly.
+        const onWindows = process.platform === 'win32';
+        const child = onWindows
+            ? spawn([cmd, ...args].join(' '), { cwd, stdio: 'ignore', shell: true })
+            : spawn(cmd, args, { cwd, stdio: 'ignore' });
         child.on('error', reject);
-        child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${String(code)}`))));
+        child.on('close', (code) =>
+            code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${String(code)}`)),
+        );
     });
 }
 
