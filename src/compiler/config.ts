@@ -2,14 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfigFromFile, type InlineConfig } from 'vite';
+import { runnerImport, type InlineConfig } from 'vite';
 
 /**
- * The `toil.config` schema (Next.js-style). All fields optional; sensible defaults applied.
+ * Client-side (TSX/React/Vite) configuration. All fields optional; sensible defaults applied.
  */
-export interface ToilConfig {
-    /** Project root. Defaults to the current working directory. */
-    readonly root?: string;
+export interface ClientConfig {
     /** Client source directory, relative to root. Default `client`. */
     readonly srcDir?: string;
     /** Routes directory, relative to `srcDir`. Default `routes`. */
@@ -20,8 +18,36 @@ export interface ToilConfig {
     readonly base?: string;
     /** Dev server port. Default `3000`. */
     readonly port?: number;
-    /** Extra Vite options, deep-merged over the framework's config. */
+    /**
+     * Raw Vite escape hatch, deep-merged over the framework's opinionated config.
+     * This is NOT the client config itself — toil owns the Vite setup; use this only
+     * to override specific Vite options.
+     */
     readonly vite?: InlineConfig;
+}
+
+/**
+ * Server-side (AssemblyScript → WASM) configuration. Reserved: the compiler does not yet
+ * build the server target via `toil build`; today it is compiled by `toilscript` directly.
+ */
+export interface ServerConfig {
+    /** Server source directory, relative to root. Default `server`. */
+    readonly srcDir?: string;
+    /** Server build output directory, relative to root. Default `build/server`. */
+    readonly outDir?: string;
+}
+
+/**
+ * The `toil.config` schema (Next.js-style). All fields optional; sensible defaults applied.
+ * Client and server are configured in separate sections.
+ */
+export interface ToilConfig {
+    /** Project root. Defaults to the current working directory. */
+    readonly root?: string;
+    /** Client (TSX/React/Vite) configuration. */
+    readonly client?: ClientConfig;
+    /** Server (AssemblyScript/WASM) configuration. */
+    readonly server?: ServerConfig;
 }
 
 /** Fully-resolved config with absolute paths, used internally by the compiler. */
@@ -61,18 +87,17 @@ export async function loadConfig(
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            const loaded = await loadConfigFromFile(
-                { command: 'build', mode: 'production' },
-                candidate,
-                root,
-            );
-            if (loaded) user = loaded.config;
+            // Vite's module runner bundles/transforms the (possibly .ts) config and returns it
+            // typed as our `ToilConfig` — no cast needed.
+            const { module } = await runnerImport<{ default?: ToilConfig }>(candidate);
+            if (module.default) user = module.default;
             break;
         }
     }
 
-    const srcDir = user.srcDir ?? 'client';
-    const routesDir = user.routesDir ?? 'routes';
+    const client = user.client ?? {};
+    const srcDir = client.srcDir ?? 'client';
+    const routesDir = client.routesDir ?? 'routes';
     const clientAbsDir = path.join(root, srcDir);
 
     return {
@@ -81,10 +106,10 @@ export async function loadConfig(
         clientAbsDir,
         routesAbsDir: path.join(clientAbsDir, routesDir),
         toilDir: path.join(root, '.toil'),
-        outDir: user.outDir ?? 'dist',
-        base: user.base ?? '/',
-        port: opts.port ?? user.port ?? 3000,
+        outDir: client.outDir ?? 'dist',
+        base: client.base ?? '/',
+        port: opts.port ?? client.port ?? 3000,
         runtimePath: resolveRuntimePath(),
-        vite: user.vite ?? {},
+        vite: client.vite ?? {},
     };
 }
