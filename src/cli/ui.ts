@@ -11,9 +11,13 @@ import pc from 'picocolors';
 
 type RGB = readonly [number, number, number];
 
-/** toiljs brand amber → deep gold. */
-const FROM: RGB = [250, 204, 80];
-const TO: RGB = [198, 112, 20];
+/** toiljs brand palette. */
+const PRIMARY: RGB = [37, 99, 255]; // #2563FF
+const SECONDARY: RGB = [124, 58, 237]; // #7C3AED
+const ACCENT: RGB = [34, 227, 171]; // #22E3AB
+
+/** Logo gradient stops: blue → purple → teal. */
+const GRADIENT: readonly RGB[] = [PRIMARY, SECONDARY, ACCENT];
 
 /** ANSI-shadow "TOIL" wordmark. */
 const ART: readonly string[] = [
@@ -28,30 +32,52 @@ const ART: readonly string[] = [
 export const dim = pc.dim;
 export const bold = pc.bold;
 
-/** True when we should emit ANSI color (a TTY, and not disabled via NO_COLOR). */
+/** True when we should emit ANSI color: a TTY (or FORCE_COLOR), and not disabled via NO_COLOR. */
 function colorEnabled(): boolean {
-    return process.stdout.isTTY && !process.env.NO_COLOR;
+    if (process.env.NO_COLOR) return false;
+    if (process.env.FORCE_COLOR) return true;
+    return process.stdout.isTTY;
 }
 
-/** The amber brand accent (truecolor). No-ops to plain text when color is disabled. */
+function rgb(color: RGB, s: string): string {
+    return colorEnabled() ? `\x1b[38;2;${color[0]};${color[1]};${color[2]}m${s}\x1b[39m` : s;
+}
+
+/** The primary brand accent (blue). No-ops to plain text when color is disabled. */
 export function brand(s: string): string {
-    return colorEnabled() ? `\x1b[38;2;203;152;32m${s}\x1b[39m` : s;
+    return rgb(PRIMARY, s);
 }
 export const accent = brand;
+
+/** Success/positive accent (teal). */
+export function success(s: string): string {
+    return rgb(ACCENT, s);
+}
+
+/** Error accent (red — kept outside the brand palette since errors should read as errors). */
+export const danger = pc.red;
 
 function lerp(a: number, b: number, t: number): number {
     return Math.round(a + (b - a) * t);
 }
 
-/** Colors each character of `line` along a left→right truecolor gradient. */
+/** Samples the multi-stop brand gradient at `t` in [0, 1]. */
+function gradientAt(t: number): RGB {
+    const segments = GRADIENT.length - 1;
+    const scaled = t * segments;
+    const i = Math.min(Math.floor(scaled), segments - 1);
+    const a = GRADIENT[i];
+    const b = GRADIENT[i + 1];
+    const localT = scaled - i;
+    return [lerp(a[0], b[0], localT), lerp(a[1], b[1], localT), lerp(a[2], b[2], localT)];
+}
+
+/** Colors each character of `line` along the left→right brand gradient. */
 function gradientLine(line: string): string {
     const n = line.length;
     let out = '';
     for (let i = 0; i < n; i++) {
-        const t = n > 1 ? i / (n - 1) : 0;
-        const r = lerp(FROM[0], TO[0], t);
-        const g = lerp(FROM[1], TO[1], t);
-        const b = lerp(FROM[2], TO[2], t);
+        const [r, g, b] = gradientAt(n > 1 ? i / (n - 1) : 0);
         out += `\x1b[38;2;${r};${g};${b}m${line[i]}`;
     }
     return out + '\x1b[39m';
@@ -73,7 +99,7 @@ export function version(): string {
 /** Prints the brand banner: gradient logo + tagline + version. */
 export function banner(): void {
     const lines = colorEnabled() ? ART.map(gradientLine) : ART.slice();
-    const tagline = `  the full-stack ${brand('WebAssembly')} framework`;
+    const tagline = `  the most performant ${brand('react')} framework`;
     const ver = `${dim('  v')}${brand(version())}`;
     process.stdout.write('\n' + lines.join('\n') + '\n\n' + tagline + '   ' + ver + '\n\n');
 }

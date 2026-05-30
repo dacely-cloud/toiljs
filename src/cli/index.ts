@@ -7,7 +7,7 @@
 import { build, dev, start } from 'toiljs/compiler';
 
 import { runCreate, type Template } from './create.js';
-import { accent, banner, bold, dim, version } from './ui.js';
+import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
 interface Flags {
     root?: string;
@@ -122,7 +122,7 @@ async function main(): Promise<void> {
             banner();
             process.stdout.write(dim('  building for production…') + '\n\n');
             await build({ root: flags.root });
-            process.stdout.write('\n' + accent('  ✓ ') + bold('build complete') + '\n\n');
+            process.stdout.write('\n' + success('  ✓ ') + bold('build complete') + '\n\n');
             break;
 
         case 'start': {
@@ -156,6 +156,6 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
     const message = err instanceof Error ? err.message : String(err);
-    process.stderr.write('\n' + accent('  ✗ ') + message + '\n');
+    process.stderr.write('\n' + danger('  ✗ ') + message + '\n');
     process.exitCode = 1;
 });
