@@ -85,12 +85,13 @@ function scaffold(name: string, template: Template): Record<string, string> {
         'package.json': JSON.stringify(pkg, null, 4) + '\n',
         'toil.config.ts':
             "import { defineConfig } from 'toiljs/compiler';\n\n" +
-            'export default defineConfig({\n    client: {\n        outDir: \'dist\',\n    },\n});\n',
+            '// Client and server options go here. Output defaults to build/client and build/server.\n' +
+            'export default defineConfig({});\n',
         'tsconfig.json':
             '{\n    "extends": "toiljs/tsconfig",\n    "include": ["client", "toil-env.d.ts"]\n}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
-        '.gitignore': 'node_modules\ndist\nbuild\n.toil\ntoil-env.d.ts\n',
+        '.gitignore': 'node_modules\nbuild\n.toil\ntoil-env.d.ts\n',
         // HTML template you own and edit. toil injects the app entry script and serves the rest
         // of `public/` as static assets. The `<div id="root">` is where the app mounts.
         'public/index.html':
