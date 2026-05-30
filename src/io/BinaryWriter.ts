@@ -1,0 +1,393 @@
+import {
+    I128_BYTE_LENGTH,
+    I16_BYTE_LENGTH,
+    I32_BYTE_LENGTH,
+    I64_BYTE_LENGTH,
+    I8_BYTE_LENGTH,
+    U128_BYTE_LENGTH,
+    U16_BYTE_LENGTH,
+    U256_BYTE_LENGTH,
+    U32_BYTE_LENGTH,
+    U64_BYTE_LENGTH,
+    U8_BYTE_LENGTH,
+} from './lengths.js';
+import type { i16, i32, i64, i8, Selector, u16, u32, u64, u8 } from './types.js';
+import { BinaryReader } from './BinaryReader.js';
+
+/** Encodes a non-negative bigint into a big-endian byte array of exactly `length` bytes. */
+function bigIntToBytes(value: bigint, length: number = U256_BYTE_LENGTH): Uint8Array {
+    if (value < 0n) {
+        throw new RangeError('Value cannot be negative');
+    }
+
+    const hex = value.toString(16).padStart(length * 2, '0');
+    if (hex.length > length * 2) {
+        throw new RangeError(`Value exceeds ${length}-byte range`);
+    }
+
+    const out = new Uint8Array(length);
+    for (let i = 0; i < length; i++) {
+        out[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16);
+    }
+
+    return out;
+}
+
+/**
+ * Writes OPNet-style binary data: fixed-width integers, bigints (u128/u256/i128), booleans,
+ * strings, byte buffers and arrays of each. A native, dependency-free serializer for the client.
+ */
+export class BinaryWriter implements Disposable {
+    private currentOffset: u32 = 0;
+    private buffer: DataView;
+
+    constructor(length: number = 0) {
+        this.buffer = this.getDefaultBuffer(length);
+    }
+
+    public static estimateArrayOfBufferLength(values: Uint8Array[]): u32 {
+        if (values.length > 65535) throw new Error('Array size is too large');
+        let totalLength: u32 = U16_BYTE_LENGTH;
+
+        for (let i = 0; i < values.length; i++) {
+            totalLength += U32_BYTE_LENGTH + (values[i] as Uint8Array).length; // each entry has a u32 length prefix
+        }
+
+        return totalLength;
+    }
+
+    public writeU8(value: u8): void {
+        if (value > 255) throw new Error('u8 value is too large.');
+
+        this.allocSafe(U8_BYTE_LENGTH);
+        this.buffer.setUint8(this.currentOffset++, value);
+    }
+
+    public writeU16(value: u16, be: boolean = true): void {
+        if (value > 65535) throw new Error('u16 value is too large.');
+
+        this.allocSafe(U16_BYTE_LENGTH);
+        this.buffer.setUint16(this.currentOffset, value, !be);
+        this.currentOffset += 2;
+    }
+
+    public writeU32(value: u32, be: boolean = true): void {
+        if (value > 4294967295) throw new Error('u32 value is too large.');
+
+        this.allocSafe(U32_BYTE_LENGTH);
+        this.buffer.setUint32(this.currentOffset, value, !be);
+        this.currentOffset += 4;
+    }
+
+    public writeU64(value: u64, be: boolean = true): void {
+        if (value > 18446744073709551615n) throw new Error('u64 value is too large.');
+
+        this.allocSafe(U64_BYTE_LENGTH);
+        this.buffer.setBigUint64(this.currentOffset, value, !be);
+        this.currentOffset += 8;
+    }
+
+    // ------------------- Signed Integer Writers ------------------- //
+
+    /** Writes a signed 8-bit integer. */
+    public writeI8(value: i8): void {
+        if (value < -128 || value > 127) throw new Error('i8 value is out of range.');
+
+        this.allocSafe(I8_BYTE_LENGTH);
+        this.buffer.setInt8(this.currentOffset, value);
+        this.currentOffset += I8_BYTE_LENGTH;
+    }
+
+    /** Writes a signed 16-bit integer. By default big-endian (be = true). */
+    public writeI16(value: i16, be: boolean = true): void {
+        if (value < -32768 || value > 32767) throw new Error('i16 value is out of range.');
+
+        this.allocSafe(I16_BYTE_LENGTH);
+        this.buffer.setInt16(this.currentOffset, value, !be);
+        this.currentOffset += I16_BYTE_LENGTH;
+    }
+
+    /** Writes a signed 32-bit integer. By default big-endian (be = true). */
+    public writeI32(value: i32, be: boolean = true): void {
+        if (value < -2147483648 || value > 2147483647)
+            throw new Error('i32 value is out of range.');
+
+        this.allocSafe(I32_BYTE_LENGTH);
+        this.buffer.setInt32(this.currentOffset, value, !be);
+        this.currentOffset += I32_BYTE_LENGTH;
+    }
+
+    /** Writes a signed 64-bit integer. By default big-endian (be = true). */
+    public writeI64(value: i64, be: boolean = true): void {
+        if (value < -9223372036854775808n || value > 9223372036854775807n) {
+            throw new Error('i64 value is out of range.');
+        }
+
+        this.allocSafe(I64_BYTE_LENGTH);
+        this.buffer.setBigInt64(this.currentOffset, value, !be);
+        this.currentOffset += I64_BYTE_LENGTH;
+    }
+
+    // ---------------------------------------------------------------- //
+
+    public writeSelector(value: Selector): void {
+        this.writeU32(value, true);
+    }
+
+    public writeBoolean(value: boolean): void {
+        this.writeU8(value ? 1 : 0);
+    }
+
+    public writeI128(bigIntValue: bigint, be: boolean = true): void {
+        if (
+            bigIntValue > 170141183460469231731687303715884105727n ||
+            bigIntValue < -170141183460469231731687303715884105728n
+        ) {
+            throw new Error('i128 value is too large.');
+        }
+
+        this.allocSafe(I128_BYTE_LENGTH);
+
+        const bytes = bigIntToBytes(bigIntValue, I128_BYTE_LENGTH);
+        if (bytes.byteLength !== I128_BYTE_LENGTH) {
+            throw new Error(`Invalid i128 value: ${bigIntValue}`);
+        }
+
+        if (be) {
+            for (let i = 0; i < bytes.byteLength; i++) {
+                this.writeU8(bytes[i] as number);
+            }
+        } else {
+            for (let i = bytes.byteLength - 1; i >= 0; i--) {
+                this.writeU8(bytes[i] as number);
+            }
+        }
+    }
+
+    public writeU256(bigIntValue: bigint, be: boolean = true): void {
+        if (
+            bigIntValue >
+                115792089237316195423570985008687907853269984665640564039457584007913129639935n &&
+            bigIntValue < 0n
+        ) {
+            throw new Error('u256 value is too large or negative.');
+        }
+
+        this.allocSafe(U256_BYTE_LENGTH);
+
+        const bytes = bigIntToBytes(bigIntValue);
+        if (bytes.byteLength !== U256_BYTE_LENGTH) {
+            throw new Error(`Invalid u256 value: ${bigIntValue}`);
+        }
+
+        if (be) {
+            for (let i = 0; i < bytes.byteLength; i++) {
+                this.writeU8(bytes[i] as number);
+            }
+        } else {
+            for (let i = bytes.byteLength - 1; i >= 0; i--) {
+                this.writeU8(bytes[i] as number);
+            }
+        }
+    }
+
+    public writeU128(bigIntValue: bigint, be: boolean = true): void {
+        if (bigIntValue > 340282366920938463463374607431768211455n && bigIntValue < 0n) {
+            throw new Error('u128 value is too large or negative.');
+        }
+
+        this.allocSafe(U128_BYTE_LENGTH);
+
+        const bytes = bigIntToBytes(bigIntValue, U128_BYTE_LENGTH);
+        if (bytes.byteLength !== U128_BYTE_LENGTH) {
+            throw new Error(`Invalid u128 value: ${bigIntValue}`);
+        }
+
+        if (be) {
+            for (let i = 0; i < bytes.byteLength; i++) {
+                this.writeU8(bytes[i] as number);
+            }
+        } else {
+            for (let i = bytes.byteLength - 1; i >= 0; i--) {
+                this.writeU8(bytes[i] as number);
+            }
+        }
+    }
+
+    public writeBytes(value: Uint8Array): void {
+        this.allocSafe(value.byteLength);
+
+        for (let i = 0; i < value.byteLength; i++) {
+            this.writeU8(value[i] as number);
+        }
+    }
+
+    public writeString(value: string): void {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(value);
+
+        this.allocSafe(bytes.length);
+        this.writeBytes(bytes);
+    }
+
+    public writeStringWithLength(value: string): void {
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(value);
+
+        this.allocSafe(U32_BYTE_LENGTH + bytes.length);
+        this.writeU32(bytes.length);
+        this.writeBytes(bytes);
+    }
+
+    public getBuffer(clear: boolean = true): Uint8Array {
+        const buf = new Uint8Array(this.buffer.byteLength);
+        for (let i: u32 = 0; i < this.buffer.byteLength; i++) {
+            buf[i] = this.buffer.getUint8(i);
+        }
+
+        if (clear) this.clear();
+
+        return buf;
+    }
+
+    public reset(): void {
+        this.currentOffset = 0;
+        this.buffer = this.getDefaultBuffer(4);
+    }
+
+    public toBytesReader(): BinaryReader {
+        return new BinaryReader(this.getBuffer());
+    }
+
+    public getOffset(): u32 {
+        return this.currentOffset;
+    }
+
+    public setOffset(offset: u32): void {
+        this.currentOffset = offset;
+    }
+
+    public clear(): void {
+        this.currentOffset = 0;
+        this.buffer = this.getDefaultBuffer();
+    }
+
+    public [Symbol.dispose](): void {
+        this.clear();
+    }
+
+    public allocSafe(size: u32): void {
+        if (this.currentOffset + size > this.buffer.byteLength) {
+            this.resize(size);
+        }
+    }
+
+    public writeBytesWithLength(value: Uint8Array): void {
+        this.writeU32(value.length);
+        this.writeBytes(value);
+    }
+
+    public writeArrayOfBuffer(values: Uint8Array[], be: boolean = true): void {
+        const totalLength = BinaryWriter.estimateArrayOfBufferLength(values);
+
+        this.allocSafe(totalLength);
+        this.writeU16(values.length, be);
+
+        for (let i = 0; i < values.length; i++) {
+            this.writeU32((values[i] as Uint8Array).length, be);
+            this.writeBytes(values[i] as Uint8Array);
+        }
+    }
+
+    public writeU32Array(value: u32[], be: boolean = true): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length, be);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeU32(value[i] as u32, be);
+        }
+    }
+
+    public writeU256Array(value: bigint[], be: boolean = true): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length, be);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeU256(value[i] as bigint, be);
+        }
+    }
+
+    public writeU128Array(value: bigint[], be: boolean = true): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length, be);
+        for (let i = 0; i < value.length; i++) {
+            this.writeU128(value[i] as bigint, be);
+        }
+    }
+
+    public writeStringArray(value: string[]): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeStringWithLength(value[i] as string);
+        }
+    }
+
+    public writeU16Array(value: u16[], be: boolean = true): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length, be);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeU16(value[i] as u16, be);
+        }
+    }
+
+    public writeU8Array(value: u8[]): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeU8(value[i] as u8);
+        }
+    }
+
+    public writeU64Array(value: bigint[], be: boolean = true): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length, be);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeU64(value[i] as bigint, be);
+        }
+    }
+
+    public writeBytesArray(value: Uint8Array[]): void {
+        if (value.length > 65535) throw new Error('Array size is too large');
+
+        this.writeU16(value.length);
+
+        for (let i = 0; i < value.length; i++) {
+            this.writeBytesWithLength(value[i] as Uint8Array);
+        }
+    }
+
+    private resize(size: u32): void {
+        const buf: Uint8Array = new Uint8Array(this.buffer.byteLength + size);
+        for (let i: number = 0; i < this.buffer.byteLength; i++) {
+            buf[i] = this.buffer.getUint8(i);
+        }
+
+        this.buffer = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    }
+
+    private getDefaultBuffer(length: number = 0): DataView {
+        return new DataView(new ArrayBuffer(length));
+    }
+}

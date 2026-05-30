@@ -33,6 +33,11 @@
             "import": "./build/shared/index.js",
             "default": "./build/shared/index.js"
         },
+        "./io": {
+            "types": "./build/io/index.d.ts",
+            "import": "./build/io/index.js",
+            "default": "./build/io/index.js"
+        },
         "./tsconfig": "./presets/tsconfig.json",
         "./eslint": "./presets/eslint.js",
         "./prettier": "./presets/prettier.json"
@@ -57,10 +62,11 @@
     },
     "scripts": {
         "watch": "tsc -p tsconfig.json --watch",
-        "build": "npm run build:shared && npm run build:logger && npm run build:client && npm run build:compiler && npm run build:cli && npm run build:server",
+        "build": "npm run build:shared && npm run build:logger && npm run build:client && npm run build:io && npm run build:compiler && npm run build:cli && npm run build:server",
         "build:shared": "tsc -p tsconfig.shared.json",
         "build:logger": "tsc -p tsconfig.logger.json",
         "build:client": "tsc -p tsconfig.client.json",
+        "build:io": "tsc -p tsconfig.io.json",
         "build:compiler": "tsc -p tsconfig.compiler.json",
         "build:cli": "tsc -p tsconfig.cli.json",
         "build:server": "toilscript --target release",

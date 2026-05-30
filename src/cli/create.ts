@@ -87,10 +87,11 @@ function scaffold(name: string, template: Template): Record<string, string> {
         'toil.config.ts':
             "import { defineConfig } from 'toiljs/compiler';\n\n" +
             'export default defineConfig({\n    client: {\n        outDir: \'dist\',\n    },\n});\n',
-        'tsconfig.json': '{\n    "extends": "toiljs/tsconfig",\n    "include": ["client", ".toil"]\n}\n',
+        'tsconfig.json':
+            '{\n    "extends": "toiljs/tsconfig",\n    "include": ["client", "toil-env.d.ts"]\n}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
-        '.gitignore': 'node_modules\ndist\n.toil\n',
+        '.gitignore': 'node_modules\ndist\n.toil\ntoil-env.d.ts\n',
         'README.md': ['# ' + path.basename(name), '', 'A [toiljs](https://toil.org) app.', '', '## Develop', '', '    npm install', '    npm run dev', '', '## Build', '', '    npm run build', ''].join('\n'),
         'client/layout.tsx':
             "import { type ReactNode } from 'react';\n\n" +
