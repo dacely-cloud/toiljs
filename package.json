@@ -2,7 +2,7 @@
     "name": "toiljs",
     "type": "module",
     "version": "0.0.1",
-    "author": "Toil",
+    "author": "Dacely",
     "description": "todo",
     "engines": {
         "node": ">=24.0.0"
