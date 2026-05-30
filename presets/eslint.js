@@ -11,8 +11,8 @@ import tseslint from 'typescript-eslint';
 import noUint8ArrayToString from './no-uint8array-tostring.js';
 
 export default tseslint.config(
-    // Build output, the toil working dir, generated ambient types, and the AssemblyScript server
-    // (compiled by toilscript, not part of the TS project) are not linted as TypeScript.
+    // Not lintable as TypeScript: build output, the toil working dir, generated ambient types,
+    // and the toilscript server (its `@main` syntax isn't valid TS, so the TS parser rejects it).
     { ignores: ['dist', 'build', '.toil', 'node_modules', 'toil-env.d.ts', 'server/**'] },
     {
         extends: [

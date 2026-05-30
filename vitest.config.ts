@@ -5,7 +5,7 @@ export default defineConfig({
         globals: true,
         environment: 'node',
         include: ['test/**/*.test.ts', 'test/**/*.spec.ts'],
-        // test/assembly holds AssemblyScript specs run by as-pect, not vitest.
+        // test/assembly holds toilscript specs run by as-pect, not vitest.
         exclude: [...configDefaults.exclude, 'test/assembly/**'],
         coverage: {
             provider: 'v8',
