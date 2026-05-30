@@ -112,11 +112,15 @@ async function main(): Promise<void> {
             });
             break;
 
-        case 'dev':
+        case 'dev': {
             banner();
             process.stdout.write(dim('  starting dev server…') + '\n\n');
-            await dev({ root: flags.root, port: flags.port });
+            const server = await dev({ root: flags.root, port: flags.port });
+            process.stdout.write(
+                accent('  ➜ ') + bold(`http://localhost:${String(server.port)}`) + '\n\n',
+            );
             break;
+        }
 
         case 'build':
             banner();
