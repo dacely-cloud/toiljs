@@ -3,7 +3,12 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "node ../../build/cli/index.js dev",
-        "build": "node ../../build/cli/index.js build"
+        "dev": "toiljs dev",
+        "build": "toiljs build"
+    },
+    "dependencies": {
+        "toiljs": "file:../..",
+        "react": "^19.2.6",
+        "react-dom": "^19.2.6"
     }
 }
