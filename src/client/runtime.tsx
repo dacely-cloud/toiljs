@@ -12,6 +12,7 @@ import {
 import { createRoot } from 'react-dom/client';
 
 import { matchRoute, type RouteParams } from './match.js';
+import { prefetch, startPrefetcher } from './prefetch.js';
 
 /** A route entry produced by the compiler: a URL pattern and a lazy loader for its page component. */
 export interface RouteDef {
@@ -64,7 +65,10 @@ export function useLocation(): string {
     return pathname;
 }
 
-/** Client-side navigation link. Falls back to default browser behavior for modified clicks. */
+/**
+ * Client-side navigation link. Falls back to default browser behavior for modified clicks, and
+ * prefetches the target route's chunk on hover/focus so the click navigates instantly.
+ */
 export function Link(props: { href: string; className?: string; children?: ReactNode }): ReactNode {
     const { href, className, children } = props;
     const onClick = (e: MouseEvent): void => {
@@ -80,11 +84,16 @@ export function Link(props: { href: string; className?: string; children?: React
         e.preventDefault();
         navigate(href);
     };
+    const onIntent = (): void => {
+        prefetch(href);
+    };
     return (
         <a
             href={href}
             className={className}
-            onClick={onClick}>
+            onClick={onClick}
+            onPointerEnter={onIntent}
+            onFocus={onIntent}>
             {children}
         </a>
     );
@@ -187,4 +196,5 @@ export function mount(
             notFound={notFound}
         />,
     );
+    startPrefetcher(routes);
 }
