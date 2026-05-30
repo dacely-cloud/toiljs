@@ -13,10 +13,6 @@ import {
 } from './lengths.js';
 import type { BufferLike, i16, i32, i64, i8, Selector, u16, u32, u8 } from './types.js';
 
-/**
- * Reads OPNet-style binary data written by {@link BinaryWriter}: fixed-width integers,
- * bigints (u128/u256/i128), booleans, strings, byte buffers and arrays of each.
- */
 export class BinaryReader {
     private buffer: DataView;
     private currentOffset: number = 0;

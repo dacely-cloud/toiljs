@@ -2,7 +2,7 @@
     "name": "toiljs",
     "type": "module",
     "version": "0.0.1",
-    "author": "OP_NET",
+    "author": "Toil",
     "description": "todo",
     "engines": {
         "node": ">=24.0.0"
@@ -50,11 +50,14 @@
     "bin": {
         "toiljs": "./build/cli/index.js"
     },
-    "homepage": "https://opnet.org",
+    "homepage": "https://toil.org",
     "keywords": [
-        "opnet",
-        "bitcoin",
-        "btc"
+        "toil",
+        "toiljs",
+        "typescript",
+        "react",
+        "webassembly",
+        "framework"
     ],
     "license": "Apache-2.0",
     "main": "build/client/index.js",
