@@ -5,8 +5,7 @@ export default function NotFound() {
         <main>
             <h1>404 — Page not found</h1>
             <p>
-                This custom page is served from <code>client/404.tsx</code> whenever no route
-                matches.
+                This custom page is served from <code>client/404.tsx</code> whenever no route matches.
             </p>
             <Link href="/">Back home</Link>
         </main>
