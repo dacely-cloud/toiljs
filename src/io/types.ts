@@ -1,6 +1,6 @@
 /**
- * Branded numeric width aliases used by the binary IO classes, mirroring the OPNet
- * conventions. They are plain `number`/`bigint` at runtime — the names document intent.
+ * Branded numeric width aliases used by the binary IO classes. They are plain `number`/`bigint`
+ * at runtime — the names document intent.
  */
 export type i8 = number;
 export type i16 = number;
