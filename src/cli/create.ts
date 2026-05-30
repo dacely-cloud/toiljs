@@ -64,7 +64,8 @@ function scaffold(name: string, template: Template): Record<string, string> {
         type: 'module',
         scripts: {
             dev: 'toiljs dev',
-            build: 'toiljs build',
+            build: 'toiljs build && toilscript --target release',
+            'build:client': 'toiljs build',
             'build:server': 'toilscript --target release',
             lint: 'eslint client',
             typecheck: 'tsc --noEmit',

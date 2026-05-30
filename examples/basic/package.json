@@ -4,7 +4,9 @@
     "type": "module",
     "scripts": {
         "dev": "toiljs dev",
-        "build": "toiljs build",
+        "build": "toiljs build && toilscript --target release",
+        "build:client": "toiljs build",
+        "build:server": "toilscript --target release",
         "lint": "eslint client",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write \"client/**/*.{ts,tsx}\""
@@ -19,6 +21,7 @@
         "@types/react-dom": "^19.2.3",
         "eslint": "^10.2.0",
         "prettier": "^3.8.1",
+        "toilscript": "^0.1.2",
         "typescript": "^6.0.3"
     }
 }
