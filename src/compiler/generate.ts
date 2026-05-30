@@ -44,7 +44,8 @@ function findNotFound(cfg: ResolvedToilConfig): string | undefined {
 }
 
 /**
- * Generates the `.toil/` working dir (routes table, mount entry, HTML) and returns the scanned
+ * Generates the `.toil/` working dir (routes table, mount entry, the HTML entry built from the
+ * project's `public/index.html` template, and mirrored `public/` assets) and returns the scanned
  * routes. Called before every dev/build and on route add/remove during dev.
  */
 export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
@@ -84,12 +85,58 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
     // `toiljs create` so a fresh project type-checks before its first build.
     fs.writeFileSync(path.join(cfg.root, 'toil-env.d.ts'), TOIL_ENV_DTS);
 
-    const htmlSrc =
-        `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="utf-8" />\n` +
-        `    <meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
-        `    <title>Toil App</title>\n  </head>\n  <body>\n    <div id="root"></div>\n` +
-        `    <script type="module" src="./entry.tsx"></script>\n  </body>\n</html>\n`;
-    fs.writeFileSync(path.join(cfg.toilDir, 'index.html'), htmlSrc);
+    fs.writeFileSync(path.join(cfg.toilDir, 'index.html'), buildHtml(cfg));
+    syncPublicAssets(cfg);
 
     return routes;
+}
+
+/** Fallback HTML when the project has no `public/index.html` template. The entry script is added
+ * by {@link buildHtml}. */
+const DEFAULT_HTML =
+    `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="utf-8" />\n` +
+    `    <meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
+    `    <title>Toil App</title>\n  </head>\n  <body>\n    <div id="root"></div>\n` +
+    `  </body>\n</html>\n`;
+
+/** The module entry that boots the app, injected into the HTML (resolved relative to `.toil`). */
+const ENTRY_SCRIPT = `<script type="module" src="./entry.tsx"></script>`;
+
+/**
+ * Produces the `.toil/index.html` Vite entry from the project's `public/index.html` template (or
+ * the built-in default if absent), ensuring the generated module entry script is present. Users
+ * own the template — toil only guarantees the entry is wired, so it stays the SPA root.
+ */
+function buildHtml(cfg: ResolvedToilConfig): string {
+    const templatePath = path.join(cfg.publicDir, 'index.html');
+    let html = fs.existsSync(templatePath)
+        ? fs.readFileSync(templatePath, 'utf8')
+        : DEFAULT_HTML;
+    if (!html.includes('entry.tsx')) {
+        html = html.includes('</body>')
+            ? html.replace('</body>', `    ${ENTRY_SCRIPT}\n  </body>`)
+            : `${html}\n${ENTRY_SCRIPT}\n`;
+    }
+    return html;
+}
+
+/**
+ * Mirrors the project's `public/` assets into `.toil/public/` (Vite's publicDir under the `.toil`
+ * root), excluding the `index.html` template — that is processed into the entry above, and copying
+ * it here would clobber the built, asset-hashed page. Cleared each run so deletions propagate.
+ */
+function syncPublicAssets(cfg: ResolvedToilConfig): void {
+    const dest = path.join(cfg.toilDir, 'public');
+    fs.rmSync(dest, { recursive: true, force: true });
+    if (!fs.existsSync(cfg.publicDir)) return;
+
+    let copied = 0;
+    for (const entry of fs.readdirSync(cfg.publicDir, { withFileTypes: true })) {
+        if (entry.name === 'index.html') continue;
+        fs.cpSync(path.join(cfg.publicDir, entry.name), path.join(dest, entry.name), {
+            recursive: true,
+        });
+        copied++;
+    }
+    if (copied === 0) fs.rmSync(dest, { recursive: true, force: true });
 }

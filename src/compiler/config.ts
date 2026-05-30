@@ -12,6 +12,11 @@ export interface ClientConfig {
     readonly srcDir?: string;
     /** Routes directory, relative to `srcDir`. Default `routes`. */
     readonly routesDir?: string;
+    /**
+     * Static assets directory, relative to root. Default `public`. Holds the `index.html` template
+     * (owned and edited by you) plus any files served as-is at the base path (favicons, images, …).
+     */
+    readonly publicDir?: string;
     /** Production output directory, relative to root. Default `dist`. */
     readonly outDir?: string;
     /** Public base path. Default `/`. */
@@ -56,6 +61,8 @@ export interface ResolvedToilConfig {
     readonly srcDir: string;
     readonly clientAbsDir: string;
     readonly routesAbsDir: string;
+    /** Absolute path to the static-assets dir (holds the `index.html` template). */
+    readonly publicDir: string;
     readonly toilDir: string;
     readonly outDir: string;
     readonly base: string;
@@ -108,6 +115,7 @@ export async function loadConfig(
         srcDir,
         clientAbsDir,
         routesAbsDir: path.join(clientAbsDir, routesDir),
+        publicDir: path.join(root, client.publicDir ?? 'public'),
         toilDir: path.join(root, '.toil'),
         outDir: client.outDir ?? 'dist',
         base: client.base ?? '/',
