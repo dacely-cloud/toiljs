@@ -33,10 +33,6 @@ function bigIntToBytes(value: bigint, length: number = U256_BYTE_LENGTH): Uint8A
     return out;
 }
 
-/**
- * Writes OPNet-style binary data: fixed-width integers, bigints (u128/u256/i128), booleans,
- * strings, byte buffers and arrays of each. A native, dependency-free serializer for the client.
- */
 export class BinaryWriter implements Disposable {
     private currentOffset: u32 = 0;
     private buffer: DataView;
