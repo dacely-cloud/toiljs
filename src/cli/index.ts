@@ -32,7 +32,7 @@ async function main(): Promise<void> {
             console.log('toil: build complete');
             break;
         default:
-            console.log('Usage: toil <dev|build> [--root <dir>] [--port <n>]');
+            console.log('Usage: toiljs <dev|build> [--root <dir>] [--port <n>]');
     }
 }
 
