@@ -1,7 +1,7 @@
 {
     "name": "toiljs",
     "type": "module",
-    "version": "0.0.2",
+    "version": "0.0.3",
     "author": "Dacely",
     "description": "todo",
     "engines": {
@@ -42,9 +42,6 @@
             "types": "./build/io/index.d.ts",
             "import": "./build/io/index.js",
             "default": "./build/io/index.js"
-        },
-        "./globals": {
-            "types": "./types/globals.d.ts"
         },
         "./tsconfig": "./presets/tsconfig.json",
         "./eslint": "./presets/eslint.js",
