@@ -4,7 +4,7 @@
  * a WebSocket channel for realtime / live updates.
  *
  * This is the Node "server" that hosts the app on a local machine; it is distinct from the
- * AssemblyScript WASM target in `src/server`.
+ * toilscript WASM target in `src/server`.
  */
 import fs from 'node:fs';
 import path from 'node:path';

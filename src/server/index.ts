@@ -1,9 +1,8 @@
 /**
- * AssemblyScript server (WASM) entry, compiled by the `toilscript` fork via `asc`.
+ * toilscript server (WASM) entry, compiled to WebAssembly by `toilscript`.
  *
- * Placeholder module: a trivial exported function that compiles with the stock fork std.
- * Custom native instructions/decorators (e.g. `@main`) ship from the `toilscript`
- * fork directly — no transformer required.
+ * Placeholder module: a trivial exported function that compiles with the toilscript std.
+ * Native decorators (e.g. `@main`) ship from toilscript directly — no transformer required.
  */
 
 export function add(a: i32, b: i32): i32 {
