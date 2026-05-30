@@ -4,7 +4,7 @@
  * The compiler stays presentation-free (imported via the package's own `toiljs/compiler`
  * export); the epic bits — banner, the Clack scaffolding wizard — live here.
  */
-import { build, dev } from 'toiljs/compiler';
+import { build, dev, start } from 'toiljs/compiler';
 
 import { runCreate, type Template } from './create.js';
 import { accent, banner, bold, dim, version } from './ui.js';
@@ -74,6 +74,7 @@ function printHelp(): void {
             cmd('create [name]', 'scaffold a new toiljs app'),
             cmd('dev', 'start the dev server with HMR'),
             cmd('build', 'build the optimized production bundle'),
+            cmd('start', 'self-host the built app (hyper-express / uWS)'),
             '',
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
@@ -123,6 +124,19 @@ async function main(): Promise<void> {
             await build({ root: flags.root });
             process.stdout.write('\n' + accent('  ✓ ') + bold('build complete') + '\n\n');
             break;
+
+        case 'start': {
+            banner();
+            process.stdout.write(dim('  self-hosting the built app…') + '\n\n');
+            const server = await start({ root: flags.root, port: flags.port });
+            process.stdout.write(
+                accent('  ➜ ') +
+                    bold(`http://localhost:${String(server.port)}`) +
+                    dim(`   ws channel: ${server.wsPath}`) +
+                    '\n\n',
+            );
+            break;
+        }
 
         case 'help':
         case '--help':
