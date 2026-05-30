@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import { runnerImport, type InlineConfig } from 'vite';
+import { type InlineConfig } from 'vite';
 
 /**
  * Client-side (TSX/React/Vite) configuration. All fields optional; sensible defaults applied.
@@ -87,10 +87,13 @@ export async function loadConfig(
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            // Vite's module runner bundles/transforms the (possibly .ts) config and returns it
-            // typed as our `ToilConfig` — no cast needed.
-            const { module } = await runnerImport<{ default?: ToilConfig }>(candidate);
-            if (module.default) user = module.default;
+            // Native ESM import (Node strips types from .ts/.mts). This keeps config loading
+            // independent of the project's tsconfig — which may `extends` a not-yet-installed
+            // package and would otherwise throw TSCONFIG_ERROR — and a file URL imports absolute
+            // paths correctly on Windows.
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed `any`
+            const loaded: { default?: ToilConfig } = await import(pathToFileURL(candidate).href);
+            if (loaded.default) user = loaded.default;
             break;
         }
     }
