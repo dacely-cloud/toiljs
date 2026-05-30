@@ -60,6 +60,8 @@ export function createViteConfig(cfg: ResolvedToilConfig): InlineConfig {
         resolve: {
             alias: {
                 'toiljs/client': cfg.runtimePath,
+                // The generated route table, imported by the app entry as `toiljs/routes`.
+                'toiljs/routes': path.join(cfg.toilDir, 'routes.ts'),
             },
             dedupe: ['react', 'react-dom'],
         },

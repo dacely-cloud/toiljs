@@ -1,0 +1,40 @@
+/* Global styles, imported once from client/toil.tsx. */
+
+:root {
+    color-scheme: dark;
+}
+
+body {
+    margin: 0;
+    background: #080d11;
+    color: #f5f6fa;
+    font-family:
+        system-ui,
+        -apple-system,
+        sans-serif;
+    line-height: 1.6;
+}
+
+a {
+    color: #2563ff;
+    text-decoration: none;
+}
+
+a:hover {
+    color: #22e3ab;
+}
+
+code {
+    background: #11161f;
+    color: #22e3ab;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+h1 {
+    background: linear-gradient(90deg, #2563ff, #7c3aed, #22e3ab);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
