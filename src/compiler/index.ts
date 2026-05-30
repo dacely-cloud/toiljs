@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { build as viteBuild, createServer, mergeConfig } from 'vite';
-import { startBackend, startProxy, type RunningBackend, type RunningServer } from 'toiljs/backend';
+import { build as viteBuild, createServer, type ViteDevServer } from 'vite';
+import { startBackend, type RunningBackend } from 'toiljs/backend';
 
 import { loadConfig } from './config.js';
 import { generate } from './generate.js';
@@ -13,41 +13,14 @@ export interface ToilCommandOptions {
     readonly port?: number;
 }
 
-/**
- * Starts the dev server: Vite runs on an internal loopback port (doing TS/JSX transforms + HMR)
- * while the high-performance hyper-express/uWS backend proxies all HTTP on the public port. HMR
- * connects straight to Vite via its `clientPort`, so it works without proxying the WebSocket.
- * Returns a handle whose `close()` stops both servers.
- */
-export async function dev(opts: ToilCommandOptions = {}): Promise<RunningServer> {
+/** Starts the Vite dev server (HMR + transforms) for the client app. Returns the running server. */
+export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
     generate(cfg);
-
-    const publicPort = cfg.port;
-    const vitePort = publicPort + 1;
-
-    const viteConfig = mergeConfig(createViteConfig(cfg), {
-        server: {
-            host: '127.0.0.1',
-            port: vitePort,
-            strictPort: true,
-            allowedHosts: true,
-            hmr: { clientPort: vitePort },
-        },
-    });
-    const viteServer = await createServer(viteConfig);
-    await viteServer.listen();
-
-    const proxy = await startProxy({ target: `http://127.0.0.1:${vitePort}`, port: publicPort });
-
-    return {
-        port: proxy.port,
-        host: proxy.host,
-        close: async (): Promise<void> => {
-            await proxy.close();
-            await viteServer.close();
-        },
-    };
+    const server = await createServer(createViteConfig(cfg));
+    await server.listen();
+    server.printUrls();
+    return server;
 }
 
 /** Produces an optimized production SPA bundle in the configured `outDir`. */
@@ -73,4 +46,4 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
 
 export { defineConfig } from './config.js';
 export type { ToilConfig } from './config.js';
-export type { RunningBackend, RunningServer, BackendOptions } from 'toiljs/backend';
+export type { RunningBackend, BackendOptions } from 'toiljs/backend';
