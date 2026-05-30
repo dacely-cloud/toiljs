@@ -4,18 +4,28 @@ export type RouteParams = Record<string, string>;
 /**
  * Matches a route pattern against a pathname, returning extracted params or `null` if no match.
  * Pure and runtime-agnostic (used by the router and unit-tested directly).
- *   matchRoute('/', '/')            -> {}
- *   matchRoute('/blog/:id', '/blog/42') -> { id: '42' }
- *   matchRoute('/about', '/x')      -> null
+ *   matchRoute('/', '/')                  -> {}
+ *   matchRoute('/blog/:id', '/blog/42')   -> { id: '42' }
+ *   matchRoute('/docs/*slug', '/docs/a/b') -> { slug: 'a/b' }   (catch-all)
+ *   matchRoute('/about', '/x')            -> null
  */
 export function matchRoute(pattern: string, pathname: string): RouteParams | null {
     const patternSegs = pattern.split('/').filter(Boolean);
     const pathSegs = pathname.split('/').filter(Boolean);
-    if (patternSegs.length !== pathSegs.length) return null;
 
     const params: RouteParams = {};
     for (let i = 0; i < patternSegs.length; i++) {
         const p = patternSegs[i];
+
+        // Catch-all (`*slug`): captures the rest of the path (one or more segments).
+        if (p.startsWith('*')) {
+            const rest = pathSegs.slice(i);
+            if (rest.length === 0) return null;
+            params[p.slice(1)] = rest.map((s) => decodeURIComponent(s)).join('/');
+            return params;
+        }
+
+        if (i >= pathSegs.length) return null;
         const value = pathSegs[i];
         if (p.startsWith(':')) {
             params[p.slice(1)] = decodeURIComponent(value);
@@ -23,5 +33,7 @@ export function matchRoute(pattern: string, pathname: string): RouteParams | nul
             return null;
         }
     }
-    return params;
+
+    // No catch-all consumed the tail: lengths must match exactly.
+    return patternSegs.length === pathSegs.length ? params : null;
 }

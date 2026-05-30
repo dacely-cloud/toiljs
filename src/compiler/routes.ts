@@ -11,10 +11,11 @@ const ROUTE_EXT = /\.(tsx|jsx)$/;
 
 /**
  * Derives a route pattern from a route file path (relative to the routes dir).
- *   index.tsx        -> /
- *   about.tsx        -> /about
- *   blog/index.tsx   -> /blog
- *   blog/[id].tsx    -> /blog/:id
+ *   index.tsx          -> /
+ *   about.tsx          -> /about
+ *   blog/index.tsx     -> /blog
+ *   blog/[id].tsx      -> /blog/:id
+ *   docs/[...slug].tsx -> /docs/*slug   (catch-all)
  */
 export function filePathToRoute(relPath: string): string {
     const withoutExt = relPath.replace(/\\/g, '/').replace(ROUTE_EXT, '');
@@ -23,17 +24,25 @@ export function filePathToRoute(relPath: string): string {
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
         if (segment === 'index' && i === segments.length - 1) continue;
-        out.push(segment.replace(/^\[(.+)\]$/, ':$1'));
+        out.push(
+            segment
+                .replace(/^\[\.\.\.(.+)\]$/, '*$1') // catch-all [...slug] -> *slug
+                .replace(/^\[(.+)\]$/, ':$1'), // dynamic [id] -> :id
+        );
     }
     return '/' + out.join('/');
 }
 
-/** Ranks a pattern so static, deeper routes are matched before shallow/dynamic ones. */
+/**
+ * Ranks a pattern so more specific routes match first: static segments beat dynamic (`:x`),
+ * which beat catch-all (`*x`); deeper routes beat shallower ones.
+ */
 function specificity(pattern: string): number {
     const segments = pattern.split('/').filter(Boolean);
     let score = segments.length * 10;
     for (const segment of segments) {
-        if (!segment.startsWith(':')) score += 5;
+        if (segment.startsWith('*')) score -= 5; // catch-all: lowest
+        else if (!segment.startsWith(':')) score += 5; // static: highest
     }
     return score;
 }
