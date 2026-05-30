@@ -53,6 +53,14 @@ describe('BinaryWriter / BinaryReader', () => {
         expect(() => w.writeI8(128)).toThrow();
     });
 
+    it('rejects negative / overflowing u256 and u128', () => {
+        const w = new BinaryWriter();
+        expect(() => w.writeU256(-1n)).toThrow();
+        expect(() => w.writeU256(2n ** 256n)).toThrow();
+        expect(() => w.writeU128(-1n)).toThrow();
+        expect(() => w.writeU128(2n ** 128n)).toThrow();
+    });
+
     it('throws when reading past the end', () => {
         const r = new BinaryReader(new Uint8Array(2));
         expect(() => r.readU32()).toThrow();
