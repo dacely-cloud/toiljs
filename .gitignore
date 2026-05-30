@@ -420,5 +420,6 @@ coverage
 .toil
 toil-env.d.ts
 examples/*/dist
+examples/*/build
 examples/*/.toil
 examples/*/toil-env.d.ts
