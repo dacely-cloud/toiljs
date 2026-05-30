@@ -83,8 +83,6 @@ export class BinaryWriter implements Disposable {
         this.currentOffset += 8;
     }
 
-    // ------------------- Signed Integer Writers ------------------- //
-
     /** Writes a signed 8-bit integer. */
     public writeI8(value: i8): void {
         if (value < -128 || value > 127) throw new Error('i8 value is out of range.');
@@ -123,8 +121,6 @@ export class BinaryWriter implements Disposable {
         this.buffer.setBigInt64(this.currentOffset, value, !be);
         this.currentOffset += I64_BYTE_LENGTH;
     }
-
-    // ---------------------------------------------------------------- //
 
     public writeSelector(value: Selector): void {
         this.writeU32(value, true);

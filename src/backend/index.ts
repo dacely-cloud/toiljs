@@ -17,8 +17,6 @@ import {
     type Websocket,
 } from '@btc-vision/hyper-express';
 
-// --- server tuning -----------------------------------------------------------------------------
-
 const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8; // 8 MB
 const MAX_BODY_BUFFER = 1024 * 32; // 32 KB
 const HTTP_IDLE_TIMEOUT = 60; // seconds
