@@ -103,11 +103,11 @@ function scaffold(name: string, template: Template): Record<string, string> {
         'public/images/.gitkeep': '# Place images and other static assets here; served at /images/*.\n',
         // App entry (you own this). Imports global styles and mounts the generated route table.
         'client/toil.tsx':
-            "import { mount } from 'toiljs/client';\n" +
             "import { routes, layout, notFound } from 'toiljs/routes';\n\n" +
             "import './styles/main.css';\n\n" +
             '// The app entry. Customize global setup here (providers, styles, etc.), then mount.\n' +
-            'mount(routes, layout, notFound);\n',
+            "// `Toil` is a native global (like the IO classes) — no import from 'toiljs/client' needed.\n" +
+            'Toil.mount(routes, layout, notFound);\n',
         'client/styles/main.css':
             '/* Global styles, imported once from client/toil.tsx. */\n\n' +
             ':root {\n    color-scheme: dark;\n}\n\n' +
@@ -177,8 +177,6 @@ function scaffold(name: string, template: Template): Record<string, string> {
         'README.md': ['# ' + path.basename(name), '', 'A [toiljs](https://toil.org) app.', '', '## Develop', '', '    npm install', '    npm run dev', '', '## Build', '', '    npm run build', ''].join('\n'),
         'client/layout.tsx': `import { type ReactNode } from 'react';
 
-import { Link } from 'toiljs/client';
-
 export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1.5rem' }}>
@@ -193,7 +191,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
                 }}>
                 <strong style={{ color: '#2563FF', fontSize: '1.1rem' }}>${path.basename(name)}</strong>
                 <nav style={{ display: 'flex', gap: '1rem' }}>
-                    <Link href="/">home</Link>${template === 'app' ? '\n                    <Link href="/about">about</Link>' : ''}
+                    <Toil.Link href="/">home</Toil.Link>${template === 'app' ? '\n                    <Toil.Link href="/about">about</Toil.Link>' : ''}
                 </nav>
             </header>
             {children}
@@ -202,31 +200,28 @@ export default function Layout({ children }: { children?: ReactNode }) {
 }
 `,
         'client/routes/index.tsx':
-            "import { Link } from 'toiljs/client';\n\n" +
             'export default function Home() {\n' +
             '    return (\n        <main>\n' +
             '            <h1>Welcome to toiljs</h1>\n' +
             '            <p>File-based routing, bundled by Vite, zero config.</p>\n' +
             (template === 'app'
-                ? '            <p>\n                <Link href="/about">About</Link> · <Link href="/blog/42">Blog post 42</Link>\n            </p>\n'
+                ? '            <p>\n                <Toil.Link href="/about">About</Toil.Link> · <Toil.Link href="/blog/42">Blog post 42</Toil.Link>\n            </p>\n'
                 : '') +
             '        </main>\n    );\n}\n',
     };
 
     if (template === 'app') {
         files['client/routes/about.tsx'] =
-            "import { Link } from 'toiljs/client';\n\n" +
             'export default function About() {\n' +
             '    return (\n        <main>\n            <h1>About</h1>\n' +
             '            <p>\n                This page is served by <code>client/routes/about.tsx</code>.\n            </p>\n' +
-            '            <Link href="/">Back home</Link>\n        </main>\n    );\n}\n';
+            '            <Toil.Link href="/">Back home</Toil.Link>\n        </main>\n    );\n}\n';
         files['client/routes/blog/[id].tsx'] =
-            "import { Link, useParams } from 'toiljs/client';\n\n" +
             'export default function BlogPost() {\n' +
-            '    const { id } = useParams();\n' +
+            '    const { id } = Toil.useParams();\n' +
             '    return (\n        <main>\n            <h1>Blog post {id}</h1>\n' +
             '            <p>\n                Dynamic route from <code>client/routes/blog/[id].tsx</code>.\n            </p>\n' +
-            '            <Link href="/">Back home</Link>\n        </main>\n    );\n}\n';
+            '            <Toil.Link href="/">Back home</Toil.Link>\n        </main>\n    );\n}\n';
     }
 
     return files;
