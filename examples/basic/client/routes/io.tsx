@@ -1,7 +1,5 @@
-import { Link } from 'toiljs/client';
-
-// Note: BinaryWriter / BinaryReader / FastMap / FastSet are NATIVE globals in a toil app —
-// no import needed. They're injected at runtime and typed via the generated .toil/toil-env.d.ts.
+// Note: `Toil` and BinaryWriter / BinaryReader / FastMap / FastSet are NATIVE globals in a toil
+// app — no import needed. They're injected at runtime and typed via the generated toil-env.d.ts.
 export default function IoDemo() {
     const writer = new BinaryWriter();
     writer.writeU32(42);
@@ -22,7 +20,7 @@ export default function IoDemo() {
                 <code>new BinaryWriter()</code> with no import — round-tripped {n} and &quot;{s}&quot; through{' '}
                 {bytes.length} bytes; FastSet size {seen.size}.
             </p>
-            <Link href="/">Back home</Link>
+            <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
 }

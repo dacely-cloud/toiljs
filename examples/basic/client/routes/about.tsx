@@ -1,5 +1,3 @@
-import { Link } from 'toiljs/client';
-
 export default function About() {
     return (
         <main>
@@ -7,7 +5,7 @@ export default function About() {
             <p>
                 This page is served by <code>client/routes/about.tsx</code>.
             </p>
-            <Link href="/">Back home</Link>
+            <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
 }

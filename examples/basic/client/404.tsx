@@ -1,5 +1,3 @@
-import { Link } from 'toiljs/client';
-
 export default function NotFound() {
     return (
         <main>
@@ -7,7 +5,7 @@ export default function NotFound() {
             <p>
                 This custom page is served from <code>client/404.tsx</code> whenever no route matches.
             </p>
-            <Link href="/">Back home</Link>
+            <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
 }
