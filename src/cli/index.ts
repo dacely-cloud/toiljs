@@ -1,39 +1,147 @@
 #!/usr/bin/env node
 /**
- * toil CLI. Delegates to the compiler (imported via the package's own `toiljs/compiler`
- * export, which self-resolves at runtime). Commands: `toil dev`, `toil build`.
+ * toiljs CLI. Routes `create` / `dev` / `build` and wraps them in the toiljs brand banner.
+ * The compiler stays presentation-free (imported via the package's own `toiljs/compiler`
+ * export); the epic bits — banner, the Clack scaffolding wizard — live here.
  */
 import { build, dev } from 'toiljs/compiler';
 
-interface CliFlags {
+import { runCreate, type Template } from './create.js';
+import { accent, banner, bold, dim, version } from './ui.js';
+
+interface Flags {
     root?: string;
     port?: number;
+    name?: string;
+    template?: Template;
+    install?: boolean;
+    git?: boolean;
+    pm?: string;
+    yes?: boolean;
 }
 
-function parseFlags(argv: string[]): CliFlags {
-    const flags: CliFlags = {};
+function parseArgs(argv: string[]): Flags {
+    const flags: Flags = {};
     for (let i = 0; i < argv.length; i++) {
-        if (argv[i] === '--root') flags.root = argv[++i];
-        else if (argv[i] === '--port') flags.port = Number(argv[++i]);
+        const arg = argv[i];
+        switch (arg) {
+            case '--root':
+                flags.root = argv[++i];
+                break;
+            case '--port':
+                flags.port = Number(argv[++i]);
+                break;
+            case '--template':
+            case '-t': {
+                const t = argv[++i];
+                if (t === 'app' || t === 'minimal') flags.template = t;
+                break;
+            }
+            case '--pm':
+                flags.pm = argv[++i];
+                break;
+            case '--install':
+                flags.install = true;
+                break;
+            case '--no-install':
+                flags.install = false;
+                break;
+            case '--git':
+                flags.git = true;
+                break;
+            case '--no-git':
+                flags.git = false;
+                break;
+            case '-y':
+            case '--yes':
+                flags.yes = true;
+                break;
+            default:
+                // First bare (non-flag) token is the positional project name.
+                if (!arg.startsWith('-') && flags.name === undefined) flags.name = arg;
+        }
     }
     return flags;
 }
 
+function printHelp(): void {
+    const cmd = (name: string, desc: string): string => `  ${accent(name.padEnd(15))}${dim(desc)}`;
+    process.stdout.write(
+        [
+            `${bold('Usage')}  ${dim('toiljs')} <command> [options]`,
+            '',
+            bold('Commands'),
+            cmd('create [name]', 'scaffold a new toiljs app'),
+            cmd('dev', 'start the dev server with HMR'),
+            cmd('build', 'build the optimized production bundle'),
+            '',
+            bold('Options'),
+            cmd('--root <dir>', 'project root (default: current directory)'),
+            cmd('--port <n>', 'dev server port'),
+            cmd('-t, --template', 'create: app | minimal'),
+            cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
+            cmd('--no-install', "create: don't install dependencies"),
+            cmd('-v, --version', 'print the toiljs version'),
+            '',
+        ].join('\n') + '\n',
+    );
+}
+
 async function main(): Promise<void> {
     const [command, ...rest] = process.argv.slice(2);
-    const flags = parseFlags(rest);
+
+    if (command === '--version' || command === '-v') {
+        process.stdout.write(version() + '\n');
+        return;
+    }
+
+    const flags = parseArgs(rest);
 
     switch (command) {
+        case 'create':
+            banner();
+            await runCreate({
+                name: flags.name,
+                template: flags.template,
+                install: flags.install,
+                git: flags.git,
+                pm: flags.pm,
+                yes: flags.yes,
+                cwd: process.cwd(),
+            });
+            break;
+
         case 'dev':
-            await dev(flags);
+            banner();
+            process.stdout.write(dim('  starting dev server…') + '\n\n');
+            await dev({ root: flags.root, port: flags.port });
             break;
+
         case 'build':
-            await build(flags);
-            console.log('toil: build complete');
+            banner();
+            process.stdout.write(dim('  building for production…') + '\n\n');
+            await build({ root: flags.root });
+            process.stdout.write('\n' + accent('  ✓ ') + bold('build complete') + '\n\n');
             break;
+
+        case 'help':
+        case '--help':
+        case '-h':
+        case undefined:
+            banner();
+            printHelp();
+            break;
+
         default:
-            console.log('Usage: toiljs <dev|build> [--root <dir>] [--port <n>]');
+            banner();
+            process.stdout.write(dim(`  unknown command: ${command}`) + '\n\n');
+            printHelp();
+            process.exitCode = 1;
     }
 }
 
-void main();
+main().catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write('\n' + accent('  ✗ ') + message + '\n');
+    process.exitCode = 1;
+});

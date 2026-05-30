@@ -78,10 +78,12 @@
     "dependencies": {
         "@btc-vision/as-bignum": "^1.0.0",
         "@btc-vision/as-loader": "^0.0.0",
+        "@clack/prompts": "^1.5.0",
         "@eslint-react/eslint-plugin": "^4.2.3",
         "@eslint/js": "^10.0.1",
         "@typescript-eslint/utils": "^8.60.0",
         "@vitejs/plugin-react": "^6.0.2",
+        "picocolors": "^1.1.1",
         "eslint-plugin-react-hooks": "^7.1.0-canary-ab18f33d-20260220",
         "eslint-plugin-react-refresh": "^0.5.2",
         "toilscript": "^0.1.1",
