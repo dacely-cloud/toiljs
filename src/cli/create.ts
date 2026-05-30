@@ -93,16 +93,42 @@ function scaffold(name: string, template: Template): Record<string, string> {
         '.prettierrc': '"toiljs/prettier"\n',
         '.gitignore': 'node_modules\ndist\n.toil\ntoil-env.d.ts\n',
         'README.md': ['# ' + path.basename(name), '', 'A [toiljs](https://toil.org) app.', '', '## Develop', '', '    npm install', '    npm run dev', '', '## Build', '', '    npm run build', ''].join('\n'),
-        'client/layout.tsx':
-            "import { type ReactNode } from 'react';\n\n" +
-            "import { Link } from 'toiljs/client';\n\n" +
-            'export default function Layout({ children }: { children?: ReactNode }) {\n' +
-            '    return (\n' +
-            "        <div style={{ fontFamily: 'system-ui', maxWidth: 640, margin: '2rem auto' }}>\n" +
-            "            <header style={{ borderBottom: '1px solid #ddd', paddingBottom: 8, marginBottom: 16 }}>\n" +
-            '                <strong>' + path.basename(name) + '</strong> — <Link href="/">home</Link>' +
-            (template === 'app' ? ' · <Link href="/about">about</Link>' : '') +
-            '\n            </header>\n            {children}\n        </div>\n    );\n}\n',
+        'client/layout.tsx': `import { type ReactNode } from 'react';
+
+import { Link } from 'toiljs/client';
+
+const styles = \`
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #080D11; color: #F5F6FA; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; }
+  a { color: #2563FF; text-decoration: none; }
+  a:hover { color: #22E3AB; }
+  code { background: #11161f; color: #22E3AB; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+  h1 { background: linear-gradient(90deg, #2563FF, #7C3AED, #22E3AB); -webkit-background-clip: text; background-clip: text; color: transparent; }
+\`;
+
+export default function Layout({ children }: { children?: ReactNode }) {
+    return (
+        <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1.5rem' }}>
+            <style>{styles}</style>
+            <header
+                style={{
+                    display: 'flex',
+                    gap: '1rem',
+                    alignItems: 'baseline',
+                    borderBottom: '1px solid #1b2330',
+                    paddingBottom: '0.75rem',
+                    marginBottom: '1.5rem',
+                }}>
+                <strong style={{ color: '#2563FF', fontSize: '1.1rem' }}>${path.basename(name)}</strong>
+                <nav style={{ display: 'flex', gap: '1rem' }}>
+                    <Link href="/">home</Link>${template === 'app' ? '\n                    <Link href="/about">about</Link>' : ''}
+                </nav>
+            </header>
+            {children}
+        </div>
+    );
+}
+`,
         'client/routes/index.tsx':
             "import { Link } from 'toiljs/client';\n\n" +
             'export default function Home() {\n' +
