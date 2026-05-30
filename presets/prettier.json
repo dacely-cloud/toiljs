@@ -7,5 +7,12 @@
     "trailingComma": "none",
     "bracketSpacing": true,
     "bracketSameLine": true,
-    "arrowParens": "always"
+    "arrowParens": "always",
+    "htmlWhitespaceSensitivity": "css",
+    "overrides": [
+        {
+            "files": "*.html",
+            "options": { "parser": "html" }
+        }
+    ]
 }
