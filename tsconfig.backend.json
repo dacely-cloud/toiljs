@@ -1,0 +1,13 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ESNext",
+        "moduleResolution": "bundler",
+        "rootDir": "src/backend",
+        "outDir": "build/backend",
+        "types": ["node"],
+        "tsBuildInfoFile": "build/backend/.tsbuildinfo"
+    },
+    "include": ["src/backend/**/*"]
+}

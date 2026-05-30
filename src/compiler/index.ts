@@ -1,4 +1,8 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { build as viteBuild, createServer, type ViteDevServer } from 'vite';
+import { startBackend, type RunningBackend } from 'toiljs/backend';
 
 import { loadConfig } from './config.js';
 import { generate } from './generate.js';
@@ -26,5 +30,20 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     await viteBuild(createViteConfig(cfg));
 }
 
+/**
+ * Self-hosts the built client over the high-performance hyper-express backend (uWebSockets.js),
+ * serving the configured `outDir` with an SPA fallback plus a WebSocket channel. Requires a prior
+ * `build`. Returns the running backend.
+ */
+export async function start(opts: ToilCommandOptions = {}): Promise<RunningBackend> {
+    const cfg = await loadConfig(opts);
+    const outDir = path.resolve(cfg.root, cfg.outDir);
+    if (!fs.existsSync(path.join(outDir, 'index.html'))) {
+        throw new Error(`No build found in ${outDir}. Run \`toiljs build\` first.`);
+    }
+    return startBackend({ root: outDir, port: cfg.port });
+}
+
 export { defineConfig } from './config.js';
 export type { ToilConfig } from './config.js';
+export type { RunningBackend, BackendOptions } from 'toiljs/backend';
