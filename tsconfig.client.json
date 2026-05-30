@@ -1,0 +1,14 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ESNext",
+        "moduleResolution": "bundler",
+        "jsx": "react-jsx",
+        "lib": ["ESNext", "DOM", "DOM.Iterable"],
+        "rootDir": "src/client",
+        "outDir": "build/client",
+        "tsBuildInfoFile": "build/client/.tsbuildinfo"
+    },
+    "include": ["src/client/**/*"]
+}
