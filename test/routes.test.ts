@@ -10,6 +10,7 @@ describe('filePathToRoute', () => {
         expect(filePathToRoute('blog/index.tsx')).toBe('/blog');
         expect(filePathToRoute('blog/[id].tsx')).toBe('/blog/:id');
         expect(filePathToRoute('docs/guide/intro.jsx')).toBe('/docs/guide/intro');
+        expect(filePathToRoute('docs/[...slug].tsx')).toBe('/docs/*slug');
     });
 });
 
@@ -29,5 +30,13 @@ describe('matchRoute', () => {
         expect(matchRoute('/blog/:id', '/blog/42')).toEqual({ id: '42' });
         expect(matchRoute('/u/:user/p/:post', '/u/ann/p/7')).toEqual({ user: 'ann', post: '7' });
         expect(matchRoute('/blog/:id', '/blog/a%20b')).toEqual({ id: 'a b' });
+    });
+
+    it('captures the tail with catch-all routes', () => {
+        expect(matchRoute('/docs/*slug', '/docs/a/b/c')).toEqual({ slug: 'a/b/c' });
+        expect(matchRoute('/docs/*slug', '/docs/intro')).toEqual({ slug: 'intro' });
+        expect(matchRoute('/files/*path', '/files/a%20b/c')).toEqual({ path: 'a b/c' });
+        // catch-all needs at least one trailing segment
+        expect(matchRoute('/docs/*slug', '/docs')).toBeNull();
     });
 });
