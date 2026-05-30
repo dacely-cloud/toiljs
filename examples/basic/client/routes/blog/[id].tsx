@@ -5,7 +5,9 @@ export default function BlogPost() {
     return (
         <main>
             <h1>Blog post {id}</h1>
-            <p>Dynamic route from <code>client/routes/blog/[id].tsx</code>.</p>
+            <p>
+                Dynamic route from <code>client/routes/blog/[id].tsx</code>.
+            </p>
             <Link href="/">Back home</Link>
         </main>
     );

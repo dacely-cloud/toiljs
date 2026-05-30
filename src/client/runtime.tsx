@@ -20,7 +20,9 @@ export interface RouteDef {
 }
 
 /** Optional root layout loader (wraps every page). */
-export type LayoutLoader = (() => Promise<{ default: ComponentType<{ children?: ReactNode }> }>) | null;
+export type LayoutLoader =
+    | (() => Promise<{ default: ComponentType<{ children?: ReactNode }> }>)
+    | null;
 
 // --- client-side navigation store -------------------------------------------------------------
 
@@ -48,7 +50,9 @@ export function useNavigate(): (href: string) => void {
 export function useLocation(): string {
     const [pathname, setPathname] = useState<string>(() => window.location.pathname);
     useEffect(() => {
-        const update = (): void => { setPathname(window.location.pathname); };
+        const update = (): void => {
+            setPathname(window.location.pathname);
+        };
         listeners.add(update);
         window.addEventListener('popstate', update);
         return () => {
@@ -63,12 +67,23 @@ export function useLocation(): string {
 export function Link(props: { href: string; className?: string; children?: ReactNode }): ReactNode {
     const { href, className, children } = props;
     const onClick = (e: MouseEvent): void => {
-        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+        if (
+            e.defaultPrevented ||
+            e.button !== 0 ||
+            e.metaKey ||
+            e.ctrlKey ||
+            e.shiftKey ||
+            e.altKey
+        )
+            return;
         e.preventDefault();
         navigate(href);
     };
     return (
-        <a href={href} className={className} onClick={onClick}>
+        <a
+            href={href}
+            className={className}
+            onClick={onClick}>
             {children}
         </a>
     );
@@ -141,5 +156,10 @@ export function Router(props: { routes: RouteDef[]; layout?: LayoutLoader }): Re
 export function mount(routes: RouteDef[], layout: LayoutLoader = null): void {
     const el = document.getElementById('root');
     if (!el) throw new Error('toil: #root element not found');
-    createRoot(el).render(<Router routes={routes} layout={layout} />);
+    createRoot(el).render(
+        <Router
+            routes={routes}
+            layout={layout}
+        />,
+    );
 }
