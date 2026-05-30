@@ -20,12 +20,12 @@ export default {
     /**
      * A set of globs passed to the glob package that qualify typescript files for testing.
      */
-    entries: ['tests/server/**/*.spec.ts'],
+    entries: ['test/assembly/**/*.spec.ts'],
 
     /**
      * A set of globs passed to the glob package that quality files to be added to each test.
      */
-    include: ['tests/server/**/*.include.ts'],
+    include: ['test/assembly/**/*.include.ts'],
 
     /**
      * A set of regexp that will disclude source files from testing.
