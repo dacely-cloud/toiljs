@@ -11,8 +11,8 @@ import tseslint from 'typescript-eslint';
 import noUint8ArrayToString from './no-uint8array-tostring.js';
 
 export default tseslint.config(
-    // Build output + the toil-generated working dir are not hand-written source.
-    { ignores: ['dist', 'build', '.toil', 'node_modules'] },
+    // Build output, the toil working dir, and generated ambient types are not hand-written source.
+    { ignores: ['dist', 'build', '.toil', 'node_modules', 'toil-env.d.ts'] },
     {
         extends: [
             eslint.configs.recommended,
