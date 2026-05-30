@@ -420,3 +420,6 @@ coverage
 .toil
 examples/*/dist
 examples/*/.toil
+# Toil generated ambient types
+toil-env.d.ts
+examples/*/toil-env.d.ts
