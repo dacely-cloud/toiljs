@@ -55,8 +55,6 @@ export class BinaryReader {
         return this.buffer.byteLength - this.currentOffset;
     }
 
-    // ------------------- Signed Integer Readers ------------------- //
-
     /** Reads a single signed byte (i8). */
     public readI8(): i8 {
         this.verifyEnd(this.currentOffset + I8_BYTE_LENGTH);
@@ -88,8 +86,6 @@ export class BinaryReader {
         this.currentOffset += I64_BYTE_LENGTH;
         return value;
     }
-
-    // ------------------- Unsigned Integer Readers ------------------- //
 
     /** Reads a single unsigned byte (u8). */
     public readU8(): u8 {
@@ -224,8 +220,6 @@ export class BinaryReader {
         return this.readBytes(length);
     }
 
-    // ------------------ Array readers ------------------ //
-
     public readArrayOfBuffer(be: boolean = true): Uint8Array[] {
         const length = this.readU16(be);
         const result: Uint8Array[] = new Array<Uint8Array>(length);
@@ -315,8 +309,6 @@ export class BinaryReader {
 
         return result;
     }
-
-    // --------------------------------------------------- //
 
     public getOffset(): u16 {
         return this.currentOffset;

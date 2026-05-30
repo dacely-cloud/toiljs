@@ -27,8 +27,6 @@ export type LayoutLoader =
 /** Optional custom not-found (404) page loader, rendered when no route matches. */
 export type NotFoundLoader = (() => Promise<{ default: ComponentType }>) | null;
 
-// --- client-side navigation store -------------------------------------------------------------
-
 const listeners = new Set<() => void>();
 
 /** Navigates to `href` without a full page reload (history pushState + re-render). */
@@ -91,8 +89,6 @@ export function Link(props: { href: string; className?: string; children?: React
         </a>
     );
 }
-
-// --- router -----------------------------------------------------------------------------------
 
 const pageCache = new Map<RouteDef, ComponentType>();
 function pageComponent(route: RouteDef): ComponentType {
