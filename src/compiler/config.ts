@@ -38,7 +38,7 @@ export interface ServerConfig {
 }
 
 /**
- * The `toil.config` schema (Next.js-style). All fields optional; sensible defaults applied.
+ * The `toil.config` schema. All fields optional; sensible defaults applied.
  * Client and server are configured in separate sections.
  */
 export interface ToilConfig {
