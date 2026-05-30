@@ -45,5 +45,6 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
 }
 
 export { defineConfig } from './config.js';
+export { TOIL_ENV_DTS } from './generate.js';
 export type { ToilConfig } from './config.js';
 export type { RunningBackend, BackendOptions } from 'toiljs/backend';
