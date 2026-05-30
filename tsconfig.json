@@ -1,0 +1,22 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ESNext",
+        "moduleResolution": "bundler",
+        "jsx": "react-jsx",
+        "noEmit": true,
+        "incremental": false
+    },
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "test/**/*.ts",
+        "std/client/index.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "build",
+        "src/backend"
+    ]
+}

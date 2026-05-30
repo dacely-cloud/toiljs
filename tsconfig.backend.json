@@ -1,0 +1,11 @@
+{
+    "extends": "toilscript/std/assembly.json",
+    "compilerOptions": {
+        "experimentalDecorators": true,
+        "noEmit": true
+    },
+    "include": [
+        "src/backend/**/*.ts",
+        "std/backend/**/*.d.ts"
+    ]
+}

@@ -1,0 +1,9 @@
+.vs
+./docs
+./src
+!/build
+./tests
+./.github
+./.vscode
+./.idea
+.DS_Store
