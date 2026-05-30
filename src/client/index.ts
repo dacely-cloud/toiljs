@@ -5,7 +5,7 @@
  */
 
 export { mount, Router, Link, navigate, useParams, useNavigate, useLocation } from './runtime.js';
-export type { RouteDef, LayoutLoader } from './runtime.js';
+export type { RouteDef, LayoutLoader, NotFoundLoader } from './runtime.js';
 export { matchRoute } from './match.js';
 export type { RouteParams } from './match.js';
 export { connectChannel, useChannel, resolveChannelUrl } from './channel.js';

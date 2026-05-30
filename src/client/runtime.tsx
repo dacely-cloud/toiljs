@@ -24,6 +24,9 @@ export type LayoutLoader =
     | (() => Promise<{ default: ComponentType<{ children?: ReactNode }> }>)
     | null;
 
+/** Optional custom not-found (404) page loader, rendered when no route matches. */
+export type NotFoundLoader = (() => Promise<{ default: ComponentType }>) | null;
+
 // --- client-side navigation store -------------------------------------------------------------
 
 const listeners = new Set<() => void>();
@@ -111,9 +114,23 @@ function resolveLayout(loader: NonNullable<LayoutLoader>): ComponentType<{ child
     return layoutComponent;
 }
 
+let notFoundComponent: ComponentType | null = null;
+let notFoundLoader: NotFoundLoader = null;
+function resolveNotFound(loader: NonNullable<NotFoundLoader>): ComponentType {
+    if (notFoundLoader !== loader || !notFoundComponent) {
+        notFoundComponent = lazy(loader);
+        notFoundLoader = loader;
+    }
+    return notFoundComponent;
+}
+
 /** Matches the current location to a route and renders it, optionally wrapped in the root layout. */
-export function Router(props: { routes: RouteDef[]; layout?: LayoutLoader }): ReactNode {
-    const { routes, layout = null } = props;
+export function Router(props: {
+    routes: RouteDef[];
+    layout?: LayoutLoader;
+    notFound?: NotFoundLoader;
+}): ReactNode {
+    const { routes, layout = null, notFound = null } = props;
     const pathname = useLocation();
 
     let matched: RouteDef | undefined;
@@ -135,6 +152,13 @@ export function Router(props: { routes: RouteDef[]; layout?: LayoutLoader }): Re
                 <Page />
             </Suspense>
         );
+    } else if (notFound) {
+        const NotFound = resolveNotFound(notFound);
+        page = (
+            <Suspense fallback={null}>
+                <NotFound />
+            </Suspense>
+        );
     } else {
         page = <div style={{ padding: 24, fontFamily: 'system-ui' }}>404 — Not found</div>;
     }
@@ -153,13 +177,18 @@ export function Router(props: { routes: RouteDef[]; layout?: LayoutLoader }): Re
 }
 
 /** Mounts the toil client app into `#root`. Called by the generated `.toil/entry.tsx`. */
-export function mount(routes: RouteDef[], layout: LayoutLoader = null): void {
+export function mount(
+    routes: RouteDef[],
+    layout: LayoutLoader = null,
+    notFound: NotFoundLoader = null,
+): void {
     const el = document.getElementById('root');
     if (!el) throw new Error('toil: #root element not found');
     createRoot(el).render(
         <Router
             routes={routes}
             layout={layout}
+            notFound={notFound}
         />,
     );
 }
