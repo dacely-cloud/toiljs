@@ -4,11 +4,21 @@
     "type": "module",
     "scripts": {
         "dev": "toiljs dev",
-        "build": "toiljs build"
+        "build": "toiljs build",
+        "lint": "eslint client",
+        "typecheck": "tsc --noEmit",
+        "format": "prettier --write \"client/**/*.{ts,tsx}\""
     },
     "dependencies": {
         "toiljs": "file:../..",
         "react": "^19.2.6",
         "react-dom": "^19.2.6"
+    },
+    "devDependencies": {
+        "@types/react": "^19.2.15",
+        "@types/react-dom": "^19.2.3",
+        "eslint": "^10.2.0",
+        "prettier": "^3.8.1",
+        "typescript": "^6.0.3"
     }
 }

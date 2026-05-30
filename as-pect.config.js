@@ -20,12 +20,12 @@ export default {
     /**
      * A set of globs passed to the glob package that qualify typescript files for testing.
      */
-    entries: ['tests/backend/**/*.spec.ts'],
+    entries: ['tests/server/**/*.spec.ts'],
 
     /**
      * A set of globs passed to the glob package that quality files to be added to each test.
      */
-    include: ['tests/backend/**/*.include.ts'],
+    include: ['tests/server/**/*.include.ts'],
 
     /**
      * A set of regexp that will disclude source files from testing.
@@ -56,7 +56,7 @@ export default {
     },
 
     /** Enable code coverage. */
-    coverage: ['src/backend/**/*.ts', 'src/backend/*.ts'],
+    coverage: ['src/server/**/*.ts', 'src/server/*.ts'],
 
     /**
      * Specify if the binary wasm file should be written to the file system.

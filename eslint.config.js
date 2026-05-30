@@ -4,8 +4,8 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-    // AssemblyScript backend + its ambient std + build output are not part of the TS project.
-    { ignores: ['build/**', 'src/backend/**', 'std/backend/**'] },
+    // AssemblyScript server (WASM) + its ambient std + build output are not part of the TS project.
+    { ignores: ['build/**', 'src/server/**', 'std/server/**'] },
     eslint.configs.recommended,
     ...tseslint.configs.strictTypeChecked,
     {
