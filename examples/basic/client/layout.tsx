@@ -1,7 +1,5 @@
 import { type ReactNode } from 'react';
 
-import { Link } from 'toiljs/client';
-
 export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1.5rem' }}>
@@ -16,8 +14,8 @@ export default function Layout({ children }: { children?: ReactNode }) {
                 }}>
                 <strong style={{ color: '#2563FF', fontSize: '1.1rem' }}>Toil</strong>
                 <nav style={{ display: 'flex', gap: '1rem' }}>
-                    <Link href="/">home</Link>
-                    <Link href="/about">about</Link>
+                    <Toil.Link href="/">home</Toil.Link>
+                    <Toil.Link href="/about">about</Toil.Link>
                 </nav>
             </header>
             {children}
