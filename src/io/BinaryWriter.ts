@@ -159,7 +159,7 @@ export class BinaryWriter implements Disposable {
     public writeU256(bigIntValue: bigint, be: boolean = true): void {
         if (
             bigIntValue >
-                115792089237316195423570985008687907853269984665640564039457584007913129639935n &&
+                115792089237316195423570985008687907853269984665640564039457584007913129639935n ||
             bigIntValue < 0n
         ) {
             throw new Error('u256 value is too large or negative.');
@@ -184,7 +184,7 @@ export class BinaryWriter implements Disposable {
     }
 
     public writeU128(bigIntValue: bigint, be: boolean = true): void {
-        if (bigIntValue > 340282366920938463463374607431768211455n && bigIntValue < 0n) {
+        if (bigIntValue > 340282366920938463463374607431768211455n || bigIntValue < 0n) {
             throw new Error('u128 value is too large or negative.');
         }
 

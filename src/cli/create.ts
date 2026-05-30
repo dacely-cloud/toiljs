@@ -12,6 +12,7 @@ import { TOIL_ENV_DTS } from 'toiljs/compiler';
 import pc from 'picocolors';
 
 import { accent, dim, version } from './ui.js';
+import { isPackageManager, isValidName, resolveProjectDir } from './validate.js';
 
 export type Template = 'app' | 'minimal';
 
@@ -38,12 +39,6 @@ function bail<T>(value: T | symbol): asserts value is T {
         cancel('Scaffolding cancelled.');
         process.exit(0);
     }
-}
-
-function isValidName(name: string): true | string {
-    if (!name.trim()) return 'Please enter a project name.';
-    if (!/^[a-z0-9._@/-]+$/i.test(name)) return 'Use letters, numbers, dashes, dots or slashes.';
-    return true;
 }
 
 async function isEmptyDir(dir: string): Promise<boolean> {
@@ -271,7 +266,11 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
         process.exit(1);
     }
 
-    const targetDir = path.resolve(opts.cwd, name);
+    const targetDir = resolveProjectDir(opts.cwd, name);
+    if (targetDir === null) {
+        cancel('Project name must stay inside the current directory (no "..", no absolute paths).');
+        process.exit(1);
+    }
     const rel = path.relative(opts.cwd, targetDir) || '.';
 
     // 2. Guard against clobbering a non-empty dir
@@ -307,6 +306,10 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     let initGit = opts.git ?? false;
     let install = opts.install ?? false;
     const pm = opts.pm ?? 'npm';
+    if (!isPackageManager(pm)) {
+        cancel(`Unsupported package manager: ${pm} (use npm, pnpm, yarn, or bun).`);
+        process.exit(1);
+    }
     if (!opts.yes) {
         if (opts.git === undefined) {
             const g = await confirm({ message: 'Initialize a git repository?', initialValue: true });
