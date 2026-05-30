@@ -45,35 +45,18 @@ export interface BackendOptions {
     readonly maxBodyLength?: number;
 }
 
-/** A listening hyper-express server with a graceful shutdown. */
-export interface RunningServer {
+/** A running backend instance. */
+export interface RunningBackend {
     readonly port: number;
     readonly host: string;
-    /** Gracefully shuts the server down. */
-    close(): Promise<void>;
-}
-
-/** A running backend instance (a {@link RunningServer} with the WebSocket channel). */
-export interface RunningBackend extends RunningServer {
     readonly wsPath: string;
     /** Sends a message to every connected WebSocket client. */
     broadcast(message: string): void;
     /** Number of currently-connected WebSocket clients. */
     clientCount(): number;
+    /** Gracefully shuts the server down. */
+    close(): Promise<void>;
 }
-
-/** Options for {@link startProxy}. */
-export interface ProxyOptions {
-    /** Upstream origin to forward every request to, e.g. `http://127.0.0.1:5174`. */
-    readonly target: string;
-    /** Listening port. Default `3000`. */
-    readonly port?: number;
-    /** Bind host. Default `0.0.0.0`. */
-    readonly host?: string;
-}
-
-/** Response headers that must not be copied verbatim when proxying (fetch already decodes the body). */
-const HOP_BY_HOP_HEADERS = new Set(['content-encoding', 'content-length', 'transfer-encoding', 'connection']);
 
 /** Resolves a request path to a file inside `root`, guarding against path traversal. */
 function resolveStaticFile(root: string, requestPath: string): string | null {
@@ -177,62 +160,6 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
             for (const client of clients) client.send(message);
         },
         clientCount: (): number => clients.size,
-        close: async (): Promise<void> => {
-            await app.shutdown();
-        },
-    };
-}
-
-/**
- * Starts a hyper-express server that reverse-proxies every request to `target`. Used by
- * `toiljs dev` to put the high-performance uWS server in front of the Vite dev server (which
- * keeps doing the TS/JSX transforms; HMR connects to Vite directly via its `clientPort`).
- */
-export async function startProxy(options: ProxyOptions): Promise<RunningServer> {
-    const port = options.port ?? 3000;
-    const host = options.host ?? '0.0.0.0';
-    const target = options.target.replace(/\/+$/, '');
-
-    const app = new Server({
-        max_body_length: DEFAULT_MAX_BODY_LENGTH,
-        max_body_buffer: MAX_BODY_BUFFER,
-        fast_abort: true,
-        idle_timeout: HTTP_IDLE_TIMEOUT,
-        response_timeout: HTTP_RESPONSE_TIMEOUT,
-    });
-
-    app.set_error_handler((_request: Request, response: Response, _error: Error) => {
-        if (response.completed) return;
-        response.atomic(() => {
-            response.status(502).json({ error: 'Upstream dev server unavailable.' });
-        });
-    });
-
-    app.any('/*', async (request: Request, response: Response) => {
-        const headers: Record<string, string> = { ...request.headers };
-        delete headers.host; // let fetch set the upstream Host
-
-        const init: RequestInit = { method: request.method, headers, redirect: 'manual' };
-        if (request.method !== 'GET' && request.method !== 'HEAD') {
-            init.body = new Uint8Array(await request.buffer());
-        }
-
-        const upstream = await fetch(target + request.url, init);
-        if (response.completed) return;
-
-        response.status(upstream.status);
-        upstream.headers.forEach((value, key) => {
-            if (!HOP_BY_HOP_HEADERS.has(key.toLowerCase())) response.header(key, value);
-        });
-
-        response.send(Buffer.from(await upstream.arrayBuffer()));
-    });
-
-    await app.listen(port, host);
-
-    return {
-        port,
-        host,
         close: async (): Promise<void> => {
             await app.shutdown();
         },
