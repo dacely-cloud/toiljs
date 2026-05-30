@@ -17,7 +17,7 @@ export interface ClientConfig {
      * (owned and edited by you) plus any files served as-is at the base path (favicons, images, …).
      */
     readonly publicDir?: string;
-    /** Production output directory, relative to root. Default `dist`. */
+    /** Production output directory, relative to root. Default `build/client`. */
     readonly outDir?: string;
     /** Public base path. Default `/`. */
     readonly base?: string;
@@ -117,7 +117,7 @@ export async function loadConfig(
         routesAbsDir: path.join(clientAbsDir, routesDir),
         publicDir: path.join(root, client.publicDir ?? 'public'),
         toilDir: path.join(root, '.toil'),
-        outDir: client.outDir ?? 'dist',
+        outDir: client.outDir ?? 'build/client',
         base: client.base ?? '/',
         port: opts.port ?? client.port ?? 3000,
         runtimePath: resolveRuntimePath(),

@@ -1,7 +1,4 @@
 import { defineConfig } from 'toiljs/compiler';
 
-export default defineConfig({
-    client: {
-        outDir: 'dist'
-    }
-});
+// Client and server options go here. Output defaults to build/client and build/server.
+export default defineConfig({});
