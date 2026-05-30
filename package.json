@@ -43,6 +43,9 @@
             "import": "./build/io/index.js",
             "default": "./build/io/index.js"
         },
+        "./globals": {
+            "types": "./types/globals.d.ts"
+        },
         "./tsconfig": "./presets/tsconfig.json",
         "./eslint": "./presets/eslint.js",
         "./prettier": "./presets/prettier.json"
