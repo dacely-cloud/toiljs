@@ -48,7 +48,10 @@ export function scanRoutes(routesDir: string): ScannedRoute[] {
             if (entry.isDirectory()) {
                 walk(full);
             } else if (ROUTE_EXT.test(entry.name)) {
-                found.push({ file: full, pattern: filePathToRoute(path.relative(routesDir, full)) });
+                found.push({
+                    file: full,
+                    pattern: filePathToRoute(path.relative(routesDir, full)),
+                });
             }
         }
     };

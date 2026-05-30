@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfigFromFile } from 'vite';
+import { loadConfigFromFile, type InlineConfig } from 'vite';
 
 /**
  * The `toil.config` schema (Next.js-style). All fields optional; sensible defaults applied.
@@ -21,7 +21,7 @@ export interface ToilConfig {
     /** Dev server port. Default `3000`. */
     readonly port?: number;
     /** Extra Vite options, deep-merged over the framework's config. */
-    readonly vite?: Record<string, unknown>;
+    readonly vite?: InlineConfig;
 }
 
 /** Fully-resolved config with absolute paths, used internally by the compiler. */
@@ -36,7 +36,7 @@ export interface ResolvedToilConfig {
     readonly port: number;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
     readonly runtimePath: string;
-    readonly vite: Record<string, unknown>;
+    readonly vite: InlineConfig;
 }
 
 /** Identity helper for typed config files: `export default defineConfig({ ... })`. */
@@ -52,15 +52,21 @@ function resolveRuntimePath(): string {
 }
 
 /** Finds and loads `toil.config.*` from `root` (via Vite's bundling loader), then resolves defaults. */
-export async function loadConfig(opts: { root?: string; port?: number } = {}): Promise<ResolvedToilConfig> {
+export async function loadConfig(
+    opts: { root?: string; port?: number } = {},
+): Promise<ResolvedToilConfig> {
     const root = path.resolve(opts.root ?? process.cwd());
 
     let user: ToilConfig = {};
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            const loaded = await loadConfigFromFile({ command: 'build', mode: 'production' }, candidate, root);
-            user = (loaded?.config ?? {}) as ToilConfig;
+            const loaded = await loadConfigFromFile(
+                { command: 'build', mode: 'production' },
+                candidate,
+                root,
+            );
+            if (loaded) user = loaded.config;
             break;
         }
     }
