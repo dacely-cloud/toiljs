@@ -27,7 +27,7 @@ export interface ClientConfig {
 }
 
 /**
- * Server-side (AssemblyScript → WASM) configuration. Reserved: the compiler does not yet
+ * Server-side (toilscript → WASM) configuration. Reserved: the compiler does not yet
  * build the server target via `toil build`; today it is compiled by `toilscript` directly.
  */
 export interface ServerConfig {
@@ -46,7 +46,7 @@ export interface ToilConfig {
     readonly root?: string;
     /** Client (TSX/React/Vite) configuration. */
     readonly client?: ClientConfig;
-    /** Server (AssemblyScript/WASM) configuration. */
+    /** Server (toilscript/WASM) configuration. */
     readonly server?: ServerConfig;
 }
 

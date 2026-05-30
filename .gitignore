@@ -406,7 +406,7 @@ browser
 cjs
 .yarn
 
-# AssemblyScript / as-pect build artifacts
+# toilscript / as-pect build artifacts
 abis
 abis/*
 output.wasm

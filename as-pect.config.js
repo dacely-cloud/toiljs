@@ -33,7 +33,7 @@ export default {
     disclude: [/node_modules/],
 
     /**
-     * Add your required AssemblyScript imports here.
+     * Add your required toilscript imports here.
      */
     async instantiate(memory, createImports, instantiate, binary) {
         let memory2;
