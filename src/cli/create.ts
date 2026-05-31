@@ -415,12 +415,16 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     if (opts.ai === undefined && !opts.yes) {
         const picked = await multiselect<string>({
             message: 'AI assistant files (read by Claude, Cursor, Codex, Copilot)',
-            options: AI_HELPERS.map((h) => ({ value: h.id, label: h.label })),
+            options: [
+                ...AI_HELPERS.map((h) => ({ value: h.id, label: h.label })),
+                { value: 'none', label: 'None' },
+            ],
             initialValues: [...AI_HELPER_IDS],
             required: false,
         });
         bail(picked);
-        aiTools = picked;
+        // Selecting "None" (or deselecting everything) scaffolds no AI helper files.
+        aiTools = picked.includes('none') ? [] : picked;
     }
 
     let initGit = opts.git ?? false;
