@@ -4,6 +4,34 @@
  */
 import type { ComponentType, ReactNode } from 'react';
 
+/**
+ * Augmentation point for the project's generated route types. The compiler emits (into
+ * `toil-routes.d.ts`) `declare module 'toiljs/client' { interface Register { routePath: <union> } }`,
+ * which narrows {@link RoutePath} from `string` to the project's actual routes.
+ */
+export interface Register {}
+
+/**
+ * Union of the project's route paths — static routes as literals, dynamic/catch-all as
+ * `` `…/${string}` `` templates. Falls back to `string` before the types are generated.
+ */
+export type RoutePath = Register extends { routePath: infer P }
+    ? P extends string
+        ? P
+        : string
+    : string;
+
+/**
+ * An href accepted by `Link` / `NavLink` / `navigate`: a known {@link RoutePath} (optionally with
+ * `?query` or `#hash`), or an absolute/protocol URL (`https:`, `mailto:`, …). When routes haven't
+ * been generated yet, this is just `string`.
+ */
+export type Href =
+    | RoutePath
+    | `${RoutePath}?${string}`
+    | `${RoutePath}#${string}`
+    | `${string}:${string}`;
+
 /** Lazy loader for a layout component (wraps children). */
 export type LayoutComponentLoader = () => Promise<{
     default: ComponentType<{ children?: ReactNode }>;

@@ -8,15 +8,16 @@ import type {
 
 import { navigate } from './navigation.js';
 import { prefetch } from './prefetch.js';
+import type { Href } from '../types.js';
 
 /**
  * Props for {@link Link}: every standard `<a>` attribute (`rel`, `target`, `download`,
  * `referrerPolicy`, `hrefLang`, `className`, `style`, `ref`, `data-*`, `aria-*`, event handlers …)
- * plus toil's `replace` and `prefetch` controls. `href` is required.
+ * plus toil's `replace` and `prefetch` controls. `href` is required and typed to the project's routes.
  */
 export interface LinkProps extends Omit<ComponentPropsWithRef<'a'>, 'href'> {
     /** Destination. Same-origin hrefs navigate client-side; external / `target` / `download` / `#hash` use the browser. */
-    href: string;
+    href: Href;
     /** Replace the current history entry instead of pushing a new one. Default `false`. */
     replace?: boolean;
     /** Scroll to top after navigating. Default `true`. */
