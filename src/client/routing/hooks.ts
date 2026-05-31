@@ -21,9 +21,9 @@ import {
     subscribeLocation,
     subscribePending,
     type NavigateOptions,
-} from './navigation.js';
+} from '../navigation/navigation.js';
 import { ParamsContext } from './params-context.js';
-import { prefetch } from './prefetch.js';
+import { prefetch } from '../navigation/prefetch.js';
 
 /** Imperative router handle returned by {@link useRouter}. */
 export interface RouterInstance {

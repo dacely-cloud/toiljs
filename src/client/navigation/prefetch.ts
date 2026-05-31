@@ -1,5 +1,5 @@
-import { matchRoute } from './match.js';
-import type { RouteDef } from './types.js';
+import { matchRoute } from '../routing/match.js';
+import type { RouteDef } from '../types.js';
 
 declare global {
     interface Navigator {

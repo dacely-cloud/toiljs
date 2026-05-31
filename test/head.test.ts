@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { mergeHead } from '../src/client/head';
+import { mergeHead } from '../src/client/head/head';
 
 describe('mergeHead', () => {
     it('takes the last title and applies a titleTemplate', () => {

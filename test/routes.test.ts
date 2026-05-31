@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { matchRoute } from '../src/client/match';
+import { matchRoute } from '../src/client/routing/match';
 import { filePathToRoute } from '../src/compiler/routes';
 
 describe('filePathToRoute', () => {
