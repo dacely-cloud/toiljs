@@ -5,7 +5,7 @@
  */
 import { lazy, type ComponentType, type ReactNode } from 'react';
 
-import type { LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
+import type { LayoutComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
 
 const pageCache = new Map<RouteDef, ComponentType>();
 
@@ -31,6 +31,20 @@ export function resolveLayout(
         layoutLoader = loader;
     }
     return layoutComponent;
+}
+
+const nestedLayoutCache = new Map<LayoutComponentLoader, ComponentType<{ children?: ReactNode }>>();
+
+/** Returns the memoized lazy component for a nested layout loader, keyed by loader identity. */
+export function nestedLayout(
+    loader: LayoutComponentLoader,
+): ComponentType<{ children?: ReactNode }> {
+    let component = nestedLayoutCache.get(loader);
+    if (!component) {
+        component = lazy(loader);
+        nestedLayoutCache.set(loader, component);
+    }
+    return component;
 }
 
 let notFoundComponent: ComponentType | null = null;

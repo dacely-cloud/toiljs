@@ -8,6 +8,8 @@ export interface ScannedRoute {
 }
 
 const ROUTE_EXT = /\.(tsx|jsx)$/;
+/** Special files that live alongside routes but are not themselves pages. */
+const SPECIAL_FILE = /^(layout|loading|error|404|not-found)\.(tsx|jsx)$/;
 
 /**
  * Derives a route pattern from a route file path (relative to the routes dir).
@@ -54,7 +56,7 @@ export function scanRoutes(routesDir: string): ScannedRoute[] {
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 walk(full);
-            } else if (ROUTE_EXT.test(entry.name)) {
+            } else if (ROUTE_EXT.test(entry.name) && !SPECIAL_FILE.test(entry.name)) {
                 found.push({
                     file: full,
                     pattern: filePathToRoute(path.relative(routesDir, full)),
