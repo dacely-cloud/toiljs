@@ -1,5 +1,3 @@
-// Note: `Toil` and BinaryWriter / BinaryReader / FastMap / FastSet are NATIVE globals in a toil
-// app — no import needed. They're injected at runtime and typed via the generated toil-env.d.ts.
 export default function IoDemo() {
     const writer = new BinaryWriter();
     writer.writeU32(42);

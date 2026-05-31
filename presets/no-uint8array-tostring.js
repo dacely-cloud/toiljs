@@ -1,6 +1,7 @@
-// ESLint rule: disallow `.toString()` on Uint8Array (and branded byte types), which returns
-// comma-separated decimals instead of hex. Ported to plain JS from the typed source so the
-// shareable preset can load it at runtime without a TypeScript loader.
+/**
+ * ESLint rule: disallow `.toString()` on Uint8Array (and branded byte types), which returns
+ * comma-separated decimals instead of hex.
+ */
 import { AST_NODE_TYPES, ESLintUtils } from '@typescript-eslint/utils';
 import { SyntaxKind } from 'typescript';
 
@@ -108,8 +109,6 @@ function hasCustomToString(type, checker) {
         }
     }
 
-    // Fallback: also check the apparent type, which can differ for branded
-    // types or type aliases that wrap a class.
     const apparentType = checker.getApparentType(type);
     if (apparentType !== type) {
         const apparentToString = apparentType.getProperty('toString');

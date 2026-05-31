@@ -12,9 +12,9 @@ import pc from 'picocolors';
 type RGB = readonly [number, number, number];
 
 /** toiljs brand palette. */
-const PRIMARY: RGB = [37, 99, 255]; // #2563FF
-const SECONDARY: RGB = [124, 58, 237]; // #7C3AED
-const ACCENT: RGB = [34, 227, 171]; // #22E3AB
+const PRIMARY: RGB = [37, 99, 255];
+const SECONDARY: RGB = [124, 58, 237];
+const ACCENT: RGB = [34, 227, 171];
 
 /** Logo gradient stops: blue → purple → teal. */
 const GRADIENT: readonly RGB[] = [PRIMARY, SECONDARY, ACCENT];
@@ -90,9 +90,7 @@ export function version(): string {
         const raw = fs.readFileSync(pkgPath, 'utf8');
         const match = /"version"\s*:\s*"([^"]+)"/.exec(raw);
         if (match && match[1]) return match[1];
-    } catch {
-        /* fall through to default */
-    }
+    } catch {}
     return '0.0.0';
 }
 

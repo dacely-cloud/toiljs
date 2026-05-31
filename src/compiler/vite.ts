@@ -33,7 +33,7 @@ async function tailwindPlugin(root: string): Promise<PluginOption | undefined> {
     try {
         resolved = createRequire(path.join(root, 'package.json')).resolve('@tailwindcss/vite');
     } catch {
-        return undefined; // not installed → Tailwind disabled
+        return undefined;
     }
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed any
     const mod: { default?: () => PluginOption } = await import(pathToFileURL(resolved).href);
@@ -64,7 +64,6 @@ function manualChunks(id: string): string | undefined {
  * runtime, and the user's `client.vite` overrides deep-merge on top.
  */
 export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineConfig> {
-    // .../build/client/index.js -> framework package root (covers build/ + node_modules in dev)
     const frameworkRoot = path.resolve(path.dirname(cfg.runtimePath), '..', '..');
     const tailwind = await tailwindPlugin(cfg.root);
 
@@ -81,7 +80,6 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
         resolve: {
             alias: {
                 'toiljs/client': cfg.runtimePath,
-                // The generated route table, imported by the app entry as `toiljs/routes`.
                 'toiljs/routes': path.join(cfg.toilDir, 'routes.ts'),
             },
             dedupe: ['react', 'react-dom'],
