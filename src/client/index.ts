@@ -14,9 +14,17 @@ export { Link } from './Link.js';
 export type { LinkProps } from './Link.js';
 export { NavLink, matchActive } from './NavLink.js';
 export type { NavLinkProps, NavLinkState } from './NavLink.js';
-export { navigate } from './navigation.js';
+export { navigate, back, forward, refresh } from './navigation.js';
 export type { NavigateOptions } from './navigation.js';
-export { useParams, useNavigate, useLocation } from './hooks.js';
+export {
+    useParams,
+    useNavigate,
+    useLocation,
+    usePathname,
+    useSearchParams,
+    useRouter,
+} from './hooks.js';
+export type { RouterInstance } from './hooks.js';
 export { prefetch } from './prefetch.js';
 export type { RouteDef, LayoutLoader, NotFoundLoader } from './types.js';
 export { matchRoute } from './match.js';

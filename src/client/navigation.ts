@@ -29,6 +29,21 @@ export function navigate(href: string, options?: NavigateOptions): void {
     notify();
 }
 
+/** Goes back one entry in history (fires `popstate`, which notifies subscribers). */
+export function back(): void {
+    window.history.back();
+}
+
+/** Goes forward one entry in history. */
+export function forward(): void {
+    window.history.forward();
+}
+
+/** Re-renders the current route without changing the URL (there is no server data to refetch). */
+export function refresh(): void {
+    notify();
+}
+
 /**
  * Subscribes `listener` to location changes and returns an unsubscribe function. Browser
  * back/forward is wired once, on the first subscription, via a shared `popstate` handler.
