@@ -151,8 +151,38 @@ function scaffold(
             '    <meta charset="utf-8" />\n' +
             '    <meta name="viewport" content="width=device-width, initial-scale=1" />\n' +
             '    <meta name="theme-color" content="#080D11" />\n' +
+            '    <meta name="description" content="" />\n' +
+            '    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />\n' +
+            '    <link rel="manifest" href="/manifest.webmanifest" />\n' +
             `    <title>${path.basename(name)}</title>\n` +
             '  </head>\n  <body>\n    <div id="root"></div>\n  </body>\n</html>\n',
+        'client/public/favicon.svg':
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">\n' +
+            '  <defs>\n' +
+            '    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">\n' +
+            '      <stop offset="0" stop-color="#2563FF" />\n' +
+            '      <stop offset="0.5" stop-color="#7C3AED" />\n' +
+            '      <stop offset="1" stop-color="#22E3AB" />\n' +
+            '    </linearGradient>\n' +
+            '  </defs>\n' +
+            '  <rect width="32" height="32" rx="7" fill="#080D11" />\n' +
+            '  <path d="M9 10h14v3.2h-5.4V24h-3.2V13.2H9z" fill="url(#g)" />\n' +
+            '</svg>\n',
+        'client/public/robots.txt': 'User-agent: *\nAllow: /\n',
+        'client/public/manifest.webmanifest':
+            JSON.stringify(
+                {
+                    name: path.basename(name),
+                    short_name: path.basename(name),
+                    start_url: '/',
+                    display: 'standalone',
+                    background_color: '#080D11',
+                    theme_color: '#080D11',
+                    icons: [{ src: '/favicon.svg', type: 'image/svg+xml', sizes: 'any' }],
+                },
+                null,
+                4,
+            ) + '\n',
         'client/public/images/.gitkeep': '# Place images and other static assets here; served at /images/*.\n',
         'client/toil.tsx':
             "import { routes, layout, notFound } from 'toiljs/routes';\n\n" +
