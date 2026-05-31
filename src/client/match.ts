@@ -17,7 +17,6 @@ export function matchRoute(pattern: string, pathname: string): RouteParams | nul
     for (let i = 0; i < patternSegs.length; i++) {
         const p = patternSegs[i];
 
-        // Catch-all (`*slug`): captures the rest of the path (one or more segments).
         if (p.startsWith('*')) {
             const rest = pathSegs.slice(i);
             if (rest.length === 0) return null;
@@ -34,6 +33,5 @@ export function matchRoute(pattern: string, pathname: string): RouteParams | nul
         }
     }
 
-    // No catch-all consumed the tail: lengths must match exactly.
     return patternSegs.length === pathSegs.length ? params : null;
 }

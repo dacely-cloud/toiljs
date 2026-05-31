@@ -17,14 +17,14 @@ import {
     type Websocket,
 } from '@btc-vision/hyper-express';
 
-const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8; // 8 MB
-const MAX_BODY_BUFFER = 1024 * 32; // 32 KB
-const HTTP_IDLE_TIMEOUT = 60; // seconds
-const HTTP_RESPONSE_TIMEOUT = 120; // seconds
+const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
+const MAX_BODY_BUFFER = 1024 * 32;
+const HTTP_IDLE_TIMEOUT = 60;
+const HTTP_RESPONSE_TIMEOUT = 120;
 
-const WS_MAX_PAYLOAD_LENGTH = 1024 * 1024; // 1 MB
-const WS_IDLE_TIMEOUT = 120; // seconds
-const WS_MAX_BACKPRESSURE = 1024 * 1024 * 2; // 2 MB
+const WS_MAX_PAYLOAD_LENGTH = 1024 * 1024;
+const WS_IDLE_TIMEOUT = 120;
+const WS_MAX_BACKPRESSURE = 1024 * 1024 * 2;
 
 const CORS_METHODS = 'GET, POST, OPTIONS, PUT, PATCH, DELETE';
 const CORS_HEADERS = 'X-Requested-With, content-type';
@@ -62,8 +62,8 @@ export interface RunningBackend {
 function resolveStaticFile(root: string, requestPath: string): string | null {
     const decoded = decodeURIComponent(requestPath);
     const resolved = path.join(root, decoded);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) return null; // traversal
-    if (decoded === '/' || decoded === '') return null; // defer to SPA fallback
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
+    if (decoded === '/' || decoded === '') return null;
     if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
     return null;
 }
@@ -90,7 +90,6 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
 
     const clients = new Set<Websocket>();
 
-    // Never let an unhandled error leak a stack trace; write a safe response if the socket is live.
     app.set_error_handler((_request: Request, response: Response, _error: Error) => {
         if (response.completed) return;
         response.atomic(() => {
@@ -98,7 +97,6 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
         });
     });
 
-    // CORS + hide the underlying server header.
     if (cors) {
         app.use((request: Request, response: Response, next: MiddlewareNext) => {
             if (request.method !== 'OPTIONS') {
@@ -118,7 +116,6 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
         });
     }
 
-    // Realtime WebSocket channel: each client joins, messages are broadcast to all peers.
     app.ws(
         wsPath,
         {
@@ -133,17 +130,13 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
             ws.on('message', (message: string) => {
                 for (const client of clients) client.send(message);
             });
-            // Backpressure on this socket has drained — broadcast channel has nothing to flush.
-            ws.on('drain', () => {
-                /* no-op */
-            });
+            ws.on('drain', () => {});
             ws.on('close', () => {
                 clients.delete(ws);
             });
         },
     );
 
-    // Static client with SPA fallback — anything that isn't a real file serves index.html.
     app.get('/*', (request: Request, response: Response) => {
         if (response.completed) return;
         const file = resolveStaticFile(root, request.path);

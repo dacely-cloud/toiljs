@@ -25,7 +25,6 @@ export class BinaryReader {
         return this.buffer.byteLength;
     }
 
-    // Helpers for comparisons; unchanged
     public static stringCompare(a: string, b: string): number {
         return a.localeCompare(b);
     }
@@ -123,7 +122,6 @@ export class BinaryReader {
     public readU128(be: boolean = true): bigint {
         const raw = this.readBytes(U128_BYTE_LENGTH);
         let bytes = raw;
-        // If data was written in little-endian, we reverse before interpreting
         if (!be) {
             bytes = this.reverseBytes(raw);
         }
@@ -150,10 +148,8 @@ export class BinaryReader {
             bytes = this.reverseBytes(raw);
         }
 
-        // Construct as a 128-bit two's complement
         let value = BigInt('0x' + this.toHexString(bytes));
 
-        // If the top bit is set (sign bit in big-endian), interpret negative
         const signBitMask = 0x80;
         if ((bytes[0] as number) & signBitMask) {
             const twoTo128 = BigInt(1) << BigInt(128);
@@ -281,7 +277,7 @@ export class BinaryReader {
     }
 
     public readU8Array(): u8[] {
-        const length = this.readU16(true); // by default big-endian
+        const length = this.readU16(true);
         const result: u8[] = new Array<u8>(length);
         for (let i = 0; i < length; i++) {
             result[i] = this.readU8();

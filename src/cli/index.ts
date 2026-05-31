@@ -72,7 +72,6 @@ function parseArgs(argv: string[]): Flags {
                 flags.yes = true;
                 break;
             default:
-                // First bare (non-flag) token is the positional project name.
                 if (!arg.startsWith('-') && flags.name === undefined) flags.name = arg;
         }
     }
