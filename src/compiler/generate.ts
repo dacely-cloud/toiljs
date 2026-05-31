@@ -91,6 +91,22 @@ function findLayoutChain(cfg: ResolvedToilConfig, routeFile: string): string[] {
     return chain;
 }
 
+/** Nearest special file named `base` (e.g. `loading`/`error`) from the route's dir up to the routes root. */
+function findNearest(cfg: ResolvedToilConfig, routeFile: string, base: string): string | undefined {
+    const root = path.resolve(cfg.routesAbsDir);
+    let dir = path.dirname(routeFile);
+    for (;;) {
+        const found = [`${base}.tsx`, `${base}.jsx`]
+            .map((name) => path.join(dir, name))
+            .find((p) => fs.existsSync(p));
+        if (found) return found;
+        if (path.resolve(dir) === root) return undefined;
+        const parent = path.dirname(dir);
+        if (parent === dir) return undefined;
+        dir = parent;
+    }
+}
+
 /**
  * Generates the `.toil/` working dir (routes table, mount entry, the HTML entry built from the
  * project's `public/index.html` template, and mirrored `public/` assets) and returns the scanned
@@ -109,11 +125,18 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
         `export const routes: RouteDef[] = [\n` +
         routes
             .map((r) => {
-                const load = `() => import(${JSON.stringify(relFromToil(cfg, r.file))})`;
-                const layouts = findLayoutChain(cfg, r.file)
-                    .map((f) => `() => import(${JSON.stringify(relFromToil(cfg, f))})`)
-                    .join(', ');
-                return `  { pattern: ${JSON.stringify(r.pattern)}, load: ${load}, layouts: [${layouts}] },`;
+                const imp = (f: string): string => `() => import(${JSON.stringify(relFromToil(cfg, f))})`;
+                const layouts = findLayoutChain(cfg, r.file).map(imp).join(', ');
+                const parts = [
+                    `pattern: ${JSON.stringify(r.pattern)}`,
+                    `load: ${imp(r.file)}`,
+                    `layouts: [${layouts}]`,
+                ];
+                const loadingFile = findNearest(cfg, r.file, 'loading');
+                if (loadingFile) parts.push(`loading: ${imp(loadingFile)}`);
+                const errorFile = findNearest(cfg, r.file, 'error');
+                if (errorFile) parts.push(`errorComponent: ${imp(errorFile)}`);
+                return `  { ${parts.join(', ')} },`;
             })
             .join('\n') +
         `\n];\n\n` +
