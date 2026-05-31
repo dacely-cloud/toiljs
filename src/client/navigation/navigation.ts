@@ -53,6 +53,11 @@ export function isNavigationPending(): boolean {
     return startedTick !== committedTick;
 }
 
+/** Monotonic id incremented on each navigation — used to key/revalidate per-navigation route data. */
+export function navigationEpoch(): number {
+    return startedTick;
+}
+
 /** Subscribes to navigation-pending changes; returns an unsubscribe function. */
 export function subscribePending(listener: () => void): () => void {
     pendingListeners.add(listener);

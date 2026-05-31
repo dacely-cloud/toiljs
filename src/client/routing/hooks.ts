@@ -22,6 +22,7 @@ import {
     subscribePending,
     type NavigateOptions,
 } from '../navigation/navigation.js';
+import { clearLoaderData } from './loader.js';
 import { ParamsContext } from './params-context.js';
 import { prefetch } from '../navigation/prefetch.js';
 
@@ -35,7 +36,7 @@ export interface RouterInstance {
     back(): void;
     /** Go forward one history entry. */
     forward(): void;
-    /** Re-render the current route. */
+    /** Re-render the current route and re-run its loader. */
     refresh(): void;
     /** Prefetch a route's chunk ahead of navigation. */
     prefetch(href: string): void;
@@ -50,7 +51,10 @@ const ROUTER: RouterInstance = {
     },
     back,
     forward,
-    refresh,
+    refresh: () => {
+        clearLoaderData();
+        refresh();
+    },
     prefetch,
 };
 

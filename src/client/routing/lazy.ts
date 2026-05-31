@@ -9,7 +9,6 @@ import type {
     LayoutComponentLoader,
     LayoutLoader,
     NotFoundLoader,
-    RouteDef,
     RouteErrorProps,
 } from '../types.js';
 
@@ -40,17 +39,6 @@ export function errorComponent(loader: Loader<RouteErrorProps>): ComponentType<R
     return memoLazy(errorCache, loader);
 }
 
-const pageCache = new Map<RouteDef, ComponentType>();
-
-/** Returns the memoized lazy component for `route`, creating it on first use. */
-export function pageComponent(route: RouteDef): ComponentType {
-    let component = pageCache.get(route);
-    if (!component) {
-        component = lazy(route.load);
-        pageCache.set(route, component);
-    }
-    return component;
-}
 
 let layoutComponent: ComponentType<{ children?: ReactNode }> | null = null;
 let layoutLoader: LayoutLoader = null;
