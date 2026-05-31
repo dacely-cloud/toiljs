@@ -27,6 +27,40 @@ function notify(): void {
     for (const listener of listeners) listener();
 }
 
+// Navigation-pending tracking: a navigation is "pending" from when it starts until the new route
+// commits. Drives useNavigationPending() (e.g. a top loading bar).
+let startedTick = 0;
+let committedTick = 0;
+const pendingListeners = new Set<() => void>();
+function emitPending(): void {
+    for (const listener of pendingListeners) listener();
+}
+function beginNavigation(): void {
+    startedTick += 1;
+    emitPending();
+}
+
+/** Marks the in-flight navigation as committed. Called by `Router` after each commit. */
+export function settleNavigation(): void {
+    if (committedTick !== startedTick) {
+        committedTick = startedTick;
+        emitPending();
+    }
+}
+
+/** Whether a navigation is in flight (started but not yet committed). */
+export function isNavigationPending(): boolean {
+    return startedTick !== committedTick;
+}
+
+/** Subscribes to navigation-pending changes; returns an unsubscribe function. */
+export function subscribePending(listener: () => void): () => void {
+    pendingListeners.add(listener);
+    return () => {
+        pendingListeners.delete(listener);
+    };
+}
+
 /** Options for {@link navigate}. */
 export interface NavigateOptions {
     /** Replace the current history entry instead of pushing a new one. Default `false`. */
@@ -49,6 +83,7 @@ export function initNavigation(): void {
 
 /** Navigates to `href` without a full page reload (history push/replace + subscriber re-render). */
 export function navigate(href: string, options?: NavigateOptions): void {
+    beginNavigation();
     rememberScroll(currentKey);
     let hash = '';
     try {
@@ -83,6 +118,7 @@ export function refresh(): void {
 
 /** Handles browser back/forward: restores the saved scroll for the target entry, then re-renders. */
 function handlePopState(event: PopStateEvent): void {
+    beginNavigation();
     rememberScroll(currentKey);
     const state = event.state as ToilHistoryState | null;
     currentKey = state?.__toilKey ?? 'initial';

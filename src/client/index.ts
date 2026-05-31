@@ -23,6 +23,7 @@ export {
     usePathname,
     useSearchParams,
     useRouter,
+    useNavigationPending,
 } from './hooks.js';
 export type { RouterInstance } from './hooks.js';
 export { prefetch } from './prefetch.js';
