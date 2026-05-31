@@ -11,10 +11,16 @@ export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div className="app">
             <header className="nav">
-                <Toil.Link href="/" className="nav-logo">
+                <a href="/" className="nav-logo">
                     <img src="images/logo.svg" alt="ToilJS" width={28} height={28} />
                     <span>ToilJS</span>
-                </Toil.Link>
+                </a>
+
+                <nav className="nav-center">
+                    <Toil.NavLink href="/" end className="nav-center-link">Home</Toil.NavLink>
+                    <Toil.NavLink href="/get-started" className="nav-center-link">Get Started</Toil.NavLink>
+                </nav>
+
                 <nav className="nav-links">
                     <Toil.Link href="https://toil.org/docs">
                         Docs
