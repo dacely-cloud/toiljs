@@ -17,7 +17,7 @@ export interface ToilCommandOptions {
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
     generate(cfg);
-    const server = await createServer(createViteConfig(cfg));
+    const server = await createServer(await createViteConfig(cfg));
     await server.listen();
     server.printUrls();
     return server;
@@ -27,7 +27,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
 export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     const cfg = await loadConfig(opts);
     generate(cfg);
-    await viteBuild(createViteConfig(cfg));
+    await viteBuild(await createViteConfig(cfg));
 }
 
 /**
@@ -44,7 +44,7 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
     return startBackend({ root: outDir, port: cfg.port });
 }
 
-export { defineConfig } from './config.js';
+export { defineConfig, loadConfig } from './config.js';
 export { TOIL_ENV_DTS } from './generate.js';
-export type { ToilConfig } from './config.js';
+export type { ToilConfig, ResolvedToilConfig } from './config.js';
 export type { RunningBackend, BackendOptions } from 'toiljs/backend';
