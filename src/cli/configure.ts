@@ -83,6 +83,18 @@ async function detectStylesheet(clientDir: string): Promise<Preprocessor | null>
     }
 }
 
+/** Returns the path of the existing `styles/main.*` stylesheet, or null. */
+async function findMainStylesheet(clientDir: string): Promise<string | null> {
+    for (const ext of ['css', 'scss', 'sass', 'less', 'styl']) {
+        const p = path.join(clientDir, 'styles', `main.${ext}`);
+        try {
+            await fs.access(p);
+            return p;
+        } catch {}
+    }
+    return null;
+}
+
 /** Picks the project's package manager from its lockfile (defaults to npm). */
 async function detectPackageManager(root: string): Promise<string> {
     const lock: [string, string][] = [
@@ -106,12 +118,14 @@ async function applyStyleFiles(
     to: StyleFeatures,
 ): Promise<void> {
     if (from.preprocessor !== to.preprocessor) {
-        const oldPath = path.join(clientDir, styleEntry(from.preprocessor));
         const newPath = path.join(clientDir, styleEntry(to.preprocessor));
         await fs.mkdir(path.dirname(newPath), { recursive: true });
-        try {
-            await fs.rename(oldPath, newPath);
-        } catch {
+        // Rename whatever main stylesheet actually exists (preserving its content), not an assumed
+        // name — so we never blow away the user's styles when the on-disk extension differs.
+        const existing = await findMainStylesheet(clientDir);
+        if (existing && path.resolve(existing) !== path.resolve(newPath)) {
+            await fs.rename(existing, newPath);
+        } else if (!existing) {
             await fs.writeFile(newPath, '', 'utf8');
         }
     }
@@ -166,11 +180,11 @@ async function applyPackages(
         delete deps[name];
     }
     const sortedDev = Object.fromEntries(Object.entries(dev).sort(([a], [b]) => a.localeCompare(b)));
-    const next = {
-        ...pkg,
-        ...(Object.keys(deps).length ? { dependencies: deps } : {}),
-        devDependencies: sortedDev,
-    };
+    const next: PackageJson = { ...pkg, devDependencies: sortedDev };
+    // Always reflect the pruned dependencies (or drop the key entirely if now empty), so a removed
+    // package can't survive via the original `...pkg` spread.
+    if (Object.keys(deps).length) next.dependencies = deps;
+    else delete next.dependencies;
     await fs.writeFile(pkgPath, JSON.stringify(next, null, 4) + '\n', 'utf8');
 }
 
