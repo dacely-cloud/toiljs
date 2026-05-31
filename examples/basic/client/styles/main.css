@@ -352,20 +352,9 @@ code {
     flex-direction: column;
     gap: 0.6rem;
     transition: border-color 200ms, transform 200ms, box-shadow 200ms;
-    position: relative;
-    overflow: hidden;
 }
 
-.gs-card::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    opacity: 0;
-    transition: opacity 300ms;
-    border-radius: inherit;
-}
-
-.gs-card:hover {
+.gs-card {
     transform: translateY(-2px);
 }
 
