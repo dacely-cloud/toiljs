@@ -12,6 +12,8 @@ export { mount } from './mount.js';
 export { Router } from './Router.js';
 export { Link } from './Link.js';
 export type { LinkProps } from './Link.js';
+export { NavLink, matchActive } from './NavLink.js';
+export type { NavLinkProps, NavLinkState } from './NavLink.js';
 export { navigate } from './navigation.js';
 export type { NavigateOptions } from './navigation.js';
 export { useParams, useNavigate, useLocation } from './hooks.js';
