@@ -1,10 +1,12 @@
+import react from '@vitejs/plugin-react';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 export default defineConfig({
+    plugins: [react()],
     test: {
         globals: true,
         environment: 'node',
-        include: ['test/**/*.test.ts', 'test/**/*.spec.ts'],
+        include: ['test/**/*.test.ts', 'test/**/*.test.tsx', 'test/**/*.spec.ts'],
         // test/assembly holds toilscript specs run by as-pect, not vitest.
         exclude: [...configDefaults.exclude, 'test/assembly/**'],
         coverage: {
