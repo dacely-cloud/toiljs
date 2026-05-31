@@ -7,3 +7,9 @@
 ./.vscode
 ./.idea
 .DS_Store
+
+# Examples: ship only basic/client (the `toiljs create` starter), not the rest or build artifacts.
+examples/*
+!examples/basic
+examples/basic/*
+!examples/basic/client
