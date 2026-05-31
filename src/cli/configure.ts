@@ -31,6 +31,21 @@ import { accent, dim } from './ui.js';
 export interface ConfigureOptions {
     readonly root?: string;
     readonly cwd: string;
+    /** When set, the corresponding prompt is skipped (non-interactive). */
+    readonly preprocessor?: Preprocessor;
+    readonly tailwind?: boolean;
+    /** Run the package manager to sync deps. Default `true`; `false` edits files only. */
+    readonly install?: boolean;
+}
+
+/** Resolves the client source dir, falling back to `<root>/client` if the config can't be loaded. */
+async function resolveClientDir(root: string): Promise<string> {
+    try {
+        const cfg = await loadConfig({ root });
+        return cfg.clientAbsDir;
+    } catch {
+        return path.join(root, 'client');
+    }
 }
 
 const PREPROCESSOR_LABEL: Record<Preprocessor, string> = {
@@ -188,22 +203,31 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
         process.exit(1);
     }
 
-    const cfg = await loadConfig({ root });
+    const clientAbsDir = await resolveClientDir(root);
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     const current: StyleFeatures = {
-        preprocessor: (await detectStylesheet(cfg.clientAbsDir)) ?? detectPreprocessor(deps),
+        preprocessor: (await detectStylesheet(clientAbsDir)) ?? detectPreprocessor(deps),
         tailwind: detectTailwind(deps),
     };
 
-    const ppChoice = await select<Preprocessor>({
-        message: 'CSS preprocessor',
-        options: PREPROCESSORS.map((value) => ({ value, label: PREPROCESSOR_LABEL[value] })),
-        initialValue: current.preprocessor,
-    });
-    bail(ppChoice);
-    const twChoice = await confirm({ message: 'Use Tailwind CSS?', initialValue: current.tailwind });
-    bail(twChoice);
-    const target: StyleFeatures = { preprocessor: ppChoice, tailwind: twChoice };
+    const nonInteractive = opts.preprocessor !== undefined || opts.tailwind !== undefined;
+    let target: StyleFeatures;
+    if (nonInteractive) {
+        target = {
+            preprocessor: opts.preprocessor ?? current.preprocessor,
+            tailwind: opts.tailwind ?? current.tailwind,
+        };
+    } else {
+        const ppChoice = await select<Preprocessor>({
+            message: 'CSS preprocessor',
+            options: PREPROCESSORS.map((value) => ({ value, label: PREPROCESSOR_LABEL[value] })),
+            initialValue: current.preprocessor,
+        });
+        bail(ppChoice);
+        const twChoice = await confirm({ message: 'Use Tailwind CSS?', initialValue: current.tailwind });
+        bail(twChoice);
+        target = { preprocessor: ppChoice, tailwind: twChoice };
+    }
 
     if (target.preprocessor === current.preprocessor && target.tailwind === current.tailwind) {
         outro('No changes — your styling setup is already up to date.');
@@ -212,17 +236,21 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
 
     const s = spinner();
     s.start('Updating project files');
-    await applyConfigure(cfg.clientAbsDir, pkgPath, pkg, current, target);
+    await applyConfigure(clientAbsDir, pkgPath, pkg, current, target);
     s.stop('Updated stylesheets, entry imports, and package.json');
 
     const pm = await detectPackageManager(root);
-    const i = spinner();
-    i.start(`Syncing dependencies with ${pm}`);
-    try {
-        await run(pm, ['install'], root);
-        i.stop('Dependencies synced');
-    } catch {
-        i.stop(pc.yellow(`Could not run \`${pm} install\` — run it yourself to finish`));
+    if (opts.install === false) {
+        note(`${pc.cyan(`${pm} install`)} to sync the dependency changes.`, 'Next step');
+    } else {
+        const i = spinner();
+        i.start(`Syncing dependencies with ${pm}`);
+        try {
+            await run(pm, ['install'], root);
+            i.stop('Dependencies synced');
+        } catch {
+            i.stop(pc.yellow(`Could not run \`${pm} install\` — run it yourself to finish`));
+        }
     }
 
     note(describe(current, target), 'Styling updated');
