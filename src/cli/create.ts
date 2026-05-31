@@ -148,6 +148,9 @@ function scaffold(
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
         '.gitignore': 'node_modules\nbuild\n.toil\ntoil-env.d.ts\n',
+        // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled version.
+        '.vscode/settings.json':
+            JSON.stringify({ 'typescript.tsdk': 'node_modules/typescript/lib' }, null, 4) + '\n',
         'toil-env.d.ts': TOIL_ENV_DTS,
         'toilconfig.json':
             JSON.stringify(
