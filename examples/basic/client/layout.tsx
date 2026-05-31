@@ -3,6 +3,7 @@ import { type ReactNode } from 'react';
 export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div style={{ maxWidth: 680, margin: '0 auto', padding: '3rem 1.5rem' }}>
+            <img src={'images/logo.svg'} alt={'bob'}></img>
             <header
                 style={{
                     display: 'flex',
