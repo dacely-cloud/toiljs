@@ -9,7 +9,7 @@
         "build:server": "toilscript --target release",
         "lint": "eslint client",
         "typecheck": "tsc --noEmit",
-        "format": "prettier --write \"client/**/*.{ts,tsx,css}\" \"public/**/*.html\""
+        "format": "prettier --write \"client/**/*.{ts,tsx,css}\" \"client/public/**/*.html\""
     },
     "dependencies": {
         "react": "^19.2.6",
