@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 
+import { initNavigation } from './navigation.js';
 import { startPrefetcher } from './prefetch.js';
 import { Router } from './Router.js';
 import type { LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
@@ -15,6 +16,7 @@ export function mount(
 ): void {
     const el = document.getElementById('root');
     if (!el) throw new Error('toil: #root element not found');
+    initNavigation();
     createRoot(el).render(
         <Router
             routes={routes}
