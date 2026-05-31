@@ -6,7 +6,8 @@ export type RouteParams = Record<string, string>;
  * Pure and runtime-agnostic (used by the router and unit-tested directly).
  *   matchRoute('/', '/')                  -> {}
  *   matchRoute('/blog/:id', '/blog/42')   -> { id: '42' }
- *   matchRoute('/docs/*slug', '/docs/a/b') -> { slug: 'a/b' }   (catch-all)
+ *   matchRoute('/docs/*slug', '/docs/a/b') -> { slug: 'a/b' }   (catch-all, 1+ segments)
+ *   matchRoute('/docs/**slug', '/docs')   -> { slug: '' }       (optional catch-all, 0+ segments)
  *   matchRoute('/about', '/x')            -> null
  */
 export function matchRoute(pattern: string, pathname: string): RouteParams | null {
@@ -16,6 +17,15 @@ export function matchRoute(pattern: string, pathname: string): RouteParams | nul
     const params: RouteParams = {};
     for (let i = 0; i < patternSegs.length; i++) {
         const p = patternSegs[i];
+
+        // Optional catch-all (`**slug`): captures the rest of the path, matching zero or more segments.
+        if (p.startsWith('**')) {
+            params[p.slice(2)] = pathSegs
+                .slice(i)
+                .map((s) => decodeURIComponent(s))
+                .join('/');
+            return params;
+        }
 
         if (p.startsWith('*')) {
             const rest = pathSegs.slice(i);
