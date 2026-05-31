@@ -3,7 +3,6 @@
  * app to the enforced toiljs presets (tsconfig / eslint / prettier) and file-based routing.
  * Supports a non-interactive path via flags (`--yes`, `--template`, …) for scripting/CI.
  */
-import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -11,10 +10,43 @@ import { intro, outro, text, select, confirm, isCancel, cancel, spinner, note } 
 import { TOIL_ENV_DTS } from 'toiljs/compiler';
 import pc from 'picocolors';
 
+import {
+    PKG_VERSION,
+    PREPROCESSORS,
+    requiredPackages,
+    styleEntry,
+    styleImportLines,
+    TAILWIND_CSS,
+    TAILWIND_ENTRY,
+    type Preprocessor,
+    type StyleFeatures,
+} from './features.js';
+import { run } from './proc.js';
 import { accent, dim, version } from './ui.js';
 import { isPackageManager, isValidName, resolveProjectDir } from './validate.js';
 
 export type Template = 'app' | 'minimal';
+
+/** Human label for each preprocessor in the styling picker. */
+const PREPROCESSOR_LABEL: Record<Preprocessor, string> = {
+    css: 'Plain CSS',
+    sass: 'Sass (SCSS)',
+    less: 'Less',
+    stylus: 'Stylus',
+};
+
+/** Default global stylesheet contents (palette base styles), shared by every preprocessor. */
+const DEFAULT_STYLE_CONTENT =
+    '/* Global styles, imported once from client/toil.tsx. */\n\n' +
+    ':root {\n    color-scheme: dark;\n}\n\n' +
+    'body {\n    margin: 0;\n    background: #080d11;\n    color: #f5f6fa;\n' +
+    '    font-family: system-ui, -apple-system, sans-serif;\n    line-height: 1.6;\n}\n\n' +
+    'a {\n    color: #2563ff;\n    text-decoration: none;\n}\n\n' +
+    'a:hover {\n    color: #22e3ab;\n}\n\n' +
+    'code {\n    background: #11161f;\n    color: #22e3ab;\n    padding: 0.1rem 0.4rem;\n' +
+    '    border-radius: 4px;\n    font-size: 0.9em;\n}\n\n' +
+    'h1 {\n    background: linear-gradient(90deg, #2563ff, #7c3aed, #22e3ab);\n' +
+    '    -webkit-background-clip: text;\n    background-clip: text;\n    color: transparent;\n}\n';
 
 /** A selectable template in the `create` wizard. */
 interface TemplateOption {
@@ -26,6 +58,8 @@ interface TemplateOption {
 export interface CreateOptions {
     readonly name?: string;
     readonly template?: Template;
+    readonly preprocessor?: Preprocessor;
+    readonly tailwind?: boolean;
     readonly install?: boolean;
     readonly git?: boolean;
     readonly pm?: string;
@@ -51,8 +85,20 @@ async function isEmptyDir(dir: string): Promise<boolean> {
 }
 
 /** Builds the full file map (relative path → contents) for a scaffolded project. */
-function scaffold(name: string, template: Template): Record<string, string> {
+function scaffold(name: string, template: Template, features: StyleFeatures): Record<string, string> {
     const toilVersion = version();
+    const devDependencies: Record<string, string> = {
+        '@types/react': '^19.2.15',
+        '@types/react-dom': '^19.2.3',
+        eslint: '^10.2.0',
+        prettier: '^3.8.1',
+        toilscript: '^0.1.2',
+        typescript: '^6.0.3',
+    };
+    // Styling packages (preprocessor and/or Tailwind), kept sorted for a stable package.json.
+    for (const dep of requiredPackages(features).sort()) {
+        devDependencies[dep] = PKG_VERSION[dep] ?? 'latest';
+    }
     const pkg = {
         name: path.basename(name),
         private: true,
@@ -64,21 +110,15 @@ function scaffold(name: string, template: Template): Record<string, string> {
             'build:server': 'toilscript --target release',
             lint: 'eslint client',
             typecheck: 'tsc --noEmit',
-            format: 'prettier --write "client/**/*.{ts,tsx,css}" "public/**/*.html"',
+            // Prettier formats css/scss/less natively (no Stylus parser, so .styl is excluded).
+            format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "public/**/*.html"',
         },
         dependencies: {
             toiljs: `^${toilVersion}`,
             react: '^19.2.6',
             'react-dom': '^19.2.6',
         },
-        devDependencies: {
-            '@types/react': '^19.2.15',
-            '@types/react-dom': '^19.2.3',
-            eslint: '^10.2.0',
-            prettier: '^3.8.1',
-            toilscript: '^0.1.2',
-            typescript: '^6.0.3',
-        },
+        devDependencies,
     };
 
     const files: Record<string, string> = {
@@ -105,21 +145,12 @@ function scaffold(name: string, template: Template): Record<string, string> {
         // App entry (you own this). Imports global styles and mounts the generated route table.
         'client/toil.tsx':
             "import { routes, layout, notFound } from 'toiljs/routes';\n\n" +
-            "import './styles/main.css';\n\n" +
+            styleImportLines(features).join('\n') +
+            '\n\n' +
             '// The app entry. Customize global setup here (providers, styles, etc.), then mount.\n' +
             "// `Toil` is a native global (like the IO classes) — no import from 'toiljs/client' needed.\n" +
             'Toil.mount(routes, layout, notFound);\n',
-        'client/styles/main.css':
-            '/* Global styles, imported once from client/toil.tsx. */\n\n' +
-            ':root {\n    color-scheme: dark;\n}\n\n' +
-            'body {\n    margin: 0;\n    background: #080d11;\n    color: #f5f6fa;\n' +
-            '    font-family: system-ui, -apple-system, sans-serif;\n    line-height: 1.6;\n}\n\n' +
-            'a {\n    color: #2563ff;\n    text-decoration: none;\n}\n\n' +
-            'a:hover {\n    color: #22e3ab;\n}\n\n' +
-            'code {\n    background: #11161f;\n    color: #22e3ab;\n    padding: 0.1rem 0.4rem;\n' +
-            '    border-radius: 4px;\n    font-size: 0.9em;\n}\n\n' +
-            'h1 {\n    background: linear-gradient(90deg, #2563ff, #7c3aed, #22e3ab);\n' +
-            '    -webkit-background-clip: text;\n    background-clip: text;\n    color: transparent;\n}\n',
+        [`client/${styleEntry(features.preprocessor)}`]: DEFAULT_STYLE_CONTENT,
         'client/components/.gitkeep': '# Place shared React components here.\n',
         // Written upfront so the project type-checks before its first build; regenerated by build/dev.
         'toil-env.d.ts': TOIL_ENV_DTS,
@@ -225,6 +256,10 @@ export default function Layout({ children }: { children?: ReactNode }) {
             '            <Toil.Link href="/">Back home</Toil.Link>\n        </main>\n    );\n}\n';
     }
 
+    if (features.tailwind) {
+        files[`client/${TAILWIND_ENTRY}`] = TAILWIND_CSS;
+    }
+
     return files;
 }
 
@@ -234,22 +269,6 @@ async function writeFiles(dir: string, files: Record<string, string>): Promise<v
         await fs.mkdir(path.dirname(full), { recursive: true });
         await fs.writeFile(full, contents, 'utf8');
     }
-}
-
-function run(cmd: string, args: string[], cwd: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        // On Windows `npm`/`pnpm`/`yarn` are `.cmd` shims that need a shell to launch. Passing an
-        // args array together with `shell: true` is deprecated (DEP0190), so pass the whole command
-        // as one string there (the args are fixed, not user input). POSIX runs it directly.
-        const onWindows = process.platform === 'win32';
-        const child = onWindows
-            ? spawn([cmd, ...args].join(' '), { cwd, stdio: 'ignore', shell: true })
-            : spawn(cmd, args, { cwd, stdio: 'ignore' });
-        child.on('error', reject);
-        child.on('close', (code) =>
-            code === 0 ? resolve() : reject(new Error(`${cmd} exited with code ${String(code)}`)),
-        );
-    });
 }
 
 /** Runs the create flow (interactive unless `--yes`). */
@@ -317,6 +336,27 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
         template = choice === 'minimal' ? 'minimal' : 'app';
     }
 
+    // 3b. Styling: preprocessor + optional Tailwind (toggle later with `toiljs configure`).
+    let preprocessor: Preprocessor = opts.preprocessor ?? 'css';
+    let tailwind = opts.tailwind ?? false;
+    if (!opts.yes) {
+        if (opts.preprocessor === undefined) {
+            const choice = await select<Preprocessor>({
+                message: 'Styling',
+                options: PREPROCESSORS.map((value) => ({ value, label: PREPROCESSOR_LABEL[value] })),
+                initialValue: 'css',
+            });
+            bail(choice);
+            preprocessor = choice;
+        }
+        if (opts.tailwind === undefined) {
+            const tw = await confirm({ message: 'Add Tailwind CSS?', initialValue: false });
+            bail(tw);
+            tailwind = tw;
+        }
+    }
+    const features: StyleFeatures = { preprocessor, tailwind };
+
     // 4. Options: git + install
     let initGit = opts.git ?? false;
     let install = opts.install ?? false;
@@ -341,7 +381,7 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     // 5. Scaffold
     const s = spinner();
     s.start('Scaffolding project');
-    await writeFiles(targetDir, scaffold(name, template));
+    await writeFiles(targetDir, scaffold(name, template, features));
     s.stop(`Scaffolded ${pc.cyan(rel)}`);
 
     // 6. git init (best-effort)
