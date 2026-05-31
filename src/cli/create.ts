@@ -300,9 +300,20 @@ export default function Layout({ children }: { children?: ReactNode }) {
     return files;
 }
 
-/** Absolute path to a shipped template directory (e.g. `templates/app`). */
-function templateDir(template: Template): string {
-    return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'templates', template);
+/**
+ * Absolute path to the `app` starter client UI. There is a single source: `examples/basic/client`
+ * (shipped in the package) — the runnable example IS the create template, so there's nothing to
+ * keep in sync.
+ */
+function appClientDir(): string {
+    return path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        'examples',
+        'basic',
+        'client',
+    );
 }
 
 /**
@@ -454,8 +465,8 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     s.start('Scaffolding project');
     await writeFiles(targetDir, scaffold(name, template, features, aiTools));
     if (template === 'app') {
-        // Copy the full ToilJS starter UI, set its <title> to the project name, then apply styling.
-        await fs.cp(templateDir('app'), targetDir, { recursive: true });
+        // Copy the example client (the single starter source), set its <title>, then apply styling.
+        await fs.cp(appClientDir(), path.join(targetDir, 'client'), { recursive: true });
         const indexHtml = path.join(targetDir, 'client', 'public', 'index.html');
         const html = await fs.readFile(indexHtml, 'utf8');
         await fs.writeFile(
