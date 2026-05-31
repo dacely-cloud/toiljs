@@ -16,8 +16,10 @@ const SPECIAL_FILE = /^(layout|loading|error|404|not-found)\.(tsx|jsx)$/;
  *   index.tsx          -> /
  *   about.tsx          -> /about
  *   blog/index.tsx     -> /blog
- *   blog/[id].tsx      -> /blog/:id
- *   docs/[...slug].tsx -> /docs/*slug   (catch-all)
+ *   blog/[id].tsx        -> /blog/:id
+ *   docs/[...slug].tsx   -> /docs/*slug    (catch-all)
+ *   docs/[[...slug]].tsx -> /docs/**slug   (optional catch-all)
+ *   (marketing)/about.tsx -> /about        (route group: parens add no URL segment)
  */
 export function filePathToRoute(relPath: string): string {
     const withoutExt = relPath.replace(/\\/g, '/').replace(ROUTE_EXT, '');
@@ -25,9 +27,13 @@ export function filePathToRoute(relPath: string): string {
     const out: string[] = [];
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
+        if (/^\(.+\)$/.test(segment)) continue;
         if (segment === 'index' && i === segments.length - 1) continue;
         out.push(
-            segment.replace(/^\[\.\.\.(.+)\]$/, '*$1').replace(/^\[(.+)\]$/, ':$1'),
+            segment
+                .replace(/^\[\[\.\.\.(.+)\]\]$/, '**$1')
+                .replace(/^\[\.\.\.(.+)\]$/, '*$1')
+                .replace(/^\[(.+)\]$/, ':$1'),
         );
     }
     return '/' + out.join('/');

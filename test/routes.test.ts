@@ -12,6 +12,14 @@ describe('filePathToRoute', () => {
         expect(filePathToRoute('docs/guide/intro.jsx')).toBe('/docs/guide/intro');
         expect(filePathToRoute('docs/[...slug].tsx')).toBe('/docs/*slug');
     });
+
+    it('maps optional catch-all and strips route groups', () => {
+        expect(filePathToRoute('docs/[[...slug]].tsx')).toBe('/docs/**slug');
+        expect(filePathToRoute('[[...slug]].tsx')).toBe('/**slug');
+        expect(filePathToRoute('(marketing)/about.tsx')).toBe('/about');
+        expect(filePathToRoute('(shop)/index.tsx')).toBe('/');
+        expect(filePathToRoute('(a)/(b)/deep.tsx')).toBe('/deep');
+    });
 });
 
 describe('matchRoute', () => {
@@ -38,5 +46,12 @@ describe('matchRoute', () => {
         expect(matchRoute('/files/*path', '/files/a%20b/c')).toEqual({ path: 'a b/c' });
         // catch-all needs at least one trailing segment
         expect(matchRoute('/docs/*slug', '/docs')).toBeNull();
+    });
+
+    it('matches optional catch-all with zero or more segments', () => {
+        expect(matchRoute('/docs/**slug', '/docs')).toEqual({ slug: '' });
+        expect(matchRoute('/docs/**slug', '/docs/a/b')).toEqual({ slug: 'a/b' });
+        expect(matchRoute('/**slug', '/')).toEqual({ slug: '' });
+        expect(matchRoute('/**slug', '/x/y')).toEqual({ slug: 'x/y' });
     });
 });
