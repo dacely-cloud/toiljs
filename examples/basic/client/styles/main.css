@@ -87,6 +87,33 @@ a:hover { color: var(--accent3); }
 .nav-links a { color: var(--muted); }
 .nav-links a:hover { color: var(--text); }
 
+/* Center nav */
+.nav-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.25rem;
+}
+
+.nav-center-link {
+    padding: 0.3em 0.85em;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: var(--muted) !important;
+    transition: color 150ms, background 150ms;
+}
+
+.nav-center-link:hover {
+    color: var(--text) !important;
+    background: rgba(255,255,255,0.05);
+}
+
+.nav-center-link.active {
+    color: var(--text) !important;
+    background: rgba(37,99,255,0.12);
+}
+
 .nav-github {
     display: flex;
     align-items: center;
