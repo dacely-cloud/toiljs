@@ -14,7 +14,7 @@ import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
 import { navigationEpoch, settleNavigation } from '../navigation/navigation.js';
 import { applyScroll } from '../navigation/scroll.js';
-import type { LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
+import type { ErrorComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
 /** Loads a matched route's module + loader data (suspending), then renders it with the data in context. */
 function RoutePage(props: { route: RouteDef; params: RouteParams; dataKey: string }): ReactNode {
@@ -27,8 +27,9 @@ export function Router(props: {
     routes: RouteDef[];
     layout?: LayoutLoader;
     notFound?: NotFoundLoader;
+    globalError?: ErrorComponentLoader;
 }): ReactNode {
-    const { routes, layout = null, notFound = null } = props;
+    const { routes, layout = null, notFound = null, globalError = null } = props;
     const pathname = useLocation();
 
     // After each navigation commits, apply the planned scroll (top / restore / #hash) and mark the
@@ -65,6 +66,20 @@ export function Router(props: {
                 />
             </Suspense>
         );
+        // Wrap in templates, deepest first so the shallowest ends up outermost. Templates sit
+        // inside the layouts and are keyed by pathname so they re-mount on every navigation
+        // (resetting their state), unlike layouts which persist across navigations.
+        const templates = matched.templates ?? [];
+        for (let i = templates.length - 1; i >= 0; i--) {
+            const Template = nestedLayout(templates[i]);
+            content = (
+                <Suspense
+                    key={`${pathname}:${String(i)}`}
+                    fallback={null}>
+                    <Template>{content}</Template>
+                </Suspense>
+            );
+        }
         // Wrap in nested layouts, deepest first so the shallowest ends up outermost.
         const chain = matched.layouts ?? [];
         for (let i = chain.length - 1; i >= 0; i--) {
@@ -100,6 +115,12 @@ export function Router(props: {
                 <Layout>{content}</Layout>
             </Suspense>
         );
+    }
+
+    // The root error boundary (global-error.tsx) sits outside the root layout, so it catches
+    // errors thrown by the layout itself — the last line of defense before a blank screen.
+    if (globalError) {
+        content = <ErrorBoundary fallback={errorComponent(globalError)}>{content}</ErrorBoundary>;
     }
 
     return <ParamsContext.Provider value={params}>{content}</ParamsContext.Provider>;

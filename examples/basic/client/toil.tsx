@@ -1,7 +1,7 @@
-import { routes, layout, notFound } from 'toiljs/routes';
+import { routes, layout, notFound, globalError } from 'toiljs/routes';
 
 import './styles/main.css';
 
 
 
-Toil.mount(routes, layout, notFound);
+Toil.mount(routes, layout, notFound, globalError);
