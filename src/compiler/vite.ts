@@ -1,8 +1,10 @@
+import { createRequire } from 'node:module';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import { mergeConfig, type InlineConfig } from 'vite';
+import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
 import { toilPlugin } from './plugin.js';
@@ -19,6 +21,23 @@ function assetFileName(name: string): string {
     if (FONT_EXT.test(ext)) return 'fonts/[name][extname]';
     if (/^css$/i.test(ext)) return 'css/[name][extname]';
     return 'assets/[name][extname]';
+}
+
+/**
+ * Loads the Tailwind v4 Vite plugin if the project has `@tailwindcss/vite` installed (added by
+ * `toiljs create`/`configure` when Tailwind is enabled). Resolved from the project root so it picks
+ * up the project's copy; returns `undefined` when Tailwind is off, so the plugin simply isn't added.
+ */
+async function tailwindPlugin(root: string): Promise<PluginOption | undefined> {
+    let resolved: string;
+    try {
+        resolved = createRequire(path.join(root, 'package.json')).resolve('@tailwindcss/vite');
+    } catch {
+        return undefined; // not installed → Tailwind disabled
+    }
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed any
+    const mod: { default?: () => PluginOption } = await import(pathToFileURL(resolved).href);
+    return mod.default?.();
 }
 
 /** Splits React's runtime into its own long-lived chunk for better caching. */
@@ -44,15 +63,17 @@ function manualChunks(id: string): string | undefined {
  * splitting and tuned build options — is applied here; `toiljs/client` is aliased to the
  * runtime, and the user's `client.vite` overrides deep-merge on top.
  */
-export function createViteConfig(cfg: ResolvedToilConfig): InlineConfig {
+export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineConfig> {
     // .../build/client/index.js -> framework package root (covers build/ + node_modules in dev)
     const frameworkRoot = path.resolve(path.dirname(cfg.runtimePath), '..', '..');
+    const tailwind = await tailwindPlugin(cfg.root);
 
     const base: InlineConfig = {
         root: cfg.toilDir,
         base: cfg.base,
         configFile: false,
         plugins: [
+            tailwind,
             nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
             react(),
             toilPlugin(cfg),

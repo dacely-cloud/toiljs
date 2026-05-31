@@ -6,7 +6,9 @@
  */
 import { build, dev, start } from 'toiljs/compiler';
 
+import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
+import { PREPROCESSORS, type Preprocessor } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
 interface Flags {
@@ -14,6 +16,8 @@ interface Flags {
     port?: number;
     name?: string;
     template?: Template;
+    preprocessor?: Preprocessor;
+    tailwind?: boolean;
     install?: boolean;
     git?: boolean;
     pm?: string;
@@ -39,6 +43,17 @@ function parseArgs(argv: string[]): Flags {
             }
             case '--pm':
                 flags.pm = argv[++i];
+                break;
+            case '--style': {
+                const s = argv[++i];
+                if ((PREPROCESSORS as readonly string[]).includes(s)) flags.preprocessor = s as Preprocessor;
+                break;
+            }
+            case '--tailwind':
+                flags.tailwind = true;
+                break;
+            case '--no-tailwind':
+                flags.tailwind = false;
                 break;
             case '--install':
                 flags.install = true;
@@ -72,6 +87,7 @@ function printHelp(): void {
             '',
             bold('Commands'),
             cmd('create [name]', 'scaffold a new toiljs app'),
+            cmd('configure', 'toggle styling features (Sass/Less/Stylus, Tailwind)'),
             cmd('dev', 'start the dev server with HMR'),
             cmd('build', 'build the optimized production bundle'),
             cmd('start', 'self-host the built app (hyper-express / uWS)'),
@@ -80,6 +96,8 @@ function printHelp(): void {
             cmd('--root <dir>', 'project root (default: current directory)'),
             cmd('--port <n>', 'dev server port'),
             cmd('-t, --template', 'create: app | minimal'),
+            cmd('--style <name>', 'create: css | sass | less | stylus'),
+            cmd('--tailwind', 'create: include Tailwind CSS'),
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
             cmd('-v, --version', 'print the toiljs version'),
@@ -104,12 +122,19 @@ async function main(): Promise<void> {
             await runCreate({
                 name: flags.name,
                 template: flags.template,
+                preprocessor: flags.preprocessor,
+                tailwind: flags.tailwind,
                 install: flags.install,
                 git: flags.git,
                 pm: flags.pm,
                 yes: flags.yes,
                 cwd: process.cwd(),
             });
+            break;
+
+        case 'configure':
+            banner();
+            await runConfigure({ root: flags.root, cwd: process.cwd() });
             break;
 
         case 'dev':
