@@ -1,4 +1,4 @@
-import { createElement, Suspense, useEffect, type ReactNode } from 'react';
+import { createElement, Suspense, useLayoutEffect, type ReactNode } from 'react';
 
 import { ErrorBoundary } from './error-boundary.js';
 import { useLocation } from './hooks.js';
@@ -26,8 +26,8 @@ export function Router(props: {
     const pathname = useLocation();
 
     // After each navigation commits, apply the planned scroll (top / restore / #hash) and mark the
-    // navigation settled (clears the pending state).
-    useEffect(() => {
+    // navigation settled. A layout effect runs before paint, so the scroll lands without a flash.
+    useLayoutEffect(() => {
         applyScroll();
         settleNavigation();
     });

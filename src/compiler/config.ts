@@ -112,7 +112,9 @@ export async function loadConfig(
         srcDir,
         clientAbsDir,
         routesAbsDir: path.join(clientAbsDir, routesDir),
-        publicDir: client.publicDir ? path.join(root, client.publicDir) : path.join(clientAbsDir, 'public'),
+        publicDir: client.publicDir
+            ? path.resolve(root, client.publicDir)
+            : path.join(clientAbsDir, 'public'),
         toilDir: path.join(root, '.toil'),
         outDir: client.outDir ?? 'build/client',
         base: client.base ?? '/',

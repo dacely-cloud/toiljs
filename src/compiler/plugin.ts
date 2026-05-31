@@ -12,8 +12,10 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
     return {
         name: 'toil',
         configureServer(server) {
+            // Trailing slash so a sibling like `routes-extra/` doesn't match the `routes/` prefix.
+            const routesPrefix = cfg.routesAbsDir.replace(/\\/g, '/').replace(/\/?$/, '/');
             const onChange = (file: string): void => {
-                if (file.replace(/\\/g, '/').startsWith(cfg.routesAbsDir.replace(/\\/g, '/'))) {
+                if (file.replace(/\\/g, '/').startsWith(routesPrefix)) {
                     generate(cfg);
                     server.ws.send({ type: 'full-reload' });
                 }
