@@ -18,10 +18,10 @@ export default function Layout({ children }: { children?: ReactNode }) {
                 meta={[{ name: 'description', content: 'The most performant React framework.' }]}
             />
             <header className="nav">
-                <a href="/" className="nav-logo">
+                <Toil.Link href="/" className="nav-logo">
                     <img src="images/logo.svg" alt="ToilJS" width={28} height={28} />
                     <span>ToilJS</span>
-                </a>
+                </Toil.Link>
 
                 <nav className="nav-center">
                     <Toil.NavLink href="/" end className="nav-center-link">
