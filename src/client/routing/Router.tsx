@@ -6,15 +6,21 @@ import {
     errorComponent,
     loadingComponent,
     nestedLayout,
-    pageComponent,
     resolveLayout,
     resolveNotFound,
 } from './lazy.js';
+import { LoaderDataContext, readRouteData } from './loader.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
-import { settleNavigation } from '../navigation/navigation.js';
+import { navigationEpoch, settleNavigation } from '../navigation/navigation.js';
 import { applyScroll } from '../navigation/scroll.js';
 import type { LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
+
+/** Loads a matched route's module + loader data (suspending), then renders it with the data in context. */
+function RoutePage(props: { route: RouteDef; params: RouteParams; dataKey: string }): ReactNode {
+    const { Component, data } = readRouteData(props.route, props.params, props.dataKey);
+    return <LoaderDataContext.Provider value={data}>{createElement(Component)}</LoaderDataContext.Provider>;
+}
 
 /** Matches the current location to a route and renders it, optionally wrapped in the root layout. */
 export function Router(props: {
@@ -45,13 +51,18 @@ export function Router(props: {
 
     let content: ReactNode;
     if (matched) {
-        const Page = pageComponent(matched);
         const fallback: ReactNode = matched.loading
             ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
             : null;
+        const search = typeof window === 'undefined' ? '' : window.location.search;
+        const dataKey = `${String(navigationEpoch())}:${pathname}${search}`;
         content = (
             <Suspense fallback={fallback}>
-                <Page />
+                <RoutePage
+                    route={matched}
+                    params={params}
+                    dataKey={dataKey}
+                />
             </Suspense>
         );
         // Wrap in nested layouts, deepest first so the shallowest ends up outermost.
