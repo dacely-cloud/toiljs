@@ -67,9 +67,9 @@ export default function Home() {
             </ul>
 
             <div className="hero-cta">
-                <a className="btn btn-primary" href="https://toil.org/docs" target="_blank" rel="noopener noreferrer">
+                <Toil.Link href="/get-started" className="btn btn-primary">
                     Get Started
-                </a>
+                </Toil.Link>
                 <a className="btn btn-secondary" href="https://github.com/btc-vision/toiljs" target="_blank" rel="noopener noreferrer">
                         <GitHubIcon />
                         GitHub
