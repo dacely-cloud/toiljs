@@ -1,6 +1,6 @@
 import { Component, Suspense, type ComponentType, type ReactNode } from 'react';
 
-import type { RouteErrorProps } from './types.js';
+import type { RouteErrorProps } from '../types.js';
 
 interface ErrorBoundaryProps {
     readonly fallback: ComponentType<RouteErrorProps>;

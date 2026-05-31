@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { resolveChannelUrl } from '../src/client/channel';
+import { resolveChannelUrl } from '../src/client/channel/channel';
 
 describe('resolveChannelUrl', () => {
     it('uses ws:// over http and the default /_toil path', () => {

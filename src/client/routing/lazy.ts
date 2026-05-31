@@ -11,7 +11,7 @@ import type {
     NotFoundLoader,
     RouteDef,
     RouteErrorProps,
-} from './types.js';
+} from '../types.js';
 
 type Loader<P> = () => Promise<{ default: ComponentType<P> }>;
 
