@@ -8,14 +8,14 @@
  * `mount`, `match` (pure matcher), `prefetch` (link prefetcher), and `channel` (WebSocket helper).
  */
 
-export { mount } from './mount.js';
-export { Router } from './Router.js';
-export { Link } from './Link.js';
-export type { LinkProps } from './Link.js';
-export { NavLink, matchActive } from './NavLink.js';
-export type { NavLinkProps, NavLinkState } from './NavLink.js';
-export { navigate, back, forward, refresh } from './navigation.js';
-export type { NavigateOptions } from './navigation.js';
+export { mount } from './routing/mount.js';
+export { Router } from './routing/Router.js';
+export { Link } from './navigation/Link.js';
+export type { LinkProps } from './navigation/Link.js';
+export { NavLink, matchActive } from './navigation/NavLink.js';
+export type { NavLinkProps, NavLinkState } from './navigation/NavLink.js';
+export { navigate, back, forward, refresh } from './navigation/navigation.js';
+export type { NavigateOptions } from './navigation/navigation.js';
 export {
     useParams,
     useNavigate,
@@ -24,9 +24,9 @@ export {
     useSearchParams,
     useRouter,
     useNavigationPending,
-} from './hooks.js';
-export type { RouterInstance } from './hooks.js';
-export { prefetch } from './prefetch.js';
+} from './routing/hooks.js';
+export type { RouterInstance } from './routing/hooks.js';
+export { prefetch } from './navigation/prefetch.js';
 export type {
     RouteDef,
     LayoutLoader,
@@ -34,9 +34,9 @@ export type {
     NotFoundLoader,
     RouteErrorProps,
 } from './types.js';
-export { matchRoute } from './match.js';
-export type { RouteParams } from './match.js';
-export { connectChannel, useChannel, resolveChannelUrl } from './channel.js';
-export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channel.js';
-export { useHead, useTitle, Head, mergeHead } from './head.js';
-export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head.js';
+export { matchRoute } from './routing/match.js';
+export type { RouteParams } from './routing/match.js';
+export { connectChannel, useChannel, resolveChannelUrl } from './channel/channel.js';
+export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channel/channel.js';
+export { useHead, useTitle, Head, mergeHead } from './head/head.js';
+export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head/head.js';

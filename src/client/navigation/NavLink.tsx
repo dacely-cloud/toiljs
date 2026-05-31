@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 
-import { useLocation } from './hooks.js';
+import { useLocation } from '../routing/hooks.js';
 import { Link, type LinkProps } from './Link.js';
 
 /** State passed to `NavLink`'s function-form `className` / `style` / `children`. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { matchActive } from '../src/client/NavLink';
+import { matchActive } from '../src/client/navigation/NavLink';
 
 describe('matchActive', () => {
     it('matches exact paths', () => {

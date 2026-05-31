@@ -1,9 +1,9 @@
 import { createRoot } from 'react-dom/client';
 
-import { initNavigation } from './navigation.js';
-import { startPrefetcher } from './prefetch.js';
+import { initNavigation } from '../navigation/navigation.js';
+import { startPrefetcher } from '../navigation/prefetch.js';
 import { Router } from './Router.js';
-import type { LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
+import type { LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
 /**
  * Mounts the toil client app into `#root` and starts idle link prefetching. Called by the

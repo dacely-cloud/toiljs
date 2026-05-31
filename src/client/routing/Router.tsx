@@ -12,9 +12,9 @@ import {
 } from './lazy.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
-import { settleNavigation } from './navigation.js';
-import { applyScroll } from './scroll.js';
-import type { LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
+import { settleNavigation } from '../navigation/navigation.js';
+import { applyScroll } from '../navigation/scroll.js';
+import type { LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
 /** Matches the current location to a route and renders it, optionally wrapped in the root layout. */
 export function Router(props: {
