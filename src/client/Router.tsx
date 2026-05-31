@@ -1,7 +1,7 @@
 import { Suspense, useEffect, type ReactNode } from 'react';
 
 import { useLocation } from './hooks.js';
-import { pageComponent, resolveLayout, resolveNotFound } from './lazy.js';
+import { nestedLayout, pageComponent, resolveLayout, resolveNotFound } from './lazy.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
 import { settleNavigation } from './navigation.js';
@@ -35,34 +35,43 @@ export function Router(props: {
         }
     }
 
-    let page: ReactNode;
+    let content: ReactNode;
     if (matched) {
         const Page = pageComponent(matched);
-        page = (
+        content = (
             <Suspense fallback={null}>
                 <Page />
             </Suspense>
         );
+        // Wrap in nested layouts, deepest first so the shallowest ends up outermost.
+        const chain = matched.layouts ?? [];
+        for (let i = chain.length - 1; i >= 0; i--) {
+            const NestedLayout = nestedLayout(chain[i]);
+            content = (
+                <Suspense fallback={null}>
+                    <NestedLayout>{content}</NestedLayout>
+                </Suspense>
+            );
+        }
     } else if (notFound) {
         const NotFound = resolveNotFound(notFound);
-        page = (
+        content = (
             <Suspense fallback={null}>
                 <NotFound />
             </Suspense>
         );
     } else {
-        page = <div style={{ padding: 24, fontFamily: 'system-ui' }}>404 — Not found</div>;
+        content = <div style={{ padding: 24, fontFamily: 'system-ui' }}>404 — Not found</div>;
     }
-
-    const withParams = <ParamsContext.Provider value={params}>{page}</ParamsContext.Provider>;
 
     if (layout) {
         const Layout = resolveLayout(layout);
-        return (
+        content = (
             <Suspense fallback={null}>
-                <Layout>{withParams}</Layout>
+                <Layout>{content}</Layout>
             </Suspense>
         );
     }
-    return withParams;
+
+    return <ParamsContext.Provider value={params}>{content}</ParamsContext.Provider>;
 }
