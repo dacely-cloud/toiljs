@@ -35,6 +35,9 @@ export type {
     LayoutComponentLoader,
     NotFoundLoader,
     RouteErrorProps,
+    Register,
+    RoutePath,
+    Href,
 } from './types.js';
 export { matchRoute } from './routing/match.js';
 export type { RouteParams } from './routing/match.js';
