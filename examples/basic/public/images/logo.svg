@@ -15,22 +15,23 @@
         fill: url(#linear-gradient);
       }
     </style>
-    <linearGradient id="linear-gradient" x1="37.88" y1="37.88" x2="472.79" y2="472.79" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#748fc9"/>
-      <stop offset=".03" stop-color="#7086c3"/>
-      <stop offset=".11" stop-color="#6774b7"/>
-      <stop offset=".19" stop-color="#6168b0"/>
-      <stop offset=".28" stop-color="#6065ae"/>
-      <stop offset=".67" stop-color="#6150a1"/>
-      <stop offset=".89" stop-color="#6a51a2"/>
-      <stop offset="1" stop-color="#7251a2"/>
+    <linearGradient id="linear-gradient" x1="43.27" y1="43.27" x2="467.12" y2="467.12" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6990ff"/>
+      <stop offset=".03" stop-color="#6479f9"/>
+      <stop offset=".08" stop-color="#5d57f0"/>
+      <stop offset=".12" stop-color="#583de9"/>
+      <stop offset=".17" stop-color="#542ae3"/>
+      <stop offset=".23" stop-color="#521ee0"/>
+      <stop offset=".28" stop-color="#521be0"/>
+      <stop offset=".66" stop-color="#6900f4"/>
+      <stop offset="1" stop-color="#7f00f6"/>
     </linearGradient>
-    <linearGradient id="linear-gradient1" x1="157.15" y1="347.94" x2="157.15" y2="17.9" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#7794cc"/>
-      <stop offset=".55" stop-color="#6065ae"/>
+    <linearGradient id="linear-gradient1" x1="149.99" y1="355.49" x2="149.99" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset=".15" stop-color="#6990ff" stop-opacity=".6"/>
+      <stop offset=".55" stop-color="#531ae1"/>
     </linearGradient>
   </defs>
-  <rect class="st2" x="17.9" y="17.9" width="464.2" height="464.2" rx="50" ry="50"/>
-  <path class="st1" d="M17.9,347.94L296.4,17.9H125.35c-59.34,0-107.45,48.11-107.45,107.45v222.59Z"/>
-  <path class="st0" d="M116.47,121.06h264.82c9.19,0,15.5,9.25,12.16,17.81l-16.69,42.66c-1.96,5-6.78,8.3-12.16,8.3h-69.3c-7.21,0-13.05,5.84-13.05,13.05v199.55c0,7.21-5.84,13.05-13.05,13.05h-42.66c-7.21,0-13.05-5.84-13.05-13.05v-201.7c0-7.21-5.84-13.05-13.05-13.05h-68.39c-5.4,0-10.25-3.33-12.18-8.37l-15.56-40.52c-3.28-8.55,3.03-17.73,12.18-17.73Z"/>
+  <rect class="st2" width="500" height="500" rx="130" ry="130"/>
+  <path class="st1" d="M299.98,0L0,355.49v-225.49C0,58.2,58.2,0,130,0h169.98Z"/>
+  <path class="st0" d="M106.17,111.11h285.24c9.9,0,16.7,9.96,13.09,19.18l-17.98,45.96c-2.11,5.39-7.31,8.94-13.09,8.94h-74.65c-7.76,0-14.06,6.29-14.06,14.06v214.94c0,7.76-6.29,14.06-14.06,14.06h-45.96c-7.76,0-14.06-6.29-14.06-14.06v-217.25c0-7.76-6.29-14.06-14.06-14.06h-73.66c-5.82,0-11.04-3.59-13.12-9.02l-16.76-43.64c-3.54-9.21,3.26-19.1,13.12-19.1Z"/>
 </svg>
