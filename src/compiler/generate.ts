@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { type ResolvedToilConfig } from './config.js';
+import { writeDocs } from './docs.js';
 import { scanRoutes, type ScannedRoute } from './routes.js';
 
 /**
@@ -170,6 +171,7 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
 
     fs.writeFileSync(path.join(cfg.toilDir, 'index.html'), buildHtml(cfg));
     syncPublicAssets(cfg);
+    writeDocs(cfg.toilDir);
 
     return routes;
 }
