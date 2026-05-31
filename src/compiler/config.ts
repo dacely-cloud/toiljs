@@ -13,8 +13,9 @@ export interface ClientConfig {
     /** Routes directory, relative to `srcDir`. Default `routes`. */
     readonly routesDir?: string;
     /**
-     * Static assets directory, relative to root. Default `public`. Holds the `index.html` template
-     * (owned and edited by you) plus any files served as-is at the base path (favicons, images, …).
+     * Static assets directory, relative to root. Default `<srcDir>/public` (e.g. `client/public`).
+     * Holds the `index.html` template (owned and edited by you) plus any files served as-is at the
+     * base path (favicons, images, …).
      */
     readonly publicDir?: string;
     /** Production output directory, relative to root. Default `build/client`. */
@@ -111,7 +112,7 @@ export async function loadConfig(
         srcDir,
         clientAbsDir,
         routesAbsDir: path.join(clientAbsDir, routesDir),
-        publicDir: path.join(root, client.publicDir ?? 'public'),
+        publicDir: client.publicDir ? path.join(root, client.publicDir) : path.join(clientAbsDir, 'public'),
         toilDir: path.join(root, '.toil'),
         outDir: client.outDir ?? 'build/client',
         base: client.base ?? '/',
