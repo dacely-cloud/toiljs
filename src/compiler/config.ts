@@ -78,14 +78,23 @@ export function defineConfig(config: ToilConfig): ToilConfig {
     return config;
 }
 
-const CONFIG_NAMES = ['toil.config.ts', 'toil.config.mts', 'toil.config.js', 'toil.config.mjs'];
+const CONFIG_NAMES = [
+    'toil.config.ts',
+    'toil.config.mts',
+    'toil.config.js',
+    'toil.config.mjs',
+    'toiljs.config.ts',
+    'toiljs.config.mts',
+    'toiljs.config.js',
+    'toiljs.config.mjs',
+];
 
 /** Path to the built client runtime (`build/client/index.js`), sibling to `build/compiler`. */
 function resolveRuntimePath(): string {
     return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../client/index.js');
 }
 
-/** Finds and loads `toil.config.*` from `root` (via Vite's bundling loader), then resolves defaults. */
+/** Finds and loads `toil.config.*` or `toiljs.config.*` from `root`, then resolves defaults. */
 export async function loadConfig(
     opts: { root?: string; port?: number } = {},
 ): Promise<ResolvedToilConfig> {
