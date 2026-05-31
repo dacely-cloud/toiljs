@@ -25,9 +25,7 @@ export function filePathToRoute(relPath: string): string {
         const segment = segments[i];
         if (segment === 'index' && i === segments.length - 1) continue;
         out.push(
-            segment
-                .replace(/^\[\.\.\.(.+)\]$/, '*$1') // catch-all [...slug] -> *slug
-                .replace(/^\[(.+)\]$/, ':$1'), // dynamic [id] -> :id
+            segment.replace(/^\[\.\.\.(.+)\]$/, '*$1').replace(/^\[(.+)\]$/, ':$1'),
         );
     }
     return '/' + out.join('/');
@@ -41,8 +39,8 @@ function specificity(pattern: string): number {
     const segments = pattern.split('/').filter(Boolean);
     let score = segments.length * 10;
     for (const segment of segments) {
-        if (segment.startsWith('*')) score -= 5; // catch-all: lowest
-        else if (!segment.startsWith(':')) score += 5; // static: highest
+        if (segment.startsWith('*')) score -= 5;
+        else if (!segment.startsWith(':')) score += 5;
     }
     return score;
 }

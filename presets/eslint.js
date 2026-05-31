@@ -1,7 +1,4 @@
-// toiljs shared ESLint flat config — opinionated, strict, React-aware.
-// Use it from your project's eslint.config.js:
-//   import toiljs from 'toiljs/eslint';
-//   export default toiljs;
+/** toiljs shared ESLint flat config: `import toiljs from 'toiljs/eslint'; export default toiljs;` */
 import eslintReact from '@eslint-react/eslint-plugin';
 import eslint from '@eslint/js';
 import reactHooks from 'eslint-plugin-react-hooks';
@@ -11,8 +8,6 @@ import tseslint from 'typescript-eslint';
 import noUint8ArrayToString from './no-uint8array-tostring.js';
 
 export default tseslint.config(
-    // Not lintable as TypeScript: build output, the toil working dir, generated ambient types,
-    // and the toilscript server (its `@main` syntax isn't valid TS, so the TS parser rejects it).
     { ignores: ['dist', 'build', '.toil', 'node_modules', 'toil-env.d.ts', 'server/**'] },
     {
         extends: [
@@ -23,7 +18,6 @@ export default tseslint.config(
         files: ['**/*.{ts,tsx}'],
         languageOptions: {
             ecmaVersion: 2023,
-            // No tsconfigRootDir: projectService discovers the consumer's tsconfig from cwd.
             parserOptions: {
                 projectService: true,
             },

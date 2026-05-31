@@ -1,0 +1,4 @@
+{
+    "extends": "toilscript/std/assembly.json",
+    "include": ["./**/*.ts"]
+}

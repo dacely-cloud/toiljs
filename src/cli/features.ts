@@ -109,7 +109,6 @@ export function setStyleImports(source: string, f: StyleFeatures): string {
         const lastImport = lines.reduce((acc, l, i) => (/^\s*import\s/.test(l) ? i : acc), -1);
         insertAt = lastImport + 1;
     }
-    // Surround the inserted block with a blank line on each side, collapsing duplicates after.
     const head = lines.slice(0, insertAt).join('\n');
     const tail = lines.slice(insertAt).join('\n');
     return `${head}\n\n${block}\n${tail}`.replace(/\n{3,}/g, '\n\n');

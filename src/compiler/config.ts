@@ -94,10 +94,6 @@ export async function loadConfig(
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            // Native ESM import (Node strips types from .ts/.mts). This keeps config loading
-            // independent of the project's tsconfig — which may `extends` a not-yet-installed
-            // package and would otherwise throw TSCONFIG_ERROR — and a file URL imports absolute
-            // paths correctly on Windows.
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed `any`
             const loaded: { default?: ToilConfig } = await import(pathToFileURL(candidate).href);
             if (loaded.default) user = loaded.default;
