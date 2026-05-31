@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
 import Footer from './components/Footer';
+import HoneycombBackground from './components/HoneycombBackground';
 
 const GitHubIcon = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -10,8 +11,9 @@ const GitHubIcon = () => (
 export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div className="app">
+            <HoneycombBackground />
             <Toil.Head
-                titleTemplate="%s · ToilJS"
+                titleTemplate="%s By Dacely"
                 title="ToilJS"
                 meta={[{ name: 'description', content: 'The most performant React framework.' }]}
             />
@@ -22,14 +24,16 @@ export default function Layout({ children }: { children?: ReactNode }) {
                 </a>
 
                 <nav className="nav-center">
-                    <Toil.NavLink href="/" end className="nav-center-link">Home</Toil.NavLink>
-                    <Toil.NavLink href="/get-started" className="nav-center-link">Get Started</Toil.NavLink>
+                    <Toil.NavLink href="/" end className="nav-center-link">
+                        Home
+                    </Toil.NavLink>
+                    <Toil.NavLink href="/get-started" className="nav-center-link">
+                        Get Started
+                    </Toil.NavLink>
                 </nav>
 
                 <nav className="nav-links">
-                    <Toil.Link href="https://toil.org/docs">
-                        Docs
-                    </Toil.Link>
+                    <Toil.Link href="https://toil.org/docs">Docs</Toil.Link>
                     <a
                         href="https://github.com/btc-vision/toiljs"
                         target="_blank"
