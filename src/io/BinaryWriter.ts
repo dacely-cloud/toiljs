@@ -46,7 +46,7 @@ export class BinaryWriter implements Disposable {
         let totalLength: u32 = U16_BYTE_LENGTH;
 
         for (let i = 0; i < values.length; i++) {
-            totalLength += U32_BYTE_LENGTH + (values[i] as Uint8Array).length; // each entry has a u32 length prefix
+            totalLength += U32_BYTE_LENGTH + (values[i] as Uint8Array).length;
         }
 
         return totalLength;

@@ -58,11 +58,8 @@ async function detectStylesheet(clientDir: string): Promise<Preprocessor | null>
         try {
             await fs.access(path.join(clientDir, styleEntry(p)));
             return p;
-        } catch {
-            /* keep looking */
-        }
+        } catch {}
     }
-    // Also accept an indented-syntax `.sass` main stylesheet.
     try {
         await fs.access(path.join(clientDir, 'styles/main.sass'));
         return preprocessorForExt('sass');
@@ -82,9 +79,7 @@ async function detectPackageManager(root: string): Promise<string> {
         try {
             await fs.access(path.join(root, file));
             return pm;
-        } catch {
-            /* try next */
-        }
+        } catch {}
     }
     return 'npm';
 }
@@ -95,7 +90,6 @@ async function applyStyleFiles(
     from: StyleFeatures,
     to: StyleFeatures,
 ): Promise<void> {
-    // Rename the main stylesheet if the preprocessor changed.
     if (from.preprocessor !== to.preprocessor) {
         const oldPath = path.join(clientDir, styleEntry(from.preprocessor));
         const newPath = path.join(clientDir, styleEntry(to.preprocessor));
@@ -103,16 +97,10 @@ async function applyStyleFiles(
         try {
             await fs.rename(oldPath, newPath);
         } catch {
-            // No existing main stylesheet — create a minimal one so the import resolves.
-            await fs.writeFile(
-                newPath,
-                '/* Global styles, imported once from client/toil.tsx. */\n',
-                'utf8',
-            );
+            await fs.writeFile(newPath, '', 'utf8');
         }
     }
 
-    // Add or remove the dedicated Tailwind entry.
     const tailwindPath = path.join(clientDir, TAILWIND_ENTRY);
     if (to.tailwind && !from.tailwind) {
         await fs.mkdir(path.dirname(tailwindPath), { recursive: true });
@@ -121,16 +109,13 @@ async function applyStyleFiles(
         await fs.rm(tailwindPath, { force: true });
     }
 
-    // Rewrite the app entry's style imports.
     for (const entry of ['toil.tsx', 'toil.jsx']) {
         const entryPath = path.join(clientDir, entry);
         try {
             const source = await fs.readFile(entryPath, 'utf8');
             await fs.writeFile(entryPath, setStyleImports(source, to), 'utf8');
             return;
-        } catch {
-            /* try next */
-        }
+        } catch {}
     }
 }
 
