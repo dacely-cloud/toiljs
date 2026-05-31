@@ -26,6 +26,8 @@ export {
     useNavigationPending,
 } from './routing/hooks.js';
 export type { RouterInstance } from './routing/hooks.js';
+export { useLoaderData } from './routing/loader.js';
+export type { LoaderArgs, LoaderFunction } from './routing/loader.js';
 export { prefetch } from './navigation/prefetch.js';
 export type {
     RouteDef,
