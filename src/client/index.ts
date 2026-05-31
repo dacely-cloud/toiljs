@@ -11,7 +11,9 @@
 export { mount } from './mount.js';
 export { Router } from './Router.js';
 export { Link } from './Link.js';
+export type { LinkProps } from './Link.js';
 export { navigate } from './navigation.js';
+export type { NavigateOptions } from './navigation.js';
 export { useParams, useNavigate, useLocation } from './hooks.js';
 export { prefetch } from './prefetch.js';
 export type { RouteDef, LayoutLoader, NotFoundLoader } from './types.js';

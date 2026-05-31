@@ -13,8 +13,8 @@ export function useParams(): RouteParams {
     return useContext(ParamsContext);
 }
 
-/** Returns the imperative `navigate(href)` function. */
-export function useNavigate(): (href: string) => void {
+/** Returns the imperative `navigate(href, { replace })` function. */
+export function useNavigate(): typeof navigate {
     return navigate;
 }
 
