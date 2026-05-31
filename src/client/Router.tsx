@@ -1,7 +1,15 @@
-import { Suspense, useEffect, type ReactNode } from 'react';
+import { createElement, Suspense, useEffect, type ReactNode } from 'react';
 
+import { ErrorBoundary } from './error-boundary.js';
 import { useLocation } from './hooks.js';
-import { nestedLayout, pageComponent, resolveLayout, resolveNotFound } from './lazy.js';
+import {
+    errorComponent,
+    loadingComponent,
+    nestedLayout,
+    pageComponent,
+    resolveLayout,
+    resolveNotFound,
+} from './lazy.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
 import { settleNavigation } from './navigation.js';
@@ -38,8 +46,11 @@ export function Router(props: {
     let content: ReactNode;
     if (matched) {
         const Page = pageComponent(matched);
+        const fallback: ReactNode = matched.loading
+            ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
+            : null;
         content = (
-            <Suspense fallback={null}>
+            <Suspense fallback={fallback}>
                 <Page />
             </Suspense>
         );
@@ -51,6 +62,13 @@ export function Router(props: {
                 <Suspense fallback={null}>
                     <NestedLayout>{content}</NestedLayout>
                 </Suspense>
+            );
+        }
+        if (matched.errorComponent) {
+            content = (
+                <ErrorBoundary fallback={errorComponent(matched.errorComponent)}>
+                    {content}
+                </ErrorBoundary>
             );
         }
     } else if (notFound) {

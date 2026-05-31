@@ -5,7 +5,40 @@
  */
 import { lazy, type ComponentType, type ReactNode } from 'react';
 
-import type { LayoutComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
+import type {
+    LayoutComponentLoader,
+    LayoutLoader,
+    NotFoundLoader,
+    RouteDef,
+    RouteErrorProps,
+} from './types.js';
+
+type Loader<P> = () => Promise<{ default: ComponentType<P> }>;
+
+/** Memoizes `lazy()` per loader identity in `cache`. */
+function memoLazy<P>(
+    cache: Map<Loader<P>, ComponentType<P>>,
+    loader: Loader<P>,
+): ComponentType<P> {
+    let component = cache.get(loader);
+    if (!component) {
+        component = lazy(loader);
+        cache.set(loader, component);
+    }
+    return component;
+}
+
+const loadingCache = new Map<Loader<object>, ComponentType<object>>();
+/** Memoized lazy component for a route's `loading.tsx`. */
+export function loadingComponent(loader: Loader<object>): ComponentType<object> {
+    return memoLazy(loadingCache, loader);
+}
+
+const errorCache = new Map<Loader<RouteErrorProps>, ComponentType<RouteErrorProps>>();
+/** Memoized lazy component for a route's `error.tsx`. */
+export function errorComponent(loader: Loader<RouteErrorProps>): ComponentType<RouteErrorProps> {
+    return memoLazy(errorCache, loader);
+}
 
 const pageCache = new Map<RouteDef, ComponentType>();
 
