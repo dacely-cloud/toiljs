@@ -1,5 +1,9 @@
+async function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export const loader = async ({ searchParams }: Toil.LoaderArgs) => {
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await wait(2000);
     return { loadedAt: new Date().toISOString(), q: searchParams.get('q') };
 };
 
