@@ -19,6 +19,8 @@ export interface LinkProps extends Omit<ComponentPropsWithRef<'a'>, 'href'> {
     href: string;
     /** Replace the current history entry instead of pushing a new one. Default `false`. */
     replace?: boolean;
+    /** Scroll to top after navigating. Default `true`. */
+    scroll?: boolean;
     /** Prefetch the route chunk on hover/focus. Default `true`; `false` opts this link out. */
     prefetch?: boolean;
 }
@@ -42,6 +44,7 @@ export function Link(props: LinkProps): ReactNode {
     const {
         href,
         replace = false,
+        scroll = true,
         prefetch: prefetchProp = true,
         onClick,
         onPointerEnter,
@@ -67,7 +70,7 @@ export function Link(props: LinkProps): ReactNode {
             return;
         }
         event.preventDefault();
-        navigate(href, { replace });
+        navigate(href, { replace, scroll });
     };
 
     const warm = (): void => {
