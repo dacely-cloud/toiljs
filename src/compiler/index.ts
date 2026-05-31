@@ -46,6 +46,7 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
 
 export { defineConfig, loadConfig } from './config.js';
 export { TOIL_ENV_DTS } from './generate.js';
-export { AI_HELPER_FILES, TOIL_DOCS } from './docs.js';
+export { AI_HELPERS, AI_HELPER_IDS, aiHelperFiles, TOIL_DOCS } from './docs.js';
+export type { AiHelper } from './docs.js';
 export type { ToilConfig, ResolvedToilConfig } from './config.js';
 export type { RunningBackend, BackendOptions } from 'toiljs/backend';
