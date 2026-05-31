@@ -108,7 +108,7 @@ function scaffold(name: string, template: Template, features: StyleFeatures): Re
             'build:server': 'toilscript --target release',
             lint: 'eslint client',
             typecheck: 'tsc --noEmit',
-            format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "public/**/*.html"',
+            format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "client/public/**/*.html"',
         },
         dependencies: {
             toiljs: `^${toilVersion}`,
@@ -128,14 +128,14 @@ function scaffold(name: string, template: Template, features: StyleFeatures): Re
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
         '.gitignore': 'node_modules\nbuild\n.toil\ntoil-env.d.ts\n',
-        'public/index.html':
+        'client/public/index.html':
             '<!doctype html>\n<html lang="en">\n  <head>\n' +
             '    <meta charset="utf-8" />\n' +
             '    <meta name="viewport" content="width=device-width, initial-scale=1" />\n' +
             '    <meta name="theme-color" content="#080D11" />\n' +
             `    <title>${path.basename(name)}</title>\n` +
             '  </head>\n  <body>\n    <div id="root"></div>\n  </body>\n</html>\n',
-        'public/images/.gitkeep': '# Place images and other static assets here; served at /images/*.\n',
+        'client/public/images/.gitkeep': '# Place images and other static assets here; served at /images/*.\n',
         'client/toil.tsx':
             "import { routes, layout, notFound } from 'toiljs/routes';\n\n" +
             styleImportLines(features).join('\n') +
