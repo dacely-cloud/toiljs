@@ -181,6 +181,7 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
 const DEFAULT_HTML =
     `<!doctype html>\n<html lang="en">\n  <head>\n    <meta charset="utf-8" />\n` +
     `    <meta name="viewport" content="width=device-width, initial-scale=1" />\n` +
+    `    <meta name="description" content="" />\n` +
     `    <title>Toil App</title>\n  </head>\n  <body>\n    <div id="root"></div>\n` +
     `  </body>\n</html>\n`;
 
