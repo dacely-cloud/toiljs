@@ -8,6 +8,7 @@ import {
     planScroll,
     rememberScroll,
 } from './scroll.js';
+import type { Href } from '../types.js';
 
 const listeners = new Set<() => void>();
 let popstateBound = false;
@@ -87,7 +88,7 @@ export function initNavigation(): void {
 }
 
 /** Navigates to `href` without a full page reload (history push/replace + subscriber re-render). */
-export function navigate(href: string, options?: NavigateOptions): void {
+export function navigate(href: Href, options?: NavigateOptions): void {
     beginNavigation();
     rememberScroll(currentKey);
     let hash = '';

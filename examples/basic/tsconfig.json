@@ -1,4 +1,4 @@
 {
     "extends": "toiljs/tsconfig",
-    "include": ["client", "toil-env.d.ts"]
+    "include": ["client", "toil-env.d.ts", "toil-routes.d.ts"]
 }

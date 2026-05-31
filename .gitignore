@@ -422,3 +422,4 @@ toil-env.d.ts
 examples/*/build
 examples/*/.toil
 examples/*/toil-env.d.ts
+examples/*/toil-routes.d.ts
