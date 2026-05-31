@@ -33,9 +33,11 @@ function parseArgs(argv: string[]): Flags {
             case '--root':
                 flags.root = argv[++i];
                 break;
-            case '--port':
-                flags.port = Number(argv[++i]);
+            case '--port': {
+                const port = Number(argv[++i]);
+                if (!Number.isNaN(port)) flags.port = port;
                 break;
+            }
             case '--template':
             case '-t': {
                 const t = argv[++i];
