@@ -25,13 +25,14 @@ import {
 import { clearLoaderData } from './loader.js';
 import { ParamsContext } from './params-context.js';
 import { prefetch } from '../navigation/prefetch.js';
+import type { Href } from '../types.js';
 
 /** Imperative router handle returned by {@link useRouter}. */
 export interface RouterInstance {
     /** Navigate to `href`, pushing a new history entry (or replacing with `{ replace: true }`). */
-    push(href: string, options?: NavigateOptions): void;
+    push(href: Href, options?: NavigateOptions): void;
     /** Navigate to `href`, replacing the current history entry. */
-    replace(href: string): void;
+    replace(href: Href): void;
     /** Go back one history entry. */
     back(): void;
     /** Go forward one history entry. */
@@ -39,7 +40,7 @@ export interface RouterInstance {
     /** Re-render the current route and re-run its loader. */
     refresh(): void;
     /** Prefetch a route's chunk ahead of navigation. */
-    prefetch(href: string): void;
+    prefetch(href: Href): void;
 }
 
 const ROUTER: RouterInstance = {
@@ -58,9 +59,9 @@ const ROUTER: RouterInstance = {
     prefetch,
 };
 
-/** Current dynamic route params, e.g. `{ id }` inside `/blog/:id`. */
-export function useParams(): RouteParams {
-    return useContext(ParamsContext);
+/** Current dynamic route params, e.g. `{ id }` inside `/blog/:id`. Pass a shape: `useParams<{ id: string }>()`. */
+export function useParams<T extends RouteParams = RouteParams>(): T {
+    return useContext(ParamsContext) as T;
 }
 
 /** Returns the imperative `navigate(href, { replace })` function. */
