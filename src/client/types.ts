@@ -37,11 +37,16 @@ export type LayoutComponentLoader = () => Promise<{
     default: ComponentType<{ children?: ReactNode }>;
 }>;
 
-/** Props passed to an `error.tsx` component: the thrown error and a function to retry rendering. */
+/** Props passed to an `error.tsx` / `global-error.tsx` component. */
 export interface RouteErrorProps {
     readonly error: Error;
     readonly reset: () => void;
 }
+
+/** Lazy loader for an error component (`error.tsx` / `global-error.tsx`), or `null` if none. */
+export type ErrorComponentLoader =
+    | (() => Promise<{ default: ComponentType<RouteErrorProps> }>)
+    | null;
 
 /**
  * A route entry produced by the compiler: a URL pattern, a lazy loader for its page component, and
@@ -51,6 +56,8 @@ export interface RouteDef {
     readonly pattern: string;
     readonly load: () => Promise<{ default: ComponentType }>;
     readonly layouts?: readonly LayoutComponentLoader[];
+    /** `template.tsx` chain (root → nested) — like layouts, but re-mounted on each navigation. */
+    readonly templates?: readonly LayoutComponentLoader[];
     /** Nearest `loading.tsx` — shown as the Suspense fallback while this route loads. */
     readonly loading?: () => Promise<{ default: ComponentType }>;
     /** Nearest `error.tsx` — rendered by an error boundary around this route. */
