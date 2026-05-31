@@ -198,7 +198,9 @@ function buildHtml(cfg: ResolvedToilConfig): string {
     let html = fs.existsSync(templatePath)
         ? fs.readFileSync(templatePath, 'utf8')
         : DEFAULT_HTML;
-    if (!html.includes('entry.tsx')) {
+    // Inject the entry only if the template doesn't already reference it as a module script
+    // (matching the literal filename anywhere in the file would be too eager).
+    if (!/src=["']\.\/entry\.tsx["']/.test(html)) {
         html = html.includes('</body>')
             ? html.replace('</body>', `    ${ENTRY_SCRIPT}\n  </body>`)
             : `${html}\n${ENTRY_SCRIPT}\n`;

@@ -2,7 +2,14 @@
  * Router hooks for user route components: read the params / pathname / search params, navigate
  * imperatively, and grab a router handle.
  */
-import { startTransition, useContext, useEffect, useReducer, useSyncExternalStore } from 'react';
+import {
+    startTransition,
+    useContext,
+    useEffect,
+    useMemo,
+    useReducer,
+    useSyncExternalStore,
+} from 'react';
 
 import type { RouteParams } from './match.js';
 import {
@@ -94,7 +101,8 @@ export function usePathname(): string {
 /** The current query string as a `URLSearchParams`, re-read on every navigation. */
 export function useSearchParams(): URLSearchParams {
     useLocationSubscription();
-    return new URLSearchParams(window.location.search);
+    const search = window.location.search;
+    return useMemo(() => new URLSearchParams(search), [search]);
 }
 
 /** True while a navigation is in flight (started but not yet committed) — e.g. for a loading bar. */
