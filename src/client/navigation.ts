@@ -13,9 +13,19 @@ function notify(): void {
     for (const listener of listeners) listener();
 }
 
-/** Navigates to `href` without a full page reload (history pushState + subscriber re-render). */
-export function navigate(href: string): void {
-    window.history.pushState({}, '', href);
+/** Options for {@link navigate}. */
+export interface NavigateOptions {
+    /** Replace the current history entry instead of pushing a new one. Default `false`. */
+    readonly replace?: boolean;
+}
+
+/** Navigates to `href` without a full page reload (history push/replace + subscriber re-render). */
+export function navigate(href: string, options?: NavigateOptions): void {
+    if (options?.replace) {
+        window.history.replaceState({}, '', href);
+    } else {
+        window.history.pushState({}, '', href);
+    }
     notify();
 }
 
