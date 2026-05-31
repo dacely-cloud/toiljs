@@ -203,7 +203,7 @@ function scaffold(
         'README.md': ['# ' + path.basename(name), '', 'A [toiljs](https://toil.org) app.', '', '## Develop', '', '    npm install', '    npm run dev', '', '## Build', '', '    npm run build', ''].join('\n'),
     };
 
-    // The `app` template's client UI is copied from templates/app at runtime; `minimal` ships an
+    // The `app` template's client UI is copied from examples/basic/client at runtime; `minimal` ships an
     // inline client here.
     if (template === 'minimal') Object.assign(files, minimalClient(name, features));
 
@@ -217,7 +217,7 @@ function scaffold(
     return files;
 }
 
-/** The inline client UI for the `minimal` template (the `app` template copies templates/app). */
+/** The inline client UI for the `minimal` template (the `app` template copies examples/basic/client). */
 function minimalClient(name: string, features: StyleFeatures): Record<string, string> {
     const files: Record<string, string> = {
         'client/public/index.html':
