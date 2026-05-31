@@ -95,8 +95,8 @@ function printHelp(): void {
             cmd('--root <dir>', 'project root (default: current directory)'),
             cmd('--port <n>', 'dev server port'),
             cmd('-t, --template', 'create: app | minimal'),
-            cmd('--style <name>', 'create: css | sass | less | stylus'),
-            cmd('--tailwind', 'create: include Tailwind CSS'),
+            cmd('--style <name>', 'create/configure: css | sass | less | stylus'),
+            cmd('--tailwind', 'create/configure: enable Tailwind (--no-tailwind to remove)'),
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
             cmd('-v, --version', 'print the toiljs version'),
@@ -133,7 +133,13 @@ async function main(): Promise<void> {
 
         case 'configure':
             banner();
-            await runConfigure({ root: flags.root, cwd: process.cwd() });
+            await runConfigure({
+                root: flags.root,
+                preprocessor: flags.preprocessor,
+                tailwind: flags.tailwind,
+                install: flags.install,
+                cwd: process.cwd(),
+            });
             break;
 
         case 'dev':

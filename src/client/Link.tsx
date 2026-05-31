@@ -1,37 +1,95 @@
-import type { MouseEvent, ReactNode } from 'react';
+import type {
+    ComponentPropsWithRef,
+    FocusEvent,
+    MouseEvent,
+    PointerEvent,
+    ReactNode,
+} from 'react';
 
 import { navigate } from './navigation.js';
 import { prefetch } from './prefetch.js';
 
 /**
- * Client-side navigation link. Falls back to default browser behavior for modified clicks, and
- * prefetches the target route's chunk on hover/focus so the click navigates instantly.
+ * Props for {@link Link}: every standard `<a>` attribute (`rel`, `target`, `download`,
+ * `referrerPolicy`, `hrefLang`, `className`, `style`, `ref`, `data-*`, `aria-*`, event handlers …)
+ * plus toil's `replace` and `prefetch` controls. `href` is required.
  */
-export function Link(props: { href: string; className?: string; children?: ReactNode }): ReactNode {
-    const { href, className, children } = props;
-    const onClick = (e: MouseEvent): void => {
+export interface LinkProps extends Omit<ComponentPropsWithRef<'a'>, 'href'> {
+    /** Destination. Same-origin hrefs navigate client-side; external / `target` / `download` / `#hash` use the browser. */
+    href: string;
+    /** Replace the current history entry instead of pushing a new one. Default `false`. */
+    replace?: boolean;
+    /** Prefetch the route chunk on hover/focus. Default `true`; `false` opts this link out. */
+    prefetch?: boolean;
+}
+
+/** True for cross-origin, opaque (`mailto:` / `tel:`), or otherwise non-same-origin hrefs. */
+function isExternalHref(href: string): boolean {
+    try {
+        return new URL(href, window.location.href).origin !== window.location.origin;
+    } catch {
+        return true;
+    }
+}
+
+/**
+ * Client-side navigation link. Forwards all anchor attributes to the underlying `<a>`, and
+ * prefetches the target route's chunk on hover/focus. Intercepts only plain same-origin clicks —
+ * modified clicks, `target=_blank`, `download`, in-page `#hash`, and external URLs fall through to
+ * native browser behavior.
+ */
+export function Link(props: LinkProps): ReactNode {
+    const {
+        href,
+        replace = false,
+        prefetch: prefetchProp = true,
+        onClick,
+        onPointerEnter,
+        onFocus,
+        children,
+        ...rest
+    } = props;
+
+    const handleClick = (event: MouseEvent<HTMLAnchorElement>): void => {
+        onClick?.(event);
         if (
-            e.defaultPrevented ||
-            e.button !== 0 ||
-            e.metaKey ||
-            e.ctrlKey ||
-            e.shiftKey ||
-            e.altKey
-        )
+            event.defaultPrevented ||
+            event.button !== 0 ||
+            event.metaKey ||
+            event.ctrlKey ||
+            event.shiftKey ||
+            event.altKey ||
+            (rest.target !== undefined && rest.target !== '_self') ||
+            rest.download !== undefined ||
+            href.startsWith('#') ||
+            isExternalHref(href)
+        ) {
             return;
-        e.preventDefault();
-        navigate(href);
+        }
+        event.preventDefault();
+        navigate(href, { replace });
     };
-    const onIntent = (): void => {
-        prefetch(href);
+
+    const warm = (): void => {
+        if (prefetchProp) prefetch(href);
     };
+    const handlePointerEnter = (event: PointerEvent<HTMLAnchorElement>): void => {
+        onPointerEnter?.(event);
+        warm();
+    };
+    const handleFocus = (event: FocusEvent<HTMLAnchorElement>): void => {
+        onFocus?.(event);
+        warm();
+    };
+
     return (
         <a
+            {...rest}
+            {...(prefetchProp ? {} : { 'data-no-prefetch': '' })}
             href={href}
-            className={className}
-            onClick={onClick}
-            onPointerEnter={onIntent}
-            onFocus={onIntent}>
+            onClick={handleClick}
+            onPointerEnter={handlePointerEnter}
+            onFocus={handleFocus}>
             {children}
         </a>
     );
