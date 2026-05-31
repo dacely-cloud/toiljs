@@ -10,6 +10,11 @@ const GitHubIcon = () => (
 export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div className="app">
+            <Toil.Head
+                titleTemplate="%s · ToilJS"
+                title="ToilJS"
+                meta={[{ name: 'description', content: 'The most performant React framework.' }]}
+            />
             <header className="nav">
                 <a href="/" className="nav-logo">
                     <img src="images/logo.svg" alt="ToilJS" width={28} height={28} />

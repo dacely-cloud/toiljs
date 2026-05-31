@@ -38,3 +38,5 @@ export { matchRoute } from './match.js';
 export type { RouteParams } from './match.js';
 export { connectChannel, useChannel, resolveChannelUrl } from './channel.js';
 export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channel.js';
+export { useHead, useTitle, Head, mergeHead } from './head.js';
+export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head.js';
