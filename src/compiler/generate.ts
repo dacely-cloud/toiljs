@@ -66,6 +66,31 @@ function findEntry(cfg: ResolvedToilConfig): string | undefined {
         .find((p) => fs.existsSync(p));
 }
 
+/** A `layout.{tsx,jsx}` in `dir`, or undefined. */
+function layoutIn(dir: string): string | undefined {
+    return ['layout.tsx', 'layout.jsx']
+        .map((name) => path.join(dir, name))
+        .find((p) => fs.existsSync(p));
+}
+
+/**
+ * Nested layout chain for a route file: `layout.{tsx,jsx}` at the routes root and each ancestor
+ * directory down to the file's own, shallowest → deepest. (The project root `client/layout.tsx`
+ * is handled separately as the top-level layout.)
+ */
+function findLayoutChain(cfg: ResolvedToilConfig, routeFile: string): string[] {
+    const relDir = path.dirname(path.relative(cfg.routesAbsDir, routeFile));
+    const segments = relDir === '.' ? [] : relDir.split(path.sep);
+    const chain: string[] = [];
+    let dir = cfg.routesAbsDir;
+    for (let i = 0; i <= segments.length; i++) {
+        if (i > 0) dir = path.join(dir, segments[i - 1]);
+        const layout = layoutIn(dir);
+        if (layout) chain.push(layout);
+    }
+    return chain;
+}
+
 /**
  * Generates the `.toil/` working dir (routes table, mount entry, the HTML entry built from the
  * project's `public/index.html` template, and mirrored `public/` assets) and returns the scanned
@@ -83,10 +108,13 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
         `import type { RouteDef, LayoutLoader, NotFoundLoader } from 'toiljs/client';\n\n` +
         `export const routes: RouteDef[] = [\n` +
         routes
-            .map(
-                (r) =>
-                    `  { pattern: ${JSON.stringify(r.pattern)}, load: () => import(${JSON.stringify(relFromToil(cfg, r.file))}) },`,
-            )
+            .map((r) => {
+                const load = `() => import(${JSON.stringify(relFromToil(cfg, r.file))})`;
+                const layouts = findLayoutChain(cfg, r.file)
+                    .map((f) => `() => import(${JSON.stringify(relFromToil(cfg, f))})`)
+                    .join(', ');
+                return `  { pattern: ${JSON.stringify(r.pattern)}, load: ${load}, layouts: [${layouts}] },`;
+            })
             .join('\n') +
         `\n];\n\n` +
         `export const layout: LayoutLoader = ${layoutFile ? `() => import(${JSON.stringify(relFromToil(cfg, layoutFile))})` : 'null'};\n` +
