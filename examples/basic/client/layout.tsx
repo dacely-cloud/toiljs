@@ -16,7 +16,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
                     <span>ToilJS</span>
                 </Toil.Link>
                 <nav className="nav-links">
-                    <Toil.Link href="https://toil.org/docs" rel="noopener noreferrer">
+                    <Toil.Link href="https://toil.org/docs">
                         Docs
                     </Toil.Link>
                     <a
