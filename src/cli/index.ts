@@ -18,6 +18,7 @@ interface Flags {
     template?: Template;
     preprocessor?: Preprocessor;
     tailwind?: boolean;
+    ai?: boolean;
     install?: boolean;
     git?: boolean;
     pm?: string;
@@ -54,6 +55,12 @@ function parseArgs(argv: string[]): Flags {
                 break;
             case '--no-tailwind':
                 flags.tailwind = false;
+                break;
+            case '--ai':
+                flags.ai = true;
+                break;
+            case '--no-ai':
+                flags.ai = false;
                 break;
             case '--install':
                 flags.install = true;
@@ -97,6 +104,7 @@ function printHelp(): void {
             cmd('-t, --template', 'create: app | minimal'),
             cmd('--style <name>', 'create/configure: css | sass | less | stylus'),
             cmd('--tailwind', 'create/configure: enable Tailwind (--no-tailwind to remove)'),
+            cmd('--no-ai', 'create: skip AI assistant files (CLAUDE.md, etc.)'),
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
             cmd('-v, --version', 'print the toiljs version'),
@@ -123,6 +131,7 @@ async function main(): Promise<void> {
                 template: flags.template,
                 preprocessor: flags.preprocessor,
                 tailwind: flags.tailwind,
+                ai: flags.ai,
                 install: flags.install,
                 git: flags.git,
                 pm: flags.pm,
