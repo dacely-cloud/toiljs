@@ -1,9 +1,10 @@
-import { Suspense, type ReactNode } from 'react';
+import { Suspense, useEffect, type ReactNode } from 'react';
 
 import { useLocation } from './hooks.js';
 import { pageComponent, resolveLayout, resolveNotFound } from './lazy.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
+import { applyScroll } from './scroll.js';
 import type { LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
 
 /** Matches the current location to a route and renders it, optionally wrapped in the root layout. */
@@ -14,6 +15,11 @@ export function Router(props: {
 }): ReactNode {
     const { routes, layout = null, notFound = null } = props;
     const pathname = useLocation();
+
+    // After each navigation commits, apply the planned scroll (top / restore / #hash).
+    useEffect(() => {
+        applyScroll();
+    });
 
     let matched: RouteDef | undefined;
     let params: RouteParams = {};
