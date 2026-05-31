@@ -1,4 +1,5 @@
 import { type ReactNode } from 'react';
+import Footer from './components/Footer';
 
 const GitHubIcon = () => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -10,13 +11,19 @@ export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div className="app">
             <header className="nav">
-                <a href="/" className="nav-logo">
+                <Toil.Link href="/" className="nav-logo">
                     <img src="images/logo.svg" alt="ToilJS" width={28} height={28} />
                     <span>ToilJS</span>
-                </a>
+                </Toil.Link>
                 <nav className="nav-links">
-                    <a href="https://toil.org/docs" target="_blank" rel="noopener noreferrer">Docs</a>
-                    <a href="https://github.com/btc-vision/toiljs" target="_blank" rel="noopener noreferrer" className="nav-github">
+                    <Toil.Link href="https://toil.org/docs" rel="noopener noreferrer">
+                        Docs
+                    </Toil.Link>
+                    <a
+                        href="https://github.com/btc-vision/toiljs"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="nav-github">
                         <GitHubIcon />
                         GitHub
                     </a>
@@ -25,9 +32,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
 
             <main className="content">{children}</main>
 
-            <footer className="footer">
-                Built with ToilJS · Powered by Vite &amp; React
-            </footer>
+            <Footer />
         </div>
     );
 }
