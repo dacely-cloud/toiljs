@@ -2,15 +2,17 @@
  * Router hooks for user route components: read the params / pathname / search params, navigate
  * imperatively, and grab a router handle.
  */
-import { startTransition, useContext, useEffect, useReducer } from 'react';
+import { startTransition, useContext, useEffect, useReducer, useSyncExternalStore } from 'react';
 
 import type { RouteParams } from './match.js';
 import {
     back,
     forward,
+    isNavigationPending,
     navigate,
     refresh,
     subscribeLocation,
+    subscribePending,
     type NavigateOptions,
 } from './navigation.js';
 import { ParamsContext } from './params-context.js';
@@ -93,4 +95,13 @@ export function usePathname(): string {
 export function useSearchParams(): URLSearchParams {
     useLocationSubscription();
     return new URLSearchParams(window.location.search);
+}
+
+/** True while a navigation is in flight (started but not yet committed) — e.g. for a loading bar. */
+export function useNavigationPending(): boolean {
+    return useSyncExternalStore(
+        subscribePending,
+        isNavigationPending,
+        () => false,
+    );
 }

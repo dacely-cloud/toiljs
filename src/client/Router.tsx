@@ -4,6 +4,7 @@ import { useLocation } from './hooks.js';
 import { pageComponent, resolveLayout, resolveNotFound } from './lazy.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
+import { settleNavigation } from './navigation.js';
 import { applyScroll } from './scroll.js';
 import type { LayoutLoader, NotFoundLoader, RouteDef } from './types.js';
 
@@ -16,9 +17,11 @@ export function Router(props: {
     const { routes, layout = null, notFound = null } = props;
     const pathname = useLocation();
 
-    // After each navigation commits, apply the planned scroll (top / restore / #hash).
+    // After each navigation commits, apply the planned scroll (top / restore / #hash) and mark the
+    // navigation settled (clears the pending state).
     useEffect(() => {
         applyScroll();
+        settleNavigation();
     });
 
     let matched: RouteDef | undefined;
