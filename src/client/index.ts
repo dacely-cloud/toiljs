@@ -52,6 +52,8 @@ export { connectChannel, useChannel, resolveChannelUrl } from './channel/channel
 export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channel/channel.js';
 export { useHead, useTitle, Head, mergeHead } from './head/head.js';
 export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head/head.js';
+export { resolveMetadata } from './head/metadata.js';
+export type { Metadata, GenerateMetadata, GenerateMetadataArgs, OpenGraph } from './head/metadata.js';
 export { Image } from './components/Image.js';
 export type { ImageProps } from './components/Image.js';
 export { Script } from './components/Script.js';
