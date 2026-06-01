@@ -303,6 +303,7 @@ a:hover { color: var(--accent3); }
 }
 
 /* ── Footer ── */
+.footer {
     padding: 1.25rem;
     font-size: 0.82rem;
     color: var(--muted);
