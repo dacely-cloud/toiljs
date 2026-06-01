@@ -143,8 +143,13 @@ export function forward(): void {
     window.history.forward();
 }
 
-/** Re-renders the current route without changing the URL (there is no server data to refetch). */
+/**
+ * Re-renders the current route, bumping the navigation epoch so a revalidation of the *same* URL
+ * re-keys its Suspense boundary (its `loading.tsx` shows while the loader re-runs) and
+ * `useNavigationPending` reports the in-flight refetch, instead of silently freezing the old page.
+ */
 export function refresh(): void {
+    beginNavigation();
     notify();
 }
 
