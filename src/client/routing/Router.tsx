@@ -53,11 +53,13 @@ function renderMatched(
         ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
         : null;
 
-    // A route with a `loading.tsx` keys its boundary per URL so the fallback shows even inside the
-    // navigation transition; one without keeps a stable boundary so the transition holds the old page.
+    // A route with a `loading.tsx` keys its boundary per URL *and* navigation epoch, so its fallback
+    // shows even inside the transition, on first nav and on an in-place revalidate of the same URL
+    // (the epoch bumps). A route without one keeps a stable boundary so the transition holds the old
+    // page. The loader cache key stays the bare URL, so the boundary remount still reuses cached data.
     let content: ReactNode = (
         <Suspense
-            key={matched.loading ? dataKey : undefined}
+            key={matched.loading ? `${dataKey}:${String(epoch)}` : undefined}
             fallback={fallback}>
             <RoutePage
                 route={matched}
