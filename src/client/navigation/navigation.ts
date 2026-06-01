@@ -30,7 +30,7 @@ function notify(): void {
 
 // Soft vs hard navigation, for intercepting routes. The initial page load (and any full refresh) is
 // "hard"; client navigations (`navigate` / back / forward) are "soft". `previousPath` is the path we
-// were on before the latest soft navigation — the route the main view keeps showing while an
+// were on before the latest soft navigation, the route the main view keeps showing while an
 // intercepting route fills a slot (the modal overlay).
 let softNav = false;
 let currentPath = typeof window === 'undefined' ? '/' : window.location.pathname;
@@ -79,7 +79,7 @@ export function isNavigationPending(): boolean {
     return startedTick !== committedTick;
 }
 
-/** Monotonic id incremented on each navigation — used to key/revalidate per-navigation route data. */
+/** Monotonic id incremented on each navigation, used to key/revalidate per-navigation route data. */
 export function navigationEpoch(): number {
     return startedTick;
 }

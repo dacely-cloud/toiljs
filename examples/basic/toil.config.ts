@@ -1,4 +1,18 @@
 import { defineConfig } from 'toiljs/compiler';
 
 // Client and server options go here. Output defaults to build/client and build/server.
-export default defineConfig({});
+export default defineConfig({
+    client: {
+        // Build-time SEO: bakes these into the HTML <head> (for JS-less crawlers) and generates
+        // robots.txt (with AI-crawler directives), sitemap.xml, and llms.txt.
+        seo: {
+            url: 'https://toil.example',
+            title: 'ToilJS',
+            description: 'The most performant React framework.',
+            openGraph: { type: 'website', siteName: 'ToilJS' },
+            jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'ToilJS' },
+            robots: { ai: 'allow' },
+            llms: { instructions: 'ToilJS is a full-stack TypeScript framework. Docs live at /get-started.' },
+        },
+    },
+});

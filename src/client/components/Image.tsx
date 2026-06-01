@@ -2,7 +2,7 @@ import { useState, type CSSProperties, type ComponentPropsWithRef, type ReactNod
 
 /**
  * Props for {@link Image}: every standard `<img>` attribute, plus toil's layout/loading controls.
- * `src` and `alt` are required (`alt` is enforced for accessibility — pass `alt=""` for decorative
+ * `src` and `alt` are required (`alt` is enforced for accessibility, pass `alt=""` for decorative
  * images). `width`/`height` (or `fill`) reserve space to prevent layout shift.
  */
 export interface ImageProps
@@ -35,7 +35,7 @@ export interface ImageProps
 /**
  * A drop-in `<img>` replacement that prevents layout shift and lazy-loads by default. It reserves
  * space from `width`/`height` (or fills its container with `fill`), decodes async, lazy-loads unless
- * `priority`, and can fade in from a `blur` placeholder. This is a client-only component — there is
+ * `priority`, and can fade in from a `blur` placeholder. This is a client-only component, there is
  * no server-side resizing; pass an already-optimized `src` (Vite hashes imported assets for you).
  */
 export function Image(props: ImageProps): ReactNode {

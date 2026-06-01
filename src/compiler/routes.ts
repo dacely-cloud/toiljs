@@ -7,7 +7,7 @@ export interface ScannedRoute {
     readonly pattern: string;
     /** Named parallel slot this route belongs to (from an `@slot` dir), or `undefined` for the main tree. */
     readonly slot?: string;
-    /** True for an intercepting route (`(.)`/`(..)`/`(...)`) — matched only on soft navigation. */
+    /** True for an intercepting route (`(.)`/`(..)`/`(...)`), matched only on soft navigation. */
     readonly intercept?: boolean;
 }
 
@@ -44,7 +44,7 @@ export function filePathToRoute(relPath: string): string {
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
         if (/^\(.+\)$/.test(segment)) continue;
-        if (/^@/.test(segment)) continue; // parallel-slot marker — contributes no URL segment
+        if (/^@/.test(segment)) continue; // parallel-slot marker, contributes no URL segment
         if (segment === 'index' && i === segments.length - 1) continue;
         out.push(toUrlSegment(segment));
     }

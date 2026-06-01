@@ -2,7 +2,7 @@
 /**
  * toiljs CLI. Routes `create` / `dev` / `build` and wraps them in the toiljs brand banner.
  * The compiler stays presentation-free (imported via the package's own `toiljs/compiler`
- * export); the epic bits — banner, the Clack scaffolding wizard — live here.
+ * export); the epic bits, banner, the Clack scaffolding wizard, live here.
  */
 import { build, dev, start } from 'toiljs/compiler';
 

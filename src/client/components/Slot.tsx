@@ -4,7 +4,7 @@ import { SlotContext } from '../routing/slot-context.js';
 
 /** Props for {@link Slot}. */
 export interface SlotProps {
-    /** The parallel-slot name — the `@name` directory under `routes/` (without the `@`). */
+    /** The parallel-slot name, the `@name` directory under `routes/` (without the `@`). */
     name: string;
     /** Rendered when the slot has no match for the current URL. Default `null`. */
     fallback?: ReactNode;

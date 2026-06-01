@@ -97,7 +97,7 @@ function renderMatched(
 
 /**
  * Finds the first route (already specificity-sorted) matching `pathname`. Intercepting routes are
- * skipped unless `allowIntercept` — they only apply on soft navigation.
+ * skipped unless `allowIntercept`, they only apply on soft navigation.
  */
 function match(
     routes: RouteDef[],
@@ -136,7 +136,7 @@ export function Router(props: {
     // Parallel slots: each `@slot` tree matches the current URL independently (intercepting routes
     // only on soft navigation). Each match is exposed by name via SlotContext and rendered wherever a
     // layout/page places a `Slot`. If an intercepting route matches, the main view holds the previous
-    // page (the backdrop) while the slot shows the intercepted route — i.e. a modal overlay.
+    // page (the backdrop) while the slot shows the intercepted route, i.e. a modal overlay.
     const slotElements: Record<string, ReactNode> = {};
     let intercepting = false;
     for (const [name, defs] of Object.entries(slots)) {
@@ -165,7 +165,7 @@ export function Router(props: {
             </Suspense>
         );
     } else {
-        content = <div style={{ padding: 24, fontFamily: 'system-ui' }}>404 — Not found</div>;
+        content = <div style={{ padding: 24, fontFamily: 'system-ui' }}>404, Not found</div>;
     }
 
     if (layout) {
@@ -178,7 +178,7 @@ export function Router(props: {
     }
 
     // The root error boundary (global-error.tsx) sits outside the root layout, so it catches
-    // errors thrown by the layout itself — the last line of defense before a blank screen.
+    // errors thrown by the layout itself, the last line of defense before a blank screen.
     if (globalError) {
         content = <ErrorBoundary fallback={errorComponent(globalError)}>{content}</ErrorBoundary>;
     }

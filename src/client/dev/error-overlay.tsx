@@ -16,7 +16,7 @@ import {
 interface DevError {
     readonly error: Error;
     readonly componentStack?: string;
-    /** Where it came from — a render boundary, a window `error`, or an unhandled rejection. */
+    /** Where it came from, a render boundary, a window `error`, or an unhandled rejection. */
     readonly source: 'render' | 'window' | 'unhandledrejection';
 }
 
@@ -167,7 +167,7 @@ export function DevErrorOverlay(): ReactNode {
             role="alert">
             <div style={panelStyle}>
                 <p style={titleStyle}>
-                    {SOURCE_LABEL[devError.source]} — {devError.error.name}: {devError.error.message}
+                    {SOURCE_LABEL[devError.source]}, {devError.error.name}: {devError.error.message}
                 </p>
                 {devError.error.stack !== undefined && <pre style={preStyle}>{devError.error.stack}</pre>}
                 {devError.componentStack !== undefined && (

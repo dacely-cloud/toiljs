@@ -10,6 +10,7 @@ import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
 import { type ResolvedToilConfig } from './config.js';
 import { imageReportPlugin } from './image-report.js';
 import { toilPlugin } from './plugin.js';
+import { prerenderPlugin } from './prerender.js';
 
 /** Image extensions routed to `images/` in the build output. */
 const IMAGE_EXT = /^(png|jpe?g|svg|gif|tiff|bmp|ico|webp|avif)$/i;
@@ -37,8 +38,7 @@ async function tailwindPlugin(root: string): Promise<PluginOption | undefined> {
     } catch {
         return undefined;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed any
-    const mod: { default?: () => PluginOption } = await import(pathToFileURL(resolved).href);
+    const mod = (await import(pathToFileURL(resolved).href)) as { default?: () => PluginOption };
     return mod.default?.();
 }
 
@@ -60,9 +60,9 @@ function manualChunks(id: string): string | undefined {
  * `index.html` (built from the project's `public/index.html` template) emits at the output root
  * with assets resolving correctly; static `public/` assets are mirrored to `.toil/public` and
  * picked up via Vite's default publicDir. `fs.allow` opens the project (for `client/`) and the
- * framework runtime. The opinionated default — Node polyfills
+ * framework runtime. The opinionated default, Node polyfills
  * (Buffer/global/process), React plugin, toil route plugin, typed asset folders, React chunk
- * splitting and tuned build options — is applied here; `toiljs/client` is aliased to the
+ * splitting and tuned build options, is applied here; `toiljs/client` is aliased to the
  * runtime, and the user's `client.vite` overrides deep-merge on top.
  */
 export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineConfig> {
@@ -85,6 +85,8 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
                   })
                 : undefined,
             cfg.images ? imageReportPlugin(cfg.root, cfg.toilDir) : undefined,
+            // Static per-route SEO prerender (build only): bakes each route's metadata into its HTML.
+            cfg.seo ? prerenderPlugin(cfg) : undefined,
             nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
             react(),
             toilPlugin(cfg),

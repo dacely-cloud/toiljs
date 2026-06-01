@@ -1,5 +1,5 @@
 /**
- * `toiljs configure` — toggle a project's client styling features (CSS preprocessor + Tailwind) on
+ * `toiljs configure`, toggle a project's client styling features (CSS preprocessor + Tailwind) on
  * an existing app. Detects the current setup, prompts for the desired one, then rewrites the
  * stylesheet(s) + the `client/toil.tsx` imports, edits `package.json`, and syncs node_modules with
  * the project's package manager (so removed features are fully cleaned, not just disabled).
@@ -173,7 +173,7 @@ async function applyStyleFiles(
         const newPath = path.join(clientDir, styleEntry(to.preprocessor));
         await fs.mkdir(path.dirname(newPath), { recursive: true });
         // Rename whatever main stylesheet actually exists (preserving its content), not an assumed
-        // name — so we never blow away the user's styles when the on-disk extension differs.
+        // name, so we never blow away the user's styles when the on-disk extension differs.
         const existing = await findMainStylesheet(clientDir);
         if (existing && path.resolve(existing) !== path.resolve(newPath)) {
             await fs.rename(existing, newPath);
@@ -265,7 +265,7 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
     try {
         pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as PackageJson;
     } catch {
-        cancel(`No package.json in ${pc.cyan(root)} — run this inside a toiljs project.`);
+        cancel(`No package.json in ${pc.cyan(root)}, run this inside a toiljs project.`);
         process.exit(1);
     }
 
@@ -310,7 +310,7 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
         target.preprocessor !== current.preprocessor || target.tailwind !== current.tailwind;
     const imagesChanged = targetImages !== currentImages;
     if (!styleChanged && !imagesChanged) {
-        outro('No changes — your setup is already up to date.');
+        outro('No changes, your setup is already up to date.');
         return;
     }
 
@@ -320,7 +320,7 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
     let imagesWarning = '';
     if (imagesChanged && !(await writeImagesFlag(root, targetImages))) {
         imagesWarning = pc.yellow(
-            ' Could not edit toil.config automatically — set `client.images` by hand.',
+            ' Could not edit toil.config automatically, set `client.images` by hand.',
         );
     }
     s.stop('Updated project files');
@@ -336,7 +336,7 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
                 await run(pm, ['install'], root);
                 i.stop('Dependencies synced');
             } catch {
-                i.stop(pc.yellow(`Could not run \`${pm} install\` — run it yourself to finish`));
+                i.stop(pc.yellow(`Could not run \`${pm} install\`, run it yourself to finish`));
             }
         }
     }
@@ -349,5 +349,5 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
         .filter(Boolean)
         .join('\n');
     note(summary, 'Updated');
-    outro(`Reconfigured — restart \`${accent('toiljs dev')}\` to pick up the changes.`);
+    outro(`Reconfigured, restart \`${accent('toiljs dev')}\` to pick up the changes.`);
 }

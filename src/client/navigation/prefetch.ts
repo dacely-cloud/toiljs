@@ -45,7 +45,7 @@ function warm(route: RouteDef): void {
 
 /**
  * Prefetches the route chunk for an internal `href` so a later navigation resolves instantly.
- * No-op for external, unknown, or already-prefetched targets — safe to call from anywhere,
+ * No-op for external, unknown, or already-prefetched targets, safe to call from anywhere,
  * including before an imperative {@link navigate} (e.g. `prefetch('/dashboard')` on hover/intent).
  */
 export function prefetch(href: string): void {
@@ -83,7 +83,7 @@ function shouldSkipForConnection(): boolean {
 
 /**
  * Starts idle-time prefetching of internal links. As each `<a>` pointing at a known route scrolls
- * into view (or near it — 200px margin) its chunk is warmed once; links added later by client
+ * into view (or near it, 200px margin) its chunk is warmed once; links added later by client
  * navigation are picked up via a MutationObserver. Called by {@link mount}; runs once per app.
  */
 export function startPrefetcher(routes: RouteDef[]): void {
