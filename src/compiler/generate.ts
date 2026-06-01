@@ -40,6 +40,7 @@ export const TOIL_ENV_DTS =
     `declare namespace Toil {\n` +
     `    type LoaderArgs = import('toiljs/client').LoaderArgs;\n` +
     `    type LoaderFunction<T = unknown> = import('toiljs/client').LoaderFunction<T>;\n` +
+    `    type Revalidate = import('toiljs/client').Revalidate;\n` +
     `    type RouteErrorProps = import('toiljs/client').RouteErrorProps;\n` +
     `}\n` +
     `declare const BinaryWriter: typeof import('toiljs/io').BinaryWriter;\n` +

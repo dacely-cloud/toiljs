@@ -9,7 +9,7 @@ import {
     resolveLayout,
     resolveNotFound,
 } from './lazy.js';
-import { LoaderDataContext, readRouteData } from './loader.js';
+import { loaderKey, LoaderDataContext, readRouteData } from './loader.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
 import { navigationEpoch, settleNavigation } from '../navigation/navigation.js';
@@ -17,8 +17,13 @@ import { applyScroll } from '../navigation/scroll.js';
 import type { ErrorComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
 /** Loads a matched route's module + loader data (suspending), then renders it with the data in context. */
-function RoutePage(props: { route: RouteDef; params: RouteParams; dataKey: string }): ReactNode {
-    const { Component, data } = readRouteData(props.route, props.params, props.dataKey);
+function RoutePage(props: {
+    route: RouteDef;
+    params: RouteParams;
+    dataKey: string;
+    epoch: number;
+}): ReactNode {
+    const { Component, data } = readRouteData(props.route, props.params, props.dataKey, props.epoch);
     return <LoaderDataContext.Provider value={data}>{createElement(Component)}</LoaderDataContext.Provider>;
 }
 
@@ -56,13 +61,14 @@ export function Router(props: {
             ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
             : null;
         const search = typeof window === 'undefined' ? '' : window.location.search;
-        const dataKey = `${String(navigationEpoch())}:${pathname}${search}`;
+        const dataKey = loaderKey(pathname, search);
         content = (
             <Suspense fallback={fallback}>
                 <RoutePage
                     route={matched}
                     params={params}
                     dataKey={dataKey}
+                    epoch={navigationEpoch()}
                 />
             </Suspense>
         );
