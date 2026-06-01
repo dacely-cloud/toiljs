@@ -58,3 +58,5 @@ export { Script } from './components/Script.js';
 export type { ScriptProps, ScriptStrategy } from './components/Script.js';
 export { Form } from './components/Form.js';
 export type { FormProps } from './components/Form.js';
+export { Slot } from './components/Slot.js';
+export type { SlotProps } from './components/Slot.js';

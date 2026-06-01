@@ -5,6 +5,8 @@ import path from 'node:path';
 export interface ScannedRoute {
     readonly file: string;
     readonly pattern: string;
+    /** Named parallel slot this route belongs to (from an `@slot` dir), or `undefined` for the main tree. */
+    readonly slot?: string;
 }
 
 const ROUTE_EXT = /\.(tsx|jsx)$/;
@@ -20,6 +22,7 @@ const SPECIAL_FILE = /^(layout|template|loading|error|global-error|404|not-found
  *   docs/[...slug].tsx   -> /docs/*slug    (catch-all)
  *   docs/[[...slug]].tsx -> /docs/**slug   (optional catch-all)
  *   (marketing)/about.tsx -> /about        (route group: parens add no URL segment)
+ *   @modal/photo/[id].tsx -> /photo/:id     (parallel slot: `@slot` adds no URL segment)
  */
 export function filePathToRoute(relPath: string): string {
     const withoutExt = relPath.replace(/\\/g, '/').replace(ROUTE_EXT, '');
@@ -28,6 +31,7 @@ export function filePathToRoute(relPath: string): string {
     for (let i = 0; i < segments.length; i++) {
         const segment = segments[i];
         if (/^\(.+\)$/.test(segment)) continue;
+        if (/^@/.test(segment)) continue; // parallel-slot marker — contributes no URL segment
         if (segment === 'index' && i === segments.length - 1) continue;
         out.push(
             segment
@@ -53,6 +57,15 @@ function specificity(pattern: string): number {
     return score;
 }
 
+/** The parallel-slot name for a route path (the first `@slot` segment), or `undefined`. */
+function slotOf(relPath: string): string | undefined {
+    for (const segment of relPath.replace(/\\/g, '/').split('/')) {
+        const match = /^@(.+)$/.exec(segment);
+        if (match) return match[1];
+    }
+    return undefined;
+}
+
 /** Recursively scans `routesDir` for `.tsx`/`.jsx` files, returning routes sorted by specificity. */
 export function scanRoutes(routesDir: string): ScannedRoute[] {
     if (!fs.existsSync(routesDir)) return [];
@@ -63,10 +76,8 @@ export function scanRoutes(routesDir: string): ScannedRoute[] {
             if (entry.isDirectory()) {
                 walk(full);
             } else if (ROUTE_EXT.test(entry.name) && !SPECIAL_FILE.test(entry.name)) {
-                found.push({
-                    file: full,
-                    pattern: filePathToRoute(path.relative(routesDir, full)),
-                });
+                const rel = path.relative(routesDir, full);
+                found.push({ file: full, pattern: filePathToRoute(rel), slot: slotOf(rel) });
             }
         }
     };
