@@ -298,6 +298,9 @@ a:hover { color: var(--accent3); }
     font-size: 0.82rem;
     color: var(--muted);
     border-top: 1px solid var(--border);
+    background: var(--bg);
+    position: relative;
+    z-index: 1;
 }
 
 /* ── Misc ── */
