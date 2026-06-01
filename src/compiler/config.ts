@@ -41,7 +41,7 @@ export interface ClientConfig {
     readonly seo?: SeoConfig;
     /**
      * Raw Vite escape hatch, deep-merged over the framework's opinionated config.
-     * This is NOT the client config itself — toil owns the Vite setup; use this only
+     * This is NOT the client config itself, toil owns the Vite setup; use this only
      * to override specific Vite options.
      */
     readonly vite?: InlineConfig;

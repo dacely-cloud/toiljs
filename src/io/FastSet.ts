@@ -4,7 +4,7 @@ import { type FastRecord, type IndexKey, type PropertyExtendedKey } from './Fast
  * The Set counterpart to {@link FastMap}: an insertion-ordered set backed by an array (for
  * iteration/ordering) plus a record index (for O(1) membership), with bigint-key support.
  *
- * Authored to match FastMap's design — the upstream package ships no `FastSet`.
+ * Authored to match FastMap's design, the upstream package ships no `FastSet`.
  */
 export class FastSet<T extends PropertyExtendedKey> implements Disposable {
     protected _values: T[] = [];

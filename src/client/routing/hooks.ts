@@ -88,7 +88,7 @@ export function useRouter(): RouterInstance {
  *
  * The update runs in a `startTransition` so navigation is smooth: React keeps the current page on
  * screen while the next route's chunk/data load, instead of flashing a blank fallback. Routes that
- * define a `loading.tsx` opt back into an immediate loading state — the Router keys their Suspense
+ * define a `loading.tsx` opt back into an immediate loading state, the Router keys their Suspense
  * boundary per navigation, so the fallback shows even within the transition (no frozen page). Warm
  * routes (prefetched, no loader) render synchronously and commit instantly.
  */
@@ -123,7 +123,7 @@ export function useSearchParams(): URLSearchParams {
     return useMemo(() => new URLSearchParams(search), [search]);
 }
 
-/** True while a navigation is in flight (started but not yet committed) — e.g. for a loading bar. */
+/** True while a navigation is in flight (started but not yet committed), e.g. for a loading bar. */
 export function useNavigationPending(): boolean {
     return useSyncExternalStore(
         subscribePending,

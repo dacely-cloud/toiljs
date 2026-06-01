@@ -1,5 +1,5 @@
 /**
- * Pure input validation for `toiljs create` — kept dependency-light (only node:path) so it can be
+ * Pure input validation for `toiljs create`, kept dependency-light (only node:path) so it can be
  * unit-tested without pulling in the rest of the CLI.
  */
 import path from 'node:path';

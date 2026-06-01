@@ -11,7 +11,7 @@ import { generate } from './generate.js';
 export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
     return {
         name: 'toil',
-        // Catch empty import specifiers in source and report the file — rolldown otherwise fails
+        // Catch empty import specifiers in source and report the file, rolldown otherwise fails
         // resolution with a cryptic "The specifiers must be a non-empty string. Received ''".
         transform(code, id) {
             const file = id.split('?')[0];
@@ -25,7 +25,7 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                 /\bimport\s*\(\s*(['"])\1\s*\)/.test(code);
             if (empty) {
                 throw new Error(
-                    `toil: empty import specifier (e.g. \`import '';\`) in ${file} — remove or complete the import.`,
+                    `toil: empty import specifier (e.g. \`import '';\`) in ${file}, remove or complete the import.`,
                 );
             }
             return null;

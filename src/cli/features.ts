@@ -1,5 +1,5 @@
 /**
- * Pure description of toiljs's optional client styling features — a CSS preprocessor and Tailwind —
+ * Pure description of toiljs's optional client styling features, a CSS preprocessor and Tailwind , 
  * shared by `create` (scaffold) and `configure` (toggle on existing projects). Dependency-light
  * (no node IO) so it can be unit-tested; the file writes and package-manager calls live in the
  * commands. Preprocessor and Tailwind are independent: Tailwind lives in its own `.css` entry so
@@ -128,7 +128,7 @@ export function defaultConfigSource(images: boolean): string {
 }
 
 /**
- * Sets the `client.images` flag in a `toil.config` source, returning the updated source — or `null`
+ * Sets the `client.images` flag in a `toil.config` source, returning the updated source, or `null`
  * if the file's shape isn't recognized (the caller should then fall back to a manual note). Handles
  * an existing `images:` value, an existing `client: {` block, or a bare `defineConfig({ … })`.
  */

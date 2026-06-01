@@ -7,7 +7,7 @@ import type { ScannedRoute } from './routes.js';
  */
 
 /**
- * OpenGraph defaults baked into the HTML — read by Facebook, Discord, Slack, LinkedIn, GitHub, and
+ * OpenGraph defaults baked into the HTML, read by Facebook, Discord, Slack, LinkedIn, GitHub, and
  * most link-preview crawlers. `image` should be an absolute URL (≥1200×630 for a large card).
  */
 export interface SeoOpenGraph {
@@ -18,7 +18,7 @@ export interface SeoOpenGraph {
     readonly siteName?: string;
     /** `og:locale`, e.g. `'en_US'`. */
     readonly locale?: string;
-    /** `og:image` — the preview image (absolute URL). */
+    /** `og:image`, the preview image (absolute URL). */
     readonly image?: string;
     /** `og:image:alt`. */
     readonly imageAlt?: string;
@@ -77,7 +77,7 @@ export interface LlmsConfig {
 
 /** Build-time SEO configuration (under `client.seo`). */
 export interface SeoConfig {
-    /** Absolute site base URL, e.g. `https://toil.dev` — required for `sitemap.xml` and canonical/OG URLs. */
+    /** Absolute site base URL, e.g. `https://toil.dev`, required for `sitemap.xml` and canonical/OG URLs. */
     readonly url?: string;
     /** Default document title baked into the HTML. */
     readonly title?: string;
@@ -85,7 +85,7 @@ export interface SeoConfig {
     readonly description?: string;
     /** Default robots directive, e.g. `'index, follow'`. */
     readonly robotsMeta?: string;
-    /** `<meta name="theme-color">` — also the accent color of Discord/Slack link embeds. */
+    /** `<meta name="theme-color">`, also the accent color of Discord/Slack link embeds. */
     readonly themeColor?: string;
     readonly openGraph?: SeoOpenGraph;
     readonly twitter?: SeoTwitter;
@@ -158,7 +158,7 @@ export function joinUrl(base: string, path: string): string {
     return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`.replace(/\/$/, '') || base;
 }
 
-/** Static (parameter-free) route patterns — the ones that can be listed in a sitemap. */
+/** Static (parameter-free) route patterns, the ones that can be listed in a sitemap. */
 function staticPaths(routes: readonly ScannedRoute[]): string[] {
     return routes
         .filter((r) => r.slot === undefined && !r.intercept && !/[:*]/.test(r.pattern))
@@ -265,7 +265,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 /**
  * Overlays a route's extracted `metadata` (title/description/openGraph/…) onto the site-wide
  * {@link SeoConfig}, and points the canonical/`og:url` at the route's own URL. The result is what
- * the prerenderer bakes into that route's HTML — per-file metadata winning over the site defaults.
+ * the prerenderer bakes into that route's HTML, per-file metadata winning over the site defaults.
  */
 export function routeSeo(
     seo: SeoConfig,

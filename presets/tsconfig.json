@@ -1,4 +1,4 @@
-// toiljs shared client tsconfig — opinionated, strict.
+// toiljs shared client tsconfig, opinionated, strict.
 // Extend it from your project: { "extends": "toiljs/tsconfig", "include": ["client", ".toil"] }
 {
     "compilerOptions": {

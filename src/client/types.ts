@@ -12,7 +12,7 @@ import type { ComponentType, ReactNode } from 'react';
 export interface Register {}
 
 /**
- * Union of the project's route paths — static routes as literals, dynamic/catch-all as
+ * Union of the project's route paths, static routes as literals, dynamic/catch-all as
  * `` `…/${string}` `` templates. Falls back to `string` before the types are generated.
  */
 export type RoutePath = Register extends { routePath: infer P }
@@ -56,13 +56,13 @@ export interface RouteDef {
     readonly pattern: string;
     readonly load: () => Promise<{ default: ComponentType }>;
     readonly layouts?: readonly LayoutComponentLoader[];
-    /** `template.tsx` chain (root → nested) — like layouts, but re-mounted on each navigation. */
+    /** `template.tsx` chain (root → nested), like layouts, but re-mounted on each navigation. */
     readonly templates?: readonly LayoutComponentLoader[];
-    /** Nearest `loading.tsx` — shown as the Suspense fallback while this route loads. */
+    /** Nearest `loading.tsx`, shown as the Suspense fallback while this route loads. */
     readonly loading?: () => Promise<{ default: ComponentType }>;
-    /** Nearest `error.tsx` — rendered by an error boundary around this route. */
+    /** Nearest `error.tsx`, rendered by an error boundary around this route. */
     readonly errorComponent?: () => Promise<{ default: ComponentType<RouteErrorProps> }>;
-    /** Intercepting route (`(.)`/`(..)`/`(...)`) — matched in its slot only on soft navigation. */
+    /** Intercepting route (`(.)`/`(..)`/`(...)`), matched in its slot only on soft navigation. */
     readonly intercept?: boolean;
 }
 

@@ -1,5 +1,5 @@
 /**
- * toiljs backend — the self-host / dev server, built on @btc-vision/hyper-express (uWebSockets.js)
+ * toiljs backend, the self-host / dev server, built on @btc-vision/hyper-express (uWebSockets.js)
  * for very high throughput. It serves the built client (static assets + SPA fallback) and exposes
  * a WebSocket channel for realtime / live updates.
  *

@@ -16,7 +16,7 @@ export interface FormProps {
     resetOnSuccess?: boolean;
     className?: string;
     /**
-     * Form contents. Pass a render function to receive live submit state — e.g. to disable the
+     * Form contents. Pass a render function to receive live submit state, e.g. to disable the
      * button while pending: `{({ pending }) => <button disabled={pending}>Save</button>}`.
      */
     children?: ReactNode | ((state: ActionState<void>) => ReactNode);
@@ -24,7 +24,7 @@ export interface FormProps {
 
 /**
  * A `<form>` that runs an {@link useAction} on submit (no page reload) and revalidates loader data
- * on success — the write half of the loader/action data loop. Tracks pending/error state, which a
+ * on success, the write half of the loader/action data loop. Tracks pending/error state, which a
  * render-function child can read.
  */
 export function Form({

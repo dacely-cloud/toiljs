@@ -60,9 +60,9 @@ function manualChunks(id: string): string | undefined {
  * `index.html` (built from the project's `public/index.html` template) emits at the output root
  * with assets resolving correctly; static `public/` assets are mirrored to `.toil/public` and
  * picked up via Vite's default publicDir. `fs.allow` opens the project (for `client/`) and the
- * framework runtime. The opinionated default — Node polyfills
+ * framework runtime. The opinionated default, Node polyfills
  * (Buffer/global/process), React plugin, toil route plugin, typed asset folders, React chunk
- * splitting and tuned build options — is applied here; `toiljs/client` is aliased to the
+ * splitting and tuned build options, is applied here; `toiljs/client` is aliased to the
  * runtime, and the user's `client.vite` overrides deep-merge on top.
  */
 export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineConfig> {
