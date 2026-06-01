@@ -3,6 +3,9 @@
  * the per-entry history keys used for scroll restoration. Consumed by `useLocation` (to re-render),
  * `Link` / `navigate` (to change location), and `Router` (which calls `applyScroll` after commit).
  */
+import { startTransition } from 'react';
+import { flushSync } from 'react-dom';
+
 import {
     enableManualScrollRestoration,
     planScroll,
@@ -12,6 +15,26 @@ import type { Href } from '../types.js';
 
 const listeners = new Set<() => void>();
 let popstateBound = false;
+
+/** `document.startViewTransition`, present only where the View Transitions API is supported. */
+interface ViewTransitionDocument {
+    startViewTransition?: (callback: () => void) => unknown;
+}
+let viewTransitions = false;
+
+/** Enables animated View Transitions for navigation. Called once by `mount` from `client.viewTransitions`. */
+export function setViewTransitions(enabled: boolean): void {
+    viewTransitions = enabled;
+}
+
+/** Whether the current navigation should animate via the View Transitions API. */
+function shouldViewTransition(): boolean {
+    if (!viewTransitions || typeof document === 'undefined' || typeof window === 'undefined') {
+        return false;
+    }
+    if (typeof (document as ViewTransitionDocument).startViewTransition !== 'function') return false;
+    return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
 
 interface ToilHistoryState {
     __toilKey?: string;
@@ -23,9 +46,24 @@ function nextKey(): string {
     return `t${String(keyCounter)}`;
 }
 
-/** Notifies every subscriber that the location may have changed. */
-function notify(): void {
+function runListeners(): void {
     for (const listener of listeners) listener();
+}
+
+/**
+ * Re-renders subscribers for a location change. Normally wrapped in `startTransition` (smooth: the
+ * current page stays while the next route loads). When View Transitions are enabled and supported,
+ * the commit runs synchronously inside `document.startViewTransition` so the browser animates the
+ * old and new DOM (a crossfade, or shared-element transitions via `view-transition-name`).
+ */
+function notify(): void {
+    if (shouldViewTransition()) {
+        (document as ViewTransitionDocument).startViewTransition?.(() => {
+            flushSync(runListeners);
+        });
+    } else {
+        startTransition(runListeners);
+    }
 }
 
 // Soft vs hard navigation, for intercepting routes. The initial page load (and any full refresh) is
