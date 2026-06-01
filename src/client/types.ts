@@ -62,6 +62,8 @@ export interface RouteDef {
     readonly loading?: () => Promise<{ default: ComponentType }>;
     /** Nearest `error.tsx` — rendered by an error boundary around this route. */
     readonly errorComponent?: () => Promise<{ default: ComponentType<RouteErrorProps> }>;
+    /** Intercepting route (`(.)`/`(..)`/`(...)`) — matched in its slot only on soft navigation. */
+    readonly intercept?: boolean;
 }
 
 /** Optional root layout loader (wraps every page). `null` when the project defines no layout. */

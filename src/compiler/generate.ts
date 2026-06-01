@@ -216,6 +216,7 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
         if (loadingFile) parts.push(`loading: ${imp(loadingFile)}`);
         const errorFile = findNearest(cfg, r.file, 'error');
         if (errorFile) parts.push(`errorComponent: ${imp(errorFile)}`);
+        if (r.intercept) parts.push(`intercept: true`);
         return `{ ${parts.join(', ')} }`;
     };
     const mainRoutes = routes.filter((r) => r.slot === undefined);
