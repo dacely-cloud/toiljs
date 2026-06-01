@@ -74,6 +74,8 @@ export interface CreateOptions {
     readonly tailwind?: boolean;
     /** AI assistant files to scaffold: `true` = all, `false` = none, omitted = ask. */
     readonly ai?: boolean;
+    /** Enable build-time image optimization. Default `true`; omitted = ask. */
+    readonly images?: boolean;
     readonly install?: boolean;
     readonly git?: boolean;
     readonly pm?: string;
@@ -104,6 +106,7 @@ function scaffold(
     template: Template,
     features: StyleFeatures,
     aiTools: readonly string[],
+    images: boolean,
 ): Record<string, string> {
     const toilVersion = version();
     const devDependencies: Record<string, string> = {
@@ -142,7 +145,12 @@ function scaffold(
         'package.json': JSON.stringify(pkg, null, 4) + '\n',
         'toil.config.ts':
             "import { defineConfig } from 'toiljs/compiler';\n\n" +
-            'export default defineConfig({});\n',
+            'export default defineConfig({\n' +
+            '    client: {\n' +
+            '        // Optimize images at build time (resize/compress imported images).\n' +
+            `        images: ${String(images)},\n` +
+            '    },\n' +
+            '});\n',
         'tsconfig.json':
             '{\n    "extends": "toiljs/tsconfig",\n    "include": ["client", "toil-env.d.ts", "toil-routes.d.ts"]\n}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
@@ -443,6 +451,14 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
         aiTools = picked.includes('none') ? [] : picked;
     }
 
+    // Build-time image optimization: on by default (just press enter to keep it).
+    let images = opts.images ?? true;
+    if (opts.images === undefined && !opts.yes) {
+        const im = await confirm({ message: 'Optimize images at build time?', initialValue: true });
+        bail(im);
+        images = im;
+    }
+
     let initGit = opts.git ?? false;
     let install = opts.install ?? false;
     const pm = opts.pm ?? 'npm';
@@ -465,7 +481,7 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
 
     const s = spinner();
     s.start('Scaffolding project');
-    await writeFiles(targetDir, scaffold(name, template, features, aiTools));
+    await writeFiles(targetDir, scaffold(name, template, features, aiTools, images));
     if (template === 'app') {
         // Copy the example client (the single starter source), set its <title>, then apply styling.
         await fs.cp(appClientDir(), path.join(targetDir, 'client'), { recursive: true });

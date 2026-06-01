@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    defaultConfigSource,
     detectPreprocessor,
     detectTailwind,
     packageDiff,
     preprocessorForExt,
     requiredPackages,
+    setConfigImages,
     setStyleImports,
     styleEntry,
     styleImportLines,
@@ -107,5 +109,34 @@ describe('detect from dependencies', () => {
         expect(detectPreprocessor({})).toBe('css');
         expect(detectTailwind({ '@tailwindcss/vite': '^4' })).toBe(true);
         expect(detectTailwind({ react: '^19' })).toBe(false);
+    });
+});
+
+describe('setConfigImages / defaultConfigSource', () => {
+    it('flips an existing images flag', () => {
+        const src = 'export default defineConfig({\n    client: {\n        images: true,\n    },\n});\n';
+        expect(setConfigImages(src, false)).toContain('images: false');
+        expect(setConfigImages(src, false)).not.toContain('images: true');
+    });
+
+    it('adds images to an existing client block', () => {
+        const out = setConfigImages('export default defineConfig({ client: { base: "/" } });', false);
+        expect(out).toContain('images: false');
+        expect(out).toContain('base: "/"');
+    });
+
+    it('adds a client block to a bare config', () => {
+        const out = setConfigImages('export default defineConfig({});', false);
+        expect(out).toContain('client: { images: false }');
+    });
+
+    it('returns null when the shape is unrecognized', () => {
+        expect(setConfigImages('const x = 1;', false)).toBeNull();
+    });
+
+    it('round-trips through defaultConfigSource', () => {
+        const src = defaultConfigSource(false);
+        expect(src).toContain('images: false');
+        expect(setConfigImages(src, true)).toContain('images: true');
     });
 });

@@ -19,6 +19,7 @@ interface Flags {
     preprocessor?: Preprocessor;
     tailwind?: boolean;
     ai?: boolean;
+    images?: boolean;
     install?: boolean;
     git?: boolean;
     pm?: string;
@@ -63,6 +64,12 @@ function parseArgs(argv: string[]): Flags {
                 break;
             case '--no-ai':
                 flags.ai = false;
+                break;
+            case '--images':
+                flags.images = true;
+                break;
+            case '--no-images':
+                flags.images = false;
                 break;
             case '--install':
                 flags.install = true;
@@ -134,6 +141,7 @@ async function main(): Promise<void> {
                 preprocessor: flags.preprocessor,
                 tailwind: flags.tailwind,
                 ai: flags.ai,
+                images: flags.images,
                 install: flags.install,
                 git: flags.git,
                 pm: flags.pm,
@@ -148,6 +156,7 @@ async function main(): Promise<void> {
                 root: flags.root,
                 preprocessor: flags.preprocessor,
                 tailwind: flags.tailwind,
+                images: flags.images,
                 install: flags.install,
                 cwd: process.cwd(),
             });
