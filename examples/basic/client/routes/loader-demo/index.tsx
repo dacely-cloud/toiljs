@@ -12,8 +12,8 @@ export const loader = async ({ searchParams }: Toil.LoaderArgs) => {
 export const revalidate: Toil.Revalidate = 10;
 
 export default function LoaderDemo() {
-    // `typeof loader` infers the data type from the loader above — no need to restate the shape.
-    const data = Toil.useLoaderData<typeof loader>();
+    // Pass the loader to infer the data type from its return — no generics, no restating the shape.
+    const data = Toil.useLoaderData(loader);
     const router = Toil.useRouter();
     return (
         <main>

@@ -184,10 +184,19 @@ export function revalidate(href?: string): void {
 export const LoaderDataContext = createContext<unknown>(undefined);
 
 /**
- * The data returned by the active route's `loader`. Pass `typeof loader` to infer the type straight
- * from the route's loader — no need to restate the shape: `useLoaderData<typeof loader>()`. (You can
- * still pass an explicit type, e.g. `useLoaderData<Post>()`.) `undefined` if the route has no loader.
+ * The data returned by the active route's `loader`. Three ways to type it, easiest first:
+ *
+ * 1. **Pass the loader** — zero generics, fully inferred from your loader's return:
+ *    `const data = useLoaderData(loader);`
+ * 2. Pass `typeof loader` as a type argument: `useLoaderData<typeof loader>();`
+ * 3. Pass an explicit shape: `useLoaderData<Post>();`
+ *
+ * With no argument and no type, it returns `unknown` (never `any`) — so the data is there at runtime,
+ * but you must annotate or narrow before using it. There's no way to infer the type from a bare call:
+ * TypeScript can't tell which file (and so which `loader`) the call belongs to — hence option 1.
  */
-export function useLoaderData<T = unknown>(): LoaderData<T> {
-    return useContext(LoaderDataContext) as LoaderData<T>;
+export function useLoaderData<L extends LoaderFunction>(loader: L): Awaited<ReturnType<L>>;
+export function useLoaderData<T = unknown>(): LoaderData<T>;
+export function useLoaderData(_loader?: LoaderFunction): unknown {
+    return useContext(LoaderDataContext);
 }
