@@ -43,7 +43,14 @@ export default function Home() {
         <section className="hero">
             <div className="hero-logo">
                 <img src="images/logo.svg" className="hero-logo-glow" alt="" aria-hidden="true" width={96} height={96} />
-                <img src="images/logo.svg" className="hero-logo-img" alt="ToilJS" width={96} height={96} />
+                <Toil.Image
+                    src="images/logo.svg"
+                    className="hero-logo-img"
+                    alt="ToilJS"
+                    width={96}
+                    height={96}
+                    priority
+                />
             </div>
 
             <h1 className="hero-title">ToilJS</h1>
