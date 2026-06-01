@@ -3,7 +3,6 @@
  * imperatively, and grab a router handle.
  */
 import {
-    startTransition,
     useContext,
     useEffect,
     useMemo,
@@ -75,21 +74,19 @@ export function useRouter(): RouterInstance {
 }
 
 /**
- * Subscribes to location changes (in a transition, so the current page stays on screen while the
- * next chunk loads) and reads the live `window.location` on render. Re-renders on any pathname,
- * search, or hash change.
+ * Subscribes to location changes and reads the live `window.location` on render. Re-renders on any
+ * pathname, search, or hash change.
+ *
+ * The update is urgent (NOT wrapped in `startTransition`) on purpose: a transition keeps the old
+ * page on screen and suppresses Suspense fallbacks until the new route fully resolves, so a route
+ * that suspends on its chunk or `loader` would freeze the previous page with no feedback. Urgent
+ * updates let the matched route's Suspense boundary show its `loading.tsx` immediately, so the page
+ * switches the instant you navigate. `Link` prefetches chunks on hover/focus, so warm routes still
+ * commit synchronously without a fallback flash.
  */
 function useLocationSubscription(): void {
     const [, forceUpdate] = useReducer((n: number): number => n + 1, 0);
-    useEffect(
-        () =>
-            subscribeLocation(() => {
-                startTransition(() => {
-                    forceUpdate();
-                });
-            }),
-        [],
-    );
+    useEffect(() => subscribeLocation(forceUpdate), []);
 }
 
 /** Subscribes to and returns the current `location.pathname`. */
