@@ -123,8 +123,7 @@ export async function loadConfig(
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed `any`
-            const loaded: { default?: ToilConfig } = await import(pathToFileURL(candidate).href);
+            const loaded = (await import(pathToFileURL(candidate).href)) as { default?: ToilConfig };
             if (loaded.default) user = loaded.default;
             break;
         }
