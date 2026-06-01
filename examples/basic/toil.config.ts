@@ -3,6 +3,8 @@ import { defineConfig } from 'toiljs/compiler';
 // Client and server options go here. Output defaults to build/client and build/server.
 export default defineConfig({
     client: {
+        // Animate page transitions (View Transitions API; respects prefers-reduced-motion).
+        viewTransitions: true,
         // Build-time SEO: bakes these into the HTML <head> (for JS-less crawlers) and generates
         // robots.txt (with AI-crawler directives), sitemap.xml, and llms.txt.
         seo: {

@@ -2,14 +2,7 @@
  * Router hooks for user route components: read the params / pathname / search params, navigate
  * imperatively, and grab a router handle.
  */
-import {
-    startTransition,
-    useContext,
-    useEffect,
-    useMemo,
-    useReducer,
-    useSyncExternalStore,
-} from 'react';
+import { useContext, useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
 
 import type { RouteParams } from './match.js';
 import {
@@ -84,25 +77,13 @@ export function useRouter(): RouterInstance {
 
 /**
  * Subscribes to location changes and reads the live `window.location` on render. Re-renders on any
- * pathname, search, or hash change.
- *
- * The update runs in a `startTransition` so navigation is smooth: React keeps the current page on
- * screen while the next route's chunk/data load, instead of flashing a blank fallback. Routes that
- * define a `loading.tsx` opt back into an immediate loading state, the Router keys their Suspense
- * boundary per navigation, so the fallback shows even within the transition (no frozen page). Warm
- * routes (prefetched, no loader) render synchronously and commit instantly.
+ * pathname, search, or hash change. The re-render is orchestrated by `navigate`/`notify` (wrapped in
+ * `startTransition` for smooth nav, or `document.startViewTransition` when enabled), so the listener
+ * itself is a plain force-update.
  */
 function useLocationSubscription(): void {
     const [, forceUpdate] = useReducer((n: number): number => n + 1, 0);
-    useEffect(
-        () =>
-            subscribeLocation(() => {
-                startTransition(() => {
-                    forceUpdate();
-                });
-            }),
-        [],
-    );
+    useEffect(() => subscribeLocation(forceUpdate), []);
 }
 
 /** Subscribes to and returns the current `location.pathname`. */
