@@ -12,7 +12,7 @@ interface ErrorBoundaryState {
 
 /**
  * Catches render errors in its subtree and shows the route's `error.tsx` (with a `reset` to retry).
- * Error boundaries must be class components — React has no hook equivalent.
+ * Error boundaries must be class components, React has no hook equivalent.
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     state: ErrorBoundaryState = { error: null };

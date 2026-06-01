@@ -2,9 +2,9 @@ import { useEffect, type ReactNode } from 'react';
 
 /**
  * When a {@link Script} is injected, relative to the app becoming interactive:
- * - `afterInteractive` (default) — on mount, once the app is running. Good for analytics, widgets.
- * - `lazyOnload` — deferred until the browser is idle (after `window.load`). For low-priority scripts.
- * - `beforeInteractive` — as early as possible. In a client-only SPA there is no SSR, so this still
+ * - `afterInteractive` (default), on mount, once the app is running. Good for analytics, widgets.
+ * - `lazyOnload`, deferred until the browser is idle (after `window.load`). For low-priority scripts.
+ * - `beforeInteractive`, as early as possible. In a client-only SPA there is no SSR, so this still
  *   runs after hydration, but synchronously on first mount with high fetch priority.
  */
 export type ScriptStrategy = 'beforeInteractive' | 'afterInteractive' | 'lazyOnload';

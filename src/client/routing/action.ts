@@ -1,5 +1,5 @@
 /**
- * Mutations (writes) — the counterpart to loaders (reads). A loader fetches data on navigation;
+ * Mutations (writes), the counterpart to loaders (reads). A loader fetches data on navigation;
  * an action performs a write (save, delete, a server/WASM call) on demand, then revalidates the
  * affected loader data so the UI reflects the change. `useAction` tracks pending/error/result state;
  * `<Form>` is sugar over it for the form case.
@@ -12,9 +12,9 @@ import type { Href } from '../types.js';
 
 /**
  * Which loader data to refetch after an action succeeds:
- * - `true` (default) — the current route.
- * - an `Href` (or array) — those specific routes.
- * - `false` — nothing.
+ * - `true` (default), the current route.
+ * - an `Href` (or array), those specific routes.
+ * - `false`, nothing.
  */
 export type RevalidateTarget = boolean | Href | readonly Href[];
 

@@ -15,7 +15,7 @@ export default function IoDemo() {
         <main>
             <h1>Native IO</h1>
             <p>
-                <code>new BinaryWriter()</code> with no import — round-tripped {n} and &quot;{s}&quot; through{' '}
+                <code>new BinaryWriter()</code> with no import, round-tripped {n} and &quot;{s}&quot; through{' '}
                 {bytes.length} bytes; FastSet size {seen.size}.
             </p>
             <Toil.Link href="/">Back home</Toil.Link>

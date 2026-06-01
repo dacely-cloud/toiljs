@@ -4,6 +4,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { type InlineConfig } from 'vite';
 
+import { type SeoConfig } from './seo.js';
+
+export type { SeoConfig } from './seo.js';
+
 /**
  * Client-side (TSX/React/Vite) configuration. All fields optional; sensible defaults applied.
  */
@@ -31,8 +35,13 @@ export interface ClientConfig {
      */
     readonly images?: boolean;
     /**
+     * Build-time SEO: bakes site-level metadata into the HTML `<head>` (so JS-less crawlers and AI
+     * bots see real tags) and generates `robots.txt`, `sitemap.xml`, and `llms.txt`. Omit to skip.
+     */
+    readonly seo?: SeoConfig;
+    /**
      * Raw Vite escape hatch, deep-merged over the framework's opinionated config.
-     * This is NOT the client config itself — toil owns the Vite setup; use this only
+     * This is NOT the client config itself, toil owns the Vite setup; use this only
      * to override specific Vite options.
      */
     readonly vite?: InlineConfig;
@@ -76,6 +85,8 @@ export interface ResolvedToilConfig {
     readonly port: number;
     /** Whether build-time image optimization (`vite-imagetools`) is enabled. */
     readonly images: boolean;
+    /** Build-time SEO config, or `null` when not configured. */
+    readonly seo: SeoConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
     readonly runtimePath: string;
     readonly vite: InlineConfig;
@@ -112,8 +123,7 @@ export async function loadConfig(
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed `any`
-            const loaded: { default?: ToilConfig } = await import(pathToFileURL(candidate).href);
+            const loaded = (await import(pathToFileURL(candidate).href)) as { default?: ToilConfig };
             if (loaded.default) user = loaded.default;
             break;
         }
@@ -137,6 +147,7 @@ export async function loadConfig(
         base: client.base ?? '/',
         port: opts.port ?? client.port ?? 3000,
         images: client.images ?? true,
+        seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
     };

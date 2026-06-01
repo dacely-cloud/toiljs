@@ -1,5 +1,5 @@
 /**
- * Route metadata — the declarative SEO counterpart to `useHead`/`<Head>`. A route file may
+ * Route metadata, the declarative SEO counterpart to `useHead`/`<Head>`. A route file may
  * `export const metadata` (static) or `export const generateMetadata` (dynamic, using its loader
  * data); the compiler-driven loader resolves it to a {@link HeadSpec} that the router applies as the
  * route's baseline head (component-level `useHead`/`<Head>` still compose on top and can override).
@@ -25,7 +25,7 @@ export interface Metadata {
     readonly titleTemplate?: string;
     /** `<meta name="description">`. */
     readonly description?: string;
-    /** `<meta name="keywords">` — joined with `, ` if an array. */
+    /** `<meta name="keywords">`, joined with `, ` if an array. */
     readonly keywords?: string | readonly string[];
     /** `<link rel="canonical">`. */
     readonly canonical?: string;
@@ -48,7 +48,7 @@ export interface GenerateMetadataArgs<T = unknown> {
     readonly data: T;
 }
 
-/** A route's `export const generateMetadata` — dynamic metadata derived from params/query/loader data. */
+/** A route's `export const generateMetadata`, dynamic metadata derived from params/query/loader data. */
 export type GenerateMetadata<T = unknown> = (
     args: GenerateMetadataArgs<T>,
 ) => Metadata | Promise<Metadata>;

@@ -18,7 +18,7 @@ interface Variant {
 }
 
 /**
- * Build-only plugin that reports which imported images the pipeline optimized — each source image,
+ * Build-only plugin that reports which imported images the pipeline optimized, each source image,
  * its emitted variant(s), and the size saved. `public/` assets (copied as-is) never enter the
  * bundle, so they don't appear here. Logs nothing when no images were processed.
  *
