@@ -12,7 +12,13 @@ import {
 import { loaderKey, LoaderDataContext, readRouteData } from './loader.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { ParamsContext } from './params-context.js';
-import { navigationEpoch, settleNavigation } from '../navigation/navigation.js';
+import { SlotContext } from './slot-context.js';
+import {
+    isSoftNavigation,
+    navigationEpoch,
+    previousPathname,
+    settleNavigation,
+} from '../navigation/navigation.js';
 import { applyScroll } from '../navigation/scroll.js';
 import type { ErrorComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
@@ -27,14 +33,92 @@ function RoutePage(props: {
     return <LoaderDataContext.Provider value={data}>{createElement(Component)}</LoaderDataContext.Provider>;
 }
 
+/**
+ * Wraps a matched route's page in its loading boundary, templates, nested layouts, and error
+ * boundary. `keyPrefix` namespaces the loader-cache key and boundary keys so a parallel slot and the
+ * main route can match the same URL without colliding.
+ */
+function renderMatched(
+    matched: RouteDef,
+    params: RouteParams,
+    pathname: string,
+    epoch: number,
+    keyPrefix: string,
+): ReactNode {
+    const search = typeof window === 'undefined' ? '' : window.location.search;
+    const dataKey = keyPrefix + loaderKey(pathname, search);
+    const fallback: ReactNode = matched.loading
+        ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
+        : null;
+
+    // A route with a `loading.tsx` keys its boundary per URL so the fallback shows even inside the
+    // navigation transition; one without keeps a stable boundary so the transition holds the old page.
+    let content: ReactNode = (
+        <Suspense
+            key={matched.loading ? dataKey : undefined}
+            fallback={fallback}>
+            <RoutePage
+                route={matched}
+                params={params}
+                dataKey={dataKey}
+                epoch={epoch}
+            />
+        </Suspense>
+    );
+    // Templates wrap inside the layouts and re-mount on every navigation (keyed by URL).
+    const templates = matched.templates ?? [];
+    for (let i = templates.length - 1; i >= 0; i--) {
+        const Template = nestedLayout(templates[i]);
+        content = (
+            <Suspense
+                key={`${keyPrefix}${pathname}:${String(i)}`}
+                fallback={null}>
+                <Template>{content}</Template>
+            </Suspense>
+        );
+    }
+    // Nested layouts, deepest first so the shallowest ends up outermost.
+    const chain = matched.layouts ?? [];
+    for (let i = chain.length - 1; i >= 0; i--) {
+        const NestedLayout = nestedLayout(chain[i]);
+        content = (
+            <Suspense fallback={null}>
+                <NestedLayout>{content}</NestedLayout>
+            </Suspense>
+        );
+    }
+    if (matched.errorComponent) {
+        content = <ErrorBoundary fallback={errorComponent(matched.errorComponent)}>{content}</ErrorBoundary>;
+    }
+    return content;
+}
+
+/**
+ * Finds the first route (already specificity-sorted) matching `pathname`. Intercepting routes are
+ * skipped unless `allowIntercept` — they only apply on soft navigation.
+ */
+function match(
+    routes: RouteDef[],
+    pathname: string,
+    allowIntercept = true,
+): { route: RouteDef; params: RouteParams } | null {
+    for (const route of routes) {
+        if (route.intercept && !allowIntercept) continue;
+        const params = matchRoute(route.pattern, pathname);
+        if (params) return { route, params };
+    }
+    return null;
+}
+
 /** Matches the current location to a route and renders it, optionally wrapped in the root layout. */
 export function Router(props: {
     routes: RouteDef[];
     layout?: LayoutLoader;
     notFound?: NotFoundLoader;
     globalError?: ErrorComponentLoader;
+    slots?: Record<string, RouteDef[]>;
 }): ReactNode {
-    const { routes, layout = null, notFound = null, globalError = null } = props;
+    const { routes, layout = null, notFound = null, globalError = null, slots = {} } = props;
     const pathname = useLocation();
 
     // After each navigation commits, apply the planned scroll (top / restore / #hash) and mark the
@@ -44,71 +128,33 @@ export function Router(props: {
         settleNavigation();
     });
 
-    let matched: RouteDef | undefined;
-    let params: RouteParams = {};
-    for (const route of routes) {
-        const result = matchRoute(route.pattern, pathname);
-        if (result) {
-            matched = route;
-            params = result;
-            break;
-        }
+    const epoch = navigationEpoch();
+    const soft = isSoftNavigation();
+
+    // Parallel slots: each `@slot` tree matches the current URL independently (intercepting routes
+    // only on soft navigation). Each match is exposed by name via SlotContext and rendered wherever a
+    // layout/page places a `Slot`. If an intercepting route matches, the main view holds the previous
+    // page (the backdrop) while the slot shows the intercepted route — i.e. a modal overlay.
+    const slotElements: Record<string, ReactNode> = {};
+    let intercepting = false;
+    for (const [name, defs] of Object.entries(slots)) {
+        const slotMatch = match(defs, pathname, soft);
+        if (!slotMatch) continue;
+        if (slotMatch.route.intercept) intercepting = true;
+        slotElements[name] = (
+            <ParamsContext.Provider value={slotMatch.params}>
+                {renderMatched(slotMatch.route, slotMatch.params, pathname, epoch, `@${name} `)}
+            </ParamsContext.Provider>
+        );
     }
+
+    const mainPath = intercepting ? previousPathname() : pathname;
+    const matched = match(routes, mainPath);
+    const params: RouteParams = matched?.params ?? {};
 
     let content: ReactNode;
     if (matched) {
-        const fallback: ReactNode = matched.loading
-            ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
-            : null;
-        const search = typeof window === 'undefined' ? '' : window.location.search;
-        const dataKey = loaderKey(pathname, search);
-        // Navigation runs in a transition (smooth — the old page stays during load). A route with a
-        // `loading.tsx` opts into an immediate loading state: keying its Suspense boundary per URL
-        // makes React show the fallback even inside the transition. Routes without one keep a stable
-        // boundary, so the transition holds the previous page instead of flashing a blank fallback.
-        content = (
-            <Suspense
-                key={matched.loading ? dataKey : undefined}
-                fallback={fallback}>
-                <RoutePage
-                    route={matched}
-                    params={params}
-                    dataKey={dataKey}
-                    epoch={navigationEpoch()}
-                />
-            </Suspense>
-        );
-        // Wrap in templates, deepest first so the shallowest ends up outermost. Templates sit
-        // inside the layouts and are keyed by pathname so they re-mount on every navigation
-        // (resetting their state), unlike layouts which persist across navigations.
-        const templates = matched.templates ?? [];
-        for (let i = templates.length - 1; i >= 0; i--) {
-            const Template = nestedLayout(templates[i]);
-            content = (
-                <Suspense
-                    key={`${pathname}:${String(i)}`}
-                    fallback={null}>
-                    <Template>{content}</Template>
-                </Suspense>
-            );
-        }
-        // Wrap in nested layouts, deepest first so the shallowest ends up outermost.
-        const chain = matched.layouts ?? [];
-        for (let i = chain.length - 1; i >= 0; i--) {
-            const NestedLayout = nestedLayout(chain[i]);
-            content = (
-                <Suspense fallback={null}>
-                    <NestedLayout>{content}</NestedLayout>
-                </Suspense>
-            );
-        }
-        if (matched.errorComponent) {
-            content = (
-                <ErrorBoundary fallback={errorComponent(matched.errorComponent)}>
-                    {content}
-                </ErrorBoundary>
-            );
-        }
+        content = renderMatched(matched.route, matched.params, mainPath, epoch, '');
     } else if (notFound) {
         const NotFound = resolveNotFound(notFound);
         content = (
@@ -135,5 +181,9 @@ export function Router(props: {
         content = <ErrorBoundary fallback={errorComponent(globalError)}>{content}</ErrorBoundary>;
     }
 
-    return <ParamsContext.Provider value={params}>{content}</ParamsContext.Provider>;
+    return (
+        <ParamsContext.Provider value={params}>
+            <SlotContext.Provider value={slotElements}>{content}</SlotContext.Provider>
+        </ParamsContext.Provider>
+    );
 }

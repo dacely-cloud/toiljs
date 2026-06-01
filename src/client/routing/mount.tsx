@@ -20,6 +20,7 @@ export function mount(
     layout: LayoutLoader = null,
     notFound: NotFoundLoader = null,
     globalError: ErrorComponentLoader = null,
+    slots: Record<string, RouteDef[]> = {},
 ): void {
     const el = document.getElementById('root');
     if (!el) throw new Error('toil: #root element not found');
@@ -30,6 +31,7 @@ export function mount(
             layout={layout}
             notFound={notFound}
             globalError={globalError}
+            slots={slots}
         />
     );
     // In dev, wrap the app in the error overlay so uncaught render/async errors surface on screen
@@ -45,5 +47,6 @@ export function mount(
     } else {
         createRoot(el).render(app);
     }
-    startPrefetcher(routes);
+    // Prefetch across the main tree and every slot tree (one prefetcher owns the whole table).
+    startPrefetcher([...routes, ...Object.values(slots).flat()]);
 }

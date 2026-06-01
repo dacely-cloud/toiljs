@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { matchRoute } from '../src/client/routing/match';
-import { filePathToRoute } from '../src/compiler/routes';
+import { filePathToRoute, interceptTarget } from '../src/compiler/routes';
 
 describe('filePathToRoute', () => {
     it('maps index, static, nested, and dynamic files to patterns', () => {
@@ -19,6 +19,25 @@ describe('filePathToRoute', () => {
         expect(filePathToRoute('(marketing)/about.tsx')).toBe('/about');
         expect(filePathToRoute('(shop)/index.tsx')).toBe('/');
         expect(filePathToRoute('(a)/(b)/deep.tsx')).toBe('/deep');
+    });
+
+    it('strips parallel-slot (@slot) segments from the URL', () => {
+        expect(filePathToRoute('@modal/photo/[id].tsx')).toBe('/photo/:id');
+        expect(filePathToRoute('@sidebar/index.tsx')).toBe('/');
+        expect(filePathToRoute('dashboard/@chart/views.tsx')).toBe('/dashboard/views');
+    });
+});
+
+describe('interceptTarget', () => {
+    it('resolves (.)/(..)/(...) marker targets', () => {
+        expect(interceptTarget('@modal/(.)photo/[id].tsx')).toBe('/photo/:id');
+        expect(interceptTarget('feed/@modal/(..)photo/[id].tsx')).toBe('/photo/:id');
+        expect(interceptTarget('a/b/@m/(...)login.tsx')).toBe('/login');
+    });
+
+    it('returns null for routes with no interception marker', () => {
+        expect(interceptTarget('photo/[id].tsx')).toBeNull();
+        expect(interceptTarget('@modal/settings.tsx')).toBeNull();
     });
 });
 
