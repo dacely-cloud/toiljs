@@ -20,6 +20,12 @@ describe('filePathToRoute', () => {
         expect(filePathToRoute('(shop)/index.tsx')).toBe('/');
         expect(filePathToRoute('(a)/(b)/deep.tsx')).toBe('/deep');
     });
+
+    it('strips parallel-slot (@slot) segments from the URL', () => {
+        expect(filePathToRoute('@modal/photo/[id].tsx')).toBe('/photo/:id');
+        expect(filePathToRoute('@sidebar/index.tsx')).toBe('/');
+        expect(filePathToRoute('dashboard/@chart/views.tsx')).toBe('/dashboard/views');
+    });
 });
 
 describe('matchRoute', () => {
