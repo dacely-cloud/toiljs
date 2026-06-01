@@ -8,6 +8,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
+import { imageReportPlugin } from './image-report.js';
 import { toilPlugin } from './plugin.js';
 
 /** Image extensions routed to `images/` in the build output. */
@@ -83,6 +84,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
                       defaultDirectives: () => new URLSearchParams({ format: 'webp', quality: '80' }),
                   })
                 : undefined,
+            cfg.images ? imageReportPlugin(cfg.root, cfg.toilDir) : undefined,
             nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
             react(),
             toilPlugin(cfg),
