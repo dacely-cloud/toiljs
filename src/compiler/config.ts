@@ -35,6 +35,11 @@ export interface ClientConfig {
      */
     readonly images?: boolean;
     /**
+     * Preload bundled fonts at build time: injects `<link rel="preload" as="font">` for each
+     * `@font-face` font so it loads in parallel with the CSS (faster text paint). Default `true`.
+     */
+    readonly fonts?: boolean;
+    /**
      * Build-time SEO: bakes site-level metadata into the HTML `<head>` (so JS-less crawlers and AI
      * bots see real tags) and generates `robots.txt`, `sitemap.xml`, and `llms.txt`. Omit to skip.
      */
@@ -85,6 +90,8 @@ export interface ResolvedToilConfig {
     readonly port: number;
     /** Whether build-time image optimization (`vite-imagetools`) is enabled. */
     readonly images: boolean;
+    /** Whether build-time font preloading is enabled. */
+    readonly fonts: boolean;
     /** Build-time SEO config, or `null` when not configured. */
     readonly seo: SeoConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
@@ -147,6 +154,7 @@ export async function loadConfig(
         base: client.base ?? '/',
         port: opts.port ?? client.port ?? 3000,
         images: client.images ?? true,
+        fonts: client.fonts ?? true,
         seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},

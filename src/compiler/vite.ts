@@ -8,6 +8,7 @@ import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
+import { fontPreloadPlugin } from './fonts.js';
 import { imageReportPlugin } from './image-report.js';
 import { toilPlugin } from './plugin.js';
 import { prerenderPlugin } from './prerender.js';
@@ -87,6 +88,8 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             cfg.images ? imageReportPlugin(cfg.root, cfg.toilDir) : undefined,
             // Static per-route SEO prerender (build only): bakes each route's metadata into its HTML.
             cfg.seo ? prerenderPlugin(cfg) : undefined,
+            // Preload bundled fonts (build only). Disabled by `client.fonts: false`.
+            cfg.fonts ? fontPreloadPlugin(cfg) : undefined,
             nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
             react(),
             toilPlugin(cfg),
