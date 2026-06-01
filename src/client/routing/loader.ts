@@ -12,6 +12,8 @@
  */
 import { createContext, useContext, type ComponentType } from 'react';
 
+import type { HeadSpec } from '../head/head.js';
+import { resolveMetadata, type GenerateMetadata, type Metadata } from '../head/metadata.js';
 import { refresh as rerender } from '../navigation/navigation.js';
 import type { RouteDef } from '../types.js';
 import type { RouteParams } from './match.js';
@@ -40,10 +42,14 @@ interface RouteModule {
     default: ComponentType;
     loader?: LoaderFunction;
     revalidate?: Revalidate;
+    metadata?: Metadata;
+    generateMetadata?: GenerateMetadata;
 }
 interface RouteData {
     Component: ComponentType;
     data: unknown;
+    /** Resolved baseline head from the route's `metadata` / `generateMetadata`, if any. */
+    head?: HeadSpec;
 }
 interface Entry {
     status: 'pending' | 'done' | 'error';
@@ -78,8 +84,14 @@ async function loadRoute(
         typeof window === 'undefined' ? '' : window.location.search,
     );
     const data = mod.loader ? await mod.loader({ params, searchParams }) : undefined;
+    let head: HeadSpec | undefined;
+    if (mod.generateMetadata) {
+        head = resolveMetadata(await mod.generateMetadata({ params, searchParams, data }));
+    } else if (mod.metadata) {
+        head = resolveMetadata(mod.metadata);
+    }
     return {
-        data: { Component: mod.default, data },
+        data: { Component: mod.default, data, head },
         revalidate: mod.revalidate ?? 0,
         hasLoader: mod.loader != null,
     };

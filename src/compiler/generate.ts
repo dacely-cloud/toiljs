@@ -43,6 +43,8 @@ export const TOIL_ENV_DTS =
     `    type LoaderArgs = import('toiljs/client').LoaderArgs;\n` +
     `    type LoaderFunction<T = unknown> = import('toiljs/client').LoaderFunction<T>;\n` +
     `    type Revalidate = import('toiljs/client').Revalidate;\n` +
+    `    type Metadata = import('toiljs/client').Metadata;\n` +
+    `    type GenerateMetadata<T = unknown> = import('toiljs/client').GenerateMetadata<T>;\n` +
     `    type RouteErrorProps = import('toiljs/client').RouteErrorProps;\n` +
     `}\n` +
     `declare const BinaryWriter: typeof import('toiljs/io').BinaryWriter;\n` +
