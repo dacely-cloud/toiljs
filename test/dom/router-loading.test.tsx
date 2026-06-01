@@ -29,8 +29,8 @@ describe('Router loading fallback', () => {
         const { findByText, queryByText } = render(<Router routes={routes} />);
         await findByText('HOME');
 
-        // Navigation must NOT be wrapped in a transition: the fallback has to appear right away
-        // instead of freezing on the previous page.
+        // A route with a `loading.tsx` keys its Suspense boundary per URL, so even though navigation
+        // runs in a transition the fallback appears immediately (it isn't suppressed / frozen).
         act(() => {
             navigate('/slow');
         });
@@ -38,8 +38,7 @@ describe('Router loading fallback', () => {
         await waitFor(() => {
             expect(queryByText('LOADING')).not.toBeNull();
         });
-        // We switched instantly into the loading state — React hides the previous page
-        // (display:none) rather than leaving it frozen on screen, which a transition would.
-        expect(queryByText('HOME')?.style.display).toBe('none');
+        // The keyed boundary remounts for the new route, so the previous page is gone (not frozen).
+        expect(queryByText('HOME')).toBeNull();
     });
 });
