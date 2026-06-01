@@ -114,6 +114,38 @@ export function setStyleImports(source: string, f: StyleFeatures): string {
     return `${head}\n\n${block}\n${tail}`.replace(/\n{3,}/g, '\n\n');
 }
 
+/** A `toil.config` source containing `client: { images: <bool> }` (for scaffolding when none exists). */
+export function defaultConfigSource(images: boolean): string {
+    return (
+        "import { defineConfig } from 'toiljs/compiler';\n\n" +
+        'export default defineConfig({\n' +
+        '    client: {\n' +
+        '        // Optimize images at build time (resize/compress imported images).\n' +
+        `        images: ${String(images)},\n` +
+        '    },\n' +
+        '});\n'
+    );
+}
+
+/**
+ * Sets the `client.images` flag in a `toil.config` source, returning the updated source — or `null`
+ * if the file's shape isn't recognized (the caller should then fall back to a manual note). Handles
+ * an existing `images:` value, an existing `client: {` block, or a bare `defineConfig({ … })`.
+ */
+export function setConfigImages(source: string, enabled: boolean): string | null {
+    const value = String(enabled);
+    if (/\bimages\s*:\s*(?:true|false)/.test(source)) {
+        return source.replace(/\bimages\s*:\s*(?:true|false)/, `images: ${value}`);
+    }
+    if (/\bclient\s*:\s*\{/.test(source)) {
+        return source.replace(/\bclient\s*:\s*\{/, `client: {\n        images: ${value},`);
+    }
+    if (/defineConfig\(\s*\{/.test(source)) {
+        return source.replace(/defineConfig\(\s*\{/, `defineConfig({\n    client: { images: ${value} },`);
+    }
+    return null;
+}
+
 /** Detects the active preprocessor from a project's combined dependency map. */
 export function detectPreprocessor(deps: Record<string, string>): Preprocessor {
     if ('sass' in deps) return 'sass';
