@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import react from '@vitejs/plugin-react';
+import { imagetools } from 'vite-imagetools';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
 
@@ -73,6 +74,15 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
         configFile: false,
         plugins: [
             tailwind,
+            // Build-time image resize/optimization. Every *imported* raster image is compressed to
+            // webp by default (so a plain `<img src={imported}>` is optimized too, not just
+            // `Toil.Image`); add `?w=400;800&format=…` to resize or pick a format. `public/` assets
+            // referenced by string path are served as-is. Disabled by `client.images: false`.
+            cfg.images
+                ? imagetools({
+                      defaultDirectives: () => new URLSearchParams({ format: 'webp', quality: '80' }),
+                  })
+                : undefined,
             nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
             react(),
             toilPlugin(cfg),

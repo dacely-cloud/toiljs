@@ -25,6 +25,12 @@ export interface ClientConfig {
     /** Dev server port. Default `3000`. */
     readonly port?: number;
     /**
+     * Optimize imported images at build time (resize/convert via `vite-imagetools` + sharp): an
+     * import like `logo.png?w=400;800&format=webp&as=srcset` emits resized, compressed variants.
+     * Default `true`. Set `false` to disable the pipeline (images are then served as-is).
+     */
+    readonly images?: boolean;
+    /**
      * Raw Vite escape hatch, deep-merged over the framework's opinionated config.
      * This is NOT the client config itself — toil owns the Vite setup; use this only
      * to override specific Vite options.
@@ -68,6 +74,8 @@ export interface ResolvedToilConfig {
     readonly outDir: string;
     readonly base: string;
     readonly port: number;
+    /** Whether build-time image optimization (`vite-imagetools`) is enabled. */
+    readonly images: boolean;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
     readonly runtimePath: string;
     readonly vite: InlineConfig;
@@ -128,6 +136,7 @@ export async function loadConfig(
         outDir: client.outDir ?? 'build/client',
         base: client.base ?? '/',
         port: opts.port ?? client.port ?? 3000,
+        images: client.images ?? true,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
     };
