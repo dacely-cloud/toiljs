@@ -30,12 +30,12 @@ export default tseslint.config(
         },
         rules: {
             ...reactHooks.configs.recommended.rules,
-            // Route files conventionally export a `loader` alongside the default component; the toil
-            // compiler consumes it at runtime. Allow it (plus primitive constants) so Fast Refresh
-            // doesn't flag the pattern.
+            // Route files conventionally export a `loader` / `revalidate` alongside the default
+            // component; the toil compiler consumes them at runtime. Allow them (plus primitive
+            // constants) so Fast Refresh doesn't flag the pattern.
             'react-refresh/only-export-components': [
                 'warn',
-                { allowConstantExport: true, allowExportNames: ['loader'] },
+                { allowConstantExport: true, allowExportNames: ['loader', 'revalidate'] },
             ],
             'no-undef': 'off',
             '@typescript-eslint/no-unused-vars': 'off',
