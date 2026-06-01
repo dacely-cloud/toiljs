@@ -28,6 +28,31 @@ function notify(): void {
     for (const listener of listeners) listener();
 }
 
+// Soft vs hard navigation, for intercepting routes. The initial page load (and any full refresh) is
+// "hard"; client navigations (`navigate` / back / forward) are "soft". `previousPath` is the path we
+// were on before the latest soft navigation — the route the main view keeps showing while an
+// intercepting route fills a slot (the modal overlay).
+let softNav = false;
+let currentPath = typeof window === 'undefined' ? '/' : window.location.pathname;
+let previousPath = currentPath;
+
+/** Records a transition to the live location; `soft` is false only for the initial load. */
+function recordTransition(soft: boolean): void {
+    previousPath = currentPath;
+    currentPath = typeof window === 'undefined' ? '/' : window.location.pathname;
+    softNav = soft;
+}
+
+/** Whether the current location was reached by a client navigation (not an initial load / refresh). */
+export function isSoftNavigation(): boolean {
+    return softNav;
+}
+
+/** The path the app was on before the latest navigation (what the main view keeps during an intercept). */
+export function previousPathname(): string {
+    return previousPath;
+}
+
 // Navigation-pending tracking: a navigation is "pending" from when it starts until the new route
 // commits. Drives useNavigationPending() (e.g. a top loading bar).
 let startedTick = 0;
@@ -103,6 +128,7 @@ export function navigate(href: Href, options?: NavigateOptions): void {
         currentKey = nextKey();
         window.history.pushState({ __toilKey: currentKey }, '', href);
     }
+    recordTransition(true);
     planScroll({ hash, toTop: options?.scroll !== false });
     notify();
 }
@@ -128,6 +154,7 @@ function handlePopState(event: PopStateEvent): void {
     rememberScroll(currentKey);
     const state = event.state as ToilHistoryState | null;
     currentKey = state?.__toilKey ?? 'initial';
+    recordTransition(true);
     planScroll({ restoreKey: currentKey, hash: window.location.hash, toTop: false });
     notify();
 }
