@@ -28,6 +28,13 @@ export {
 export type { RouterInstance } from './routing/hooks.js';
 export { useLoaderData, revalidate, invalidateLoaderData } from './routing/loader.js';
 export type { LoaderArgs, LoaderFunction, LoaderData, Revalidate } from './routing/loader.js';
+export { useAction } from './routing/action.js';
+export type {
+    UseActionOptions,
+    ActionState,
+    ActionHandle,
+    RevalidateTarget,
+} from './routing/action.js';
 export { prefetch } from './navigation/prefetch.js';
 export type {
     RouteDef,
@@ -49,3 +56,5 @@ export { Image } from './components/Image.js';
 export type { ImageProps } from './components/Image.js';
 export { Script } from './components/Script.js';
 export type { ScriptProps, ScriptStrategy } from './components/Script.js';
+export { Form } from './components/Form.js';
+export type { FormProps } from './components/Form.js';

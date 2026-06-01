@@ -27,6 +27,18 @@ export default function LoaderDemo() {
                     Revalidate (refetch)
                 </button>
             </p>
+            {/* The write half: an action runs on submit, then revalidates this route's loader so
+                `loadedAt` above updates — read → write → revalidate, no manual refetch. */}
+            <Toil.Form action={async (form) => { await wait(500); console.log('saved', form.get('note')); }}>
+                {({ pending }) => (
+                    <>
+                        <input name="note" placeholder="Leave a note" disabled={pending} />
+                        <button type="submit" disabled={pending}>
+                            {pending ? 'Saving…' : 'Save & revalidate'}
+                        </button>
+                    </>
+                )}
+            </Toil.Form>
             <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
