@@ -21,7 +21,7 @@ import {
     subscribePending,
     type NavigateOptions,
 } from '../navigation/navigation.js';
-import { clearLoaderData } from './loader.js';
+import { clearLoaderData, revalidate as revalidateData } from './loader.js';
 import { ParamsContext } from './params-context.js';
 import { prefetch } from '../navigation/prefetch.js';
 import type { Href } from '../types.js';
@@ -36,8 +36,13 @@ export interface RouterInstance {
     back(): void;
     /** Go forward one history entry. */
     forward(): void;
-    /** Re-render the current route and re-run its loader. */
+    /** Re-render the current route and re-run its loader (clears all cached loader data). */
     refresh(): void;
+    /**
+     * Invalidate cached loader data and re-render so it refetches. No argument refetches the active
+     * route; pass an `href` to target a specific route. Use after a mutation.
+     */
+    revalidate(href?: Href): void;
     /** Prefetch a route's chunk ahead of navigation. */
     prefetch(href: Href): void;
 }
@@ -54,6 +59,9 @@ const ROUTER: RouterInstance = {
     refresh: () => {
         clearLoaderData();
         refresh();
+    },
+    revalidate: (href) => {
+        revalidateData(href);
     },
     prefetch,
 };
