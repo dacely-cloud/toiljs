@@ -56,6 +56,8 @@ interface Entry {
     revalidate: Revalidate;
     /** Navigation epoch at which this entry was (re)fetched. */
     epoch: number;
+    /** Whether the route exports a `loader` — a route without one has no data that can change. */
+    hasLoader: boolean;
 }
 
 const cache = new Map<string, Entry>();
@@ -70,18 +72,25 @@ export function loaderKey(pathname: string, search: string): string {
 async function loadRoute(
     route: RouteDef,
     params: RouteParams,
-): Promise<{ data: RouteData; revalidate: Revalidate }> {
+): Promise<{ data: RouteData; revalidate: Revalidate; hasLoader: boolean }> {
     const mod: RouteModule = await route.load();
     const searchParams = new URLSearchParams(
         typeof window === 'undefined' ? '' : window.location.search,
     );
     const data = mod.loader ? await mod.loader({ params, searchParams }) : undefined;
-    return { data: { Component: mod.default, data }, revalidate: mod.revalidate ?? 0 };
+    return {
+        data: { Component: mod.default, data },
+        revalidate: mod.revalidate ?? 0,
+        hasLoader: mod.loader != null,
+    };
 }
 
 /** Whether a settled entry must be refetched for the current navigation. */
 function isStale(entry: Entry, epoch: number): boolean {
     if (entry.status === 'error') return true; // always retry a failed load
+    // A route with no loader has no data that can change — keep it cached so repeat navigations
+    // render synchronously (instant) instead of re-suspending and remounting on every switch.
+    if (!entry.hasLoader) return false;
     if (entry.revalidate === false) return false; // cache forever
     if (entry.revalidate === 0) return entry.epoch !== epoch; // refetch once per navigation
     return Date.now() - entry.loadedAt >= entry.revalidate * 1000; // time-based staleness
@@ -95,11 +104,13 @@ function startFetch(route: RouteDef, params: RouteParams, key: string, epoch: nu
         loadedAt: 0,
         revalidate: 0,
         epoch,
+        hasLoader: false,
     };
     created.promise = loadRoute(route, params).then(
         (result) => {
             created.value = result.data;
             created.revalidate = result.revalidate;
+            created.hasLoader = result.hasLoader;
             created.loadedAt = Date.now();
             created.status = 'done';
         },

@@ -57,6 +57,22 @@ describe('loader caching', () => {
         expect(loads()).toBe(1);
     });
 
+    it('a route with no loader stays cached across navigations (never re-suspends)', async () => {
+        let loads = 0;
+        const route: RouteDef = {
+            pattern: '/p',
+            load: () => {
+                loads += 1;
+                return Promise.resolve({ default: () => null });
+            },
+        };
+        const key = loaderKey('/p', '');
+        await read(route, key, 1);
+        await read(route, key, 2);
+        await read(route, key, 3);
+        expect(loads).toBe(1);
+    });
+
     it('refetches on a new navigation under the default policy', async () => {
         const { route, loads } = makeRoute();
         const key = loaderKey('/x', '');
