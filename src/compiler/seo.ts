@@ -1,0 +1,229 @@
+import type { ScannedRoute } from './routes.js';
+
+/**
+ * Build-time SEO for the (otherwise JS-only) SPA: bakes site-level metadata into the HTML `<head>`
+ * so JS-less crawlers and AI bots see real tags, and generates `robots.txt`, `sitemap.xml`, and
+ * `llms.txt`. All pure string builders here; `generate.ts` wires them into the build output.
+ */
+
+/** OpenGraph defaults baked into the HTML. */
+export interface SeoOpenGraph {
+    readonly title?: string;
+    readonly description?: string;
+    readonly type?: string;
+    readonly image?: string;
+    readonly siteName?: string;
+}
+
+/** Twitter card defaults. */
+export interface SeoTwitter {
+    readonly card?: string;
+    readonly site?: string;
+    readonly creator?: string;
+}
+
+/** A `robots.txt` group. */
+export interface RobotsRule {
+    readonly userAgent?: string | readonly string[];
+    readonly allow?: readonly string[];
+    readonly disallow?: readonly string[];
+}
+
+/** `robots.txt` configuration. */
+export interface RobotsConfig {
+    readonly rules?: readonly RobotsRule[];
+    /** How to treat known AI crawlers (GPTBot, ClaudeBot, Google-Extended, …). Default `'allow'`. */
+    readonly ai?: 'allow' | 'disallow';
+    /** Explicit `Sitemap:` URL (defaults to `<url>/sitemap.xml` when `seo.url` is set). */
+    readonly sitemap?: string;
+}
+
+/** A page listed in `llms.txt`. */
+export interface LlmsPage {
+    readonly title: string;
+    readonly url: string;
+    readonly description?: string;
+}
+
+/** `llms.txt` configuration (the AI-crawler guidance file). */
+export interface LlmsConfig {
+    readonly title?: string;
+    readonly summary?: string;
+    /** Free-form instructions for AI/LLM crawlers. */
+    readonly instructions?: string;
+    /** Key pages; defaults to the site's static routes. */
+    readonly pages?: readonly LlmsPage[];
+}
+
+/** Build-time SEO configuration (under `client.seo`). */
+export interface SeoConfig {
+    /** Absolute site base URL, e.g. `https://toil.dev` — required for `sitemap.xml` and canonical/OG URLs. */
+    readonly url?: string;
+    /** Default document title baked into the HTML. */
+    readonly title?: string;
+    /** Default meta description. */
+    readonly description?: string;
+    /** Default robots directive, e.g. `'index, follow'`. */
+    readonly robotsMeta?: string;
+    /** `<meta name="theme-color">`. */
+    readonly themeColor?: string;
+    readonly openGraph?: SeoOpenGraph;
+    readonly twitter?: SeoTwitter;
+    /** JSON-LD structured data injected as `<script type="application/ld+json">`. */
+    readonly jsonLd?: Record<string, unknown> | readonly Record<string, unknown>[];
+    /** Origins to `<link rel="preconnect">` (early connection hints). */
+    readonly preconnect?: readonly string[];
+    /** Origins to `<link rel="dns-prefetch">`. */
+    readonly dnsPrefetch?: readonly string[];
+    /** `robots.txt` generation; `false` to skip. */
+    readonly robots?: RobotsConfig | false;
+    /** `sitemap.xml` generation; defaults to on when `url` is set. */
+    readonly sitemap?: boolean;
+    /** `llms.txt` (AI guidance) generation; `false` to skip, `true`/object to configure. */
+    readonly llms?: LlmsConfig | boolean;
+}
+
+/** Known AI / LLM crawler user-agents, for explicit allow/disallow in `robots.txt`. */
+const AI_CRAWLERS: readonly string[] = [
+    'GPTBot',
+    'OAI-SearchBot',
+    'ChatGPT-User',
+    'ClaudeBot',
+    'Claude-Web',
+    'anthropic-ai',
+    'Google-Extended',
+    'PerplexityBot',
+    'CCBot',
+    'Applebot-Extended',
+    'Bytespider',
+    'Amazonbot',
+    'Meta-ExternalAgent',
+];
+
+function escapeAttr(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function escapeHtml(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function meta(attrs: Record<string, string | undefined>): string {
+    const pairs = Object.entries(attrs)
+        .filter((entry): entry is [string, string] => entry[1] !== undefined)
+        .map(([k, v]) => `${k}="${escapeAttr(v)}"`);
+    return `    <meta ${pairs.join(' ')} />`;
+}
+
+/** Joins a base URL and a route path into a clean absolute URL. */
+export function joinUrl(base: string, path: string): string {
+    return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`.replace(/\/$/, '') || base;
+}
+
+/** Static (parameter-free) route patterns — the ones that can be listed in a sitemap. */
+function staticPaths(routes: readonly ScannedRoute[]): string[] {
+    return routes
+        .filter((r) => r.slot === undefined && !r.intercept && !/[:*]/.test(r.pattern))
+        .map((r) => r.pattern)
+        .sort();
+}
+
+/** The site-level `<head>` fragment baked into the built HTML (title is handled separately). */
+export function seoHeadTags(seo: SeoConfig): string {
+    const lines: string[] = [];
+    if (seo.description !== undefined) lines.push(meta({ name: 'description', content: seo.description }));
+    if (seo.robotsMeta !== undefined) lines.push(meta({ name: 'robots', content: seo.robotsMeta }));
+    if (seo.themeColor !== undefined) lines.push(meta({ name: 'theme-color', content: seo.themeColor }));
+    if (seo.url !== undefined) lines.push(`    <link rel="canonical" href="${escapeAttr(seo.url)}" />`);
+
+    const og = seo.openGraph;
+    const ogTitle = og?.title ?? seo.title;
+    const ogDesc = og?.description ?? seo.description;
+    if (ogTitle !== undefined) lines.push(meta({ property: 'og:title', content: ogTitle }));
+    if (ogDesc !== undefined) lines.push(meta({ property: 'og:description', content: ogDesc }));
+    if (og?.type !== undefined) lines.push(meta({ property: 'og:type', content: og.type }));
+    if (seo.url !== undefined) lines.push(meta({ property: 'og:url', content: seo.url }));
+    if (og?.image !== undefined) lines.push(meta({ property: 'og:image', content: og.image }));
+    if (og?.siteName !== undefined) lines.push(meta({ property: 'og:site_name', content: og.siteName }));
+
+    const tw = seo.twitter;
+    if (tw?.card !== undefined) lines.push(meta({ name: 'twitter:card', content: tw.card }));
+    if (tw?.site !== undefined) lines.push(meta({ name: 'twitter:site', content: tw.site }));
+    if (tw?.creator !== undefined) lines.push(meta({ name: 'twitter:creator', content: tw.creator }));
+
+    for (const origin of seo.preconnect ?? []) {
+        lines.push(`    <link rel="preconnect" href="${escapeAttr(origin)}" />`);
+    }
+    for (const origin of seo.dnsPrefetch ?? []) {
+        lines.push(`    <link rel="dns-prefetch" href="${escapeAttr(origin)}" />`);
+    }
+    if (seo.jsonLd !== undefined) {
+        const json = JSON.stringify(seo.jsonLd).replace(/</g, '\\u003c');
+        lines.push(`    <script type="application/ld+json">${json}</script>`);
+    }
+    return lines.join('\n');
+}
+
+/** The default document title to bake into the HTML, if any. */
+export function seoTitle(seo: SeoConfig): string | undefined {
+    return seo.title;
+}
+
+/** `robots.txt` contents. */
+export function robotsTxt(seo: SeoConfig): string {
+    if (seo.robots === false) return '';
+    const cfg: RobotsConfig = seo.robots ?? {};
+    const blocks: string[] = [];
+
+    const rules = cfg.rules ?? [{ userAgent: '*', allow: ['/'] }];
+    for (const rule of rules) {
+        const agents = rule.userAgent === undefined ? ['*'] : [rule.userAgent].flat();
+        const lines = agents.map((a) => `User-agent: ${a}`);
+        for (const p of rule.allow ?? []) lines.push(`Allow: ${p}`);
+        for (const p of rule.disallow ?? []) lines.push(`Disallow: ${p}`);
+        blocks.push(lines.join('\n'));
+    }
+
+    const aiDirective = cfg.ai === 'disallow' ? 'Disallow: /' : 'Allow: /';
+    blocks.push(
+        ['# AI / LLM crawlers', ...AI_CRAWLERS.map((a) => `User-agent: ${a}\n${aiDirective}`)].join('\n\n'),
+    );
+
+    const sitemap = cfg.sitemap ?? (seo.url !== undefined ? joinUrl(seo.url, 'sitemap.xml') : undefined);
+    if (sitemap !== undefined) blocks.push(`Sitemap: ${sitemap}`);
+
+    return blocks.join('\n\n') + '\n';
+}
+
+/** `sitemap.xml` from the site's static routes (requires `seo.url`); empty when no base URL. */
+export function sitemapXml(seo: SeoConfig, routes: readonly ScannedRoute[]): string {
+    if (seo.url === undefined || seo.sitemap === false) return '';
+    const urls = staticPaths(routes)
+        .map((p) => `  <url><loc>${escapeHtml(joinUrl(seo.url ?? '', p))}</loc></url>`)
+        .join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+}
+
+/** `llms.txt` (AI-crawler guidance) contents; empty when disabled. */
+export function llmsTxt(seo: SeoConfig, routes: readonly ScannedRoute[]): string {
+    if (seo.llms === false) return '';
+    const cfg: LlmsConfig = seo.llms === true || seo.llms === undefined ? {} : seo.llms;
+    const title = cfg.title ?? seo.title ?? seo.url ?? 'Site';
+    const out: string[] = [`# ${title}`];
+    const summary = cfg.summary ?? seo.description;
+    if (summary !== undefined) out.push(`\n> ${summary}`);
+    if (cfg.instructions !== undefined) out.push(`\n${cfg.instructions}`);
+
+    const pages: readonly LlmsPage[] =
+        cfg.pages ??
+        (seo.url !== undefined
+            ? staticPaths(routes).map(
+                  (p): LlmsPage => ({ title: p === '/' ? 'Home' : p, url: joinUrl(seo.url ?? '', p) }),
+              )
+            : []);
+    if (pages.length) {
+        out.push('\n## Pages\n');
+        for (const page of pages) {
+            out.push(`- [${page.title}](${page.url})${page.description !== undefined ? `: ${page.description}` : ''}`);
+        }
+    }
+    return out.join('\n') + '\n';
+}

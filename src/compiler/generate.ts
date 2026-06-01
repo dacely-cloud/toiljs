@@ -4,6 +4,7 @@ import path from 'node:path';
 import { type ResolvedToilConfig } from './config.js';
 import { writeDocs } from './docs.js';
 import { scanRoutes, type ScannedRoute } from './routes.js';
+import { llmsTxt, robotsTxt, seoHeadTags, seoTitle, sitemapXml } from './seo.js';
 
 /**
  * Contents of the root `toil-env.d.ts`: ambient global types so `new BinaryWriter()` etc. resolve
@@ -268,9 +269,29 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
 
     fs.writeFileSync(path.join(cfg.toilDir, 'index.html'), buildHtml(cfg));
     syncPublicAssets(cfg);
+    writeSeoFiles(cfg, routes);
     writeDocs(cfg.toilDir);
 
     return routes;
+}
+
+/**
+ * Writes the build-time SEO crawler files into `.toil/public` (Vite's publicDir — served in dev and
+ * copied to the output root in build): `robots.txt` (incl. AI-crawler directives), `sitemap.xml`
+ * (static routes), and `llms.txt` (AI guidance). No-op when SEO isn't configured.
+ */
+function writeSeoFiles(cfg: ResolvedToilConfig, routes: ScannedRoute[]): void {
+    if (!cfg.seo) return;
+    const dest = path.join(cfg.toilDir, 'public');
+    const files: [string, string][] = [
+        ['robots.txt', robotsTxt(cfg.seo)],
+        ['sitemap.xml', sitemapXml(cfg.seo, routes)],
+        ['llms.txt', llmsTxt(cfg.seo, routes)],
+    ];
+    const present = files.filter(([, content]) => content !== '');
+    if (present.length === 0) return;
+    fs.mkdirSync(dest, { recursive: true });
+    for (const [name, content] of present) fs.writeFileSync(path.join(dest, name), content);
 }
 
 /** Fallback HTML when the project has no `public/index.html` template. The entry script is added
@@ -295,6 +316,7 @@ function buildHtml(cfg: ResolvedToilConfig): string {
     let html = fs.existsSync(templatePath)
         ? fs.readFileSync(templatePath, 'utf8')
         : DEFAULT_HTML;
+    html = injectSeo(html, cfg);
     // Inject the entry only if the template doesn't already reference it as a module script
     // (matching the literal filename anywhere in the file would be too eager).
     if (!/src=["']\.\/entry\.tsx["']/.test(html)) {
@@ -303,6 +325,36 @@ function buildHtml(cfg: ResolvedToilConfig): string {
             : `${html}\n${ENTRY_SCRIPT}\n`;
     }
     return html;
+}
+
+/**
+ * Bakes the site-level SEO `<head>` into the HTML so JS-less crawlers see real tags. Replaces the
+ * template's `<title>` / description meta (so they aren't duplicated) and inserts the rest before
+ * `</head>`. No-op when SEO isn't configured.
+ */
+function injectSeo(html: string, cfg: ResolvedToilConfig): string {
+    if (!cfg.seo) return html;
+    let out = html;
+
+    const title = seoTitle(cfg.seo);
+    if (title !== undefined) {
+        const tag = `<title>${title.replace(/</g, '&lt;')}</title>`;
+        out = /<title>[\s\S]*?<\/title>/i.test(out)
+            ? out.replace(/<title>[\s\S]*?<\/title>/i, tag)
+            : out.replace(/<\/head>/i, `    ${tag}\n  </head>`);
+    }
+    if (cfg.seo.description !== undefined) {
+        // Drop the template's description meta so ours (in the SEO block) is the only one.
+        out = out.replace(/[ \t]*<meta\s+name=["']description["'][^>]*>\s*\n?/i, '');
+    }
+
+    const tags = seoHeadTags(cfg.seo);
+    if (tags) {
+        out = out.includes('</head>')
+            ? out.replace(/<\/head>/i, `${tags}\n  </head>`)
+            : `${tags}\n${out}`;
+    }
+    return out;
 }
 
 /**
