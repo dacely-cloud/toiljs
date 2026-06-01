@@ -6,20 +6,40 @@ import type { ScannedRoute } from './routes.js';
  * `llms.txt`. All pure string builders here; `generate.ts` wires them into the build output.
  */
 
-/** OpenGraph defaults baked into the HTML. */
+/**
+ * OpenGraph defaults baked into the HTML — read by Facebook, Discord, Slack, LinkedIn, GitHub, and
+ * most link-preview crawlers. `image` should be an absolute URL (≥1200×630 for a large card).
+ */
 export interface SeoOpenGraph {
     readonly title?: string;
     readonly description?: string;
+    /** `og:type`, e.g. `'website'` or `'article'`. */
     readonly type?: string;
-    readonly image?: string;
     readonly siteName?: string;
+    /** `og:locale`, e.g. `'en_US'`. */
+    readonly locale?: string;
+    /** `og:image` — the preview image (absolute URL). */
+    readonly image?: string;
+    /** `og:image:alt`. */
+    readonly imageAlt?: string;
+    /** `og:image:width` in px (helps Facebook/LinkedIn render without a re-fetch). */
+    readonly imageWidth?: number;
+    /** `og:image:height` in px. */
+    readonly imageHeight?: number;
+    /** `og:image:type`, e.g. `'image/png'`. */
+    readonly imageType?: string;
 }
 
-/** Twitter card defaults. */
+/** Twitter / X card. Unset fields fall back to the OpenGraph / top-level values. */
 export interface SeoTwitter {
+    /** `'summary'` | `'summary_large_image'` | … Defaults by whether an image is present. */
     readonly card?: string;
     readonly site?: string;
     readonly creator?: string;
+    readonly title?: string;
+    readonly description?: string;
+    readonly image?: string;
+    readonly imageAlt?: string;
 }
 
 /** A `robots.txt` group. */
@@ -65,10 +85,12 @@ export interface SeoConfig {
     readonly description?: string;
     /** Default robots directive, e.g. `'index, follow'`. */
     readonly robotsMeta?: string;
-    /** `<meta name="theme-color">`. */
+    /** `<meta name="theme-color">` — also the accent color of Discord/Slack link embeds. */
     readonly themeColor?: string;
     readonly openGraph?: SeoOpenGraph;
     readonly twitter?: SeoTwitter;
+    /** Facebook-specific tags (`fb:app_id`). OpenGraph above covers the rest of the FB card. */
+    readonly facebook?: { readonly appId?: string };
     /** JSON-LD structured data injected as `<script type="application/ld+json">`. */
     readonly jsonLd?: Record<string, unknown> | readonly Record<string, unknown>[];
     /** Origins to `<link rel="preconnect">` (early connection hints). */
@@ -100,16 +122,34 @@ const AI_CRAWLERS: readonly string[] = [
     'Meta-ExternalAgent',
 ];
 
+/** Escapes a value for use inside a double-quoted HTML attribute (prevents attribute-breakout XSS). */
 function escapeAttr(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return value
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
-function escapeHtml(value: string): string {
+/** Escapes a value for HTML text content (e.g. `<title>`, XML text). */
+export function escapeHtml(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-function meta(attrs: Record<string, string | undefined>): string {
+/**
+ * Serializes a value for embedding in an inline `<script>` (JSON-LD). Escapes `<`, `>`, and `&`,
+ * which neutralizes `</script>` and `<!--` (the only HTML-significant sequences inside a script),
+ * so attacker-controlled data can't break out of the script element.
+ */
+function escapeJsonForScript(value: unknown): string {
+    return JSON.stringify(value)
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e')
+        .replace(/&/g, '\\u0026');
+}
+function meta(attrs: Record<string, string | number | undefined>): string {
     const pairs = Object.entries(attrs)
-        .filter((entry): entry is [string, string] => entry[1] !== undefined)
-        .map(([k, v]) => `${k}="${escapeAttr(v)}"`);
+        .filter((entry): entry is [string, string | number] => entry[1] !== undefined)
+        .map(([k, v]) => `${k}="${escapeAttr(String(v))}"`);
     return `    <meta ${pairs.join(' ')} />`;
 }
 
@@ -134,20 +174,45 @@ export function seoHeadTags(seo: SeoConfig): string {
     if (seo.themeColor !== undefined) lines.push(meta({ name: 'theme-color', content: seo.themeColor }));
     if (seo.url !== undefined) lines.push(`    <link rel="canonical" href="${escapeAttr(seo.url)}" />`);
 
+    // OpenGraph (also drives Facebook, Discord, Slack, LinkedIn, GitHub previews).
     const og = seo.openGraph;
     const ogTitle = og?.title ?? seo.title;
     const ogDesc = og?.description ?? seo.description;
     if (ogTitle !== undefined) lines.push(meta({ property: 'og:title', content: ogTitle }));
     if (ogDesc !== undefined) lines.push(meta({ property: 'og:description', content: ogDesc }));
-    if (og?.type !== undefined) lines.push(meta({ property: 'og:type', content: og.type }));
+    lines.push(meta({ property: 'og:type', content: og?.type ?? 'website' }));
     if (seo.url !== undefined) lines.push(meta({ property: 'og:url', content: seo.url }));
-    if (og?.image !== undefined) lines.push(meta({ property: 'og:image', content: og.image }));
     if (og?.siteName !== undefined) lines.push(meta({ property: 'og:site_name', content: og.siteName }));
+    if (og?.locale !== undefined) lines.push(meta({ property: 'og:locale', content: og.locale }));
+    if (og?.image !== undefined) {
+        lines.push(meta({ property: 'og:image', content: og.image }));
+        if (og.imageAlt !== undefined) lines.push(meta({ property: 'og:image:alt', content: og.imageAlt }));
+        if (og.imageType !== undefined) lines.push(meta({ property: 'og:image:type', content: og.imageType }));
+        if (og.imageWidth !== undefined) lines.push(meta({ property: 'og:image:width', content: og.imageWidth }));
+        if (og.imageHeight !== undefined) {
+            lines.push(meta({ property: 'og:image:height', content: og.imageHeight }));
+        }
+    }
+    if (seo.facebook?.appId !== undefined) {
+        lines.push(meta({ property: 'fb:app_id', content: seo.facebook.appId }));
+    }
 
+    // Twitter / X card. Unset fields fall back to OpenGraph / top-level values.
     const tw = seo.twitter;
-    if (tw?.card !== undefined) lines.push(meta({ name: 'twitter:card', content: tw.card }));
-    if (tw?.site !== undefined) lines.push(meta({ name: 'twitter:site', content: tw.site }));
-    if (tw?.creator !== undefined) lines.push(meta({ name: 'twitter:creator', content: tw.creator }));
+    if (tw) {
+        const twImage = tw.image ?? og?.image;
+        const card = tw.card ?? (twImage !== undefined ? 'summary_large_image' : 'summary');
+        lines.push(meta({ name: 'twitter:card', content: card }));
+        if (tw.site !== undefined) lines.push(meta({ name: 'twitter:site', content: tw.site }));
+        if (tw.creator !== undefined) lines.push(meta({ name: 'twitter:creator', content: tw.creator }));
+        const twTitle = tw.title ?? ogTitle;
+        const twDesc = tw.description ?? ogDesc;
+        if (twTitle !== undefined) lines.push(meta({ name: 'twitter:title', content: twTitle }));
+        if (twDesc !== undefined) lines.push(meta({ name: 'twitter:description', content: twDesc }));
+        if (twImage !== undefined) lines.push(meta({ name: 'twitter:image', content: twImage }));
+        const twImageAlt = tw.imageAlt ?? og?.imageAlt;
+        if (twImageAlt !== undefined) lines.push(meta({ name: 'twitter:image:alt', content: twImageAlt }));
+    }
 
     for (const origin of seo.preconnect ?? []) {
         lines.push(`    <link rel="preconnect" href="${escapeAttr(origin)}" />`);
@@ -156,8 +221,7 @@ export function seoHeadTags(seo: SeoConfig): string {
         lines.push(`    <link rel="dns-prefetch" href="${escapeAttr(origin)}" />`);
     }
     if (seo.jsonLd !== undefined) {
-        const json = JSON.stringify(seo.jsonLd).replace(/</g, '\\u003c');
-        lines.push(`    <script type="application/ld+json">${json}</script>`);
+        lines.push(`    <script type="application/ld+json">${escapeJsonForScript(seo.jsonLd)}</script>`);
     }
     return lines.join('\n');
 }
