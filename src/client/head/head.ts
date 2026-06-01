@@ -4,7 +4,7 @@
  * (later/deeper entries win per key) and are reverted when the component unmounts. Pure
  * `mergeHead` resolves the active entries; the manager reconciles `document.head`.
  */
-import { useEffect } from 'react';
+import { useEffect, useLayoutEffect } from 'react';
 
 /** A `<meta>` tag. Use `name` or `property` (OpenGraph) as the dedup key; extra attrs pass through. */
 export interface MetaTag {
@@ -70,6 +70,9 @@ const entries = new Map<number, HeadSpec>();
 let order: number[] = [];
 let seq = 0;
 let baseTitle: string | null = null;
+// The current route's resolved metadata — the lowest-priority spec, so component `useHead`/`<Head>`
+// always compose on top of it. Set by the router via `setRouteHead` on each navigation.
+let routeHead: HeadSpec | null = null;
 
 function setAttrs(el: Element, attrs: Record<string, string | undefined>): void {
     el.setAttribute('data-toil-head', '');
@@ -83,7 +86,8 @@ function apply(): void {
     if (typeof document === 'undefined') return;
     if (baseTitle === null) baseTitle = document.title;
 
-    const resolved = mergeHead(order.map((id) => entries.get(id)).filter((s): s is HeadSpec => !!s));
+    const specs = [routeHead, ...order.map((id) => entries.get(id))];
+    const resolved = mergeHead(specs.filter((s): s is HeadSpec => !!s));
 
     document.title = resolved.title ?? baseTitle;
 
@@ -137,4 +141,25 @@ export function useTitle(title: string): void {
 export function Head(props: HeadSpec): null {
     useHead(props);
     return null;
+}
+
+/** Sets the current route's baseline head (lowest priority). Pass `null` to clear it. */
+export function setRouteHead(spec: HeadSpec | null): void {
+    routeHead = spec;
+    apply();
+}
+
+/**
+ * Applies a route's resolved `metadata` as the baseline head for the calling route's lifetime, and
+ * clears it on unmount. Used internally by the router; a layout-effect so the title updates before
+ * paint (no flicker).
+ */
+export function useRouteHead(spec: HeadSpec | undefined): void {
+    const json = spec ? JSON.stringify(spec) : '';
+    useLayoutEffect(() => {
+        setRouteHead(json ? (JSON.parse(json) as HeadSpec) : null);
+        return () => {
+            setRouteHead(null);
+        };
+    }, [json]);
 }
