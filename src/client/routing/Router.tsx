@@ -62,8 +62,14 @@ export function Router(props: {
             : null;
         const search = typeof window === 'undefined' ? '' : window.location.search;
         const dataKey = loaderKey(pathname, search);
+        // Navigation runs in a transition (smooth — the old page stays during load). A route with a
+        // `loading.tsx` opts into an immediate loading state: keying its Suspense boundary per URL
+        // makes React show the fallback even inside the transition. Routes without one keep a stable
+        // boundary, so the transition holds the previous page instead of flashing a blank fallback.
         content = (
-            <Suspense fallback={fallback}>
+            <Suspense
+                key={matched.loading ? dataKey : undefined}
+                fallback={fallback}>
                 <RoutePage
                     route={matched}
                     params={params}
