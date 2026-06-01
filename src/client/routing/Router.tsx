@@ -11,6 +11,7 @@ import {
 } from './lazy.js';
 import { loaderKey, LoaderDataContext, readRouteData } from './loader.js';
 import { matchRoute, type RouteParams } from './match.js';
+import { useRouteHead } from '../head/head.js';
 import { ParamsContext } from './params-context.js';
 import { SlotContext } from './slot-context.js';
 import {
@@ -29,7 +30,8 @@ function RoutePage(props: {
     dataKey: string;
     epoch: number;
 }): ReactNode {
-    const { Component, data } = readRouteData(props.route, props.params, props.dataKey, props.epoch);
+    const { Component, data, head } = readRouteData(props.route, props.params, props.dataKey, props.epoch);
+    useRouteHead(head);
     return <LoaderDataContext.Provider value={data}>{createElement(Component)}</LoaderDataContext.Provider>;
 }
 
