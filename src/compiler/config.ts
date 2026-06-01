@@ -40,6 +40,12 @@ export interface ClientConfig {
      */
     readonly fonts?: boolean;
     /**
+     * Animate cross-page navigations with the browser View Transitions API (a crossfade by default;
+     * add `view-transition-name` in CSS for shared-element transitions). Respects
+     * `prefers-reduced-motion`. Default `false`.
+     */
+    readonly viewTransitions?: boolean;
+    /**
      * Build-time SEO: bakes site-level metadata into the HTML `<head>` (so JS-less crawlers and AI
      * bots see real tags) and generates `robots.txt`, `sitemap.xml`, and `llms.txt`. Omit to skip.
      */
@@ -92,6 +98,8 @@ export interface ResolvedToilConfig {
     readonly images: boolean;
     /** Whether build-time font preloading is enabled. */
     readonly fonts: boolean;
+    /** Whether animated View Transitions are enabled for navigation. */
+    readonly viewTransitions: boolean;
     /** Build-time SEO config, or `null` when not configured. */
     readonly seo: SeoConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
@@ -155,6 +163,7 @@ export async function loadConfig(
         port: opts.port ?? client.port ?? 3000,
         images: client.images ?? true,
         fonts: client.fonts ?? true,
+        viewTransitions: client.viewTransitions ?? false,
         seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
