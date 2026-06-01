@@ -16,10 +16,12 @@ import {
     PREPROCESSORS,
     TAILWIND_CSS,
     TAILWIND_ENTRY,
+    defaultConfigSource,
     detectPreprocessor,
     detectTailwind,
     packageDiff,
     preprocessorForExt,
+    setConfigImages,
     setStyleImports,
     styleEntry,
     type Preprocessor,
@@ -34,8 +36,58 @@ export interface ConfigureOptions {
     /** When set, the corresponding prompt is skipped (non-interactive). */
     readonly preprocessor?: Preprocessor;
     readonly tailwind?: boolean;
+    /** Toggle build-time image optimization. When set, the prompt is skipped. */
+    readonly images?: boolean;
     /** Run the package manager to sync deps. Default `true`; `false` edits files only. */
     readonly install?: boolean;
+}
+
+const CONFIG_FILES = [
+    'toil.config.ts',
+    'toil.config.mts',
+    'toil.config.js',
+    'toil.config.mjs',
+    'toiljs.config.ts',
+    'toiljs.config.mts',
+    'toiljs.config.js',
+    'toiljs.config.mjs',
+];
+
+/** Reads the project's `toil.config.*` (path + source), or null if none exists. */
+async function readConfigFile(root: string): Promise<{ path: string; source: string } | null> {
+    for (const name of CONFIG_FILES) {
+        const p = path.join(root, name);
+        try {
+            return { path: p, source: await fs.readFile(p, 'utf8') };
+        } catch {}
+    }
+    return null;
+}
+
+/**
+ * Persists `client.images` to the project's `toil.config`. Edits an existing config in place (or
+ * creates `toil.config.ts` if none); returns `false` if the existing file's shape couldn't be
+ * edited, so the caller can tell the user to set it by hand.
+ */
+async function writeImagesFlag(root: string, enabled: boolean): Promise<boolean> {
+    const existing = await readConfigFile(root);
+    if (!existing) {
+        await fs.writeFile(path.join(root, 'toil.config.ts'), defaultConfigSource(enabled), 'utf8');
+        return true;
+    }
+    const next = setConfigImages(existing.source, enabled);
+    if (next === null) return false;
+    await fs.writeFile(existing.path, next, 'utf8');
+    return true;
+}
+
+/** Current `client.images` setting (defaults to `true` when the config can't be loaded). */
+async function resolveImages(root: string): Promise<boolean> {
+    try {
+        return (await loadConfig({ root })).images;
+    } catch {
+        return true;
+    }
 }
 
 /** Resolves the client source dir, falling back to `<root>/client` if the config can't be loaded. */
@@ -224,13 +276,18 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
         tailwind: detectTailwind(deps),
     };
 
-    const nonInteractive = opts.preprocessor !== undefined || opts.tailwind !== undefined;
+    const currentImages = await resolveImages(root);
+
+    const nonInteractive =
+        opts.preprocessor !== undefined || opts.tailwind !== undefined || opts.images !== undefined;
     let target: StyleFeatures;
+    let targetImages: boolean;
     if (nonInteractive) {
         target = {
             preprocessor: opts.preprocessor ?? current.preprocessor,
             tailwind: opts.tailwind ?? current.tailwind,
         };
+        targetImages = opts.images ?? currentImages;
     } else {
         const ppChoice = await select<Preprocessor>({
             message: 'CSS preprocessor',
@@ -240,33 +297,57 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
         bail(ppChoice);
         const twChoice = await confirm({ message: 'Use Tailwind CSS?', initialValue: current.tailwind });
         bail(twChoice);
+        const imChoice = await confirm({
+            message: 'Optimize images at build time?',
+            initialValue: currentImages,
+        });
+        bail(imChoice);
         target = { preprocessor: ppChoice, tailwind: twChoice };
+        targetImages = imChoice;
     }
 
-    if (target.preprocessor === current.preprocessor && target.tailwind === current.tailwind) {
-        outro('No changes — your styling setup is already up to date.');
+    const styleChanged =
+        target.preprocessor !== current.preprocessor || target.tailwind !== current.tailwind;
+    const imagesChanged = targetImages !== currentImages;
+    if (!styleChanged && !imagesChanged) {
+        outro('No changes — your setup is already up to date.');
         return;
     }
 
     const s = spinner();
     s.start('Updating project files');
-    await applyConfigure(clientAbsDir, pkgPath, pkg, current, target);
-    s.stop('Updated stylesheets, entry imports, and package.json');
+    if (styleChanged) await applyConfigure(clientAbsDir, pkgPath, pkg, current, target);
+    let imagesWarning = '';
+    if (imagesChanged && !(await writeImagesFlag(root, targetImages))) {
+        imagesWarning = pc.yellow(
+            ' Could not edit toil.config automatically — set `client.images` by hand.',
+        );
+    }
+    s.stop('Updated project files');
 
-    const pm = await detectPackageManager(root);
-    if (opts.install === false) {
-        note(`${pc.cyan(`${pm} install`)} to sync the dependency changes.`, 'Next step');
-    } else {
-        const i = spinner();
-        i.start(`Syncing dependencies with ${pm}`);
-        try {
-            await run(pm, ['install'], root);
-            i.stop('Dependencies synced');
-        } catch {
-            i.stop(pc.yellow(`Could not run \`${pm} install\` — run it yourself to finish`));
+    if (styleChanged) {
+        const pm = await detectPackageManager(root);
+        if (opts.install === false) {
+            note(`${pc.cyan(`${pm} install`)} to sync the dependency changes.`, 'Next step');
+        } else {
+            const i = spinner();
+            i.start(`Syncing dependencies with ${pm}`);
+            try {
+                await run(pm, ['install'], root);
+                i.stop('Dependencies synced');
+            } catch {
+                i.stop(pc.yellow(`Could not run \`${pm} install\` — run it yourself to finish`));
+            }
         }
     }
 
-    note(describe(current, target), 'Styling updated');
+    const summary = [
+        styleChanged ? describe(current, target) : '',
+        imagesChanged ? dim('  ') + `image optimization: ${currentImages ? 'on' : 'off'} → ${targetImages ? 'on' : 'off'}` : '',
+        imagesWarning,
+    ]
+        .filter(Boolean)
+        .join('\n');
+    note(summary, 'Updated');
     outro(`Reconfigured — restart \`${accent('toiljs dev')}\` to pick up the changes.`);
 }
