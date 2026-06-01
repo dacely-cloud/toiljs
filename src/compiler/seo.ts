@@ -231,6 +231,69 @@ export function seoTitle(seo: SeoConfig): string | undefined {
     return seo.title;
 }
 
+/**
+ * Bakes the SEO `<head>` into an HTML document: replaces the existing `<title>` and `description`
+ * meta (so they aren't duplicated) and inserts the rest before `</head>`. Used for the shell and,
+ * per route, by the prerenderer.
+ */
+export function injectSeoHtml(html: string, seo: SeoConfig): string {
+    let out = html;
+    const title = seoTitle(seo);
+    if (title !== undefined) {
+        const tag = `<title>${escapeHtml(title)}</title>`;
+        out = /<title>[\s\S]*?<\/title>/i.test(out)
+            ? out.replace(/<title>[\s\S]*?<\/title>/i, tag)
+            : out.replace(/<\/head>/i, `    ${tag}\n  </head>`);
+    }
+    if (seo.description !== undefined) {
+        out = out.replace(/[ \t]*<meta\s+name=["']description["'][^>]*>\s*\n?/i, '');
+    }
+    const tags = seoHeadTags(seo);
+    if (tags) {
+        out = out.includes('</head>') ? out.replace(/<\/head>/i, `${tags}\n  </head>`) : `${tags}\n${out}`;
+    }
+    return out;
+}
+
+function asString(value: unknown): string | undefined {
+    return typeof value === 'string' ? value : undefined;
+}
+function asRecord(value: unknown): Record<string, unknown> {
+    return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+/**
+ * Overlays a route's extracted `metadata` (title/description/openGraph/…) onto the site-wide
+ * {@link SeoConfig}, and points the canonical/`og:url` at the route's own URL. The result is what
+ * the prerenderer bakes into that route's HTML — per-file metadata winning over the site defaults.
+ */
+export function routeSeo(
+    seo: SeoConfig,
+    metadata: Record<string, unknown> | null,
+    pattern: string,
+): SeoConfig {
+    const routeUrl = seo.url !== undefined ? joinUrl(seo.url, pattern) : undefined;
+    if (!metadata) return { ...seo, url: routeUrl };
+    const og = asRecord(metadata.openGraph);
+    return {
+        ...seo,
+        url: asString(metadata.canonical) ?? routeUrl,
+        title: asString(metadata.title) ?? seo.title,
+        description: asString(metadata.description) ?? seo.description,
+        robotsMeta: asString(metadata.robots) ?? seo.robotsMeta,
+        themeColor: asString(metadata.themeColor) ?? seo.themeColor,
+        openGraph: {
+            ...seo.openGraph,
+            title: asString(og.title) ?? asString(metadata.title) ?? seo.openGraph?.title,
+            description: asString(og.description) ?? asString(metadata.description) ?? seo.openGraph?.description,
+            type: asString(og.type) ?? seo.openGraph?.type,
+            image: asString(og.image) ?? seo.openGraph?.image,
+            imageAlt: asString(og.imageAlt) ?? seo.openGraph?.imageAlt,
+            siteName: asString(og.siteName) ?? seo.openGraph?.siteName,
+        },
+    };
+}
+
 /** `robots.txt` contents. */
 export function robotsTxt(seo: SeoConfig): string {
     if (seo.robots === false) return '';

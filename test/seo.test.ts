@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ScannedRoute } from '../src/compiler/routes';
-import { llmsTxt, robotsTxt, seoHeadTags, sitemapXml } from '../src/compiler/seo';
+import { injectSeoHtml, llmsTxt, robotsTxt, routeSeo, seoHeadTags, sitemapXml } from '../src/compiler/seo';
 
 const routes: ScannedRoute[] = [
     { file: 'a', pattern: '/' },
@@ -31,6 +31,56 @@ describe('seoHeadTags', () => {
 
     it('escapes attribute values', () => {
         expect(seoHeadTags({ description: 'a "b" <c>' })).toContain('content="a &quot;b&quot; &lt;c&gt;"');
+    });
+
+    it('renders a full Twitter card + OG image dimensions + fb:app_id', () => {
+        const html = seoHeadTags({
+            title: 'Home',
+            description: 'd',
+            openGraph: { image: 'https://x.test/og.png', imageAlt: 'alt', imageWidth: 1200, imageHeight: 630 },
+            twitter: { site: '@x' },
+            facebook: { appId: '123' },
+        });
+        expect(html).toContain('<meta name="twitter:card" content="summary_large_image" />');
+        expect(html).toContain('<meta name="twitter:site" content="@x" />');
+        expect(html).toContain('<meta name="twitter:title" content="Home" />');
+        expect(html).toContain('<meta name="twitter:image" content="https://x.test/og.png" />');
+        expect(html).toContain('<meta property="og:image:width" content="1200" />');
+        expect(html).toContain('<meta property="og:image:alt" content="alt" />');
+        expect(html).toContain('<meta property="fb:app_id" content="123" />');
+    });
+
+    it('neutralizes </script> in JSON-LD (no script breakout)', () => {
+        const html = seoHeadTags({ jsonLd: { x: '</script><img src=x onerror=alert(1)>' } });
+        expect(html).not.toContain('</script><img');
+        expect(html).toContain('\\u003c/script');
+    });
+});
+
+describe('routeSeo', () => {
+    it("overlays a route's metadata over the site defaults and points URLs at the route", () => {
+        const site = { url: 'https://x.test', title: 'Site', description: 'site desc' };
+        const out = routeSeo(site, { title: 'About', description: 'about desc' }, '/about');
+        expect(out.title).toBe('About');
+        expect(out.description).toBe('about desc');
+        expect(out.url).toBe('https://x.test/about');
+    });
+
+    it('falls back to the site defaults when a route has no metadata', () => {
+        const site = { url: 'https://x.test', title: 'Site' };
+        expect(routeSeo(site, null, '/x')).toMatchObject({ title: 'Site', url: 'https://x.test/x' });
+    });
+});
+
+describe('injectSeoHtml', () => {
+    it('replaces the title + description and inserts the rest before </head>', () => {
+        const shell = '<!doctype html><html><head><title>old</title><meta name="description" content="" /></head><body></body></html>';
+        const out = injectSeoHtml(shell, { title: 'New', description: 'fresh', url: 'https://x.test' });
+        expect(out).toContain('<title>New</title>');
+        expect(out).not.toContain('<title>old</title>');
+        expect(out.match(/name="description"/g)).toHaveLength(1);
+        expect(out).toContain('content="fresh"');
+        expect(out).toContain('<link rel="canonical" href="https://x.test" />');
     });
 });
 

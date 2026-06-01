@@ -10,6 +10,7 @@ import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
 import { type ResolvedToilConfig } from './config.js';
 import { imageReportPlugin } from './image-report.js';
 import { toilPlugin } from './plugin.js';
+import { prerenderPlugin } from './prerender.js';
 
 /** Image extensions routed to `images/` in the build output. */
 const IMAGE_EXT = /^(png|jpe?g|svg|gif|tiff|bmp|ico|webp|avif)$/i;
@@ -37,8 +38,7 @@ async function tailwindPlugin(root: string): Promise<PluginOption | undefined> {
     } catch {
         return undefined;
     }
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- dynamic import() is typed any
-    const mod: { default?: () => PluginOption } = await import(pathToFileURL(resolved).href);
+    const mod = (await import(pathToFileURL(resolved).href)) as { default?: () => PluginOption };
     return mod.default?.();
 }
 
@@ -85,6 +85,8 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
                   })
                 : undefined,
             cfg.images ? imageReportPlugin(cfg.root, cfg.toilDir) : undefined,
+            // Static per-route SEO prerender (build only): bakes each route's metadata into its HTML.
+            cfg.seo ? prerenderPlugin(cfg) : undefined,
             nodePolyfills({ globals: { Buffer: true, global: true, process: true } }),
             react(),
             toilPlugin(cfg),
