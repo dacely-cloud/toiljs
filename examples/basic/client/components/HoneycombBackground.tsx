@@ -224,14 +224,7 @@ export default function HoneycombBackground() {
     return (
         <canvas
             ref={canvasRef}
-            style={{
-                position: 'fixed',
-                inset: 0,
-                width: '100%',
-                height: '100%',
-                pointerEvents: 'none',
-                zIndex: 0,
-            }}
+            className="honeycomb-canvas"
         />
     );
 }
