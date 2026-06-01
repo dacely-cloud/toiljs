@@ -14,10 +14,10 @@ export const revalidate: Toil.Revalidate = 10;
 // Dynamic metadata derived from the loader's data (vs the static `metadata` export on /about).
 export const generateMetadata: Toil.GenerateMetadata<Awaited<ReturnType<typeof loader>>> = ({
     data,
-}) => ({ title: `Loader demo — loaded ${data.loadedAt}` });
+}) => ({ title: `Loader demo, loaded ${data.loadedAt}` });
 
 export default function LoaderDemo() {
-    // Pass the loader to infer the data type from its return — no generics, no restating the shape.
+    // Pass the loader to infer the data type from its return, no generics, no restating the shape.
     const data = Toil.useLoaderData(loader);
     const router = Toil.useRouter();
     return (
@@ -33,7 +33,7 @@ export default function LoaderDemo() {
                 </button>
             </p>
             {/* The write half: an action runs on submit, then revalidates this route's loader so
-                `loadedAt` above updates — read → write → revalidate, no manual refetch. */}
+                `loadedAt` above updates, read → write → revalidate, no manual refetch. */}
             <Toil.Form action={async (form) => { await wait(500); console.log('saved', form.get('note')); }}>
                 {({ pending }) => (
                     <>

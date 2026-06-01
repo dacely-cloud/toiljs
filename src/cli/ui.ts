@@ -54,7 +54,7 @@ export function success(s: string): string {
     return rgb(ACCENT, s);
 }
 
-/** Error accent (red — kept outside the brand palette since errors should read as errors). */
+/** Error accent (red, kept outside the brand palette since errors should read as errors). */
 export const danger = pc.red;
 
 function lerp(a: number, b: number, t: number): number {

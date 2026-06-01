@@ -1,5 +1,5 @@
 // Root error boundary. Unlike a route's `error.tsx`, this sits *outside* the root layout, so it
-// also catches errors thrown while rendering the layout itself — the last line of defense.
+// also catches errors thrown while rendering the layout itself, the last line of defense.
 export default function GlobalError({ error, reset }: Toil.RouteErrorProps) {
     return (
         <main className="global-error">

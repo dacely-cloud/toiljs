@@ -1,5 +1,5 @@
 /**
- * toiljs IO — native binary serialization + fast collections, exposed to the client both as
+ * toiljs IO, native binary serialization + fast collections, exposed to the client both as
  * `toiljs/io` imports and as ambient globals (see the generated `.toil/toil-env.d.ts`).
  */
 export { BinaryWriter } from './BinaryWriter.js';

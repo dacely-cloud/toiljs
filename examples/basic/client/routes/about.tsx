@@ -1,4 +1,4 @@
-// Declarative per-route SEO — resolved by the router into <title> + <meta>/<link> tags. The root
+// Declarative per-route SEO, resolved by the router into <title> + <meta>/<link> tags. The root
 // layout's titleTemplate (if any) still applies; component-level useHead/<Head> can override.
 export const metadata: Toil.Metadata = {
     title: 'About',

@@ -62,14 +62,14 @@ interface Entry {
     revalidate: Revalidate;
     /** Navigation epoch at which this entry was (re)fetched. */
     epoch: number;
-    /** Whether the route exports a `loader` — a route without one has no data that can change. */
+    /** Whether the route exports a `loader`, a route without one has no data that can change. */
     hasLoader: boolean;
 }
 
 const cache = new Map<string, Entry>();
 const MAX_ENTRIES = 32;
 
-/** Cache key for a URL: path + query (hash is ignored — it never changes loader data). */
+/** Cache key for a URL: path + query (hash is ignored, it never changes loader data). */
 export function loaderKey(pathname: string, search: string): string {
     return `${pathname}${search}`;
 }
@@ -100,7 +100,7 @@ async function loadRoute(
 /** Whether a settled entry must be refetched for the current navigation. */
 function isStale(entry: Entry, epoch: number): boolean {
     if (entry.status === 'error') return true; // always retry a failed load
-    // A route with no loader has no data that can change — keep it cached so repeat navigations
+    // A route with no loader has no data that can change, keep it cached so repeat navigations
     // render synchronously (instant) instead of re-suspending and remounting on every switch.
     if (!entry.hasLoader) return false;
     if (entry.revalidate === false) return false; // cache forever
@@ -182,7 +182,7 @@ function keyForHref(href: string): string | undefined {
 /**
  * Invalidates cached loader data so it refetches on the next render. With no argument, clears every
  * route; with an `href`, clears just that route's entry. Pair with a re-render (the active route
- * refetches and suspends) — see {@link revalidate}.
+ * refetches and suspends), see {@link revalidate}.
  */
 export function invalidateLoaderData(href?: string): void {
     if (href === undefined) {
@@ -209,14 +209,14 @@ export const LoaderDataContext = createContext<unknown>(undefined);
 /**
  * The data returned by the active route's `loader`. Three ways to type it, easiest first:
  *
- * 1. **Pass the loader** — zero generics, fully inferred from your loader's return:
+ * 1. **Pass the loader**, zero generics, fully inferred from your loader's return:
  *    `const data = useLoaderData(loader);`
  * 2. Pass `typeof loader` as a type argument: `useLoaderData<typeof loader>();`
  * 3. Pass an explicit shape: `useLoaderData<Post>();`
  *
- * With no argument and no type, it returns `unknown` (never `any`) — so the data is there at runtime,
+ * With no argument and no type, it returns `unknown` (never `any`), so the data is there at runtime,
  * but you must annotate or narrow before using it. There's no way to infer the type from a bare call:
- * TypeScript can't tell which file (and so which `loader`) the call belongs to — hence option 1.
+ * TypeScript can't tell which file (and so which `loader`) the call belongs to, hence option 1.
  */
 export function useLoaderData<L extends LoaderFunction>(loader: L): Awaited<ReturnType<L>>;
 export function useLoaderData<T = unknown>(): LoaderData<T>;

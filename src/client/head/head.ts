@@ -70,7 +70,7 @@ const entries = new Map<number, HeadSpec>();
 let order: number[] = [];
 let seq = 0;
 let baseTitle: string | null = null;
-// The current route's resolved metadata — the lowest-priority spec, so component `useHead`/`<Head>`
+// The current route's resolved metadata, the lowest-priority spec, so component `useHead`/`<Head>`
 // always compose on top of it. Set by the router via `setRouteHead` on each navigation.
 let routeHead: HeadSpec | null = null;
 
@@ -120,7 +120,7 @@ function removeHead(id: number): void {
 
 /**
  * Applies a head contribution for the lifetime of the calling component: title, `<meta>`, `<link>`.
- * Reverts on unmount. Compose freely — a root layout can set defaults a page overrides.
+ * Reverts on unmount. Compose freely, a root layout can set defaults a page overrides.
  */
 export function useHead(spec: HeadSpec): void {
     const json = JSON.stringify(spec);
