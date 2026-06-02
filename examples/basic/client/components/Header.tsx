@@ -19,6 +19,9 @@ export default function Header() {
                 <Toil.NavLink href="/get-started" className="nav-center-link">
                     Get Started
                 </Toil.NavLink>
+                <Toil.NavLink href="/features" className="nav-center-link">
+                    Features
+                </Toil.NavLink>
             </nav>
 
             <nav className="nav-links">

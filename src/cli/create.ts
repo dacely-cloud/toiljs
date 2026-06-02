@@ -269,10 +269,10 @@ function minimalClient(name: string, features: StyleFeatures): Record<string, st
             ) + '\n',
         'client/public/images/.gitkeep': '# Place images and other static assets here; served at /images/*.\n',
         'client/toil.tsx':
-            "import { routes, layout, notFound, globalError } from 'toiljs/routes';\n\n" +
+            "import { routes, layout, notFound, globalError, slots } from 'toiljs/routes';\n\n" +
             styleImportLines(features).join('\n') +
             '\n\n' +
-            'Toil.mount(routes, layout, notFound, globalError);\n',
+            'Toil.mount(routes, layout, notFound, globalError, slots);\n',
         [`client/${styleEntry(features.preprocessor)}`]: DEFAULT_STYLE_CONTENT,
         'client/components/.gitkeep': '# Place shared React components here.\n',
         'client/layout.tsx': `import { type ReactNode } from 'react';
