@@ -256,6 +256,7 @@ toiljs build           production build
 toiljs start           self-host the build (hyper-express / uWebSockets)
 toiljs configure       toggle styling, image, font, and SEO features
 toiljs doctor          diagnose project setup and dependencies (--json for CI)
+toiljs update          check for and apply dependency updates (-y to apply all)
 ```
 
 ## Tech
