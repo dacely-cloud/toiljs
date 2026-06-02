@@ -13,6 +13,20 @@ import { imageReportPlugin } from './image-report.js';
 import { toilPlugin } from './plugin.js';
 import { prerenderPlugin } from './prerender.js';
 
+// `vite-plugin-node-polyfills` rewrites react/react-dom to import its `vite-plugin-node-polyfills/
+// shims/*` modules. When a consumer links toiljs by symlink (`file:`/workspace), that package lives
+// only in toiljs's own node_modules, so resolving those bare specifiers from the consumer root
+// fails ("Failed to resolve import vite-plugin-node-polyfills/shims/process"). Alias them to
+// absolute paths resolved from toiljs's location so the build works however toiljs was installed.
+const polyfillPkgRoot = path.dirname(
+    path.dirname(createRequire(import.meta.url).resolve('vite-plugin-node-polyfills')),
+);
+const polyfillShimAliases: Record<string, string> = {
+    'vite-plugin-node-polyfills/shims/buffer': path.join(polyfillPkgRoot, 'shims/buffer/dist/index.js'),
+    'vite-plugin-node-polyfills/shims/global': path.join(polyfillPkgRoot, 'shims/global/dist/index.js'),
+    'vite-plugin-node-polyfills/shims/process': path.join(polyfillPkgRoot, 'shims/process/dist/index.js'),
+};
+
 /** Image extensions routed to `images/` in the build output. */
 const IMAGE_EXT = /^(png|jpe?g|svg|gif|tiff|bmp|ico|webp|avif)$/i;
 /** Font extensions routed to `fonts/`. */
@@ -98,6 +112,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             alias: {
                 'toiljs/client': cfg.runtimePath,
                 'toiljs/routes': path.join(cfg.toilDir, 'routes.ts'),
+                ...polyfillShimAliases,
             },
             dedupe: ['react', 'react-dom'],
         },

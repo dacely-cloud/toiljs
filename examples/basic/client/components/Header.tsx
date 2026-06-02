@@ -8,7 +8,7 @@ export default function Header() {
     return (
         <header className="nav">
             <Toil.Link href="/" className="nav-logo">
-                <img src="images/logo.svg" alt="ToilJS" width={28} height={28} />
+                <img src="/images/logo.svg" alt="ToilJS" width={28} height={28} />
                 <span>ToilJS</span>
             </Toil.Link>
 
