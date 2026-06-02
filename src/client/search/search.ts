@@ -14,7 +14,7 @@ import type { Metadata } from '../head/metadata.js';
 export interface PageMeta {
     /** Route URL pattern, e.g. `'/'`, `'/about'`, `'/blog/:id'`. */
     readonly path: string;
-    /** Whether `path` has dynamic (`:param` / `*catch-all`) segments — not navigable without params. */
+    /** Whether `path` has dynamic (`:param` / `*catch-all`) segments, not navigable without params. */
     readonly dynamic: boolean;
     /** The page's statically-extracted metadata (empty object when the route declares none). */
     readonly metadata: Metadata;
@@ -42,7 +42,7 @@ export interface PageSearchResult {
     readonly matches: readonly SearchField[];
 }
 
-/** Relative weight of each field — title is the strongest signal, OpenGraph the weakest. */
+/** Relative weight of each field, title is the strongest signal, OpenGraph the weakest. */
 const FIELD_WEIGHT: Record<SearchField, number> = {
     title: 10,
     path: 6,

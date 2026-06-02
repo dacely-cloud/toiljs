@@ -6,8 +6,8 @@ import { injectSeoHtml, llmsTxt, robotsTxt, routeSeo, seoHeadTags, sitemapXml } 
 const routes: ScannedRoute[] = [
     { file: 'a', pattern: '/' },
     { file: 'b', pattern: '/about' },
-    { file: 'c', pattern: '/blog/:id' }, // dynamic — excluded from sitemap
-    { file: 'd', pattern: '/photo/:id', slot: 'modal', intercept: true }, // slot/intercept — excluded
+    { file: 'c', pattern: '/blog/:id' }, // dynamic, excluded from sitemap
+    { file: 'd', pattern: '/photo/:id', slot: 'modal', intercept: true }, // slot/intercept, excluded
 ];
 
 describe('seoHeadTags', () => {
