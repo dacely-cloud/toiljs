@@ -3,7 +3,7 @@
     "type": "module",
     "version": "0.0.11",
     "author": "Dacely",
-    "description": "Full-stack TypeScript framework: a file-based React app with a toilscript-compiled WebAssembly server.",
+    "description": "The modern React framework: a file-based React frontend and a ToilScript-compiled WebAssembly backend.",
     "engines": {
         "node": ">=24.0.0"
     },
