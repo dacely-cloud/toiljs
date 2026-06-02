@@ -31,13 +31,20 @@ export default tseslint.config(
         rules: {
             ...reactHooks.configs.recommended.rules,
             // Route files conventionally export `loader` / `revalidate` / `metadata` /
-            // `generateMetadata` alongside the default component; the toil compiler consumes them at
-            // runtime. Allow them (plus primitive constants) so Fast Refresh doesn't flag the pattern.
+            // `generateMetadata` / `searchHints` alongside the default component; the toil compiler
+            // consumes them at runtime/build. Allow them (plus primitive constants) so Fast Refresh
+            // doesn't flag the pattern.
             'react-refresh/only-export-components': [
                 'warn',
                 {
                     allowConstantExport: true,
-                    allowExportNames: ['loader', 'revalidate', 'metadata', 'generateMetadata'],
+                    allowExportNames: [
+                        'loader',
+                        'revalidate',
+                        'metadata',
+                        'generateMetadata',
+                        'searchHints',
+                    ],
                 },
             ],
             'no-undef': 'off',
