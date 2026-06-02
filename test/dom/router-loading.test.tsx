@@ -17,7 +17,7 @@ const routes: RouteDef[] = [
         load: () => Promise.resolve({ default: () => <div>HOME</div> }),
     },
     {
-        // Page chunk never resolves, so the route stays suspended — exercising the fallback path.
+        // Page chunk never resolves, so the route stays suspended, exercising the fallback path.
         pattern: '/slow',
         load: () => new Promise<{ default: () => null }>(() => undefined),
         loading: () => Promise.resolve({ default: () => <div>LOADING</div> }),

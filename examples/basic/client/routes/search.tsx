@@ -17,7 +17,7 @@ export default function Search() {
         <main>
             <h1>Search</h1>
             <p>
-                Type to search across the metadata of all {pages.length} pages — title, description, keywords, and
+                Type to search across the metadata of all {pages.length} pages, title, description, keywords, and
                 OpenGraph. Indexed at build by <code>client/routes/*</code>.
             </p>
 
@@ -44,7 +44,7 @@ export default function Search() {
                                     goTo(r);
                                 }}
                                 disabled={r.page.dynamic}
-                                title={r.page.dynamic ? 'Dynamic route — needs params to open' : undefined}
+                                title={r.page.dynamic ? 'Dynamic route, needs params to open' : undefined}
                                 style={{ textAlign: 'left', cursor: r.page.dynamic ? 'default' : 'pointer' }}>
                                 <strong>{r.page.metadata.title ?? r.page.path}</strong> <code>{r.page.path}</code>
                                 {r.page.metadata.description !== undefined && <div>{r.page.metadata.description}</div>}
