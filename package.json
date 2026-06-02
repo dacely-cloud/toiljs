@@ -1,7 +1,7 @@
 {
     "name": "toiljs",
     "type": "module",
-    "version": "0.0.10",
+    "version": "0.0.11",
     "author": "Dacely",
     "description": "Full-stack TypeScript framework: a file-based React app with a toilscript-compiled WebAssembly server.",
     "engines": {
