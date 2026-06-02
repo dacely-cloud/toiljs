@@ -47,6 +47,8 @@ export const TOIL_ENV_DTS =
     `    type Metadata = import('toiljs/client').Metadata;\n` +
     `    type GenerateMetadata<T = unknown> = import('toiljs/client').GenerateMetadata<T>;\n` +
     `    type RouteErrorProps = import('toiljs/client').RouteErrorProps;\n` +
+    `    type Href = import('toiljs/client').Href;\n` +
+    `    type RoutePath = import('toiljs/client').RoutePath;\n` +
     `}\n` +
     `declare const BinaryWriter: typeof import('toiljs/io').BinaryWriter;\n` +
     `declare const BinaryReader: typeof import('toiljs/io').BinaryReader;\n` +
@@ -175,15 +177,22 @@ function findSpecialChain(
     includeClientRoot: boolean,
 ): string[] {
     const chain: string[] = [];
-    if (includeClientRoot) {
+    const relDir = path.dirname(path.relative(cfg.routesAbsDir, routeFile));
+    const segments = relDir === '.' ? [] : relDir.split(path.sep);
+    // A parallel-slot route (one under an `@slot` segment) is rendered INTO a parent layout's
+    // `<Slot>`. Its own layout/template chain must therefore start at the `@slot` directory, not the
+    // routes root: the parent segments' layouts already wrap the slot, so re-including them here
+    // would nest the slot inside itself and recurse. For non-slot routes this is the full chain.
+    const slotIdx = segments.findIndex((s) => s.startsWith('@'));
+    const startAt = slotIdx < 0 ? 0 : slotIdx + 1;
+    if (includeClientRoot && slotIdx < 0) {
         const root = specialIn(cfg.clientAbsDir, base);
         if (root) chain.push(root);
     }
-    const relDir = path.dirname(path.relative(cfg.routesAbsDir, routeFile));
-    const segments = relDir === '.' ? [] : relDir.split(path.sep);
     let dir = cfg.routesAbsDir;
     for (let i = 0; i <= segments.length; i++) {
         if (i > 0) dir = path.join(dir, segments[i - 1]);
+        if (i < startAt) continue;
         const found = specialIn(dir, base);
         if (found) chain.push(found);
     }

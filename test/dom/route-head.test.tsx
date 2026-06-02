@@ -42,4 +42,38 @@ describe('route head (metadata baseline)', () => {
         setRouteHead(resolveMetadata({ title: 'About' }));
         expect(document.title).toBe('About · toiljs');
     });
+
+    // Regression for the "metadata title doesn't update" report: a real layout (title + template)
+    // plus a route's full `metadata` (the exact shape users write) must land on the route's title,
+    // wrapped by the layout template, with the route's og:title applied too.
+    it('applies a full route metadata over a layout title + template', () => {
+        function LayoutDefaults() {
+            useHead({ titleTemplate: '%s | ToilJS', title: 'ToilJS' });
+            return null;
+        }
+        render(<LayoutDefaults />);
+        setRouteHead(
+            resolveMetadata({
+                title: 'useReducer | React Hooks',
+                description: 'Manage complex state with a reducer.',
+                openGraph: { title: 'useReducer | React Hooks', type: 'website' },
+            }),
+        );
+        expect(document.title).toBe('useReducer | React Hooks | ToilJS');
+        expect(
+            document.head.querySelector('meta[property="og:title"]')?.getAttribute('content'),
+        ).toBe('useReducer | React Hooks');
+    });
+
+    // A route can opt out of the layout's template by setting its own `titleTemplate: '%s'`, so the
+    // tab reads exactly the route title with no site suffix.
+    it("lets a route override the layout template with its own '%s'", () => {
+        function LayoutDefaults() {
+            useHead({ titleTemplate: '%s | ToilJS', title: 'ToilJS' });
+            return null;
+        }
+        render(<LayoutDefaults />);
+        setRouteHead(resolveMetadata({ title: 'useReducer | React Hooks', titleTemplate: '%s' }));
+        expect(document.title).toBe('useReducer | React Hooks');
+    });
 });
