@@ -54,6 +54,15 @@ export { useHead, useTitle, Head, mergeHead } from './head/head.js';
 export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head/head.js';
 export { resolveMetadata } from './head/metadata.js';
 export type { Metadata, GenerateMetadata, GenerateMetadataArgs, OpenGraph } from './head/metadata.js';
+export { searchPages, registerPages, getPages, pagePath } from './search/search.js';
+export type {
+    PageMeta,
+    PageSearchResult,
+    PageSearchOptions,
+    SearchField,
+} from './search/search.js';
+export { usePageSearch } from './search/use-page-search.js';
+export type { PageSearch } from './search/use-page-search.js';
 export { Image } from './components/Image.js';
 export type { ImageProps } from './components/Image.js';
 export { Script } from './components/Script.js';

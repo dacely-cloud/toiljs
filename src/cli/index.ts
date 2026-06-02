@@ -8,6 +8,7 @@ import { build, dev, start } from 'toiljs/compiler';
 
 import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
+import { runDoctor } from './doctor.js';
 import { PREPROCESSORS, type Preprocessor } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
@@ -24,6 +25,7 @@ interface Flags {
     git?: boolean;
     pm?: string;
     yes?: boolean;
+    json?: boolean;
 }
 
 function parseArgs(argv: string[]): Flags {
@@ -87,6 +89,9 @@ function parseArgs(argv: string[]): Flags {
             case '--yes':
                 flags.yes = true;
                 break;
+            case '--json':
+                flags.json = true;
+                break;
             default:
                 if (!arg.startsWith('-') && flags.name === undefined) flags.name = arg;
         }
@@ -106,6 +111,7 @@ function printHelp(): void {
             cmd('dev', 'start the dev server with HMR'),
             cmd('build', 'build the optimized production bundle'),
             cmd('start', 'self-host the built app (hyper-express / uWS)'),
+            cmd('doctor', 'diagnose project setup and dependencies'),
             '',
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
@@ -116,6 +122,7 @@ function printHelp(): void {
             cmd('--no-ai', 'create: skip AI assistant files (CLAUDE.md, etc.)'),
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
+            cmd('--json', 'doctor: machine-readable output'),
             cmd('-v, --version', 'print the toiljs version'),
             '',
         ].join('\n') + '\n',
@@ -187,6 +194,12 @@ async function main(): Promise<void> {
             );
             break;
         }
+
+        case 'doctor':
+            // Skip the banner for --json so stdout stays valid JSON.
+            if (!flags.json) banner();
+            await runDoctor({ root: flags.root, cwd: process.cwd(), json: flags.json });
+            break;
 
         case 'help':
         case '--help':
