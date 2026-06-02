@@ -139,8 +139,8 @@ function routePathUnion(routes: ScannedRoute[]): string {
  */
 function routesDts(cfg: ResolvedToilConfig, routes: ScannedRoute[]): string {
     // Type-only namespace import of every route module (erased at build) so editors don't flag a
-    // route's `loader` / `metadata` / `generateMetadata` / `revalidate` / `default` exports as unused
-    // — the compiler consumes them via dynamic `import()`, which editors don't count as a reference.
+    // route's `loader` / `metadata` / `generateMetadata` / `revalidate` / `default` exports as unused,
+    // the compiler consumes them via dynamic `import()`, which editors don't count as a reference.
     const refs = routes.map((route, i) => {
         let rel = path
             .relative(cfg.root, route.file)
