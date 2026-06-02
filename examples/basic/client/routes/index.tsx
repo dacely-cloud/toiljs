@@ -51,9 +51,9 @@ export default function Home() {
     return (
         <section className="hero">
             <div className="hero-logo">
-                <img src="images/logo.svg" className="hero-logo-glow" alt="" aria-hidden="true" width={96} height={96} />
+                <img src="/images/logo.svg" className="hero-logo-glow" alt="" aria-hidden="true" width={96} height={96} />
                 <Toil.Image
-                    src="images/logo.svg"
+                    src="/images/logo.svg"
                     className="hero-logo-img"
                     alt="ToilJS"
                     width={96}
