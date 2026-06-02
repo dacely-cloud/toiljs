@@ -21,14 +21,25 @@ describe('route head (metadata baseline)', () => {
         expect(desc()).toBe('about page');
     });
 
-    it('is the lowest priority — component useHead overrides it', () => {
-        setRouteHead(resolveMetadata({ title: 'Base', description: 'base' }));
-        function Page() {
-            useHead({ title: 'Override', meta: [{ name: 'description', content: 'override' }] });
+    it("wins over a layout's useHead/<Head> defaults for the keys it sets", () => {
+        // A layout default title + a route's metadata title: the route metadata should win.
+        function LayoutDefaults() {
+            useHead({ title: 'Site Default', meta: [{ name: 'description', content: 'site' }] });
             return null;
         }
-        render(<Page />);
-        expect(document.title).toBe('Override');
-        expect(desc()).toBe('override');
+        render(<LayoutDefaults />);
+        setRouteHead(resolveMetadata({ title: 'useReducer', description: 'route desc' }));
+        expect(document.title).toBe('useReducer');
+        expect(desc()).toBe('route desc');
+    });
+
+    it("applies a layout's titleTemplate to the route's title", () => {
+        function LayoutDefaults() {
+            useHead({ titleTemplate: '%s · toiljs' });
+            return null;
+        }
+        render(<LayoutDefaults />);
+        setRouteHead(resolveMetadata({ title: 'About' }));
+        expect(document.title).toBe('About · toiljs');
     });
 });
