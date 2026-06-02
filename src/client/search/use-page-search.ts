@@ -25,9 +25,9 @@ export interface PageSearch {
     /**
      * Navigates to a result / page / raw path. A dynamic (`:param`) page can't be navigated to
      * as-is, so passing one (or its result) is a no-op unless you pass a concrete path string with
-     * the params already filled in.
+     * the params already filled in. A stable reference, safe to destructure.
      */
-    goTo(target: string | PageMeta | PageSearchResult, options?: NavigateOptions): void;
+    readonly goTo: (target: string | PageMeta | PageSearchResult, options?: NavigateOptions) => void;
 }
 
 /** Whether a path can be navigated to directly (no unfilled dynamic segments). */
