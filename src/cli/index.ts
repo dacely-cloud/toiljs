@@ -9,6 +9,7 @@ import { build, dev, start } from 'toiljs/compiler';
 import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
 import { runDoctor } from './doctor.js';
+import { runUpdate } from './update.js';
 import { PREPROCESSORS, type Preprocessor } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
@@ -26,6 +27,7 @@ interface Flags {
     pm?: string;
     yes?: boolean;
     json?: boolean;
+    target?: string;
 }
 
 function parseArgs(argv: string[]): Flags {
@@ -92,6 +94,9 @@ function parseArgs(argv: string[]): Flags {
             case '--json':
                 flags.json = true;
                 break;
+            case '--target':
+                flags.target = argv[++i];
+                break;
             default:
                 if (!arg.startsWith('-') && flags.name === undefined) flags.name = arg;
         }
@@ -112,6 +117,7 @@ function printHelp(): void {
             cmd('build', 'build the optimized production bundle'),
             cmd('start', 'self-host the built app (hyper-express / uWS)'),
             cmd('doctor', 'diagnose project setup and dependencies'),
+            cmd('update', 'check for and apply dependency updates'),
             '',
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
@@ -123,6 +129,7 @@ function printHelp(): void {
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
             cmd('--json', 'doctor: machine-readable output'),
+            cmd('--target <t>', 'update: latest | minor | patch | newest | greatest'),
             cmd('-v, --version', 'print the toiljs version'),
             '',
         ].join('\n') + '\n',
@@ -199,6 +206,16 @@ async function main(): Promise<void> {
             // Skip the banner for --json so stdout stays valid JSON.
             if (!flags.json) banner();
             await runDoctor({ root: flags.root, cwd: process.cwd(), json: flags.json });
+            break;
+
+        case 'update':
+            banner();
+            await runUpdate({
+                root: flags.root,
+                cwd: process.cwd(),
+                yes: flags.yes,
+                target: flags.target,
+            });
             break;
 
         case 'help':
