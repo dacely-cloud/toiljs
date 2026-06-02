@@ -8,7 +8,14 @@ afterEach(cleanup);
 
 describe('Image', () => {
     it('lazy-loads and decodes async by default, with the given dimensions', () => {
-        const { getByAltText } = render(<Image src="/a.png" alt="a" width={200} height={100} />);
+        const { getByAltText } = render(
+            <Image
+                src="/a.png"
+                alt="a"
+                width={200}
+                height={100}
+            />,
+        );
         const img = getByAltText('a') as HTMLImageElement;
         expect(img.getAttribute('src')).toBe('/a.png');
         expect(img.getAttribute('loading')).toBe('lazy');
@@ -19,14 +26,27 @@ describe('Image', () => {
     });
 
     it('priority images load eagerly with high fetch priority', () => {
-        const { getByAltText } = render(<Image src="/hero.png" alt="hero" priority />);
+        const { getByAltText } = render(
+            <Image
+                src="/hero.png"
+                alt="hero"
+                priority
+            />,
+        );
         const img = getByAltText('hero') as HTMLImageElement;
         expect(img.getAttribute('loading')).toBe('eager');
         expect(img.getAttribute('fetchpriority')).toBe('high');
     });
 
     it('fill drops width/height and absolutely positions the image', () => {
-        const { getByAltText } = render(<Image src="/bg.png" alt="bg" fill objectFit="cover" />);
+        const { getByAltText } = render(
+            <Image
+                src="/bg.png"
+                alt="bg"
+                fill
+                objectFit="cover"
+            />,
+        );
         const img = getByAltText('bg') as HTMLImageElement;
         expect(img.hasAttribute('width')).toBe(false);
         expect(img.hasAttribute('height')).toBe(false);
@@ -36,7 +56,14 @@ describe('Image', () => {
 
     it('shows a blur placeholder until the image loads', () => {
         const { getByAltText } = render(
-            <Image src="/p.png" alt="p" width={10} height={10} placeholder="blur" blurDataURL="data:image/x" />,
+            <Image
+                src="/p.png"
+                alt="p"
+                width={10}
+                height={10}
+                placeholder="blur"
+                blurDataURL="data:image/x"
+            />,
         );
         const img = getByAltText('p') as HTMLImageElement;
         expect(img.style.backgroundImage).toContain('data:image/x');

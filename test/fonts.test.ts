@@ -21,6 +21,8 @@ describe('fontPreloadTags', () => {
     });
 
     it('respects a non-root base path', () => {
-        expect(fontPreloadTags(['fonts/a.woff2'], '/app/')[0].attrs?.href).toBe('/app/fonts/a.woff2');
+        expect(fontPreloadTags(['fonts/a.woff2'], '/app/')[0].attrs?.href).toBe(
+            '/app/fonts/a.woff2',
+        );
     });
 });

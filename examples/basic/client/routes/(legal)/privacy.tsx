@@ -11,8 +11,7 @@ export default function Privacy() {
                 <code> (legal)</code> group adds no URL segment.
             </p>
             <p>
-                <Toil.Link href="/terms">Terms</Toil.Link>{' '}
-                <Toil.Link href="/features">Back to features</Toil.Link>
+                <Toil.Link href="/terms">Terms</Toil.Link> <Toil.Link href="/features">Back to features</Toil.Link>
             </p>
         </main>
     );

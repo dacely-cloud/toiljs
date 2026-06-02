@@ -9,9 +9,7 @@ export default function PlaygroundTemplate({ children }: { children?: ReactNode 
     const [mountId] = useState(() => ++mounts);
     return (
         <div>
-            <p style={{ opacity: 0.6 }}>
-                template mount #{mountId} (it increments on every navigation here)
-            </p>
+            <p style={{ opacity: 0.6 }}>template mount #{mountId} (it increments on every navigation here)</p>
             {children}
         </div>
     );

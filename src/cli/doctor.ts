@@ -10,13 +10,15 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfig, scanRoutes, type ResolvedToilConfig } from 'toiljs/compiler';
+import { loadConfig, type ResolvedToilConfig, scanRoutes } from 'toiljs/compiler';
 
 import {
+    type Check,
     checkBasePath,
     checkConfigLoads,
     checkDir,
     checkDuplicatePatterns,
+    type CheckGroup,
     checkMountSlots,
     checkNode,
     checkPackageManager,
@@ -26,6 +28,7 @@ import {
     checkRoutesPresent,
     checkSeoUrl,
     checkServerEntry,
+    type CheckStatus,
     checkStyling,
     checkToilconfig,
     checkToiljsInstalled,
@@ -33,18 +36,15 @@ import {
     checkWasmBuilt,
     findRelativeAssets,
     hasFailures,
-    summarize,
-    type Check,
-    type CheckGroup,
-    type CheckStatus,
     type SourceFile,
+    summarize,
 } from './diagnostics.js';
 import {
-    PREPROCESSOR_PKG,
-    TAILWIND_ENTRY,
     detectTailwind,
-    preprocessorForExt,
     type Preprocessor,
+    PREPROCESSOR_PKG,
+    preprocessorForExt,
+    TAILWIND_ENTRY,
 } from './features.js';
 import { accent, bold, danger, dim, success, version, warn } from './ui.js';
 
@@ -59,7 +59,9 @@ export interface DoctorOptions {
 function readJsonObject(file: string): Record<string, unknown> | null {
     try {
         const parsed: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-        return typeof parsed === 'object' && parsed !== null ? (parsed as Record<string, unknown>) : null;
+        return typeof parsed === 'object' && parsed !== null
+            ? (parsed as Record<string, unknown>)
+            : null;
     } catch {
         return null;
     }
@@ -83,7 +85,12 @@ function readFile(file: string): string | null {
 
 /** Reads the framework's own package.json (engines + peerDependencies) for the requirements. */
 function frameworkMeta(): { node: string; peers: Record<string, string> } {
-    const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
+    const pkgPath = path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '..',
+        '..',
+        'package.json',
+    );
     const pkg = readJsonObject(pkgPath);
     const engines = pkg ? stringRecord(pkg.engines) : {};
     const peers = pkg ? stringRecord(pkg.peerDependencies) : {};
@@ -143,7 +150,8 @@ function renderHuman(groups: readonly CheckGroup[]): void {
             let line = `    ${glyph(check.status)} ${check.label}`;
             if (check.detail) line += dim(`  ${check.detail}`);
             out.push(line);
-            if (check.fix && check.status !== 'pass') out.push('       ' + dim(`fix: ${check.fix}`));
+            if (check.fix && check.status !== 'pass')
+                out.push('       ' + dim(`fix: ${check.fix}`));
         }
         out.push('');
     }
@@ -237,8 +245,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
         }
     }
 
-    const peerName = (n: string): Check =>
-        checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
+    const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
     const peerChecks = Object.keys(meta.peers).map(peerName);
 
     const groups: CheckGroup[] = [
@@ -254,8 +261,18 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
         {
             title: 'Project + routing',
             checks: [
-                checkDir('client-dir', 'client/ directory', fs.existsSync(clientAbsDir), 'Create a client/ directory for your app.'),
-                checkDir('routes-dir', 'routes/ directory', fs.existsSync(routesAbsDir), 'Create client/routes/ and add an index.tsx.'),
+                checkDir(
+                    'client-dir',
+                    'client/ directory',
+                    fs.existsSync(clientAbsDir),
+                    'Create a client/ directory for your app.',
+                ),
+                checkDir(
+                    'routes-dir',
+                    'routes/ directory',
+                    fs.existsSync(routesAbsDir),
+                    'Create client/routes/ and add an index.tsx.',
+                ),
                 checkRootElement(indexHtml),
                 checkMountSlots(entrySource),
                 checkRoutesPresent(routes.length),

@@ -10,7 +10,7 @@ import path from 'node:path';
 import { cancel, intro, isCancel, multiselect, note, outro, spinner } from '@clack/prompts';
 
 import { capture, run } from './proc.js';
-import { buildRows, parseNcuJson, type Bump, type UpdateRow } from './updates.js';
+import { buildRows, type Bump, parseNcuJson, type UpdateRow } from './updates.js';
 import { accent, danger, dim, success, warn } from './ui.js';
 
 export interface UpdateOptions {
@@ -115,7 +115,11 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
     } else {
         const answer = await multiselect<string>({
             message: 'Select packages to update (space to toggle, enter to confirm)',
-            options: rows.map((r) => ({ value: r.name, label: r.name, hint: `${r.from} -> ${r.to}` })),
+            options: rows.map((r) => ({
+                value: r.name,
+                label: r.name,
+                hint: `${r.from} -> ${r.to}`,
+            })),
             initialValues: rows.map((r) => r.name),
             required: false,
         });
@@ -140,5 +144,7 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
     await run(pm.name, ['install'], root);
     s.stop('Dependencies installed');
 
-    outro(success(`Updated ${String(selected.length)} package${selected.length === 1 ? '' : 's'}.`));
+    outro(
+        success(`Updated ${String(selected.length)} package${selected.length === 1 ? '' : 's'}.`),
+    );
 }

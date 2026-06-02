@@ -8,31 +8,31 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-    intro,
-    outro,
-    text,
-    select,
-    multiselect,
-    confirm,
-    isCancel,
     cancel,
-    spinner,
+    confirm,
+    intro,
+    isCancel,
+    multiselect,
     note,
+    outro,
+    select,
+    spinner,
+    text,
 } from '@clack/prompts';
-import { AI_HELPERS, AI_HELPER_IDS, aiHelperFiles, TOIL_DOCS, TOIL_ENV_DTS } from 'toiljs/compiler';
+import { AI_HELPER_IDS, AI_HELPERS, aiHelperFiles, TOIL_DOCS, TOIL_ENV_DTS } from 'toiljs/compiler';
 import pc from 'picocolors';
 
 import {
     PKG_VERSION,
+    type Preprocessor,
     PREPROCESSORS,
     requiredPackages,
     setStyleImports,
     styleEntry,
+    type StyleFeatures,
     styleImportLines,
     TAILWIND_CSS,
     TAILWIND_ENTRY,
-    type Preprocessor,
-    type StyleFeatures,
 } from './features.js';
 import { run } from './proc.js';
 import { accent, dim, version } from './ui.js';
@@ -210,7 +210,21 @@ function scaffold(
         'server/main.ts':
             "import { add } from './index';\n\n" +
             '@main\nfunction run(): i32 {\n    return add(40, 2);\n}\n',
-        'README.md': ['# ' + path.basename(name), '', 'A [toiljs](https://toil.org) app.', '', '## Develop', '', '    npm install', '    npm run dev', '', '## Build', '', '    npm run build', ''].join('\n'),
+        'README.md': [
+            '# ' + path.basename(name),
+            '',
+            'A [toiljs](https://toil.org) app.',
+            '',
+            '## Develop',
+            '',
+            '    npm install',
+            '    npm run dev',
+            '',
+            '## Build',
+            '',
+            '    npm run build',
+            '',
+        ].join('\n'),
     };
 
     // The `app` template's client UI is copied from examples/basic/client at runtime; `minimal` ships an
@@ -267,7 +281,8 @@ function minimalClient(name: string, features: StyleFeatures): Record<string, st
                 null,
                 4,
             ) + '\n',
-        'client/public/images/.gitkeep': '# Place images and other static assets here; served at /images/*.\n',
+        'client/public/images/.gitkeep':
+            '# Place images and other static assets here; served at /images/*.\n',
         'client/toil.tsx':
             "import { routes, layout, notFound, globalError, slots } from 'toiljs/routes';\n\n" +
             styleImportLines(features).join('\n') +
@@ -341,7 +356,11 @@ async function applyStyling(clientDir: string, features: StyleFeatures): Promise
         await fs.writeFile(path.join(clientDir, TAILWIND_ENTRY), TAILWIND_CSS, 'utf8');
     }
     const toilPath = path.join(clientDir, 'toil.tsx');
-    await fs.writeFile(toilPath, setStyleImports(await fs.readFile(toilPath, 'utf8'), features), 'utf8');
+    await fs.writeFile(
+        toilPath,
+        setStyleImports(await fs.readFile(toilPath, 'utf8'), features),
+        'utf8',
+    );
 }
 
 async function writeFiles(dir: string, files: Record<string, string>): Promise<void> {
@@ -406,10 +425,18 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     let template: Template = opts.template ?? 'app';
     if (!opts.template && !opts.yes) {
         const templateOptions: TemplateOption[] = [
-            { value: 'app', label: 'App', hint: 'the full ToilJS starter, landing page, layout, styles, demo routes' },
+            {
+                value: 'app',
+                label: 'App',
+                hint: 'the full ToilJS starter, landing page, layout, styles, demo routes',
+            },
             { value: 'minimal', label: 'Minimal', hint: 'just a layout and a home route' },
         ];
-        const choice = await select({ message: 'Which template?', options: templateOptions, initialValue: 'app' });
+        const choice = await select({
+            message: 'Which template?',
+            options: templateOptions,
+            initialValue: 'app',
+        });
         bail(choice);
         template = choice === 'minimal' ? 'minimal' : 'app';
     }
@@ -420,7 +447,10 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
         if (opts.preprocessor === undefined) {
             const choice = await select<Preprocessor>({
                 message: 'Styling',
-                options: PREPROCESSORS.map((value) => ({ value, label: PREPROCESSOR_LABEL[value] })),
+                options: PREPROCESSORS.map((value) => ({
+                    value,
+                    label: PREPROCESSOR_LABEL[value],
+                })),
                 initialValue: 'css',
             });
             bail(choice);
@@ -468,7 +498,10 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     }
     if (!opts.yes) {
         if (opts.git === undefined) {
-            const g = await confirm({ message: 'Initialize a git repository?', initialValue: true });
+            const g = await confirm({
+                message: 'Initialize a git repository?',
+                initialValue: true,
+            });
             bail(g);
             initGit = g;
         }

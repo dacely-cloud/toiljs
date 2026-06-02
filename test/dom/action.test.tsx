@@ -66,7 +66,12 @@ describe('useAction', () => {
     it('revalidate: true invalidates cached loader data', async () => {
         const route: RouteDef = {
             pattern: '/x',
-            load: () => Promise.resolve({ default: () => null, loader: () => ({ n: 1 }), revalidate: false }),
+            load: () =>
+                Promise.resolve({
+                    default: () => null,
+                    loader: () => ({ n: 1 }),
+                    revalidate: false,
+                }),
         };
         const key = loaderKey('/x', '');
         // Seed the cache (suspends once, then resolves).
@@ -94,10 +99,15 @@ describe('Form', () => {
             received = data.get('title');
         });
         const { getByText, getByPlaceholderText } = render(
-            <Form action={action} revalidate={false}>
+            <Form
+                action={action}
+                revalidate={false}>
                 {({ pending }) => (
                     <>
-                        <input name="title" placeholder="t" />
+                        <input
+                            name="title"
+                            placeholder="t"
+                        />
                         <button type="submit">{pending ? 'Saving…' : 'Save'}</button>
                     </>
                 )}
@@ -113,8 +123,15 @@ describe('Form', () => {
 
     it('resets fields after success when resetOnSuccess is set', async () => {
         const { getByText, getByPlaceholderText } = render(
-            <Form action={() => undefined} revalidate={false} resetOnSuccess>
-                <input name="title" placeholder="t" defaultValue="" />
+            <Form
+                action={() => undefined}
+                revalidate={false}
+                resetOnSuccess>
+                <input
+                    name="title"
+                    placeholder="t"
+                    defaultValue=""
+                />
                 <button type="submit">Save</button>
             </Form>,
         );

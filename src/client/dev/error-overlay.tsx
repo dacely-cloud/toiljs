@@ -4,13 +4,7 @@
  * plus `window` `error` / `unhandledrejection` events. Shows the message, stack, and (for render
  * errors) the React component stack, with Dismiss / Reload. Inert in production builds.
  */
-import {
-    Component,
-    useSyncExternalStore,
-    type CSSProperties,
-    type ErrorInfo,
-    type ReactNode,
-} from 'react';
+import { Component, type CSSProperties, type ErrorInfo, type ReactNode, useSyncExternalStore, } from 'react';
 
 /** A captured dev error. */
 interface DevError {
@@ -169,7 +163,9 @@ export function DevErrorOverlay(): ReactNode {
                 <p style={titleStyle}>
                     {SOURCE_LABEL[devError.source]}, {devError.error.name}: {devError.error.message}
                 </p>
-                {devError.error.stack !== undefined && <pre style={preStyle}>{devError.error.stack}</pre>}
+                {devError.error.stack !== undefined && (
+                    <pre style={preStyle}>{devError.error.stack}</pre>
+                )}
                 {devError.componentStack !== undefined && (
                     <pre style={{ ...preStyle, color: '#8b9ab4' }}>{devError.componentStack}</pre>
                 )}

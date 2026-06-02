@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
+import type { Revalidate } from '../../src/client/routing/loader';
 import {
     clearLoaderData,
     invalidateLoaderData,
+    type LoaderData,
     loaderKey,
     readRouteData,
-    type LoaderData,
 } from '../../src/client/routing/loader';
-import type { Revalidate } from '../../src/client/routing/loader';
 import type { RouteDef } from '../../src/client/types';
 
 /** Reads route data, awaiting the suspending promise once if it's pending. */

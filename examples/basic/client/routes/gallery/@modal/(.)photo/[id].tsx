@@ -11,7 +11,7 @@ export default function PhotoModal() {
                 background: 'rgba(0,0,0,0.6)',
                 display: 'grid',
                 placeItems: 'center',
-                zIndex: 50,
+                zIndex: 50
             }}>
             <div style={{ background: 'var(--bg, #0b0f14)', padding: 24, borderRadius: 12, minWidth: 240 }}>
                 <h2>Photo {id}</h2>

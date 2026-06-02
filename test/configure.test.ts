@@ -43,7 +43,11 @@ beforeEach(async () => {
     await fs.mkdir(path.join(clientDir, 'styles'), { recursive: true });
     await fs.writeFile(path.join(clientDir, 'toil.tsx'), ENTRY, 'utf8');
     await fs.writeFile(path.join(clientDir, 'styles/main.css'), 'body { margin: 0; }\n', 'utf8');
-    await fs.writeFile(pkgPath, JSON.stringify({ devDependencies: { typescript: '^6' } }, null, 4), 'utf8');
+    await fs.writeFile(
+        pkgPath,
+        JSON.stringify({ devDependencies: { typescript: '^6' } }, null, 4),
+        'utf8',
+    );
 });
 
 afterEach(async () => {

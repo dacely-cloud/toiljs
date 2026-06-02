@@ -9,11 +9,11 @@ import { navigate, type NavigateOptions } from '../navigation/navigation.js';
 import type { Href } from '../types.js';
 import {
     getPages,
-    pagePath,
-    searchPages,
     type PageMeta,
+    pagePath,
     type PageSearchOptions,
     type PageSearchResult,
+    searchPages,
 } from './search.js';
 
 /** What {@link usePageSearch} returns. */
@@ -27,7 +27,10 @@ export interface PageSearch {
      * as-is, so passing one (or its result) is a no-op unless you pass a concrete path string with
      * the params already filled in. A stable reference, safe to destructure.
      */
-    readonly goTo: (target: string | PageMeta | PageSearchResult, options?: NavigateOptions) => void;
+    readonly goTo: (
+        target: string | PageMeta | PageSearchResult,
+        options?: NavigateOptions,
+    ) => void;
 }
 
 /** Whether a path can be navigated to directly (no unfilled dynamic segments). */

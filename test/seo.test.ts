@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ScannedRoute } from '../src/compiler/routes';
-import { injectSeoHtml, llmsTxt, robotsTxt, routeSeo, seoHeadTags, sitemapXml } from '../src/compiler/seo';
+import {
+    injectSeoHtml,
+    llmsTxt,
+    robotsTxt,
+    routeSeo,
+    seoHeadTags,
+    sitemapXml,
+} from '../src/compiler/seo';
 
 const routes: ScannedRoute[] = [
     { file: 'a', pattern: '/' },
@@ -30,14 +37,21 @@ describe('seoHeadTags', () => {
     });
 
     it('escapes attribute values', () => {
-        expect(seoHeadTags({ description: 'a "b" <c>' })).toContain('content="a &quot;b&quot; &lt;c&gt;"');
+        expect(seoHeadTags({ description: 'a "b" <c>' })).toContain(
+            'content="a &quot;b&quot; &lt;c&gt;"',
+        );
     });
 
     it('renders a full Twitter card + OG image dimensions + fb:app_id', () => {
         const html = seoHeadTags({
             title: 'Home',
             description: 'd',
-            openGraph: { image: 'https://x.test/og.png', imageAlt: 'alt', imageWidth: 1200, imageHeight: 630 },
+            openGraph: {
+                image: 'https://x.test/og.png',
+                imageAlt: 'alt',
+                imageWidth: 1200,
+                imageHeight: 630,
+            },
             twitter: { site: '@x' },
             facebook: { appId: '123' },
         });
@@ -68,14 +82,22 @@ describe('routeSeo', () => {
 
     it('falls back to the site defaults when a route has no metadata', () => {
         const site = { url: 'https://x.test', title: 'Site' };
-        expect(routeSeo(site, null, '/x')).toMatchObject({ title: 'Site', url: 'https://x.test/x' });
+        expect(routeSeo(site, null, '/x')).toMatchObject({
+            title: 'Site',
+            url: 'https://x.test/x',
+        });
     });
 });
 
 describe('injectSeoHtml', () => {
     it('replaces the title + description and inserts the rest before </head>', () => {
-        const shell = '<!doctype html><html><head><title>old</title><meta name="description" content="" /></head><body></body></html>';
-        const out = injectSeoHtml(shell, { title: 'New', description: 'fresh', url: 'https://x.test' });
+        const shell =
+            '<!doctype html><html><head><title>old</title><meta name="description" content="" /></head><body></body></html>';
+        const out = injectSeoHtml(shell, {
+            title: 'New',
+            description: 'fresh',
+            url: 'https://x.test',
+        });
         expect(out).toContain('<title>New</title>');
         expect(out).not.toContain('<title>old</title>');
         expect(out.match(/name="description"/g)).toHaveLength(1);

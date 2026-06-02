@@ -6,11 +6,7 @@
 import { startTransition } from 'react';
 import { flushSync } from 'react-dom';
 
-import {
-    enableManualScrollRestoration,
-    planScroll,
-    rememberScroll,
-} from './scroll.js';
+import { enableManualScrollRestoration, planScroll, rememberScroll } from './scroll.js';
 import type { Href } from '../types.js';
 
 const listeners = new Set<() => void>();
@@ -32,7 +28,8 @@ function shouldViewTransition(): boolean {
     if (!viewTransitions || typeof document === 'undefined' || typeof window === 'undefined') {
         return false;
     }
-    if (typeof (document as ViewTransitionDocument).startViewTransition !== 'function') return false;
+    if (typeof (document as ViewTransitionDocument).startViewTransition !== 'function')
+        return false;
     return !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 

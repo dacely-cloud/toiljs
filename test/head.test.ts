@@ -18,7 +18,12 @@ describe('mergeHead', () => {
     it('dedupes meta by name/property, last wins', () => {
         const resolved = mergeHead([
             { meta: [{ name: 'description', content: 'old' }] },
-            { meta: [{ name: 'description', content: 'new' }, { property: 'og:title', content: 'T' }] },
+            {
+                meta: [
+                    { name: 'description', content: 'new' },
+                    { property: 'og:title', content: 'T' },
+                ],
+            },
         ]);
         expect(resolved.meta).toHaveLength(2);
         expect(resolved.meta.find((m) => m.name === 'description')?.content).toBe('new');
@@ -28,7 +33,12 @@ describe('mergeHead', () => {
     it('dedupes links by rel+href', () => {
         const resolved = mergeHead([
             { link: [{ rel: 'icon', href: '/a.svg' }] },
-            { link: [{ rel: 'icon', href: '/a.svg' }, { rel: 'canonical', href: '/x' }] },
+            {
+                link: [
+                    { rel: 'icon', href: '/a.svg' },
+                    { rel: 'canonical', href: '/x' },
+                ],
+            },
         ]);
         expect(resolved.link).toHaveLength(2);
     });

@@ -138,7 +138,9 @@ export async function loadConfig(
     for (const name of CONFIG_NAMES) {
         const candidate = path.join(root, name);
         if (fs.existsSync(candidate)) {
-            const loaded = (await import(pathToFileURL(candidate).href)) as { default?: ToilConfig };
+            const loaded = (await import(pathToFileURL(candidate).href)) as {
+                default?: ToilConfig;
+            };
             if (loaded.default) user = loaded.default;
             break;
         }

@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { setRouteHead, useHead } from '../../src/client/head/head';
 import { resolveMetadata } from '../../src/client/head/metadata';
 import { cleanup, render } from '@testing-library/react';
-import { afterEach } from 'vitest';
 
 afterEach(() => {
     cleanup();

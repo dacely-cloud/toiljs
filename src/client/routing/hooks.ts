@@ -10,10 +10,10 @@ import {
     forward,
     isNavigationPending,
     navigate,
+    type NavigateOptions,
     refresh,
     subscribeLocation,
     subscribePending,
-    type NavigateOptions,
 } from '../navigation/navigation.js';
 import { clearLoaderData, revalidate as revalidateData } from './loader.js';
 import { ParamsContext } from './params-context.js';
@@ -106,9 +106,5 @@ export function useSearchParams(): URLSearchParams {
 
 /** True while a navigation is in flight (started but not yet committed), e.g. for a loading bar. */
 export function useNavigationPending(): boolean {
-    return useSyncExternalStore(
-        subscribePending,
-        isNavigationPending,
-        () => false,
-    );
+    return useSyncExternalStore(subscribePending, isNavigationPending, () => false);
 }

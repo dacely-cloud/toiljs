@@ -19,7 +19,12 @@ function tmpRoutes(files: Record<string, string>): string {
     }
     return dir;
 }
-function route(dir: string, file: string, pattern: string, extra: Partial<ScannedRoute> = {}): ScannedRoute {
+function route(
+    dir: string,
+    file: string,
+    pattern: string,
+    extra: Partial<ScannedRoute> = {},
+): ScannedRoute {
     return { file: path.join(dir, file), pattern, ...extra };
 }
 

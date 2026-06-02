@@ -15,7 +15,11 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
         // resolution with a cryptic "The specifiers must be a non-empty string. Received ''".
         transform(code, id) {
             const file = id.split('?')[0];
-            if (id.includes('\0') || file.includes('/node_modules/') || !/\.[mc]?[jt]sx?$/.test(file)) {
+            if (
+                id.includes('\0') ||
+                file.includes('/node_modules/') ||
+                !/\.[mc]?[jt]sx?$/.test(file)
+            ) {
                 return null;
             }
             const empty =

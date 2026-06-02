@@ -10,8 +10,8 @@ import {
     setConfigImages,
     setStyleImports,
     styleEntry,
-    styleImportLines,
     type StyleFeatures,
+    styleImportLines,
 } from '../src/cli/features';
 
 const CSS: StyleFeatures = { preprocessor: 'css', tailwind: false };
@@ -54,9 +54,12 @@ describe('requiredPackages / packageDiff', () => {
             add: [],
             remove: ['sass', 'tailwindcss', '@tailwindcss/vite'],
         });
-        expect(packageDiff({ preprocessor: 'sass', tailwind: false }, { preprocessor: 'less', tailwind: false })).toEqual(
-            { add: ['less'], remove: ['sass'] },
-        );
+        expect(
+            packageDiff(
+                { preprocessor: 'sass', tailwind: false },
+                { preprocessor: 'less', tailwind: false },
+            ),
+        ).toEqual({ add: ['less'], remove: ['sass'] });
     });
 });
 
@@ -114,13 +117,17 @@ describe('detect from dependencies', () => {
 
 describe('setConfigImages / defaultConfigSource', () => {
     it('flips an existing images flag', () => {
-        const src = 'export default defineConfig({\n    client: {\n        images: true,\n    },\n});\n';
+        const src =
+            'export default defineConfig({\n    client: {\n        images: true,\n    },\n});\n';
         expect(setConfigImages(src, false)).toContain('images: false');
         expect(setConfigImages(src, false)).not.toContain('images: true');
     });
 
     it('adds images to an existing client block', () => {
-        const out = setConfigImages('export default defineConfig({ client: { base: "/" } });', false);
+        const out = setConfigImages(
+            'export default defineConfig({ client: { base: "/" } });',
+            false,
+        );
         expect(out).toContain('images: false');
         expect(out).toContain('base: "/"');
     });

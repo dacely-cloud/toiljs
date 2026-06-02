@@ -18,7 +18,8 @@ describe('resolveMetadata', () => {
         expect(head.title).toBe('About');
         expect(head.titleTemplate).toBe('%s · toiljs');
         const byName = (name: string) => head.meta?.find((m) => m.name === name)?.content;
-        const byProp = (property: string) => head.meta?.find((m) => m.property === property)?.content;
+        const byProp = (property: string) =>
+            head.meta?.find((m) => m.property === property)?.content;
         expect(byName('description')).toBe('desc');
         expect(byName('keywords')).toBe('a, b');
         expect(byName('robots')).toBe('noindex');

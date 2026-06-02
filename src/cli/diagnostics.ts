@@ -231,7 +231,9 @@ function isBrokenRelativeAsset(value: string): boolean {
     if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return false; // http:, https:, data:, mailto:, ...
     if (value.startsWith('#') || value.startsWith('?')) return false;
     // Only flag asset-looking values (a real file extension), to avoid false positives on app routes.
-    return /\.(svgz?|png|jpe?g|gif|webp|avif|ico|css|m?js|woff2?|ttf|otf|eot|mp4|webm|json)$/i.test(value);
+    return /\.(svgz?|png|jpe?g|gif|webp|avif|ico|css|m?js|woff2?|ttf|otf|eot|mp4|webm|json)$/i.test(
+        value,
+    );
 }
 
 /** Finds string-literal `src=`/`href=` attributes pointing at broken relative asset paths. */
@@ -299,7 +301,12 @@ export function checkBasePath(base: string): Check {
 
 export function checkSeoUrl(seoConfigured: boolean, hasUrl: boolean): Check {
     if (!seoConfigured) {
-        return { id: 'seo-url', label: 'SEO site url', status: 'pass', detail: 'SEO not configured' };
+        return {
+            id: 'seo-url',
+            label: 'SEO site url',
+            status: 'pass',
+            detail: 'SEO not configured',
+        };
     }
     return hasUrl
         ? { id: 'seo-url', label: 'SEO site url', status: 'pass' }

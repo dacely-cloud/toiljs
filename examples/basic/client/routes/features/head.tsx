@@ -12,15 +12,15 @@ export default function HeadDemo() {
     // Add a meta tag and a canonical link for this page only.
     Toil.useHead({
         meta: [{ name: 'description', content: `Imperative head demo, clicked ${count} times.` }],
-        link: [{ rel: 'canonical', href: 'https://toil.example/features/head' }],
+        link: [{ rel: 'canonical', href: 'https://toil.example/features/head' }]
     });
 
     return (
         <main>
             <h1>Imperative head</h1>
             <p>
-                The tab title is driven by component state via <code>Toil.useTitle</code>. Click the
-                button and watch it change, then leave the page and the title reverts.
+                The tab title is driven by component state via <code>Toil.useTitle</code>. Click the button and watch it
+                change, then leave the page and the title reverts.
             </p>
             <p>
                 <button type="button" onClick={() => setCount((c) => c + 1)}>

@@ -67,7 +67,13 @@ const FIELD_WEIGHT: Record<SearchField, number> = {
     openGraph: 2,
 };
 
-const ALL_FIELDS: readonly SearchField[] = ['title', 'description', 'keywords', 'path', 'openGraph'];
+const ALL_FIELDS: readonly SearchField[] = [
+    'title',
+    'description',
+    'keywords',
+    'path',
+    'openGraph',
+];
 
 /** The live page index, populated by {@link registerPages} from the compiler-generated bundle. */
 let registry: readonly PageMeta[] = [];
@@ -152,7 +158,10 @@ export function searchPages(query: string, options: PageSearchOptions = {}): Pag
     for (const page of registry) {
         if (page.dynamic && !options.includeDynamic) continue;
 
-        const texts = fields.map((field) => ({ field, text: fieldText(page, field).toLowerCase() }));
+        const texts = fields.map((field) => ({
+            field,
+            text: fieldText(page, field).toLowerCase(),
+        }));
         const matched = new Set<SearchField>();
         let score = 0;
         // AND semantics: every term must hit at least one field, or the page is dropped.

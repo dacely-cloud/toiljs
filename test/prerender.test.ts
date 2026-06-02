@@ -9,7 +9,10 @@ import { extractStaticMetadata } from '../src/compiler/prerender';
 
 const written: string[] = [];
 function tmp(source: string): string {
-    const file = path.join(os.tmpdir(), `toil-prerender-${String(written.length)}-${process.pid}.tsx`);
+    const file = path.join(
+        os.tmpdir(),
+        `toil-prerender-${String(written.length)}-${process.pid}.tsx`,
+    );
     fs.writeFileSync(file, source);
     written.push(file);
     return file;
@@ -32,10 +35,15 @@ describe('extractStaticMetadata', () => {
     });
 
     it('returns null when there is no static metadata export', () => {
-        expect(extractStaticMetadata(ts, tmp(`export default function P() { return null; }\n`))).toBeNull();
+        expect(
+            extractStaticMetadata(ts, tmp(`export default function P() { return null; }\n`)),
+        ).toBeNull();
         // generateMetadata (a function) is not a static object literal → not extracted.
         expect(
-            extractStaticMetadata(ts, tmp(`export const generateMetadata = () => ({ title: 'X' });\n`)),
+            extractStaticMetadata(
+                ts,
+                tmp(`export const generateMetadata = () => ({ title: 'X' });\n`),
+            ),
         ).toBeNull();
     });
 

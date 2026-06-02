@@ -169,10 +169,13 @@ function staticPaths(routes: readonly ScannedRoute[]): string[] {
 /** The site-level `<head>` fragment baked into the built HTML (title is handled separately). */
 export function seoHeadTags(seo: SeoConfig): string {
     const lines: string[] = [];
-    if (seo.description !== undefined) lines.push(meta({ name: 'description', content: seo.description }));
+    if (seo.description !== undefined)
+        lines.push(meta({ name: 'description', content: seo.description }));
     if (seo.robotsMeta !== undefined) lines.push(meta({ name: 'robots', content: seo.robotsMeta }));
-    if (seo.themeColor !== undefined) lines.push(meta({ name: 'theme-color', content: seo.themeColor }));
-    if (seo.url !== undefined) lines.push(`    <link rel="canonical" href="${escapeAttr(seo.url)}" />`);
+    if (seo.themeColor !== undefined)
+        lines.push(meta({ name: 'theme-color', content: seo.themeColor }));
+    if (seo.url !== undefined)
+        lines.push(`    <link rel="canonical" href="${escapeAttr(seo.url)}" />`);
 
     // OpenGraph (also drives Facebook, Discord, Slack, LinkedIn, GitHub previews).
     const og = seo.openGraph;
@@ -182,13 +185,17 @@ export function seoHeadTags(seo: SeoConfig): string {
     if (ogDesc !== undefined) lines.push(meta({ property: 'og:description', content: ogDesc }));
     lines.push(meta({ property: 'og:type', content: og?.type ?? 'website' }));
     if (seo.url !== undefined) lines.push(meta({ property: 'og:url', content: seo.url }));
-    if (og?.siteName !== undefined) lines.push(meta({ property: 'og:site_name', content: og.siteName }));
+    if (og?.siteName !== undefined)
+        lines.push(meta({ property: 'og:site_name', content: og.siteName }));
     if (og?.locale !== undefined) lines.push(meta({ property: 'og:locale', content: og.locale }));
     if (og?.image !== undefined) {
         lines.push(meta({ property: 'og:image', content: og.image }));
-        if (og.imageAlt !== undefined) lines.push(meta({ property: 'og:image:alt', content: og.imageAlt }));
-        if (og.imageType !== undefined) lines.push(meta({ property: 'og:image:type', content: og.imageType }));
-        if (og.imageWidth !== undefined) lines.push(meta({ property: 'og:image:width', content: og.imageWidth }));
+        if (og.imageAlt !== undefined)
+            lines.push(meta({ property: 'og:image:alt', content: og.imageAlt }));
+        if (og.imageType !== undefined)
+            lines.push(meta({ property: 'og:image:type', content: og.imageType }));
+        if (og.imageWidth !== undefined)
+            lines.push(meta({ property: 'og:image:width', content: og.imageWidth }));
         if (og.imageHeight !== undefined) {
             lines.push(meta({ property: 'og:image:height', content: og.imageHeight }));
         }
@@ -204,14 +211,17 @@ export function seoHeadTags(seo: SeoConfig): string {
         const card = tw.card ?? (twImage !== undefined ? 'summary_large_image' : 'summary');
         lines.push(meta({ name: 'twitter:card', content: card }));
         if (tw.site !== undefined) lines.push(meta({ name: 'twitter:site', content: tw.site }));
-        if (tw.creator !== undefined) lines.push(meta({ name: 'twitter:creator', content: tw.creator }));
+        if (tw.creator !== undefined)
+            lines.push(meta({ name: 'twitter:creator', content: tw.creator }));
         const twTitle = tw.title ?? ogTitle;
         const twDesc = tw.description ?? ogDesc;
         if (twTitle !== undefined) lines.push(meta({ name: 'twitter:title', content: twTitle }));
-        if (twDesc !== undefined) lines.push(meta({ name: 'twitter:description', content: twDesc }));
+        if (twDesc !== undefined)
+            lines.push(meta({ name: 'twitter:description', content: twDesc }));
         if (twImage !== undefined) lines.push(meta({ name: 'twitter:image', content: twImage }));
         const twImageAlt = tw.imageAlt ?? og?.imageAlt;
-        if (twImageAlt !== undefined) lines.push(meta({ name: 'twitter:image:alt', content: twImageAlt }));
+        if (twImageAlt !== undefined)
+            lines.push(meta({ name: 'twitter:image:alt', content: twImageAlt }));
     }
 
     for (const origin of seo.preconnect ?? []) {
@@ -221,7 +231,9 @@ export function seoHeadTags(seo: SeoConfig): string {
         lines.push(`    <link rel="dns-prefetch" href="${escapeAttr(origin)}" />`);
     }
     if (seo.jsonLd !== undefined) {
-        lines.push(`    <script type="application/ld+json">${escapeJsonForScript(seo.jsonLd)}</script>`);
+        lines.push(
+            `    <script type="application/ld+json">${escapeJsonForScript(seo.jsonLd)}</script>`,
+        );
     }
     return lines.join('\n');
 }
@@ -250,7 +262,9 @@ export function injectSeoHtml(html: string, seo: SeoConfig): string {
     }
     const tags = seoHeadTags(seo);
     if (tags) {
-        out = out.includes('</head>') ? out.replace(/<\/head>/i, `${tags}\n  </head>`) : `${tags}\n${out}`;
+        out = out.includes('</head>')
+            ? out.replace(/<\/head>/i, `${tags}\n  </head>`)
+            : `${tags}\n${out}`;
     }
     return out;
 }
@@ -285,7 +299,10 @@ export function routeSeo(
         openGraph: {
             ...seo.openGraph,
             title: asString(og.title) ?? asString(metadata.title) ?? seo.openGraph?.title,
-            description: asString(og.description) ?? asString(metadata.description) ?? seo.openGraph?.description,
+            description:
+                asString(og.description) ??
+                asString(metadata.description) ??
+                seo.openGraph?.description,
             type: asString(og.type) ?? seo.openGraph?.type,
             image: asString(og.image) ?? seo.openGraph?.image,
             imageAlt: asString(og.imageAlt) ?? seo.openGraph?.imageAlt,
@@ -311,10 +328,13 @@ export function robotsTxt(seo: SeoConfig): string {
 
     const aiDirective = cfg.ai === 'disallow' ? 'Disallow: /' : 'Allow: /';
     blocks.push(
-        ['# AI / LLM crawlers', ...AI_CRAWLERS.map((a) => `User-agent: ${a}\n${aiDirective}`)].join('\n\n'),
+        ['# AI / LLM crawlers', ...AI_CRAWLERS.map((a) => `User-agent: ${a}\n${aiDirective}`)].join(
+            '\n\n',
+        ),
     );
 
-    const sitemap = cfg.sitemap ?? (seo.url !== undefined ? joinUrl(seo.url, 'sitemap.xml') : undefined);
+    const sitemap =
+        cfg.sitemap ?? (seo.url !== undefined ? joinUrl(seo.url, 'sitemap.xml') : undefined);
     if (sitemap !== undefined) blocks.push(`Sitemap: ${sitemap}`);
 
     return blocks.join('\n\n') + '\n';
@@ -343,13 +363,18 @@ export function llmsTxt(seo: SeoConfig, routes: readonly ScannedRoute[]): string
         cfg.pages ??
         (seo.url !== undefined
             ? staticPaths(routes).map(
-                  (p): LlmsPage => ({ title: p === '/' ? 'Home' : p, url: joinUrl(seo.url ?? '', p) }),
+                  (p): LlmsPage => ({
+                      title: p === '/' ? 'Home' : p,
+                      url: joinUrl(seo.url ?? '', p),
+                  }),
               )
             : []);
     if (pages.length) {
         out.push('\n## Pages\n');
         for (const page of pages) {
-            out.push(`- [${page.title}](${page.url})${page.description !== undefined ? `: ${page.description}` : ''}`);
+            out.push(
+                `- [${page.title}](${page.url})${page.description !== undefined ? `: ${page.description}` : ''}`,
+            );
         }
     }
     return out.join('\n') + '\n';

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, render } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
 
 import { Router } from '../../src/client/routing/Router';
 import { clearLoaderData, revalidate, useLoaderData } from '../../src/client/routing/loader';

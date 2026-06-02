@@ -30,9 +30,18 @@ function RoutePage(props: {
     dataKey: string;
     epoch: number;
 }): ReactNode {
-    const { Component, data, head } = readRouteData(props.route, props.params, props.dataKey, props.epoch);
+    const { Component, data, head } = readRouteData(
+        props.route,
+        props.params,
+        props.dataKey,
+        props.epoch,
+    );
     useRouteHead(head);
-    return <LoaderDataContext.Provider value={data}>{createElement(Component)}</LoaderDataContext.Provider>;
+    return (
+        <LoaderDataContext.Provider value={data}>
+            {createElement(Component)}
+        </LoaderDataContext.Provider>
+    );
 }
 
 /**
@@ -50,7 +59,11 @@ function renderMatched(
     const search = typeof window === 'undefined' ? '' : window.location.search;
     const dataKey = keyPrefix + loaderKey(pathname, search);
     const fallback: ReactNode = matched.loading
-        ? createElement(Suspense, { fallback: null }, createElement(loadingComponent(matched.loading)))
+        ? createElement(
+              Suspense,
+              { fallback: null },
+              createElement(loadingComponent(matched.loading)),
+          )
         : null;
 
     // A route with a `loading.tsx` keys its boundary per URL *and* navigation epoch, so its fallback
@@ -92,7 +105,11 @@ function renderMatched(
         );
     }
     if (matched.errorComponent) {
-        content = <ErrorBoundary fallback={errorComponent(matched.errorComponent)}>{content}</ErrorBoundary>;
+        content = (
+            <ErrorBoundary fallback={errorComponent(matched.errorComponent)}>
+                {content}
+            </ErrorBoundary>
+        );
     }
     return content;
 }
