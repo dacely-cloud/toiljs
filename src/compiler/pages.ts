@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import type * as TS from 'typescript';
 
-import { extractStaticMetadata } from './prerender.js';
+import { extractStaticExports } from './prerender.js';
 import type { ScannedRoute } from './routes.js';
 
 type Ts = typeof TS;
@@ -42,7 +42,9 @@ function isDynamic(pattern: string): boolean {
 /**
  * Builds the searchable page index from the scanned routes: every main-tree page (slots and
  * intercepting routes are excluded — they don't own a distinct URL) paired with its statically
- * extracted `metadata`. Reads each route file once with the project's TypeScript.
+ * extracted `metadata`. A route may also `export const searchHints` (a static `title`/`description`/
+ * `keywords` object) to feed the index even when its real metadata is dynamic (`generateMetadata`);
+ * hints are merged over the static `metadata`, winning ties. Reads each route file once.
  */
 export function buildPageIndex(root: string, routes: readonly ScannedRoute[]): PageIndexEntry[] {
     const ts = loadTypeScriptSync(root);
@@ -52,8 +54,9 @@ export function buildPageIndex(root: string, routes: readonly ScannedRoute[]): P
         if (route.slot !== undefined || route.intercept) continue;
         if (seen.has(route.pattern)) continue;
         seen.add(route.pattern);
-        const metadata = ts ? extractStaticMetadata(ts, route.file) : null;
-        pages.push({ path: route.pattern, dynamic: isDynamic(route.pattern), metadata: metadata ?? {} });
+        const exports = ts ? extractStaticExports(ts, route.file, ['metadata', 'searchHints']) : {};
+        const metadata = { ...exports.metadata, ...exports.searchHints };
+        pages.push({ path: route.pattern, dynamic: isDynamic(route.pattern), metadata });
     }
     // Stable order (by path) so the generated module is deterministic across runs.
     pages.sort((a, b) => a.path.localeCompare(b.path));

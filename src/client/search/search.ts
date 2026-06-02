@@ -6,9 +6,25 @@
  * getting back ranked pages with their `path` ready to feed to `Link` / `navigate`.
  *
  * Only statically-analyzable metadata is indexed: a route's `generateMetadata` (dynamic, per-request)
- * and computed values can't be known at build time and are absent here.
+ * and computed values can't be known at build time. A dynamic route can still be made discoverable
+ * by exporting static {@link SearchHints} (`export const searchHints = { title, keywords, … }`),
+ * which the compiler merges over the route's static `metadata` when building the index.
  */
 import type { Metadata } from '../head/metadata.js';
+
+/**
+ * Static search hints a route can `export const searchHints` to seed the search index — useful when
+ * the route's real `<head>` is produced by a dynamic `generateMetadata` (so nothing else is
+ * statically indexable). Merged over the route's static `metadata`, winning ties.
+ */
+export interface SearchHints {
+    /** Indexed as the page title (highest-weighted field). */
+    readonly title?: string;
+    /** Indexed as the page description. */
+    readonly description?: string;
+    /** Indexed keywords (string or array). */
+    readonly keywords?: string | readonly string[];
+}
 
 /** A searchable page: its route pattern plus the statically-known metadata baked at build time. */
 export interface PageMeta {
