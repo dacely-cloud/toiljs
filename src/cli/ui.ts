@@ -57,6 +57,9 @@ export function success(s: string): string {
 /** Error accent (red, kept outside the brand palette since errors should read as errors). */
 export const danger = pc.red;
 
+/** Warning accent (yellow, outside the brand palette so warnings read as warnings). */
+export const warn = pc.yellow;
+
 function lerp(a: number, b: number, t: number): number {
     return Math.round(a + (b - a) * t);
 }
