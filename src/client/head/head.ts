@@ -70,8 +70,10 @@ const entries = new Map<number, HeadSpec>();
 let order: number[] = [];
 let seq = 0;
 let baseTitle: string | null = null;
-// The current route's resolved metadata, the lowest-priority spec, so component `useHead`/`<Head>`
-// always compose on top of it. Set by the router via `setRouteHead` on each navigation.
+// The current route's resolved `metadata` export. Merged LAST (highest priority), so a route's
+// metadata wins over a layout's `useHead`/`<Head>` defaults (e.g. a site-wide title/titleTemplate) for
+// the keys it sets, while the layout still fills everything the route leaves unset. Set by the router
+// via `setRouteHead` on each navigation.
 let routeHead: HeadSpec | null = null;
 
 function setAttrs(el: Element, attrs: Record<string, string | undefined>): void {
@@ -86,7 +88,7 @@ function apply(): void {
     if (typeof document === 'undefined') return;
     if (baseTitle === null) baseTitle = document.title;
 
-    const specs = [routeHead, ...order.map((id) => entries.get(id))];
+    const specs = [...order.map((id) => entries.get(id)), routeHead];
     const resolved = mergeHead(specs.filter((s): s is HeadSpec => !!s));
 
     document.title = resolved.title ?? baseTitle;
