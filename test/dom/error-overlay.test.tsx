@@ -16,7 +16,7 @@ function Boom(): never {
 
 describe('dev error overlay', () => {
     it('surfaces an uncaught render error', () => {
-        // React logs caught boundary errors to console.error — silence it for a clean test run.
+        // React logs caught boundary errors to console.error, silence it for a clean test run.
         const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         const { getByRole } = render(
             <>
