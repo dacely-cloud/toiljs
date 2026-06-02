@@ -60,6 +60,7 @@ export type {
     PageSearchResult,
     PageSearchOptions,
     SearchField,
+    SearchHints,
 } from './search/search.js';
 export { usePageSearch } from './search/use-page-search.js';
 export type { PageSearch } from './search/use-page-search.js';

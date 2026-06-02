@@ -64,17 +64,23 @@ function evalObject(ts: Ts, node: TS.ObjectLiteralExpression): Record<string, un
 }
 
 /**
- * Extracts a route's `export const metadata = { … }` if it's a static object literal, returning the
- * statically-evaluable subset (dynamic `generateMetadata` and computed values are skipped). `null`
- * when the file has no static metadata.
+ * Extracts the named `export const <name> = { … }` object-literal exports from a route file in a
+ * single parse, returning the statically-evaluable subset of each (dynamic and computed values are
+ * skipped). Names that are absent or not object literals are omitted from the result.
  */
-export function extractStaticMetadata(ts: Ts, filePath: string): Record<string, unknown> | null {
+export function extractStaticExports(
+    ts: Ts,
+    filePath: string,
+    names: readonly string[],
+): Record<string, Record<string, unknown>> {
     let source: string;
     try {
         source = fs.readFileSync(filePath, 'utf8');
     } catch {
-        return null;
+        return {};
     }
+    const wanted = new Set(names);
+    const out: Record<string, Record<string, unknown>> = {};
     const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
     for (const stmt of sf.statements) {
         if (!ts.isVariableStatement(stmt)) continue;
@@ -82,15 +88,25 @@ export function extractStaticMetadata(ts: Ts, filePath: string): Record<string, 
         for (const decl of stmt.declarationList.declarations) {
             if (
                 ts.isIdentifier(decl.name) &&
-                decl.name.text === 'metadata' &&
+                wanted.has(decl.name.text) &&
+                !(decl.name.text in out) &&
                 decl.initializer &&
                 ts.isObjectLiteralExpression(decl.initializer)
             ) {
-                return evalObject(ts, decl.initializer);
+                out[decl.name.text] = evalObject(ts, decl.initializer);
             }
         }
     }
-    return null;
+    return out;
+}
+
+/**
+ * Extracts a route's `export const metadata = { … }` if it's a static object literal, returning the
+ * statically-evaluable subset (dynamic `generateMetadata` and computed values are skipped). `null`
+ * when the file has no static metadata.
+ */
+export function extractStaticMetadata(ts: Ts, filePath: string): Record<string, unknown> | null {
+    return extractStaticExports(ts, filePath, ['metadata']).metadata ?? null;
 }
 
 /**

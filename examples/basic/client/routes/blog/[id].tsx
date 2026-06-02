@@ -4,6 +4,14 @@ export const generateMetadata: Toil.GenerateMetadata = ({ params }) => ({
     description: `Reading blog post ${params.id}.`,
 });
 
+// The per-post title above is dynamic, so it can't be statically indexed for site search. These
+// static hints make the blog discoverable from the /search page anyway (see usePageSearch).
+export const searchHints: Toil.SearchHints = {
+    title: 'Blog',
+    description: 'Articles and updates from the ToilJS example app.',
+    keywords: ['blog', 'posts', 'articles'],
+};
+
 export default function BlogPost() {
     const { id } = Toil.useParams();
     return (
