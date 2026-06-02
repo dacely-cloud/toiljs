@@ -4,7 +4,7 @@
 export const metadata: Toil.Metadata = {
     title: 'About',
     description: 'About the ToilJS example app.',
-    openGraph: { title: 'About, ToilJS', type: 'website' },
+    openGraph: { title: 'About, ToilJS', type: 'website' }
 };
 
 export default function About() {
@@ -12,9 +12,8 @@ export default function About() {
         <main>
             <h1>About</h1>
             <p>
-                This page is served by <code>client/routes/about.tsx</code>. Its tab title comes from
-                the <code>metadata</code> export above, wrapped by the layout template into{' '}
-                <code>About | ToilJS</code>.
+                This page is served by <code>client/routes/about.tsx</code>. Its tab title comes from the{' '}
+                <code>metadata</code> export above, wrapped by the layout template into <code>About | ToilJS</code>.
             </p>
             <Toil.Link href="/features">See every feature</Toil.Link>
         </main>

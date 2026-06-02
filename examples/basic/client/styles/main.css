@@ -12,19 +12,31 @@
     --muted: #8b9ab4;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
 
 body {
     margin: 0;
     min-height: 100vh;
     background: var(--bg);
     color: var(--text);
-    font-family: system-ui, -apple-system, sans-serif;
+    font-family:
+        system-ui,
+        -apple-system,
+        sans-serif;
     line-height: 1.6;
 }
 
-a { color: var(--accent); text-decoration: none; }
-a:hover { color: var(--accent3); }
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+a:hover {
+    color: var(--accent3);
+}
 
 /* ── App shell ── */
 .app {
@@ -84,8 +96,12 @@ a:hover { color: var(--accent3); }
     font-size: 0.95rem;
 }
 
-.nav-links a { color: var(--muted); }
-.nav-links a:hover { color: var(--text); }
+.nav-links a {
+    color: var(--muted);
+}
+.nav-links a:hover {
+    color: var(--text);
+}
 
 /* Center nav */
 .nav-center {
@@ -101,17 +117,19 @@ a:hover { color: var(--accent3); }
     border-radius: 6px;
     font-size: 0.9rem;
     color: var(--muted) !important;
-    transition: color 150ms, background 150ms;
+    transition:
+        color 150ms,
+        background 150ms;
 }
 
 .nav-center-link:hover {
     color: var(--text) !important;
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
 }
 
 .nav-center-link.active {
     color: var(--text) !important;
-    background: rgba(37,99,255,0.12);
+    background: rgba(37, 99, 255, 0.12);
 }
 
 .nav-github {
@@ -120,7 +138,9 @@ a:hover { color: var(--accent3); }
     gap: 0.4rem;
 }
 
-.nav-github svg { display: block; }
+.nav-github svg {
+    display: block;
+}
 
 /* ── Hero ── */
 .hero {
@@ -162,7 +182,10 @@ a:hover { color: var(--accent3); }
     transform: scale(1.1);
     filter: blur(18px) saturate(1.4);
     opacity: 0.65;
-    transition: opacity 300ms, filter 300ms, transform 300ms;
+    transition:
+        opacity 300ms,
+        filter 300ms,
+        transform 300ms;
 }
 
 .hero-logo:hover .hero-logo-glow {
@@ -225,7 +248,9 @@ a:hover { color: var(--accent3); }
     border-radius: 999px;
     font-size: 0.88rem;
     color: var(--muted);
-    transition: border-color 200ms, color 200ms;
+    transition:
+        border-color 200ms,
+        color 200ms;
 }
 
 .feature-badge svg {
@@ -264,11 +289,16 @@ a:hover { color: var(--accent3); }
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
-    transition: filter 200ms, background 200ms, border-color 200ms;
+    transition:
+        filter 200ms,
+        background 200ms,
+        border-color 200ms;
     text-decoration: none !important;
 }
 
-.btn svg { display: block; }
+.btn svg {
+    display: block;
+}
 
 .btn-primary {
     background: var(--accent);
@@ -371,7 +401,6 @@ code {
     color: var(--muted);
 }
 
-
 /* Info grid */
 .gs-grid {
     display: grid;
@@ -380,7 +409,9 @@ code {
 }
 
 @media (max-width: 560px) {
-    .gs-grid { grid-template-columns: 1fr; }
+    .gs-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 .gs-card {
@@ -391,7 +422,10 @@ code {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    transition: border-color 200ms, transform 200ms, box-shadow 200ms;
+    transition:
+        border-color 200ms,
+        transform 200ms,
+        box-shadow 200ms;
 }
 
 .gs-card {
@@ -399,24 +433,40 @@ code {
 }
 
 /* Accent top-border glow per card */
-.gs-card--accent1 { border-top: 2px solid var(--accent); }
-.gs-card--accent1:hover { box-shadow: 0 8px 32px rgba(37,99,255,0.15); }
+.gs-card--accent1 {
+    border-top: 2px solid var(--accent);
+}
+.gs-card--accent1:hover {
+    box-shadow: 0 8px 32px rgba(37, 99, 255, 0.15);
+}
 
-.gs-card--accent2 { border-top: 2px solid var(--accent2); }
-.gs-card--accent2:hover { box-shadow: 0 8px 32px rgba(124,58,237,0.15); }
+.gs-card--accent2 {
+    border-top: 2px solid var(--accent2);
+}
+.gs-card--accent2:hover {
+    box-shadow: 0 8px 32px rgba(124, 58, 237, 0.15);
+}
 
-.gs-card--accent3 { border-top: 2px solid var(--accent3); }
-.gs-card--accent3:hover { box-shadow: 0 8px 32px rgba(34,227,171,0.12); }
+.gs-card--accent3 {
+    border-top: 2px solid var(--accent3);
+}
+.gs-card--accent3:hover {
+    box-shadow: 0 8px 32px rgba(34, 227, 171, 0.12);
+}
 
-.gs-card--accent4 { border-top: 2px solid #f59e0b; }
-.gs-card--accent4:hover { box-shadow: 0 8px 32px rgba(245,158,11,0.12); }
+.gs-card--accent4 {
+    border-top: 2px solid #f59e0b;
+}
+.gs-card--accent4:hover {
+    box-shadow: 0 8px 32px rgba(245, 158, 11, 0.12);
+}
 
 .gs-card--flat {
     border-top: 2px solid var(--accent);
 }
 .gs-card--flat:hover {
     border-color: var(--accent);
-    box-shadow: 0 8px 32px rgba(37,99,255,0.12);
+    box-shadow: 0 8px 32px rgba(37, 99, 255, 0.12);
 }
 
 .gs-card-icon {
@@ -426,14 +476,23 @@ code {
     width: 42px;
     height: 42px;
     border-radius: 10px;
-    background: rgba(37,99,255,0.1);
+    background: rgba(37, 99, 255, 0.1);
     color: var(--accent);
     margin-bottom: 0.25rem;
 }
 
-.gs-card--accent2 .gs-card-icon { background: rgba(124,58,237,0.1); color: var(--accent2); }
-.gs-card--accent3 .gs-card-icon { background: rgba(34,227,171,0.1); color: var(--accent3); }
-.gs-card--accent4 .gs-card-icon { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.gs-card--accent2 .gs-card-icon {
+    background: rgba(124, 58, 237, 0.1);
+    color: var(--accent2);
+}
+.gs-card--accent3 .gs-card-icon {
+    background: rgba(34, 227, 171, 0.1);
+    color: var(--accent3);
+}
+.gs-card--accent4 .gs-card-icon {
+    background: rgba(245, 158, 11, 0.1);
+    color: #f59e0b;
+}
 
 .gs-card h3 {
     margin: 0;
@@ -484,9 +543,18 @@ code {
 }
 
 @keyframes loading-bar {
-    0% { transform: scaleX(0); opacity: 1; }
-    80% { transform: scaleX(0.9); opacity: 1; }
-    100% { transform: scaleX(1); opacity: 0; }
+    0% {
+        transform: scaleX(0);
+        opacity: 1;
+    }
+    80% {
+        transform: scaleX(0.9);
+        opacity: 1;
+    }
+    100% {
+        transform: scaleX(1);
+        opacity: 0;
+    }
 }
 
 .loading-center {
@@ -508,12 +576,16 @@ code {
 }
 
 @keyframes spinner {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .loading-bar,
-    .spinner { animation-duration: 0s; }
+    .spinner {
+        animation-duration: 0s;
+    }
 }
 
 /* ── Global Error ── */

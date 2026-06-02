@@ -69,7 +69,8 @@ export function interceptTarget(relPath: string): string | null {
         if (marker) {
             marked = true;
             const dots = marker[1].length;
-            if (dots === 2) out.pop(); // (..) up one level
+            if (dots === 2)
+                out.pop(); // (..) up one level
             else if (dots === 3) out.length = 0; // (...) from the routes root
             out.push(toUrlSegment(marker[2]));
             continue;

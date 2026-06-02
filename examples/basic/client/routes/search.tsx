@@ -3,7 +3,7 @@ import { useState } from 'react';
 export const metadata: Toil.Metadata = {
     title: 'Search',
     description: 'Search every page by its metadata and jump straight to it.',
-    keywords: ['search', 'find', 'pages', 'metadata'],
+    keywords: ['search', 'find', 'pages', 'metadata']
 };
 
 // A tiny site-wide search box. `usePageSearch` queries the compiler-built index of every page's
@@ -17,8 +17,8 @@ export default function Search() {
         <main>
             <h1>Search</h1>
             <p>
-                Type to search across the metadata of all {pages.length} pages — title, description,
-                keywords, and OpenGraph. Indexed at build by <code>client/routes/*</code>.
+                Type to search across the metadata of all {pages.length} pages — title, description, keywords, and
+                OpenGraph. Indexed at build by <code>client/routes/*</code>.
             </p>
 
             <input
@@ -46,11 +46,8 @@ export default function Search() {
                                 disabled={r.page.dynamic}
                                 title={r.page.dynamic ? 'Dynamic route — needs params to open' : undefined}
                                 style={{ textAlign: 'left', cursor: r.page.dynamic ? 'default' : 'pointer' }}>
-                                <strong>{r.page.metadata.title ?? r.page.path}</strong>{' '}
-                                <code>{r.page.path}</code>
-                                {r.page.metadata.description !== undefined && (
-                                    <div>{r.page.metadata.description}</div>
-                                )}
+                                <strong>{r.page.metadata.title ?? r.page.path}</strong> <code>{r.page.path}</code>
+                                {r.page.metadata.description !== undefined && <div>{r.page.metadata.description}</div>}
                                 <small>
                                     score {r.score.toFixed(1)} · matched {r.matches.join(', ')}
                                 </small>

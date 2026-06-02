@@ -75,7 +75,10 @@ export class FastSet<T extends PropertyExtendedKey> implements Disposable {
         yield* this._values;
     }
 
-    public forEach(callback: (value: T, value2: T, set: FastSet<T>) => void, thisArg?: unknown): void {
+    public forEach(
+        callback: (value: T, value2: T, set: FastSet<T>) => void,
+        thisArg?: unknown,
+    ): void {
         for (const value of this._values) {
             callback.call(thisArg, value, value, this);
         }

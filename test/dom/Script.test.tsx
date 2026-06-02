@@ -32,7 +32,10 @@ describe('Script', () => {
         const onLoad = vi.fn();
         const onReady = vi.fn();
         render(
-            <Script id="inline-1" onLoad={onLoad} onReady={onReady}>
+            <Script
+                id="inline-1"
+                onLoad={onLoad}
+                onReady={onReady}>
                 {'window.__toilTest = 1;'}
             </Script>,
         );

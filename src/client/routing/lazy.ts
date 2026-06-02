@@ -3,7 +3,7 @@
  * `React.lazy` exactly once and memoized, so re-renders reuse the same component (and React's
  * Suspense cache) instead of re-creating it. Keyed by loader identity.
  */
-import { lazy, type ComponentType, type ReactNode } from 'react';
+import { type ComponentType, lazy, type ReactNode } from 'react';
 
 import type {
     LayoutComponentLoader,
@@ -15,10 +15,7 @@ import type {
 type Loader<P> = () => Promise<{ default: ComponentType<P> }>;
 
 /** Memoizes `lazy()` per loader identity in `cache`. */
-function memoLazy<P>(
-    cache: Map<Loader<P>, ComponentType<P>>,
-    loader: Loader<P>,
-): ComponentType<P> {
+function memoLazy<P>(cache: Map<Loader<P>, ComponentType<P>>, loader: Loader<P>): ComponentType<P> {
     let component = cache.get(loader);
     if (!component) {
         component = lazy(loader);
@@ -38,7 +35,6 @@ const errorCache = new Map<Loader<RouteErrorProps>, ComponentType<RouteErrorProp
 export function errorComponent(loader: Loader<RouteErrorProps>): ComponentType<RouteErrorProps> {
     return memoLazy(errorCache, loader);
 }
-
 
 let layoutComponent: ComponentType<{ children?: ReactNode }> | null = null;
 let layoutLoader: LayoutLoader = null;

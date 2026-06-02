@@ -36,7 +36,7 @@ function buildGrid(w: number, h: number): Array<{ x: number; y: number }> {
         for (let col = -1; col < cols; col++) {
             hexes.push({
                 x: col * colW + (row % 2 !== 0 ? colW / 2 : 0),
-                y: row * rowH,
+                y: row * rowH
             });
         }
     }
@@ -49,7 +49,7 @@ function buildLogoColors(
     img: HTMLImageElement,
     hexes: Array<{ x: number; y: number }>,
     w: number,
-    h: number,
+    h: number
 ): Array<[number, number, number]> | null {
     const lc = document.createElement('canvas');
 
@@ -158,8 +158,6 @@ export default function HoneycombBackground() {
                 ctx.fillStyle = 'rgba(255,255,255,0.018)';
                 ctx.fill();
 
-
-
                 // Base border
                 tracePath(ctx, x, y, DRAW_R);
                 ctx.strokeStyle = 'rgba(255,255,255,0.055)';
@@ -221,10 +219,5 @@ export default function HoneycombBackground() {
         };
     }, []);
 
-    return (
-        <canvas
-            ref={canvasRef}
-            className="honeycomb-canvas"
-        />
-    );
+    return <canvas ref={canvasRef} className="honeycomb-canvas" />;
 }

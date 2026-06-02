@@ -7,25 +7,25 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import { intro, outro, select, confirm, isCancel, cancel, spinner, note } from '@clack/prompts';
+import { cancel, confirm, intro, isCancel, note, outro, select, spinner } from '@clack/prompts';
 import { loadConfig } from 'toiljs/compiler';
 import pc from 'picocolors';
 
 import {
-    PKG_VERSION,
-    PREPROCESSORS,
-    TAILWIND_CSS,
-    TAILWIND_ENTRY,
     defaultConfigSource,
     detectPreprocessor,
     detectTailwind,
     packageDiff,
+    PKG_VERSION,
+    type Preprocessor,
     preprocessorForExt,
+    PREPROCESSORS,
     setConfigImages,
     setStyleImports,
     styleEntry,
-    type Preprocessor,
     type StyleFeatures,
+    TAILWIND_CSS,
+    TAILWIND_ENTRY,
 } from './features.js';
 import { run } from './proc.js';
 import { accent, dim } from './ui.js';
@@ -231,7 +231,9 @@ async function applyPackages(
         delete dev[name];
         delete deps[name];
     }
-    const sortedDev = Object.fromEntries(Object.entries(dev).sort(([a], [b]) => a.localeCompare(b)));
+    const sortedDev = Object.fromEntries(
+        Object.entries(dev).sort(([a], [b]) => a.localeCompare(b)),
+    );
     const next: PackageJson = { ...pkg, devDependencies: sortedDev };
     // Always reflect the pruned dependencies (or drop the key entirely if now empty), so a removed
     // package can't survive via the original `...pkg` spread.
@@ -244,7 +246,9 @@ async function applyPackages(
 function describe(from: StyleFeatures, to: StyleFeatures): string {
     const lines: string[] = [];
     if (from.preprocessor !== to.preprocessor) {
-        lines.push(`preprocessor: ${PREPROCESSOR_LABEL[from.preprocessor]} → ${PREPROCESSOR_LABEL[to.preprocessor]}`);
+        lines.push(
+            `preprocessor: ${PREPROCESSOR_LABEL[from.preprocessor]} → ${PREPROCESSOR_LABEL[to.preprocessor]}`,
+        );
     }
     if (from.tailwind !== to.tailwind) {
         lines.push(`Tailwind: ${from.tailwind ? 'on' : 'off'} → ${to.tailwind ? 'on' : 'off'}`);
@@ -295,7 +299,10 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
             initialValue: current.preprocessor,
         });
         bail(ppChoice);
-        const twChoice = await confirm({ message: 'Use Tailwind CSS?', initialValue: current.tailwind });
+        const twChoice = await confirm({
+            message: 'Use Tailwind CSS?',
+            initialValue: current.tailwind,
+        });
         bail(twChoice);
         const imChoice = await confirm({
             message: 'Optimize images at build time?',
@@ -343,7 +350,10 @@ export async function runConfigure(opts: ConfigureOptions): Promise<void> {
 
     const summary = [
         styleChanged ? describe(current, target) : '',
-        imagesChanged ? dim('  ') + `image optimization: ${currentImages ? 'on' : 'off'} → ${targetImages ? 'on' : 'off'}` : '',
+        imagesChanged
+            ? dim('  ') +
+              `image optimization: ${currentImages ? 'on' : 'off'} → ${targetImages ? 'on' : 'off'}`
+            : '',
         imagesWarning,
     ]
         .filter(Boolean)

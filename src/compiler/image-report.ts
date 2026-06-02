@@ -35,7 +35,10 @@ export function imageReportPlugin(projectRoot: string, viteRoot: string): Plugin
         },
         writeBundle(_options, bundle) {
             // Group emitted image assets by their source file.
-            const bySource = new Map<string, { label: string; inSize: number | null; variants: Variant[] }>();
+            const bySource = new Map<
+                string,
+                { label: string; inSize: number | null; variants: Variant[] }
+            >();
             for (const file of Object.values(bundle)) {
                 if (file.type !== 'asset' || !IMAGE_RE.test(file.fileName)) continue;
                 const source = file.originalFileNames[0];

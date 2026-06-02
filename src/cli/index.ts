@@ -10,7 +10,7 @@ import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
 import { runDoctor } from './doctor.js';
 import { runUpdate } from './update.js';
-import { PREPROCESSORS, type Preprocessor } from './features.js';
+import { type Preprocessor, PREPROCESSORS } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
 interface Flags {
@@ -54,7 +54,8 @@ function parseArgs(argv: string[]): Flags {
                 break;
             case '--style': {
                 const s = argv[++i];
-                if ((PREPROCESSORS as readonly string[]).includes(s)) flags.preprocessor = s as Preprocessor;
+                if ((PREPROCESSORS as readonly string[]).includes(s))
+                    flags.preprocessor = s as Preprocessor;
                 break;
             }
             case '--tailwind':

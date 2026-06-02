@@ -5,8 +5,10 @@ import { useState, type CSSProperties, type ComponentPropsWithRef, type ReactNod
  * `src` and `alt` are required (`alt` is enforced for accessibility, pass `alt=""` for decorative
  * images). `width`/`height` (or `fill`) reserve space to prevent layout shift.
  */
-export interface ImageProps
-    extends Omit<ComponentPropsWithRef<'img'>, 'loading' | 'placeholder' | 'width' | 'height'> {
+export interface ImageProps extends Omit<
+    ComponentPropsWithRef<'img'>,
+    'loading' | 'placeholder' | 'width' | 'height'
+> {
     src: string;
     alt: string;
     /** Intrinsic width in px. Set together with `height` to reserve space (avoids layout shift). */

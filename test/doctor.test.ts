@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
     checkBasePath,
     checkDuplicatePatterns,
+    type CheckGroup,
     checkMountSlots,
     checkNode,
     checkPeer,
@@ -13,7 +14,6 @@ import {
     findRelativeAssets,
     satisfiesMin,
     summarize,
-    type CheckGroup,
 } from '../src/cli/diagnostics';
 
 describe('satisfiesMin', () => {
@@ -28,8 +28,12 @@ describe('satisfiesMin', () => {
 
 describe('checkMountSlots', () => {
     it('warns when mount() omits slots, passes when present', () => {
-        expect(checkMountSlots('Toil.mount(routes, layout, notFound, globalError);').status).toBe('warn');
-        expect(checkMountSlots('Toil.mount(routes, layout, notFound, globalError, slots);').status).toBe('pass');
+        expect(checkMountSlots('Toil.mount(routes, layout, notFound, globalError);').status).toBe(
+            'warn',
+        );
+        expect(
+            checkMountSlots('Toil.mount(routes, layout, notFound, globalError, slots);').status,
+        ).toBe('pass');
     });
 
     it('warns when there is no entry or no mount() call', () => {
@@ -93,13 +97,28 @@ describe('config + environment checks', () => {
 
     it('checkStyling fails when an imported preprocessor/Tailwind is not installed', () => {
         expect(
-            checkStyling({ preprocessorImported: 'sass', preprocessorInstalled: false, tailwindImported: false, tailwindInstalled: false }).status,
+            checkStyling({
+                preprocessorImported: 'sass',
+                preprocessorInstalled: false,
+                tailwindImported: false,
+                tailwindInstalled: false,
+            }).status,
         ).toBe('fail');
         expect(
-            checkStyling({ preprocessorImported: 'sass', preprocessorInstalled: true, tailwindImported: true, tailwindInstalled: false }).status,
+            checkStyling({
+                preprocessorImported: 'sass',
+                preprocessorInstalled: true,
+                tailwindImported: true,
+                tailwindInstalled: false,
+            }).status,
         ).toBe('fail');
         expect(
-            checkStyling({ preprocessorImported: 'css', preprocessorInstalled: true, tailwindImported: false, tailwindInstalled: false }).status,
+            checkStyling({
+                preprocessorImported: 'css',
+                preprocessorInstalled: true,
+                tailwindImported: false,
+                tailwindInstalled: false,
+            }).status,
         ).toBe('pass');
     });
 });
@@ -107,7 +126,13 @@ describe('config + environment checks', () => {
 describe('summarize', () => {
     it('tallies pass/warn/fail across groups', () => {
         const groups: CheckGroup[] = [
-            { title: 'A', checks: [{ id: '1', label: 'x', status: 'pass' }, { id: '2', label: 'y', status: 'warn' }] },
+            {
+                title: 'A',
+                checks: [
+                    { id: '1', label: 'x', status: 'pass' },
+                    { id: '2', label: 'y', status: 'warn' },
+                ],
+            },
             { title: 'B', checks: [{ id: '3', label: 'z', status: 'fail' }] },
         ];
         expect(summarize(groups)).toEqual({ pass: 1, warn: 1, fail: 1 });

@@ -17,7 +17,9 @@ afterEach(() => {
 
 describe('view transitions', () => {
     function stubReducedMotion(matches: boolean): void {
-        window.matchMedia = vi.fn().mockReturnValue({ matches }) as unknown as typeof window.matchMedia;
+        window.matchMedia = vi
+            .fn()
+            .mockReturnValue({ matches }) as unknown as typeof window.matchMedia;
     }
 
     it('wraps navigation in startViewTransition when enabled and supported', () => {

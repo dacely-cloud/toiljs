@@ -18,18 +18,7 @@ import { llmsTxt, robotsTxt, sitemapXml } from './seo.js';
 /** Side-effect style imports (e.g. `import './styles/main.css'`). */
 const STYLE_EXTENSIONS = ['css', 'scss', 'sass', 'less', 'styl', 'stylus', 'pcss', 'sss'];
 /** Asset imports whose default export is the resolved URL string (e.g. `import logo from './logo.svg'`). */
-const ASSET_EXTENSIONS = [
-    'svg',
-    'png',
-    'jpg',
-    'jpeg',
-    'gif',
-    'webp',
-    'avif',
-    'ico',
-    'bmp',
-    'apng',
-];
+const ASSET_EXTENSIONS = ['svg', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'ico', 'bmp', 'apng'];
 
 const STYLE_MODULES = STYLE_EXTENSIONS.map((ext) => `declare module '*.${ext}' {}`).join('\n');
 const ASSET_MODULES = ASSET_EXTENSIONS.map(
@@ -77,7 +66,10 @@ export const TOIL_ENV_DTS =
  * `allowImportingTsExtensions` (TS5097) when the generated files are checked; Vite still resolves it.
  */
 function relFromToil(cfg: ResolvedToilConfig, abs: string): string {
-    let rel = path.relative(cfg.toilDir, abs).replace(/\\/g, '/').replace(/\.(tsx|jsx)$/, '');
+    let rel = path
+        .relative(cfg.toilDir, abs)
+        .replace(/\\/g, '/')
+        .replace(/\.(tsx|jsx)$/, '');
     if (!rel.startsWith('.')) rel = './' + rel;
     return rel;
 }
@@ -115,7 +107,9 @@ function routePathUnion(routes: ScannedRoute[]): string {
             members.add(`'${route.pattern}'`);
             continue;
         }
-        const parts = segments.map((s) => (s.startsWith(':') || s.startsWith('*') ? '${string}' : s));
+        const parts = segments.map((s) =>
+            s.startsWith(':') || s.startsWith('*') ? '${string}' : s,
+        );
         members.add('`/' + parts.join('/') + '`');
         const optionalIdx = segments.findIndex((s) => s.startsWith('**'));
         if (optionalIdx !== -1) {
@@ -135,11 +129,16 @@ function routesDts(cfg: ResolvedToilConfig, routes: ScannedRoute[]): string {
     // route's `loader` / `metadata` / `generateMetadata` / `revalidate` / `default` exports as unused
     // — the compiler consumes them via dynamic `import()`, which editors don't count as a reference.
     const refs = routes.map((route, i) => {
-        let rel = path.relative(cfg.root, route.file).replace(/\\/g, '/').replace(/\.(tsx|jsx)$/, '');
+        let rel = path
+            .relative(cfg.root, route.file)
+            .replace(/\\/g, '/')
+            .replace(/\.(tsx|jsx)$/, '');
         if (!rel.startsWith('.')) rel = `./${rel}`;
         return { name: `_toilRoute${String(i)}`, rel };
     });
-    const imports = refs.map((m) => `import type * as ${m.name} from ${JSON.stringify(m.rel)};\n`).join('');
+    const imports = refs
+        .map((m) => `import type * as ${m.name} from ${JSON.stringify(m.rel)};\n`)
+        .join('');
     const referenced = refs.length
         ? `export type _ToilRouteModules = [${refs.map((m) => `typeof ${m.name}`).join(', ')}];\n`
         : `export {};\n`;
@@ -346,9 +345,7 @@ const ENTRY_SCRIPT = `<script type="module" src="./entry.tsx"></script>`;
  */
 function buildHtml(cfg: ResolvedToilConfig): string {
     const templatePath = path.join(cfg.publicDir, 'index.html');
-    let html = fs.existsSync(templatePath)
-        ? fs.readFileSync(templatePath, 'utf8')
-        : DEFAULT_HTML;
+    let html = fs.existsSync(templatePath) ? fs.readFileSync(templatePath, 'utf8') : DEFAULT_HTML;
     // Inject the entry only if the template doesn't already reference it as a module script
     // (matching the literal filename anywhere in the file would be too eager).
     if (!/src=["']\.\/entry\.tsx["']/.test(html)) {

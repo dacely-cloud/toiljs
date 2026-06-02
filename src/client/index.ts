@@ -53,7 +53,12 @@ export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channe
 export { useHead, useTitle, Head, mergeHead } from './head/head.js';
 export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head/head.js';
 export { resolveMetadata } from './head/metadata.js';
-export type { Metadata, GenerateMetadata, GenerateMetadataArgs, OpenGraph } from './head/metadata.js';
+export type {
+    Metadata,
+    GenerateMetadata,
+    GenerateMetadataArgs,
+    OpenGraph,
+} from './head/metadata.js';
 export { searchPages, registerPages, getPages, pagePath } from './search/search.js';
 export type {
     PageMeta,

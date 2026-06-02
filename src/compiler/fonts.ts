@@ -64,7 +64,9 @@ export function fontPreloadPlugin(cfg: ResolvedToilConfig): Plugin {
                 if (!logged && logger) {
                     logged = true;
                     logger.info('');
-                    logger.info(`  ✓ preloaded ${String(fonts.length)} font${fonts.length === 1 ? '' : 's'}`);
+                    logger.info(
+                        `  ✓ preloaded ${String(fonts.length)} font${fonts.length === 1 ? '' : 's'}`,
+                    );
                     for (const file of fonts) {
                         const size =
                             file.type === 'asset' && typeof file.source !== 'string'

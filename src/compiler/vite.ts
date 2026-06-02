@@ -22,9 +22,18 @@ const polyfillPkgRoot = path.dirname(
     path.dirname(createRequire(import.meta.url).resolve('vite-plugin-node-polyfills')),
 );
 const polyfillShimAliases: Record<string, string> = {
-    'vite-plugin-node-polyfills/shims/buffer': path.join(polyfillPkgRoot, 'shims/buffer/dist/index.js'),
-    'vite-plugin-node-polyfills/shims/global': path.join(polyfillPkgRoot, 'shims/global/dist/index.js'),
-    'vite-plugin-node-polyfills/shims/process': path.join(polyfillPkgRoot, 'shims/process/dist/index.js'),
+    'vite-plugin-node-polyfills/shims/buffer': path.join(
+        polyfillPkgRoot,
+        'shims/buffer/dist/index.js',
+    ),
+    'vite-plugin-node-polyfills/shims/global': path.join(
+        polyfillPkgRoot,
+        'shims/global/dist/index.js',
+    ),
+    'vite-plugin-node-polyfills/shims/process': path.join(
+        polyfillPkgRoot,
+        'shims/process/dist/index.js',
+    ),
 };
 
 /** Image extensions routed to `images/` in the build output. */
@@ -96,7 +105,8 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             // referenced by string path are served as-is. Disabled by `client.images: false`.
             cfg.images
                 ? imagetools({
-                      defaultDirectives: () => new URLSearchParams({ format: 'webp', quality: '80' }),
+                      defaultDirectives: () =>
+                          new URLSearchParams({ format: 'webp', quality: '80' }),
                   })
                 : undefined,
             cfg.images ? imageReportPlugin(cfg.root, cfg.toilDir) : undefined,

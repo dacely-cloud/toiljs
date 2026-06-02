@@ -1,5 +1,5 @@
 /**
- * Pure description of toiljs's optional client styling features, a CSS preprocessor and Tailwind , 
+ * Pure description of toiljs's optional client styling features, a CSS preprocessor and Tailwind ,
  * shared by `create` (scaffold) and `configure` (toggle on existing projects). Dependency-light
  * (no node IO) so it can be unit-tested; the file writes and package-manager calls live in the
  * commands. Preprocessor and Tailwind are independent: Tailwind lives in its own `.css` entry so
@@ -97,7 +97,10 @@ export function styleImportLines(f: StyleFeatures): string[] {
  * block is placed after the `toiljs/routes` import (or the last import, or the top).
  */
 export function setStyleImports(source: string, f: StyleFeatures): string {
-    const stripped = source.replace(/^[ \t]*import\s+['"]\.\/styles\/[^'"]+['"];?[ \t]*\r?\n/gm, '');
+    const stripped = source.replace(
+        /^[ \t]*import\s+['"]\.\/styles\/[^'"]+['"];?[ \t]*\r?\n/gm,
+        '',
+    );
     const block = styleImportLines(f).join('\n') + '\n';
 
     const lines = stripped.split('\n');
@@ -141,7 +144,10 @@ export function setConfigImages(source: string, enabled: boolean): string | null
         return source.replace(/\bclient\s*:\s*\{/, `client: {\n        images: ${value},`);
     }
     if (/defineConfig\(\s*\{/.test(source)) {
-        return source.replace(/defineConfig\(\s*\{/, `defineConfig({\n    client: { images: ${value} },`);
+        return source.replace(
+            /defineConfig\(\s*\{/,
+            `defineConfig({\n    client: { images: ${value} },`,
+        );
     }
     return null;
 }

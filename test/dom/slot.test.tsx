@@ -31,7 +31,10 @@ describe('Slot', () => {
         const { getByText, queryByText } = render(
             <SlotContext.Provider value={{ modal: <span>MODAL</span> }}>
                 <Slot name="modal" />
-                <Slot name="missing" fallback={<span>FB</span>} />
+                <Slot
+                    name="missing"
+                    fallback={<span>FB</span>}
+                />
             </SlotContext.Provider>,
         );
         expect(getByText('MODAL')).toBeTruthy();
@@ -55,11 +58,19 @@ describe('Router parallel slots', () => {
             ),
         });
     const slots: Record<string, RouteDef[]> = {
-        modal: [{ pattern: '/', load: () => Promise.resolve({ default: () => <aside>SLOT</aside> }) }],
+        modal: [
+            { pattern: '/', load: () => Promise.resolve({ default: () => <aside>SLOT</aside> }) },
+        ],
     };
 
     it('renders the main route and a matching slot together', async () => {
-        const { findByText } = render(<Router routes={routes} layout={layout} slots={slots} />);
+        const { findByText } = render(
+            <Router
+                routes={routes}
+                layout={layout}
+                slots={slots}
+            />,
+        );
         // Both the page and the parallel slot render for the same URL.
         await findByText('PAGE');
         await findByText('SLOT');
@@ -68,7 +79,10 @@ describe('Router parallel slots', () => {
 
 describe('intercepting routes', () => {
     const routes: RouteDef[] = [
-        { pattern: '/photo/:id', load: () => Promise.resolve({ default: () => <main>PHOTO PAGE</main> }) },
+        {
+            pattern: '/photo/:id',
+            load: () => Promise.resolve({ default: () => <main>PHOTO PAGE</main> }),
+        },
         { pattern: '/', load: () => Promise.resolve({ default: () => <main>FEED</main> }) },
     ];
     const slots: Record<string, RouteDef[]> = {
@@ -85,7 +99,11 @@ describe('intercepting routes', () => {
     it('shows the full page on a hard load (no interception)', async () => {
         window.history.replaceState({}, '', '/photo/1');
         const { findByText, queryByText } = render(
-            <Router routes={routes} layout={layoutWithModal} slots={slots} />,
+            <Router
+                routes={routes}
+                layout={layoutWithModal}
+                slots={slots}
+            />,
         );
         await findByText('PHOTO PAGE');
         expect(queryByText('PHOTO MODAL')).toBeNull();
@@ -94,7 +112,11 @@ describe('intercepting routes', () => {
     it('intercepts on soft navigation: modal overlays, previous page stays', async () => {
         window.history.replaceState({}, '', '/');
         const { findByText, queryByText } = render(
-            <Router routes={routes} layout={layoutWithModal} slots={slots} />,
+            <Router
+                routes={routes}
+                layout={layoutWithModal}
+                slots={slots}
+            />,
         );
         await findByText('FEED');
         act(() => {

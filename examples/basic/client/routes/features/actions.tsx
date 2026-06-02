@@ -7,7 +7,7 @@ async function wait(ms: number): Promise<void> {
 
 export const metadata: Toil.Metadata = {
     title: 'Actions and forms',
-    description: 'useAction and <Form> mutations with pending state and revalidation.',
+    description: 'useAction and <Form> mutations with pending state and revalidation.'
 };
 
 export const loader = async () => {
@@ -25,7 +25,7 @@ export default function ActionsDemo() {
             serverCount += by;
             return serverCount;
         },
-        { revalidate: true },
+        { revalidate: true }
     );
 
     return (

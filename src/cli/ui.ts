@@ -89,7 +89,12 @@ function gradientLine(line: string): string {
 /** Reads the toiljs package version (CLI lives at build/cli/, package root is two up). */
 export function version(): string {
     try {
-        const pkgPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
+        const pkgPath = path.resolve(
+            path.dirname(fileURLToPath(import.meta.url)),
+            '..',
+            '..',
+            'package.json',
+        );
         const raw = fs.readFileSync(pkgPath, 'utf8');
         const match = /"version"\s*:\s*"([^"]+)"/.exec(raw);
         if (match && match[1]) return match[1];

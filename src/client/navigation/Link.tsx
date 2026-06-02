@@ -1,10 +1,4 @@
-import type {
-    ComponentPropsWithRef,
-    FocusEvent,
-    MouseEvent,
-    PointerEvent,
-    ReactNode,
-} from 'react';
+import type { ComponentPropsWithRef, FocusEvent, MouseEvent, PointerEvent, ReactNode } from 'react';
 
 import { navigate } from './navigation.js';
 import { prefetch } from './prefetch.js';
@@ -37,7 +31,7 @@ function isExternalHref(href: string): boolean {
 
 /**
  * Client-side navigation link. Forwards all anchor attributes to the underlying `<a>`, and
- * prefetches the target route's chunk on hover/focus. Intercepts only plain same-origin clicks , 
+ * prefetches the target route's chunk on hover/focus. Intercepts only plain same-origin clicks ,
  * modified clicks, `target=_blank`, `download`, in-page `#hash`, and external URLs fall through to
  * native browser behavior.
  */

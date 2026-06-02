@@ -2,14 +2,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
     getPages,
+    type PageMeta,
     pagePath,
     registerPages,
     searchPages,
-    type PageMeta,
 } from '../src/client/search/search';
 
 const PAGES: PageMeta[] = [
-    { path: '/', dynamic: false, metadata: { title: 'Home', description: 'Welcome to the toil demo site' } },
+    {
+        path: '/',
+        dynamic: false,
+        metadata: { title: 'Home', description: 'Welcome to the toil demo site' },
+    },
     {
         path: '/about',
         dynamic: false,
@@ -86,9 +90,9 @@ describe('searchPages', () => {
     it('restricts matching to the requested fields', () => {
         // "welcome" only lives in the home description; excluding it yields nothing.
         expect(searchPages('welcome', { fields: ['title', 'keywords'] })).toEqual([]);
-        expect(searchPages('welcome', { fields: ['description'] }).map((r) => r.page.path)).toEqual([
-            '/',
-        ]);
+        expect(searchPages('welcome', { fields: ['description'] }).map((r) => r.page.path)).toEqual(
+            ['/'],
+        );
     });
 
     it('is case-insensitive', () => {

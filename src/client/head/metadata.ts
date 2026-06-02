@@ -61,7 +61,9 @@ export function resolveMetadata(metadata: Metadata): HeadSpec {
     }
     if (metadata.keywords !== undefined) {
         const content =
-            typeof metadata.keywords === 'string' ? metadata.keywords : metadata.keywords.join(', ');
+            typeof metadata.keywords === 'string'
+                ? metadata.keywords
+                : metadata.keywords.join(', ');
         meta.push({ name: 'keywords', content });
     }
     if (metadata.robots !== undefined) meta.push({ name: 'robots', content: metadata.robots });

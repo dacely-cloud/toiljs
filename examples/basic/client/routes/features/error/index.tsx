@@ -11,8 +11,8 @@ export default function ErrorDemo() {
         <main>
             <h1>Error boundary</h1>
             <p>
-                A thrown render is caught by <code>error.tsx</code> in this folder, scoped to this
-                segment so the rest of the app keeps working.
+                A thrown render is caught by <code>error.tsx</code> in this folder, scoped to this segment so the rest
+                of the app keeps working.
             </p>
             <p>
                 <button type="button" onClick={() => setBoom(true)}>

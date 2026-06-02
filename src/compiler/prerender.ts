@@ -81,7 +81,13 @@ export function extractStaticExports(
     }
     const wanted = new Set(names);
     const out: Record<string, Record<string, unknown>> = {};
-    const sf = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const sf = ts.createSourceFile(
+        filePath,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TSX,
+    );
     for (const stmt of sf.statements) {
         if (!ts.isVariableStatement(stmt)) continue;
         if (!stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;

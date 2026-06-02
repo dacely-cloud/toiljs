@@ -1,6 +1,6 @@
 export const metadata: Toil.Metadata = {
     title: 'Gallery',
-    description: 'Parallel routes and intercepting routes: a photo opens as a modal on soft nav.',
+    description: 'Parallel routes and intercepting routes: a photo opens as a modal on soft nav.'
 };
 
 const photos = [1, 2, 3, 4];
@@ -13,8 +13,8 @@ export default function Gallery() {
         <main>
             <h1>Gallery</h1>
             <p>
-                Click a photo, it opens as a modal (intercepting route). Reload that URL and you get
-                the full page. Same URL, two presentations.
+                Click a photo, it opens as a modal (intercepting route). Reload that URL and you get the full page. Same
+                URL, two presentations.
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 {photos.map((id) => (
@@ -28,7 +28,7 @@ export default function Gallery() {
                             placeItems: 'center',
                             border: '1px solid currentColor',
                             borderRadius: 8,
-                            fontWeight: 700,
+                            fontWeight: 700
                         }}>
                         {id}
                     </Toil.Link>

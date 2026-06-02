@@ -1,7 +1,7 @@
 // Dynamic metadata from the route param, so the tab reads "Blog post 42 | ToilJS".
 export const generateMetadata: Toil.GenerateMetadata = ({ params }) => ({
     title: `Blog post ${params.id}`,
-    description: `Reading blog post ${params.id}.`,
+    description: `Reading blog post ${params.id}.`
 });
 
 // The per-post title above is dynamic, so it can't be statically indexed for site search. These
@@ -9,7 +9,7 @@ export const generateMetadata: Toil.GenerateMetadata = ({ params }) => ({
 export const searchHints: Toil.SearchHints = {
     title: 'Blog',
     description: 'Articles and updates from the ToilJS example app.',
-    keywords: ['blog', 'posts', 'articles'],
+    keywords: ['blog', 'posts', 'articles']
 };
 
 export default function BlogPost() {

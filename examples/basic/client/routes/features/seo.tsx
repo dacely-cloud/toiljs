@@ -13,8 +13,8 @@ export const metadata: Toil.Metadata = {
     openGraph: {
         title: 'useReducer | React Hooks',
         description: 'Manage complex state transitions with a reducer.',
-        type: 'website',
-    },
+        type: 'website'
+    }
 };
 
 export default function SeoDemo() {
@@ -22,13 +22,13 @@ export default function SeoDemo() {
         <main>
             <h1>Route metadata</h1>
             <p>
-                The browser tab now reads <strong>useReducer | React Hooks</strong>, set entirely by
-                the <code>metadata</code> export in <code>client/routes/features/seo.tsx</code>, with
-                no <code>useEffect</code> and no title suffix.
+                The browser tab now reads <strong>useReducer | React Hooks</strong>, set entirely by the{' '}
+                <code>metadata</code> export in <code>client/routes/features/seo.tsx</code>, with no{' '}
+                <code>useEffect</code> and no title suffix.
             </p>
             <p>
-                It also emitted <code>&lt;meta name="description"&gt;</code>, keywords, a canonical
-                link, and the <code>og:*</code> tags, all from that one object.
+                It also emitted <code>&lt;meta name="description"&gt;</code>, keywords, a canonical link, and the{' '}
+                <code>og:*</code> tags, all from that one object.
             </p>
             <p>
                 <Toil.Link href="/features/head">Prefer the imperative API?</Toil.Link>{' '}
