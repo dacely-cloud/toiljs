@@ -1,6 +1,6 @@
 /**
  * React binding for the page-metadata {@link searchPages search}. Gives a route component reactive,
- * memoized search results plus a `goTo` helper that navigates straight to a matched page — a drop-in
+ * memoized search results plus a `goTo` helper that navigates straight to a matched page, a drop-in
  * for a site-wide "jump to page" / command-palette style search box.
  */
 import { useMemo } from 'react';

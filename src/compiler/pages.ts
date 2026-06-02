@@ -22,7 +22,7 @@ export interface PageIndexEntry {
 
 /**
  * Loads the project's TypeScript synchronously (so {@link buildPageIndex} can run inside the sync
- * `generate()`), or `null` if it isn't installed — in which case pages are indexed by path only.
+ * `generate()`), or `null` if it isn't installed, in which case pages are indexed by path only.
  */
 function loadTypeScriptSync(root: string): Ts | null {
     try {
@@ -41,7 +41,7 @@ function isDynamic(pattern: string): boolean {
 
 /**
  * Builds the searchable page index from the scanned routes: every main-tree page (slots and
- * intercepting routes are excluded — they don't own a distinct URL) paired with its statically
+ * intercepting routes are excluded, they don't own a distinct URL) paired with its statically
  * extracted `metadata`. A route may also `export const searchHints` (a static `title`/`description`/
  * `keywords` object) to feed the index even when its real metadata is dynamic (`generateMetadata`);
  * hints are merged over the static `metadata`, winning ties. Reads each route file once.

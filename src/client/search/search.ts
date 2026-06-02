@@ -13,7 +13,7 @@
 import type { Metadata } from '../head/metadata.js';
 
 /**
- * Static search hints a route can `export const searchHints` to seed the search index — useful when
+ * Static search hints a route can `export const searchHints` to seed the search index, useful when
  * the route's real `<head>` is produced by a dynamic `generateMetadata` (so nothing else is
  * statically indexable). Merged over the route's static `metadata`, winning ties.
  */
@@ -30,7 +30,7 @@ export interface SearchHints {
 export interface PageMeta {
     /** Route URL pattern, e.g. `'/'`, `'/about'`, `'/blog/:id'`. */
     readonly path: string;
-    /** Whether `path` has dynamic (`:param` / `*catch-all`) segments — not navigable without params. */
+    /** Whether `path` has dynamic (`:param` / `*catch-all`) segments, not navigable without params. */
     readonly dynamic: boolean;
     /** The page's statically-extracted metadata (empty object when the route declares none). */
     readonly metadata: Metadata;
@@ -58,7 +58,7 @@ export interface PageSearchResult {
     readonly matches: readonly SearchField[];
 }
 
-/** Relative weight of each field — title is the strongest signal, OpenGraph the weakest. */
+/** Relative weight of each field, title is the strongest signal, OpenGraph the weakest. */
 const FIELD_WEIGHT: Record<SearchField, number> = {
     title: 10,
     path: 6,
