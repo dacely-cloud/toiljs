@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { type IncomingMessage } from 'node:http';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -102,6 +103,36 @@ function devInfo(cfg: ResolvedToilConfig, port: number): Record<string, unknown>
     };
 }
 
+/**
+ * Resolves a request's `file` param to an absolute path that is genuinely inside the project root,
+ * or null. Guards against `..` traversal, sibling-prefix escapes (`<root>-evil/secret` passes a bare
+ * `startsWith(root)`), and symlinks inside the project that point outside it (realpath re-check).
+ */
+function safeProjectPath(cfg: ResolvedToilConfig, file: string | null): string | null {
+    if (!file) return null;
+    const root = cfg.root;
+    const inside = (p: string): boolean => p === root || p.startsWith(root + path.sep);
+    const abs = path.resolve(file);
+    if (!inside(abs) || !fs.existsSync(abs)) return null;
+    try {
+        const real = fs.realpathSync(abs);
+        return inside(real) ? real : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * True for cross-origin browser requests, which must not reach the dev endpoints (they open files,
+ * read source, and spend AI credits). `Sec-Fetch-Site` is browser-set: the same-origin toolbar sends
+ * `same-origin`, and non-browser callers (curl) omit it, both allowed; a malicious site's fetch/img
+ * is `cross-site` (or `same-site`), rejected. This blocks CSRF without breaking local dev tooling.
+ */
+function isCrossSiteRequest(headers: IncomingMessage['headers']): boolean {
+    const site = headers['sec-fetch-site'];
+    return site === 'cross-site' || site === 'same-site';
+}
+
 /** Opens `file` in the user's editor (best-effort): `$EDITOR file`, else `code -g file`. */
 function openInEditor(file: string): void {
     try {
@@ -150,7 +181,12 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
         configureServer(server) {
             // Dev toolbar endpoints (dev only). `/__toil/devinfo` -> build/config snapshot;
             // `/__toil/open?file=` -> open the file in the editor.
-            server.middlewares.use('/__toil/devinfo', (_req, res) => {
+            server.middlewares.use('/__toil/devinfo', (req, res) => {
+                if (isCrossSiteRequest(req.headers)) {
+                    res.statusCode = 403;
+                    res.end();
+                    return;
+                }
                 const port = server.config.server.port ?? cfg.port;
                 res.setHeader('content-type', 'application/json');
                 res.end(JSON.stringify(devInfo(cfg, port)));
@@ -158,6 +194,11 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
             // `/__toil/ai` -> server-side AI proxy. The key is read from the env here and never
             // reaches the browser; 404 when AI isn't configured (the toolbar then only hands off).
             server.middlewares.use('/__toil/ai', (req, res) => {
+                if (isCrossSiteRequest(req.headers)) {
+                    res.statusCode = 403;
+                    res.end();
+                    return;
+                }
                 if (req.method !== 'POST') {
                     res.statusCode = 405;
                     res.end();
@@ -170,8 +211,20 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                     return;
                 }
                 let body = '';
-                req.on('data', (chunk) => (body += String(chunk)));
+                let aborted = false;
+                req.on('data', (chunk) => {
+                    if (aborted) return;
+                    body += String(chunk);
+                    if (body.length > 100_000) {
+                        // Cap the request body so a runaway/malicious POST can't grow it unbounded.
+                        aborted = true;
+                        res.statusCode = 413;
+                        res.end();
+                        req.destroy();
+                    }
+                });
                 req.on('end', () => {
+                    if (aborted) return;
                     void (async () => {
                         try {
                             const { prompt } = JSON.parse(body || '{}') as { prompt?: string };
@@ -190,11 +243,14 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
             });
             server.middlewares.use('/__toil/open', (req, res) => {
                 try {
+                    if (isCrossSiteRequest(req.headers)) {
+                        res.statusCode = 403;
+                        res.end();
+                        return;
+                    }
                     const url = new URL(req.url ?? '', 'http://localhost');
-                    const file = url.searchParams.get('file');
-                    const abs = file ? path.resolve(file) : '';
-                    // Only files inside the project root, never an arbitrary path.
-                    if (abs && abs.startsWith(cfg.root) && fs.existsSync(abs)) openInEditor(abs);
+                    const abs = safeProjectPath(cfg, url.searchParams.get('file'));
+                    if (abs) openInEditor(abs);
                     res.statusCode = 204;
                     res.end();
                 } catch {
@@ -203,14 +259,18 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                 }
             });
             // `/__toil/source?file=` -> the file's text, so the AI tab can include the page's code in
-            // its prompt. Same root-confinement check as `/__toil/open`; capped so a stray huge file
-            // can't bloat the response.
+            // its prompt. Same root-confinement (`safeProjectPath`) as `/__toil/open`; capped so a
+            // stray huge file can't bloat the response.
             server.middlewares.use('/__toil/source', (req, res) => {
                 try {
+                    if (isCrossSiteRequest(req.headers)) {
+                        res.statusCode = 403;
+                        res.end();
+                        return;
+                    }
                     const url = new URL(req.url ?? '', 'http://localhost');
-                    const file = url.searchParams.get('file');
-                    const abs = file ? path.resolve(file) : '';
-                    if (!abs || !abs.startsWith(cfg.root) || !fs.existsSync(abs)) {
+                    const abs = safeProjectPath(cfg, url.searchParams.get('file'));
+                    if (!abs) {
                         res.statusCode = 404;
                         res.end();
                         return;
