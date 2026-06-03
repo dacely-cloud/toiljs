@@ -73,23 +73,19 @@ function renderMatched(
     // content and React shows its (null) fallback during the next route's chunk/loader load, i.e. a
     // blank flash, even inside the transition. With a stable boundary the transition holds the old
     // page until the next one is ready. The loader cache key stays the bare URL, so reused data hits.
-    // The fade-in layer is keyed by URL but lives INSIDE the boundary, so it re-mounts (replaying the
-    // animation) only when the new page commits, without tearing down the boundary above it.
+    // The page itself is keyed by URL so each route mounts fresh (no state bleed between routes); it
+    // lives INSIDE the boundary so that re-mount doesn't tear down the boundary above it.
     let content: ReactNode = (
         <Suspense
             key={matched.loading ? `${dataKey}:${String(epoch)}` : undefined}
             fallback={fallback}>
-            <div
+            <RoutePage
                 key={dataKey}
-                className="toil-fade"
-                style={{ animation: 'toil-fade-in 160ms ease-out' }}>
-                <RoutePage
-                    route={matched}
-                    params={params}
-                    dataKey={dataKey}
-                    epoch={epoch}
-                />
-            </div>
+                route={matched}
+                params={params}
+                dataKey={dataKey}
+                epoch={epoch}
+            />
         </Suspense>
     );
     // Templates wrap inside the layouts and re-mount on every navigation (keyed by URL).
