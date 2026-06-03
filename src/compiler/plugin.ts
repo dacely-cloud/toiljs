@@ -6,9 +6,53 @@ import { fileURLToPath } from 'node:url';
 
 import { type Plugin } from 'vite';
 
-import { type ResolvedToilConfig } from './config.js';
+import { AiProvider, type DevtoolsAiConfig, type ResolvedToilConfig } from './config.js';
 import { generate } from './generate.js';
 import { scanRoutes } from './routes.js';
+
+/** Calls the configured AI provider (server-side, so the key never reaches the browser). */
+async function aiComplete(ai: DevtoolsAiConfig, prompt: string): Promise<string> {
+    const key = ai.apiKeyEnv ? process.env[ai.apiKeyEnv] : undefined;
+    if (ai.endpoint) {
+        const r = await fetch(ai.endpoint, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ prompt }),
+        });
+        const j = (await r.json()) as { text?: string };
+        return j.text ?? '';
+    }
+    if (ai.provider === AiProvider.OpenAI) {
+        if (!key) throw new Error(`missing API key (set env ${ai.apiKeyEnv ?? 'OPENAI_API_KEY'})`);
+        const r = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+            body: JSON.stringify({
+                model: ai.model ?? 'gpt-4o',
+                messages: [{ role: 'user', content: prompt }],
+            }),
+        });
+        const j = (await r.json()) as { choices?: { message?: { content?: string } }[] };
+        return j.choices?.[0]?.message?.content ?? '';
+    }
+    // default: anthropic
+    if (!key) throw new Error(`missing API key (set env ${ai.apiKeyEnv ?? 'ANTHROPIC_API_KEY'})`);
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+            'content-type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+            model: ai.model ?? 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            messages: [{ role: 'user', content: prompt }],
+        }),
+    });
+    const j = (await r.json()) as { content?: { text?: string }[] };
+    return (j.content ?? []).map((c) => c.text ?? '').join('');
+}
 
 /** Reads a package's version resolved from `<fromDir>`, or 'unknown'. */
 function depVersion(fromDir: string, name: string): string {
@@ -52,7 +96,7 @@ function devInfo(cfg: ResolvedToilConfig, port: number): Record<string, unknown>
             seo: cfg.seo != null,
         },
         routes,
-        ai: false,
+        ai: cfg.devtoolsAi !== null,
     };
 }
 
@@ -108,6 +152,39 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                 const port = server.config.server.port ?? cfg.port;
                 res.setHeader('content-type', 'application/json');
                 res.end(JSON.stringify(devInfo(cfg, port)));
+            });
+            // `/__toil/ai` -> server-side AI proxy. The key is read from the env here and never
+            // reaches the browser; 404 when AI isn't configured (the toolbar then only hands off).
+            server.middlewares.use('/__toil/ai', (req, res) => {
+                if (req.method !== 'POST') {
+                    res.statusCode = 405;
+                    res.end();
+                    return;
+                }
+                const ai = cfg.devtoolsAi;
+                if (!ai) {
+                    res.statusCode = 404;
+                    res.end();
+                    return;
+                }
+                let body = '';
+                req.on('data', (chunk) => (body += String(chunk)));
+                req.on('end', () => {
+                    void (async () => {
+                        try {
+                            const { prompt } = JSON.parse(body || '{}') as { prompt?: string };
+                            const text = await aiComplete(ai, prompt ?? '');
+                            res.setHeader('content-type', 'application/json');
+                            res.end(JSON.stringify({ text }));
+                        } catch (e) {
+                            res.statusCode = 500;
+                            res.setHeader('content-type', 'application/json');
+                            res.end(
+                                JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
+                            );
+                        }
+                    })();
+                });
             });
             server.middlewares.use('/__toil/open', (req, res) => {
                 try {
