@@ -70,17 +70,22 @@ function renderMatched(
     // shows even inside the transition, on first nav and on an in-place revalidate of the same URL
     // (the epoch bumps). A route without one keeps a stable boundary so the transition holds the old
     // page. The loader cache key stays the bare URL, so the boundary remount still reuses cached data.
+    // Wrap the page in a fade-in layer keyed by URL: it re-mounts on each navigation so the
+    // animation replays, while the nested layouts (added below) persist. Cached/no-loader pages
+    // still render synchronously (no flash), they just fade in instead of popping.
     let content: ReactNode = (
-        <Suspense
-            key={matched.loading ? `${dataKey}:${String(epoch)}` : undefined}
-            fallback={fallback}>
-            <RoutePage
-                route={matched}
-                params={params}
-                dataKey={dataKey}
-                epoch={epoch}
-            />
-        </Suspense>
+        <div key={dataKey} className="toil-fade" style={{ animation: 'toil-fade-in 160ms ease-out' }}>
+            <Suspense
+                key={matched.loading ? `${dataKey}:${String(epoch)}` : undefined}
+                fallback={fallback}>
+                <RoutePage
+                    route={matched}
+                    params={params}
+                    dataKey={dataKey}
+                    epoch={epoch}
+                />
+            </Suspense>
+        </div>
     );
     // Templates wrap inside the layouts and re-mount on every navigation (keyed by URL).
     const templates = matched.templates ?? [];
