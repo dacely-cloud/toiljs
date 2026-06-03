@@ -6,6 +6,7 @@ import { startBackend, type RunningBackend } from 'toiljs/backend';
 
 import { loadConfig } from './config.js';
 import { generate } from './generate.js';
+import { prerenderStaticParams } from './ssg.js';
 import { createViteConfig } from './vite.js';
 
 export interface ToilCommandOptions {
@@ -28,6 +29,8 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     const cfg = await loadConfig(opts);
     generate(cfg);
     await viteBuild(await createViteConfig(cfg));
+    // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
+    await prerenderStaticParams(cfg);
 }
 
 /**

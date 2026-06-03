@@ -27,7 +27,14 @@ export {
 } from './routing/hooks.js';
 export type { RouterInstance } from './routing/hooks.js';
 export { useLoaderData, revalidate, invalidateLoaderData } from './routing/loader.js';
-export type { LoaderArgs, LoaderFunction, LoaderData, Revalidate } from './routing/loader.js';
+export type {
+    LoaderArgs,
+    LoaderFunction,
+    LoaderData,
+    Revalidate,
+    StaticParams,
+    GenerateStaticParams,
+} from './routing/loader.js';
 export { useAction } from './routing/action.js';
 export type {
     UseActionOptions,
