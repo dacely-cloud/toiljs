@@ -123,14 +123,15 @@ function safeProjectPath(cfg: ResolvedToilConfig, file: string | null): string |
 }
 
 /**
- * True for cross-origin browser requests, which must not reach the dev endpoints (they open files,
- * read source, and spend AI credits). `Sec-Fetch-Site` is browser-set: the same-origin toolbar sends
- * `same-origin`, and non-browser callers (curl) omit it, both allowed; a malicious site's fetch/img
- * is `cross-site` (or `same-site`), rejected. This blocks CSRF without breaking local dev tooling.
+ * True for requests that must NOT reach the dev endpoints (they open files, read source, and spend
+ * AI credits). Uses an allowlist on the browser-set `Sec-Fetch-Site`: only `same-origin` (the
+ * toolbar), `none` (user-initiated, e.g. the address bar), or an absent header (non-browser tooling
+ * like curl) are allowed. Everything else, `cross-site`, `same-site`, or any unexpected value, is
+ * rejected. This blocks CSRF (a malicious site's fetch/img) without breaking local dev tooling.
  */
 function isCrossSiteRequest(headers: IncomingMessage['headers']): boolean {
     const site = headers['sec-fetch-site'];
-    return site === 'cross-site' || site === 'same-site';
+    return site !== undefined && site !== 'same-origin' && site !== 'none';
 }
 
 /** Opens `file` in the user's editor (best-effort): `$EDITOR file`, else `code -g file`. */
@@ -227,16 +228,22 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                     if (aborted) return;
                     void (async () => {
                         try {
-                            const { prompt } = JSON.parse(body || '{}') as { prompt?: string };
-                            const text = await aiComplete(ai, prompt ?? '');
+                            const parsed = JSON.parse(body || '{}') as { prompt?: string };
+                            // Cap the prompt actually forwarded upstream (independent of the raw-body cap).
+                            const prompt =
+                                typeof parsed.prompt === 'string' ? parsed.prompt.slice(0, 16000) : '';
+                            const text = await aiComplete(ai, prompt);
                             res.setHeader('content-type', 'application/json');
                             res.end(JSON.stringify({ text }));
                         } catch (e) {
+                            // Log the detail to the dev's terminal; return a generic message to the
+                            // client so upstream/provider error text is never reflected over HTTP.
+                            process.stderr.write(
+                                `toil: /__toil/ai failed: ${e instanceof Error ? e.message : String(e)}\n`,
+                            );
                             res.statusCode = 500;
                             res.setHeader('content-type', 'application/json');
-                            res.end(
-                                JSON.stringify({ error: e instanceof Error ? e.message : String(e) }),
-                            );
+                            res.end(JSON.stringify({ error: 'AI request failed (see dev server logs).' }));
                         }
                     })();
                 });
