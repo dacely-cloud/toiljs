@@ -8,6 +8,29 @@ import { type SeoConfig } from './seo.js';
 
 export type { SeoConfig } from './seo.js';
 
+/** Built-in AI providers the dev toolbar can proxy to. */
+export enum AiProvider {
+    Anthropic = 'anthropic',
+    OpenAI = 'openai',
+}
+
+/** Dev toolbar AI integration (dev only; the key stays server-side). */
+export interface DevtoolsAiConfig {
+    /** Built-in provider. With `endpoint` set, that takes precedence. */
+    readonly provider?: AiProvider;
+    /** Model id (e.g. `claude-sonnet-4-6`, `gpt-4o`). */
+    readonly model?: string;
+    /** Name of the env var holding the API key (read by the dev server, never sent to the client). */
+    readonly apiKeyEnv?: string;
+    /** Custom POST endpoint (`{ prompt }` in, `{ text }` out); overrides `provider`. */
+    readonly endpoint?: string;
+}
+
+/** Dev toolbar configuration. */
+export interface DevtoolsConfig {
+    readonly ai?: DevtoolsAiConfig;
+}
+
 /**
  * Client-side (TSX/React/Vite) configuration. All fields optional; sensible defaults applied.
  */
@@ -19,7 +42,7 @@ export interface ClientConfig {
     /**
      * Static assets directory, relative to root. Default `<srcDir>/public` (e.g. `client/public`).
      * Holds the `index.html` template (owned and edited by you) plus any files served as-is at the
-     * base path (favicons, images, …).
+     * base path (favicons, images, and the like).
      */
     readonly publicDir?: string;
     /** Production output directory, relative to root. Default `build/client`. */
@@ -52,10 +75,12 @@ export interface ClientConfig {
      */
     readonly transitions?: boolean;
     /**
-     * Show the dev toolbar (a floating panel in `toiljs dev` with route/build info, errors, and live
-     * controls). Default `true`. Set `false` to hide it. It is never included in production builds.
+     * The dev toolbar (a floating panel in `toiljs dev` with route/build info, errors, and live
+     * controls). `true` (default) / `false` to disable, or an object to configure its AI integration.
+     * Never included in production builds. The AI key is read server-side from `apiKeyEnv` and never
+     * reaches the browser; the toolbar always offers Claude/ChatGPT hand-off links regardless.
      */
-    readonly devtools?: boolean;
+    readonly devtools?: boolean | DevtoolsConfig;
     /**
      * Build-time SEO: bakes site-level metadata into the HTML `<head>` (so JS-less crawlers and AI
      * bots see real tags) and generates `robots.txt`, `sitemap.xml`, and `llms.txt`. Omit to skip.
@@ -115,6 +140,8 @@ export interface ResolvedToilConfig {
     readonly transitions: boolean;
     /** Whether the dev toolbar is enabled (dev only). */
     readonly devtools: boolean;
+    /** Dev toolbar AI config (dev only), or `null` when not configured. */
+    readonly devtoolsAi: DevtoolsAiConfig | null;
     /** Build-time SEO config, or `null` when not configured. */
     readonly seo: SeoConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
@@ -182,7 +209,9 @@ export async function loadConfig(
         fonts: client.fonts ?? true,
         viewTransitions: client.viewTransitions ?? false,
         transitions: client.transitions ?? false,
-        devtools: client.devtools ?? true,
+        devtools: client.devtools !== false,
+        devtoolsAi:
+            typeof client.devtools === 'object' && client.devtools.ai ? client.devtools.ai : null,
         seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
