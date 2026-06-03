@@ -79,6 +79,42 @@ interface Entry {
 const cache = new Map<string, Entry>();
 const MAX_ENTRIES = 32;
 
+// Dev-cache observers (the dev toolbar's Data tab). The emit calls are no-ops in production builds,
+// where the toolbar (the only subscriber) is dead-code-eliminated.
+const cacheListeners = new Set<() => void>();
+function emitCache(): void {
+    for (const l of cacheListeners) l();
+}
+/** Subscribes to loader-cache changes (dev toolbar). Returns an unsubscribe. */
+export function subscribeLoaderCache(listener: () => void): () => void {
+    cacheListeners.add(listener);
+    return () => {
+        cacheListeners.delete(listener);
+    };
+}
+/** A read-only snapshot of one cached loader entry (dev toolbar). */
+export interface LoaderCacheSnapshot {
+    readonly key: string;
+    readonly status: Entry['status'];
+    readonly hasLoader: boolean;
+    readonly revalidate: Revalidate;
+    readonly loadedAt: number;
+    readonly epoch: number;
+    readonly data: unknown;
+}
+/** Snapshots the live loader cache (dev toolbar). */
+export function inspectLoaderCache(): LoaderCacheSnapshot[] {
+    return [...cache.entries()].map(([key, e]) => ({
+        key,
+        status: e.status,
+        hasLoader: e.hasLoader,
+        revalidate: e.revalidate,
+        loadedAt: e.loadedAt,
+        epoch: e.epoch,
+        data: e.value?.data,
+    }));
+}
+
 /** Cache key for a URL: path + query (hash is ignored, it never changes loader data). */
 export function loaderKey(pathname: string, search: string): string {
     return `${pathname}${search}`;
@@ -135,11 +171,13 @@ function startFetch(route: RouteDef, params: RouteParams, key: string, epoch: nu
             created.hasLoader = result.hasLoader;
             created.loadedAt = Date.now();
             created.status = 'done';
+            emitCache();
         },
         (error: unknown) => {
             created.error = error;
             created.loadedAt = Date.now();
             created.status = 'error';
+            emitCache();
         },
     );
     cache.set(key, created);
@@ -148,6 +186,7 @@ function startFetch(route: RouteDef, params: RouteParams, key: string, epoch: nu
         if (oldest === undefined || oldest === key) break;
         cache.delete(oldest);
     }
+    emitCache();
     return created;
 }
 
@@ -176,6 +215,7 @@ export function readRouteData(
 /** Clears all cached loader data, so the next render re-runs loaders (used by router.refresh). */
 export function clearLoaderData(): void {
     cache.clear();
+    emitCache();
 }
 
 /** Cache key for an href (relative or absolute), matching {@link loaderKey}. */
@@ -197,10 +237,12 @@ function keyForHref(href: string): string | undefined {
 export function invalidateLoaderData(href?: string): void {
     if (href === undefined) {
         cache.clear();
+        emitCache();
         return;
     }
     const key = keyForHref(href);
     if (key !== undefined) cache.delete(key);
+    emitCache();
 }
 
 /**

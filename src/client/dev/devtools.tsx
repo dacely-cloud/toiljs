@@ -18,10 +18,19 @@ import {
     subscribeLocation,
     subscribePending,
 } from '../navigation/navigation.js';
+import {
+    clearLoaderData,
+    inspectLoaderCache,
+    loaderKey,
+    revalidate,
+    subscribeLoaderCache,
+    type LoaderCacheSnapshot,
+} from '../routing/loader.js';
 import { matchRoute } from '../routing/match.js';
+import { getPages } from '../search/search.js';
 import type { Href, RouteDef } from '../types.js';
 
-type Tab = 'route' | 'build' | 'errors' | 'prefs';
+type Tab = 'route' | 'data' | 'head' | 'build' | 'errors' | 'prefs';
 
 /** The toiljs brand mark (inlined from assets/logo.svg; unique gradient ids to avoid collisions). */
 function ToilLogo({ size = 16 }: { size?: number }): ReactNode {
@@ -134,6 +143,34 @@ function usePending(): boolean {
 function useErrors(): readonly DevError[] {
     return useSyncExternalStore(subscribeErrors, getErrorLog, () => getErrorLog());
 }
+function useLoaderCache(): readonly LoaderCacheSnapshot[] {
+    return useSyncExternalStore(subscribeLoaderCache, inspectLoaderCache, inspectLoaderCache);
+}
+
+/** JSON.stringify that won't throw on cyclic/odd data. */
+function safeJson(value: unknown): string {
+    try {
+        return JSON.stringify(value, null, 2) ?? String(value);
+    } catch {
+        return String(value);
+    }
+}
+
+/** Reads the current document head's meta + link tags (live). */
+function readHead(): { metas: { name: string; content: string }[]; links: { rel: string; href: string }[] } {
+    const metas: { name: string; content: string }[] = [];
+    const links: { rel: string; href: string }[] = [];
+    if (typeof document === 'undefined') return { metas, links };
+    document.head.querySelectorAll('meta').forEach((m) => {
+        const name = m.getAttribute('name') ?? m.getAttribute('property');
+        const content = m.getAttribute('content');
+        if (name && content) metas.push({ name, content });
+    });
+    document.head.querySelectorAll('link[rel]').forEach((l) => {
+        links.push({ rel: l.getAttribute('rel') ?? '', href: l.getAttribute('href') ?? '' });
+    });
+    return { metas, links };
+}
 
 // --- styles (injected once) ----------------------------------------------------------------------
 
@@ -171,6 +208,14 @@ const CSS = `
 .toil-dt-err{padding:6px 0;border-bottom:1px solid #1b1b24}
 .toil-dt-err .msg{color:#ff8a8a;word-break:break-word}
 .toil-dt-empty{color:#6b7088;padding:8px 0}
+.toil-dt-pre{background:#0a0a0e;border:1px solid #1b1b24;border-radius:6px;padding:8px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#c8cee0;margin:6px 0 0;font-size:11px}
+.toil-dt-chk{display:flex;gap:8px;align-items:center;padding:3px 0}
+.toil-dt-ok{color:#22e3ab}.toil-dt-bad{color:#ef4444}
+.toil-dt-og{display:flex;gap:8px;border:1px solid #23232e;border-radius:8px;overflow:hidden;background:#0d0d13}
+.toil-dt-og-img{width:72px;height:72px;object-fit:cover;flex:0 0 auto}
+.toil-dt-og-body{padding:6px 8px;min-width:0}
+.toil-dt-og-title{color:#e7e9f0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toil-dt-og-desc{color:#8b90a4;font-size:11px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 `;
 function injectStyles(): void {
     if (typeof document === 'undefined' || document.getElementById(STYLE_ID)) return;
@@ -286,6 +331,127 @@ function RouteTab({
     );
 }
 
+function DataTab(): ReactNode {
+    const url = useCurrentUrl();
+    const entries = useLoaderCache();
+    const pathname = url.split('?')[0];
+    const key = loaderKey(pathname, url.slice(pathname.length));
+    const entry = entries.find((e) => e.key === key);
+    return (
+        <div className="toil-dt-body">
+            {!entry && <p className="toil-dt-empty">No cached loader data for this route.</p>}
+            {entry && (
+                <>
+                    <Row k="status">{entry.status}</Row>
+                    <Row k="has loader">{entry.hasLoader ? 'yes' : 'no'}</Row>
+                    <Row k="revalidate">
+                        {entry.revalidate === false ? 'never' : `${String(entry.revalidate)}s`}
+                    </Row>
+                    <Row k="loaded">
+                        {entry.loadedAt ? new Date(entry.loadedAt).toLocaleTimeString() : '-'}
+                    </Row>
+                    <div style={{ margin: '8px 0' }}>
+                        <button
+                            className="toil-dt-btn"
+                            onClick={() => {
+                                revalidate();
+                            }}>
+                            Revalidate
+                        </button>{' '}
+                        <button
+                            className="toil-dt-btn"
+                            onClick={() => {
+                                clearLoaderData();
+                            }}>
+                            Clear cache
+                        </button>
+                    </div>
+                    <pre className="toil-dt-pre">{safeJson(entry.data)}</pre>
+                </>
+            )}
+            <p
+                className="toil-dt-sec"
+                style={{ marginTop: 12 }}>
+                Cache ({entries.length})
+            </p>
+            {entries.map((e) => (
+                <Row
+                    k={e.key}
+                    key={e.key}>
+                    {e.status}
+                </Row>
+            ))}
+        </div>
+    );
+}
+
+function Check({ ok, label }: { ok: boolean; label: string }): ReactNode {
+    return (
+        <div className="toil-dt-chk">
+            <span className={ok ? 'toil-dt-ok' : 'toil-dt-bad'}>{ok ? '✓' : '✗'}</span>
+            <span>{label}</span>
+        </div>
+    );
+}
+
+function HeadTab(): ReactNode {
+    useCurrentUrl(); // re-read the DOM head on navigation
+    const title = typeof document !== 'undefined' ? document.title : '';
+    const { metas, links } = readHead();
+    const meta = (n: string): string | undefined => metas.find((m) => m.name === n)?.content;
+    const og = {
+        title: meta('og:title') ?? title,
+        description: meta('og:description') ?? meta('description'),
+        image: meta('og:image'),
+    };
+    const pages = getPages();
+    const described = pages.filter((p) => p.metadata.description !== undefined).length;
+
+    return (
+        <div className="toil-dt-body">
+            <Row k="title">{title || '(none)'}</Row>
+
+            <p className="toil-dt-sec" style={{ marginTop: 10 }}>
+                OpenGraph preview
+            </p>
+            <div className="toil-dt-og">
+                {og.image && (
+                    <img
+                        src={og.image}
+                        alt=""
+                        className="toil-dt-og-img"
+                    />
+                )}
+                <div className="toil-dt-og-body">
+                    <div className="toil-dt-og-title">{og.title || '(no title)'}</div>
+                    <div className="toil-dt-og-desc">{og.description ?? '(no description)'}</div>
+                </div>
+            </div>
+
+            <p className="toil-dt-sec" style={{ marginTop: 10 }}>
+                SEO checklist
+            </p>
+            <Check ok={Boolean(title)} label="Has a title" />
+            <Check ok={meta('description') !== undefined} label="Has a meta description" />
+            <Check ok={og.image !== undefined} label="Has an og:image" />
+            <Check ok={links.some((l) => l.rel === 'canonical')} label="Has a canonical link" />
+            <Check
+                ok={pages.length === 0 || described === pages.length}
+                label={`Pages with a description: ${String(described)}/${String(pages.length)}`}
+            />
+
+            <p className="toil-dt-sec" style={{ marginTop: 10 }}>
+                Meta ({metas.length})
+            </p>
+            {metas.map((m, i) => (
+                <Row k={m.name} key={`${m.name}:${String(i)}`}>
+                    {m.content}
+                </Row>
+            ))}
+        </div>
+    );
+}
+
 function BuildTab({ info }: { info: DevInfo | null }): ReactNode {
     return (
         <div className="toil-dt-body">
@@ -383,6 +549,8 @@ function PrefsTab(): ReactNode {
 
 const TABS: { id: Tab; label: string }[] = [
     { id: 'route', label: 'Route' },
+    { id: 'data', label: 'Data' },
+    { id: 'head', label: 'Head' },
     { id: 'build', label: 'Build' },
     { id: 'errors', label: 'Errors' },
     { id: 'prefs', label: 'Prefs' },
@@ -462,6 +630,8 @@ export function DevToolbar({
                     ))}
                 </div>
                 {p.tab === 'route' && <RouteTab routes={routes} slots={slots} info={info} />}
+                {p.tab === 'data' && <DataTab />}
+                {p.tab === 'head' && <HeadTab />}
                 {p.tab === 'build' && <BuildTab info={info} />}
                 {p.tab === 'errors' && <ErrorsTab />}
                 {p.tab === 'prefs' && <PrefsTab />}
