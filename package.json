@@ -4,6 +4,13 @@
     "version": "0.0.16",
     "author": "Dacely",
     "description": "The modern React framework: a file-based React frontend and a ToilScript-compiled WebAssembly backend.",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/dacely-cloud/toiljs.git"
+    },
+    "bugs": {
+        "url": "https://github.com/dacely-cloud/toiljs/issues"
+    },
     "engines": {
         "node": ">=24.0.0"
     },
