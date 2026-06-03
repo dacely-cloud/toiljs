@@ -340,10 +340,19 @@ export function robotsTxt(seo: SeoConfig): string {
     return blocks.join('\n\n') + '\n';
 }
 
-/** `sitemap.xml` from the site's static routes (requires `seo.url`); empty when no base URL. */
-export function sitemapXml(seo: SeoConfig, routes: readonly ScannedRoute[]): string {
+/**
+ * `sitemap.xml` from the site's static routes plus any `extra` concrete paths (e.g. SSG URLs from
+ * `generateStaticParams`); requires `seo.url`, empty when no base URL. `extra` is deduped against the
+ * static paths.
+ */
+export function sitemapXml(
+    seo: SeoConfig,
+    routes: readonly ScannedRoute[],
+    extra: readonly string[] = [],
+): string {
     if (seo.url === undefined || seo.sitemap === false) return '';
-    const urls = staticPaths(routes)
+    const paths = [...new Set([...staticPaths(routes), ...extra])];
+    const urls = paths
         .map((p) => `  <url><loc>${escapeHtml(joinUrl(seo.url ?? '', p))}</loc></url>`)
         .join('\n');
     return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;

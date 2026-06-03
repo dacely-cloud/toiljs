@@ -27,6 +27,16 @@ export interface LoaderArgs {
 /** A route `loader`: `export const loader = ({ params }) => …` (sync or async). */
 export type LoaderFunction<T = unknown> = (args: LoaderArgs) => T | Promise<T>;
 
+/** One concrete set of route params (a dynamic segment maps to a string, a catch-all to a string[]). */
+export type StaticParams = Record<string, string | string[]>;
+
+/**
+ * A route's `export const generateStaticParams`: returns the concrete param sets to pre-render at
+ * build time (SSG). toil enumerates them, runs the route's `generateMetadata` per set, and bakes a
+ * `<url>/index.html` + sitemap entry for each, so dynamic routes get build-time SEO. Build-only.
+ */
+export type GenerateStaticParams = () => StaticParams[] | Promise<StaticParams[]>;
+
 /**
  * Per-route cache policy, set with `export const revalidate` in a route file:
  * - `0` (default): re-run the loader on every navigation to the route.
