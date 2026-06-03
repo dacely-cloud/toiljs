@@ -161,4 +161,15 @@ describe('llmsTxt', () => {
     it('is empty when llms: false', () => {
         expect(llmsTxt({ llms: false }, routes)).toBe('');
     });
+
+    it('renders a supplied page list (titles + descriptions, e.g. SSG pages) over the static paths', () => {
+        const txt = llmsTxt({ url: 'https://x.test', title: 'Docs' }, routes, [
+            { title: 'useReducer | React Hooks', url: 'https://x.test/hooks/usereducer', description: 'A reducer.' },
+            { title: 'About', url: 'https://x.test/about' },
+        ]);
+        expect(txt).toContain('[useReducer | React Hooks](https://x.test/hooks/usereducer): A reducer.');
+        expect(txt).toContain('[About](https://x.test/about)');
+        // the supplied list replaces the bare static-path fallback
+        expect(txt).not.toContain('[Home](https://x.test)');
+    });
 });
