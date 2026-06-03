@@ -2,7 +2,14 @@
  * Router hooks for user route components: read the params / pathname / search params, navigate
  * imperatively, and grab a router handle.
  */
-import { useContext, useEffect, useMemo, useReducer, useSyncExternalStore } from 'react';
+import {
+    startTransition,
+    useContext,
+    useEffect,
+    useMemo,
+    useReducer,
+    useSyncExternalStore,
+} from 'react';
 
 import type { RouteParams } from './match.js';
 import {
@@ -76,14 +83,22 @@ export function useRouter(): RouterInstance {
 }
 
 /**
- * Subscribes to location changes and reads the live `window.location` on render. Re-renders on any
- * pathname, search, or hash change. The re-render is orchestrated by `navigate`/`notify` (wrapped in
- * `startTransition` for smooth nav, or `document.startViewTransition` when enabled), so the listener
- * itself is a plain force-update.
+ * Subscribes to location changes and reads the live `window.location` on render. The re-render runs
+ * inside `startTransition` so React keeps the current page visible while the next route's chunk and
+ * loader resolve (committing the new tree only once it's ready), instead of committing a suspended
+ * tree and flashing an empty page on every link click.
  */
 function useLocationSubscription(): void {
     const [, forceUpdate] = useReducer((n: number): number => n + 1, 0);
-    useEffect(() => subscribeLocation(forceUpdate), []);
+    useEffect(
+        () =>
+            subscribeLocation(() => {
+                startTransition(() => {
+                    forceUpdate();
+                });
+            }),
+        [],
+    );
 }
 
 /** Subscribes to and returns the current `location.pathname`. */
