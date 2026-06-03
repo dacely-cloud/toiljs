@@ -14,7 +14,7 @@ export { Link } from './navigation/Link.js';
 export type { LinkProps } from './navigation/Link.js';
 export { NavLink, matchActive } from './navigation/NavLink.js';
 export type { NavLinkProps, NavLinkState } from './navigation/NavLink.js';
-export { navigate, back, forward, refresh, setViewTransitions } from './navigation/navigation.js';
+export { navigate, back, forward, refresh, setViewTransitions, href } from './navigation/navigation.js';
 export type { NavigateOptions } from './navigation/navigation.js';
 export {
     useParams,
@@ -52,13 +52,8 @@ export { connectChannel, useChannel, resolveChannelUrl } from './channel/channel
 export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channel/channel.js';
 export { useHead, useTitle, Head, mergeHead } from './head/head.js';
 export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head/head.js';
-export { resolveMetadata } from './head/metadata.js';
-export type {
-    Metadata,
-    GenerateMetadata,
-    GenerateMetadataArgs,
-    OpenGraph,
-} from './head/metadata.js';
+export { resolveMetadata, useMetadata, Metadata } from './head/metadata.js';
+export type { GenerateMetadata, GenerateMetadataArgs, OpenGraph } from './head/metadata.js';
 export { searchPages, registerPages, getPages, pagePath } from './search/search.js';
 export type {
     PageMeta,
