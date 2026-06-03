@@ -9,6 +9,13 @@ import { flushSync } from 'react-dom';
 import { enableManualScrollRestoration, planScroll, rememberScroll } from './scroll.js';
 import type { Href } from '../types.js';
 
+/**
+ * Asserts a runtime-computed string is a valid {@link Href}, the escape hatch for hrefs built from
+ * data (e.g. `` `/${category}/${slug}` ``) that can't be checked against the static route union.
+ * Use at the call site: `<Link href={href(path)} />`, `navigate(href(path))`.
+ */
+export const href = (path: string): Href => path as Href;
+
 const listeners = new Set<() => void>();
 let popstateBound = false;
 
