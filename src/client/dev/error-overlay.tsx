@@ -7,21 +7,30 @@
 import { Component, type CSSProperties, type ErrorInfo, type ReactNode, useSyncExternalStore, } from 'react';
 
 /** A captured dev error. */
-interface DevError {
+export interface DevError {
     readonly error: Error;
     readonly componentStack?: string;
     /** Where it came from, a render boundary, a window `error`, or an unhandled rejection. */
     readonly source: 'render' | 'window' | 'unhandledrejection';
+    /** Capture time (ms epoch). */
+    readonly time: number;
 }
 
 let current: DevError | null = null;
 const listeners = new Set<() => void>();
+/** Bounded history of captured errors, for the dev toolbar's Errors tab. */
+const errorLog: DevError[] = [];
+const MAX_LOG = 50;
 
 function emit(): void {
     for (const listener of listeners) listener();
 }
 function setDevError(next: DevError | null): void {
     current = next;
+    if (next) {
+        errorLog.push(next);
+        if (errorLog.length > MAX_LOG) errorLog.shift();
+    }
     emit();
 }
 function subscribe(listener: () => void): () => void {
@@ -30,6 +39,13 @@ function subscribe(listener: () => void): () => void {
         listeners.delete(listener);
     };
 }
+
+/** The captured-error history (most recent last). Subscribe via {@link subscribeErrors}. */
+export function getErrorLog(): readonly DevError[] {
+    return errorLog;
+}
+/** Subscribes to error captures (fires whenever a new error is recorded or dismissed). */
+export const subscribeErrors = subscribe;
 
 /** True when running under Vite's dev server (replaced at build time; falsy in production). */
 export function isDevMode(): boolean {
@@ -46,12 +62,14 @@ export function initDevErrorOverlay(): void {
     if (windowBound || typeof window === 'undefined') return;
     windowBound = true;
     window.addEventListener('error', (event) => {
-        if (event.error instanceof Error) setDevError({ error: event.error, source: 'window' });
+        if (event.error instanceof Error) {
+            setDevError({ error: event.error, source: 'window', time: Date.now() });
+        }
     });
     window.addEventListener('unhandledrejection', (event) => {
         const reason: unknown = event.reason;
         const error = reason instanceof Error ? reason : new Error(String(reason));
-        setDevError({ error, source: 'unhandledrejection' });
+        setDevError({ error, source: 'unhandledrejection', time: Date.now() });
     });
 }
 
@@ -76,7 +94,12 @@ export class DevErrorBoundary extends Component<BoundaryProps, BoundaryState> {
     }
 
     public override componentDidCatch(error: Error, info: ErrorInfo): void {
-        setDevError({ error, componentStack: info.componentStack ?? undefined, source: 'render' });
+        setDevError({
+            error,
+            componentStack: info.componentStack ?? undefined,
+            source: 'render',
+            time: Date.now(),
+        });
     }
 
     public override componentDidMount(): void {
