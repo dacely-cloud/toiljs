@@ -294,6 +294,7 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
         `import { pages } from './routes';\n\n` +
         `Object.assign(globalThis, { Toil, BinaryWriter, BinaryReader, FastMap, FastSet });\n` +
         `Toil.setViewTransitions(${String(cfg.viewTransitions)});\n` +
+        `Toil.setTransitions(${String(cfg.transitions)});\n` +
         `Toil.registerPages(pages);\n`;
     fs.writeFileSync(path.join(cfg.toilDir, 'globals.ts'), globalsSrc);
 

@@ -14,7 +14,15 @@ export { Link } from './navigation/Link.js';
 export type { LinkProps } from './navigation/Link.js';
 export { NavLink, matchActive } from './navigation/NavLink.js';
 export type { NavLinkProps, NavLinkState } from './navigation/NavLink.js';
-export { navigate, back, forward, refresh, setViewTransitions, href } from './navigation/navigation.js';
+export {
+    navigate,
+    back,
+    forward,
+    refresh,
+    setViewTransitions,
+    setTransitions,
+    href,
+} from './navigation/navigation.js';
 export type { NavigateOptions } from './navigation/navigation.js';
 export {
     useParams,
