@@ -52,6 +52,11 @@ export interface ClientConfig {
      */
     readonly transitions?: boolean;
     /**
+     * Show the dev toolbar (a floating panel in `toiljs dev` with route/build info, errors, and live
+     * controls). Default `true`. Set `false` to hide it. It is never included in production builds.
+     */
+    readonly devtools?: boolean;
+    /**
      * Build-time SEO: bakes site-level metadata into the HTML `<head>` (so JS-less crawlers and AI
      * bots see real tags) and generates `robots.txt`, `sitemap.xml`, and `llms.txt`. Omit to skip.
      */
@@ -108,6 +113,8 @@ export interface ResolvedToilConfig {
     readonly viewTransitions: boolean;
     /** Whether navigations are wrapped in a React transition (keep current page while loading). */
     readonly transitions: boolean;
+    /** Whether the dev toolbar is enabled (dev only). */
+    readonly devtools: boolean;
     /** Build-time SEO config, or `null` when not configured. */
     readonly seo: SeoConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
@@ -175,6 +182,7 @@ export async function loadConfig(
         fonts: client.fonts ?? true,
         viewTransitions: client.viewTransitions ?? false,
         transitions: client.transitions ?? false,
+        devtools: client.devtools ?? true,
         seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
