@@ -12,6 +12,8 @@ import { createViteConfig } from './vite.js';
 export interface ToilCommandOptions {
     readonly root?: string;
     readonly port?: number;
+    /** Bind host for `start`. Defaults to loopback (`127.0.0.1`); pass `0.0.0.0` to expose. */
+    readonly host?: string;
 }
 
 /** Starts the Vite dev server (HMR + transforms) for the client app. Returns the running server. */
@@ -44,7 +46,7 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
     if (!fs.existsSync(path.join(outDir, 'index.html'))) {
         throw new Error(`No build found in ${outDir}. Run \`toiljs build\` first.`);
     }
-    return startBackend({ root: outDir, port: cfg.port });
+    return startBackend({ root: outDir, port: cfg.port, host: opts.host });
 }
 
 export { defineConfig, loadConfig, AiProvider } from './config.js';

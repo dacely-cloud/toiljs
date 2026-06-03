@@ -136,6 +136,22 @@ export function escapeHtml(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 /**
+ * Neutralizes a string for safe single-line Markdown interpolation (e.g. `llms.txt`): collapses
+ * newlines/control chars to a space and backslash-escapes the characters that would break out of a
+ * `[text](url)` link or start a new block (`[ ] ( ) < > \``). Without this, a page title/description
+ * from `generateMetadata` could inject extra list items, links, or headings.
+ */
+function escapeMarkdownInline(value: string): string {
+    return value
+        .replace(/[\r\n\t\f\v]+/g, ' ')
+        .replace(/[\\[\]()<>`]/g, (c) => `\\${c}`)
+        .trim();
+}
+/** Escapes a URL for a Markdown link target: strips whitespace/control chars and parens. */
+function escapeMarkdownUrl(value: string): string {
+    return value.replace(/\s+/g, '').replace(/[()<>]/g, encodeURIComponent);
+}
+/**
  * Serializes a value for embedding in an inline `<script>` (JSON-LD). Escapes `<`, `>`, and `&`,
  * which neutralizes `</script>` and `<!--` (the only HTML-significant sequences inside a script),
  * so attacker-controlled data can't break out of the script element.
@@ -388,9 +404,13 @@ export function llmsTxt(
     if (resolvedPages.length) {
         out.push('\n## Pages\n');
         for (const page of resolvedPages) {
-            out.push(
-                `- [${page.title}](${page.url})${page.description !== undefined ? `: ${page.description}` : ''}`,
-            );
+            const title = escapeMarkdownInline(page.title);
+            const url = escapeMarkdownUrl(page.url);
+            const desc =
+                page.description !== undefined
+                    ? `: ${escapeMarkdownInline(page.description)}`
+                    : '';
+            out.push(`- [${title}](${url})${desc}`);
         }
     }
     return out.join('\n') + '\n';
