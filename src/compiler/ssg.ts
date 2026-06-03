@@ -98,6 +98,16 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
             const paramSets = await mod.generateStaticParams();
             for (const params of paramSets) {
                 const url = fillPattern(route.pattern, params);
+                // Containment guard: a param value with `..`/separators could make `url` resolve the
+                // output path outside `outDir`. Resolve the target up front and skip anything that
+                // escapes, so a (possibly externally-derived) param can't clobber files elsewhere.
+                const target = path.join(outDir, url.replace(/^\//, ''), 'index.html');
+                const outRoot = path.resolve(outDir);
+                const absTarget = path.resolve(target);
+                if (absTarget !== outRoot && !absTarget.startsWith(outRoot + path.sep)) {
+                    warn(`skipped ${route.pattern}: params escape outDir (${url})`);
+                    continue;
+                }
                 let metadata: Record<string, unknown> | null = null;
                 try {
                     if (typeof mod.generateMetadata === 'function') {
@@ -114,7 +124,6 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
                     warn(`metadata failed for ${url} (${err instanceof Error ? err.message : String(err)})`);
                 }
                 const html = injectSeoHtml(shell, routeSeo(cfg.seo, metadata, url));
-                const target = path.join(outDir, url.replace(/^\//, ''), 'index.html');
                 fs.mkdirSync(path.dirname(target), { recursive: true });
                 fs.writeFileSync(target, html);
                 generated.push(url);
