@@ -4,7 +4,7 @@
  * data); the compiler-driven loader resolves it to a {@link HeadSpec} that the router applies as the
  * route's baseline head (component-level `useHead`/`<Head>` still compose on top and can override).
  */
-import type { HeadSpec, LinkTag, MetaTag } from './head.js';
+import { useHead, type HeadSpec, type LinkTag, type MetaTag } from './head.js';
 import type { RouteParams } from '../routing/match.js';
 
 /** OpenGraph fields, expanded to `og:*` meta tags. */
@@ -91,4 +91,22 @@ export function resolveMetadata(metadata: Metadata): HeadSpec {
     if (metadata.link) link.push(...metadata.link);
 
     return { title: metadata.title, titleTemplate: metadata.titleTemplate, meta, link };
+}
+
+/**
+ * Applies a route-style {@link Metadata} object from inside any component for that component's
+ * lifetime, reverting on unmount. The runtime counterpart of a route's `metadata` export, for
+ * content that isn't itself a route file (a rendered article, a widget, ...). Composes through the
+ * head manager like {@link useHead}; a route's own `metadata` (applied last) still wins for keys it
+ * sets, so this fills in for routes that declare none. Resolved fresh each render, the head manager
+ * dedupes by value, so passing a computed object is fine.
+ */
+export function useMetadata(metadata: Metadata): void {
+    useHead(resolveMetadata(metadata));
+}
+
+/** Declarative form of {@link useMetadata}: `<Metadata title="…" openGraph={…} />`. Renders nothing. */
+export function Metadata(props: Metadata): null {
+    useMetadata(props);
+    return null;
 }
