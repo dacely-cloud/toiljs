@@ -14,9 +14,16 @@ import path from 'node:path';
 import { createServer } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
+import { extractStaticMetadata, loadTypeScript } from './prerender.js';
 import { scanRoutes } from './routes.js';
-import { injectSeoHtml, routeSeo, sitemapXml } from './seo.js';
+import { injectSeoHtml, joinUrl, llmsTxt, routeSeo, sitemapXml, type LlmsPage } from './seo.js';
 import { createViteConfig } from './vite.js';
+
+/** Reads a string field off a metadata record, or undefined. */
+function metaString(meta: Record<string, unknown> | null, key: string): string | undefined {
+    const value = meta?.[key];
+    return typeof value === 'string' ? value : undefined;
+}
 
 type StaticParams = Record<string, string | string[]>;
 
@@ -72,7 +79,9 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
         logLevel: 'silent',
     });
 
+    const baseUrl = cfg.seo.url;
     const generated: string[] = [];
+    const dynamicPages: LlmsPage[] = [];
     const warn = (msg: string): void => {
         process.stderr.write(`  toil: SSG ${msg}\n`);
     };
@@ -109,6 +118,11 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
                 fs.mkdirSync(path.dirname(target), { recursive: true });
                 fs.writeFileSync(target, html);
                 generated.push(url);
+                dynamicPages.push({
+                    title: metaString(metadata, 'title') ?? url,
+                    url: baseUrl !== undefined ? joinUrl(baseUrl, url) : url,
+                    description: metaString(metadata, 'description'),
+                });
             }
         }
     } finally {
@@ -122,5 +136,27 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
             `  ✓ prerendered ${String(generated.length)} dynamic route${generated.length === 1 ? '' : 's'}\n`,
         );
     }
+
+    // Rewrite llms.txt with the full page index: every static route's resolved title/description plus
+    // the enumerated dynamic pages, so AI crawlers get the whole site, not just the static paths.
+    if (baseUrl !== undefined) {
+        const ts = await loadTypeScript(cfg.root);
+        const staticPages: LlmsPage[] = allRoutes
+            .filter((r) => r.slot === undefined && !r.intercept && !/[:*]/.test(r.pattern))
+            .map((r): LlmsPage => {
+                const meta = ts ? extractStaticMetadata(ts, r.file) : null;
+                return {
+                    title: metaString(meta, 'title') ?? (r.pattern === '/' ? 'Home' : r.pattern),
+                    url: joinUrl(baseUrl, r.pattern),
+                    description: metaString(meta, 'description'),
+                };
+            });
+        const pages = [...staticPages, ...dynamicPages];
+        if (pages.length > 0) {
+            const llms = llmsTxt(cfg.seo, allRoutes, pages);
+            if (llms) fs.writeFileSync(path.join(outDir, 'llms.txt'), llms);
+        }
+    }
+
     return generated;
 }
