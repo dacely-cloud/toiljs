@@ -211,7 +211,9 @@ export async function loadConfig(
         transitions: client.transitions ?? false,
         devtools: client.devtools !== false,
         devtoolsAi:
-            typeof client.devtools === 'object' && client.devtools.ai ? client.devtools.ai : null,
+            client.devtools != null && typeof client.devtools === 'object'
+                ? (client.devtools.ai ?? null)
+                : null,
         seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},

@@ -35,8 +35,18 @@ export interface BackendOptions {
     readonly root: string;
     /** Listening port. Default `3000`. */
     readonly port?: number;
-    /** Bind host. Default `0.0.0.0`. */
+    /**
+     * Bind host. Default `127.0.0.1` (loopback only). Pass `0.0.0.0` (or a specific interface) to
+     * expose the server on the network; do so deliberately, since the WebSocket channel relays
+     * messages between all connected clients.
+     */
     readonly host?: string;
+    /**
+     * Extra origins allowed to open the WebSocket channel, in addition to the server's own origin.
+     * Cross-origin WebSocket handshakes from other origins are rejected (prevents cross-site
+     * WebSocket hijacking). Example: `['https://app.example.com']`.
+     */
+    readonly allowedOrigins?: readonly string[];
     /** WebSocket channel path. Default `/_toil`. */
     readonly wsPath?: string;
     /** Send permissive CORS headers + handle preflight. Default `true`. */
@@ -58,6 +68,26 @@ export interface RunningBackend {
     close(): Promise<void>;
 }
 
+/**
+ * Whether a WebSocket upgrade from `origin` may connect. A missing `Origin` (non-browser clients
+ * like curl or server-to-server) is allowed; a browser `Origin` must match the host the server was
+ * reached at (same-origin) or be in the explicit allowlist. This blocks cross-site WebSocket
+ * hijacking, where a page the victim visits opens a socket to this server from their browser.
+ */
+function isWsOriginAllowed(
+    origin: string | undefined,
+    hostHeader: string | undefined,
+    allowed: readonly string[] | undefined,
+): boolean {
+    if (!origin) return true;
+    if (allowed?.includes(origin)) return true;
+    try {
+        return new URL(origin).host === hostHeader;
+    } catch {
+        return false;
+    }
+}
+
 /** Resolves a request path to a file inside `root`, guarding against path traversal. */
 function resolveStaticFile(root: string, requestPath: string): string | null {
     const decoded = decodeURIComponent(requestPath);
@@ -74,7 +104,7 @@ function resolveStaticFile(root: string, requestPath: string): string | null {
  */
 export async function startBackend(options: BackendOptions): Promise<RunningBackend> {
     const port = options.port ?? 3000;
-    const host = options.host ?? '0.0.0.0';
+    const host = options.host ?? '127.0.0.1';
     const wsPath = options.wsPath ?? '/_toil';
     const cors = options.cors ?? true;
     const root = path.resolve(options.root);
@@ -136,6 +166,18 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
             });
         },
     );
+
+    // Gate the WebSocket upgrade on the request Origin, so a cross-origin page in a victim's browser
+    // cannot hijack the channel (CSWSH). Registered AFTER `app.ws` so it overrides that route's
+    // default upgrade handler (hyper-express links it to the companion ws route). Same-origin and
+    // non-browser clients pass; others get 403.
+    app.upgrade(wsPath, (request: Request, response: Response) => {
+        if (!isWsOriginAllowed(request.headers.origin, request.headers.host, options.allowedOrigins)) {
+            response.status(403).send();
+            return;
+        }
+        response.upgrade({});
+    });
 
     app.get('/*', (request: Request, response: Response) => {
         if (response.completed) return;

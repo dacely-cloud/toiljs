@@ -16,6 +16,7 @@ import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 interface Flags {
     root?: string;
     port?: number;
+    host?: string;
     name?: string;
     template?: Template;
     preprocessor?: Preprocessor;
@@ -43,6 +44,9 @@ function parseArgs(argv: string[]): Flags {
                 if (!Number.isNaN(port)) flags.port = port;
                 break;
             }
+            case '--host':
+                flags.host = argv[++i];
+                break;
             case '--template':
             case '-t': {
                 const t = argv[++i];
@@ -193,7 +197,7 @@ async function main(): Promise<void> {
         case 'start': {
             banner();
             process.stdout.write(dim('  self-hosting the built app…') + '\n\n');
-            const server = await start({ root: flags.root, port: flags.port });
+            const server = await start({ root: flags.root, port: flags.port, host: flags.host });
             process.stdout.write(
                 accent('  ➜ ') +
                     bold(`http://localhost:${String(server.port)}`) +
