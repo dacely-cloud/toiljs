@@ -68,24 +68,29 @@ function renderMatched(
 
     // A route with a `loading.tsx` keys its boundary per URL *and* navigation epoch, so its fallback
     // shows even inside the transition, on first nav and on an in-place revalidate of the same URL
-    // (the epoch bumps). A route without one keeps a stable boundary so the transition holds the old
-    // page. The loader cache key stays the bare URL, so the boundary remount still reuses cached data.
-    // Wrap the page in a fade-in layer keyed by URL: it re-mounts on each navigation so the
-    // animation replays, while the nested layouts (added below) persist. Cached/no-loader pages
-    // still render synchronously (no flash), they just fade in instead of popping.
+    // (the epoch bumps). A route without one keeps a STABLE boundary (key `undefined`): the Suspense
+    // must NOT be remounted on navigation, or it becomes a freshly-mounted boundary with no committed
+    // content and React shows its (null) fallback during the next route's chunk/loader load, i.e. a
+    // blank flash, even inside the transition. With a stable boundary the transition holds the old
+    // page until the next one is ready. The loader cache key stays the bare URL, so reused data hits.
+    // The fade-in layer is keyed by URL but lives INSIDE the boundary, so it re-mounts (replaying the
+    // animation) only when the new page commits, without tearing down the boundary above it.
     let content: ReactNode = (
-        <div key={dataKey} className="toil-fade" style={{ animation: 'toil-fade-in 160ms ease-out' }}>
-            <Suspense
-                key={matched.loading ? `${dataKey}:${String(epoch)}` : undefined}
-                fallback={fallback}>
+        <Suspense
+            key={matched.loading ? `${dataKey}:${String(epoch)}` : undefined}
+            fallback={fallback}>
+            <div
+                key={dataKey}
+                className="toil-fade"
+                style={{ animation: 'toil-fade-in 160ms ease-out' }}>
                 <RoutePage
                     route={matched}
                     params={params}
                     dataKey={dataKey}
                     epoch={epoch}
                 />
-            </Suspense>
-        </div>
+            </div>
+        </Suspense>
     );
     // Templates wrap inside the layouts and re-mount on every navigation (keyed by URL).
     const templates = matched.templates ?? [];
