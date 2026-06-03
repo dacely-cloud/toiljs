@@ -14,7 +14,7 @@ import { createContext, useContext, type ComponentType } from 'react';
 
 import type { HeadSpec } from '../head/head.js';
 import { resolveMetadata, type GenerateMetadata, type Metadata } from '../head/metadata.js';
-import { refresh as rerender } from '../navigation/navigation.js';
+import { navigationEpoch, refresh as rerender } from '../navigation/navigation.js';
 import type { RouteDef } from '../types.js';
 import type { RouteParams } from './match.js';
 
@@ -74,6 +74,11 @@ interface Entry {
     epoch: number;
     /** Whether the route exports a `loader`, a route without one has no data that can change. */
     hasLoader: boolean;
+    /**
+     * Fetched ahead of navigation (hover/visible prefetch), not yet consumed by a navigation. Such an
+     * entry is reused once by the next navigation even under `revalidate: 0`, then behaves normally.
+     */
+    prefetched: boolean;
 }
 
 const cache = new Map<string, Entry>();
@@ -125,15 +130,33 @@ export function loaderKey(pathname: string, search: string): string {
     return `${pathname}${search}`;
 }
 
+/**
+ * Warms a route's chunk *and* loader data for a URL ahead of navigation (the prefetcher calls this on
+ * link hover/focus), so the eventual click commits synchronously instead of suspending. The entry is
+ * flagged `prefetched` so the next navigation reuses it once even under the default `revalidate: 0`.
+ * No-op when the URL is already cached or its fetch is already in flight. Errors are swallowed into
+ * the entry (the real navigation will retry and surface them via the route's `error.tsx`).
+ */
+export function prefetchRouteData(
+    route: RouteDef,
+    params: RouteParams,
+    pathname: string,
+    search: string,
+): void {
+    const key = loaderKey(pathname, search);
+    const existing = cache.get(key);
+    if (existing && existing.status !== 'error') return;
+    startFetch(route, params, key, navigationEpoch(), search, true);
+}
+
 /** Loads the route module and runs its loader (if any), in parallel where possible. */
 async function loadRoute(
     route: RouteDef,
     params: RouteParams,
+    search: string,
 ): Promise<{ data: RouteData; revalidate: Revalidate; hasLoader: boolean }> {
     const mod: RouteModule = await route.load();
-    const searchParams = new URLSearchParams(
-        typeof window === 'undefined' ? '' : window.location.search,
-    );
+    const searchParams = new URLSearchParams(search);
     const data = mod.loader ? await mod.loader({ params, searchParams }) : undefined;
     let head: HeadSpec | undefined;
     if (mod.generateMetadata) {
@@ -155,12 +178,24 @@ function isStale(entry: Entry, epoch: number): boolean {
     // render synchronously (instant) instead of re-suspending and remounting on every switch.
     if (!entry.hasLoader) return false;
     if (entry.revalidate === false) return false; // cache forever
-    if (entry.revalidate === 0) return entry.epoch !== epoch; // refetch once per navigation
+    if (entry.revalidate === 0) {
+        // A just-prefetched entry is the fetch for this very navigation, reuse it once (consumed in
+        // readRouteData, so the *next* navigation refetches as `revalidate: 0` normally requires).
+        if (entry.prefetched) return false;
+        return entry.epoch !== epoch; // otherwise refetch once per navigation
+    }
     return Date.now() - entry.loadedAt >= entry.revalidate * 1000; // time-based staleness
 }
 
 /** Starts (and caches) a fresh fetch for `key`. */
-function startFetch(route: RouteDef, params: RouteParams, key: string, epoch: number): Entry {
+function startFetch(
+    route: RouteDef,
+    params: RouteParams,
+    key: string,
+    epoch: number,
+    search: string,
+    prefetched = false,
+): Entry {
     const created: Entry = {
         status: 'pending',
         promise: Promise.resolve(),
@@ -168,8 +203,9 @@ function startFetch(route: RouteDef, params: RouteParams, key: string, epoch: nu
         revalidate: 0,
         epoch,
         hasLoader: false,
+        prefetched,
     };
-    created.promise = loadRoute(route, params).then(
+    created.promise = loadRoute(route, params, search).then(
         (result) => {
             created.value = result.data;
             created.revalidate = result.revalidate;
@@ -206,14 +242,21 @@ export function readRouteData(
     key: string,
     epoch: number,
 ): RouteData {
+    const search = typeof window === 'undefined' ? '' : window.location.search;
     let entry = cache.get(key);
     if (entry && entry.status !== 'pending' && isStale(entry, epoch)) {
         entry = undefined; // stale → drop and refetch below
     }
-    entry ??= startFetch(route, params, key, epoch);
+    entry ??= startFetch(route, params, key, epoch, search);
     if (entry.status === 'pending') throw entry.promise;
     if (entry.status === 'error') throw entry.error;
     if (!entry.value) throw entry.promise;
+    // Claim a prefetched entry for this navigation: clear the flag and stamp the current epoch so the
+    // next navigation re-evaluates its revalidate policy (a `revalidate: 0` route refetches again).
+    if (entry.prefetched) {
+        entry.prefetched = false;
+        entry.epoch = epoch;
+    }
     return entry.value;
 }
 
