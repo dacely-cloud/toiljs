@@ -132,6 +132,10 @@ export function prerenderPlugin(cfg: ResolvedToilConfig): Plugin {
             const shellPath = path.join(outDir, 'index.html');
             if (!fs.existsSync(shellPath)) return;
             const shell = fs.readFileSync(shellPath, 'utf8');
+            // Stash the clean built shell (asset tags, no per-route SEO yet) so the post-build SSG
+            // pass bakes dynamic routes from it rather than from this file once it's been overwritten
+            // with the `/` route's head (which would duplicate canonical/og tags).
+            fs.writeFileSync(path.join(cfg.toilDir, 'shell.html'), shell);
             const ts = await loadTypeScript(cfg.root);
 
             const routes = scanRoutes(cfg.routesAbsDir).filter(

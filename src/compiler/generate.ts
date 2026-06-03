@@ -47,6 +47,8 @@ export const TOIL_ENV_DTS =
     `    type Revalidate = import('toiljs/client').Revalidate;\n` +
     `    type Metadata = import('toiljs/client').Metadata;\n` +
     `    type GenerateMetadata<T = unknown> = import('toiljs/client').GenerateMetadata<T>;\n` +
+    `    type GenerateStaticParams = import('toiljs/client').GenerateStaticParams;\n` +
+    `    type StaticParams = import('toiljs/client').StaticParams;\n` +
     `    type RouteErrorProps = import('toiljs/client').RouteErrorProps;\n` +
     `    type Href = import('toiljs/client').Href;\n` +
     `    type RoutePath = import('toiljs/client').RoutePath;\n` +
