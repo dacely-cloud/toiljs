@@ -46,6 +46,12 @@ export interface ClientConfig {
      */
     readonly viewTransitions?: boolean;
     /**
+     * Wrap client navigations in a React transition, keeping the current page visible while the next
+     * route's loader runs instead of showing its `loading.tsx` right away. Default `false` (a
+     * navigation commits eagerly, so the loading state appears immediately).
+     */
+    readonly transitions?: boolean;
+    /**
      * Build-time SEO: bakes site-level metadata into the HTML `<head>` (so JS-less crawlers and AI
      * bots see real tags) and generates `robots.txt`, `sitemap.xml`, and `llms.txt`. Omit to skip.
      */
@@ -100,6 +106,8 @@ export interface ResolvedToilConfig {
     readonly fonts: boolean;
     /** Whether animated View Transitions are enabled for navigation. */
     readonly viewTransitions: boolean;
+    /** Whether navigations are wrapped in a React transition (keep current page while loading). */
+    readonly transitions: boolean;
     /** Build-time SEO config, or `null` when not configured. */
     readonly seo: SeoConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
@@ -166,6 +174,7 @@ export async function loadConfig(
         images: client.images ?? true,
         fonts: client.fonts ?? true,
         viewTransitions: client.viewTransitions ?? false,
+        transitions: client.transitions ?? false,
         seo: client.seo ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
