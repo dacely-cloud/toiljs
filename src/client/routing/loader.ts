@@ -82,7 +82,20 @@ const MAX_ENTRIES = 32;
 // Dev-cache observers (the dev toolbar's Data tab). The emit calls are no-ops in production builds,
 // where the toolbar (the only subscriber) is dead-code-eliminated.
 const cacheListeners = new Set<() => void>();
+// Cached snapshot for useSyncExternalStore: getSnapshot must return a stable reference between
+// changes, so we recompute only when the cache mutates (in emitCache), not on every read. Returning
+// a fresh array per call makes React think the store changed every render -> infinite loop.
+let cacheSnapshot: LoaderCacheSnapshot[] = [];
 function emitCache(): void {
+    cacheSnapshot = [...cache.entries()].map(([key, e]) => ({
+        key,
+        status: e.status,
+        hasLoader: e.hasLoader,
+        revalidate: e.revalidate,
+        loadedAt: e.loadedAt,
+        epoch: e.epoch,
+        data: e.value?.data,
+    }));
     for (const l of cacheListeners) l();
 }
 /** Subscribes to loader-cache changes (dev toolbar). Returns an unsubscribe. */
@@ -102,17 +115,9 @@ export interface LoaderCacheSnapshot {
     readonly epoch: number;
     readonly data: unknown;
 }
-/** Snapshots the live loader cache (dev toolbar). */
+/** Snapshots the live loader cache (dev toolbar). Returns a stable reference between changes. */
 export function inspectLoaderCache(): LoaderCacheSnapshot[] {
-    return [...cache.entries()].map(([key, e]) => ({
-        key,
-        status: e.status,
-        hasLoader: e.hasLoader,
-        revalidate: e.revalidate,
-        loadedAt: e.loadedAt,
-        epoch: e.epoch,
-        data: e.value?.data,
-    }));
+    return cacheSnapshot;
 }
 
 /** Cache key for a URL: path + query (hash is ignored, it never changes loader data). */

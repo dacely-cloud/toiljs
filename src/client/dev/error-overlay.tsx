@@ -18,8 +18,12 @@ export interface DevError {
 
 let current: DevError | null = null;
 const listeners = new Set<() => void>();
-/** Bounded history of captured errors, for the dev toolbar's Errors tab. */
-const errorLog: DevError[] = [];
+/**
+ * Bounded history of captured errors, for the dev toolbar's Errors tab. Reassigned to a new array
+ * on each change (never mutated in place) so `getErrorLog` is a stable useSyncExternalStore snapshot:
+ * the reference changes only when the log changes, so React re-renders on new errors but not in a loop.
+ */
+let errorLog: readonly DevError[] = [];
 const MAX_LOG = 50;
 
 function emit(): void {
@@ -28,8 +32,7 @@ function emit(): void {
 function setDevError(next: DevError | null): void {
     current = next;
     if (next) {
-        errorLog.push(next);
-        if (errorLog.length > MAX_LOG) errorLog.shift();
+        errorLog = [...errorLog, next].slice(-MAX_LOG);
     }
     emit();
 }
