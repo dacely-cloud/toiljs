@@ -587,16 +587,56 @@ const DOC_LINKS: { label: string; slug: string }[] = [
     { label: 'Parallel routes and slots', slug: 'slots' },
 ];
 
-function AiTab({ info }: { info: DevInfo | null }): ReactNode {
-    useCurrentUrl(); // rebuild page context on navigation
+/** Max chars of route source to inline into the prompt (keeps the hand-off URL usable). */
+const AI_CODE_MAX = 8000;
+
+function AiTab({ info, routes }: { info: DevInfo | null; routes: RouteDef[] }): ReactNode {
+    const url = useCurrentUrl(); // rebuild page context + refetch source on navigation
     const [question, setQuestion] = useState('');
     const [answer, setAnswer] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const [source, setSource] = useState<{ file: string; code: string } | null>(null);
     const configured = info?.ai === true;
+
+    // Resolve the current route's source file (pattern -> absolute path from the dev server).
+    const pathname = url.split('?')[0];
+    let file: string | undefined;
+    for (const r of routes) {
+        if (matchRoute(r.pattern, pathname)) {
+            file = info?.routes[r.pattern];
+            break;
+        }
+    }
+
+    useEffect(() => {
+        if (!file) {
+            setSource(null);
+            return;
+        }
+        let cancelled = false;
+        void fetch(`/__toil/source?file=${encodeURIComponent(file)}`)
+            .then((r) => (r.ok ? r.text() : null))
+            .then((code) => {
+                if (!cancelled) setSource(code !== null ? { file, code } : null);
+            })
+            .catch(() => {
+                if (!cancelled) setSource(null);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [file]);
 
     const prompt = (): string => {
         const q = question.trim() || 'Explain this page and suggest improvements.';
-        return `${buildAiContext()}\n\nQuestion: ${q}`;
+        const parts = [buildAiContext()];
+        if (source) {
+            const code = source.code.slice(0, AI_CODE_MAX);
+            const cut = source.code.length > AI_CODE_MAX ? '\n... (truncated)' : '';
+            parts.push(`\nPage source (${source.file}):\n\`\`\`tsx\n${code}${cut}\n\`\`\``);
+        }
+        parts.push(`\nQuestion: ${q}`);
+        return parts.join('\n');
     };
     const handOff = (base: string): void => {
         window.open(`${base}${encodeURIComponent(prompt())}`, '_blank', 'noopener');
@@ -668,6 +708,11 @@ function AiTab({ info }: { info: DevInfo | null }): ReactNode {
                     </button>
                 )}
             </div>
+            {source && (
+                <p className="toil-dt-k">
+                    Prompt includes this route&apos;s source ({source.file.split('/').pop()}).
+                </p>
+            )}
             {!configured && (
                 <p className="toil-dt-k">
                     Inline answers are off. Set <span className="toil-dt-tag">devtools.ai</span> in
@@ -963,7 +1008,7 @@ export function DevToolbar({
                 {p.tab === 'head' && <HeadTab />}
                 {p.tab === 'build' && <BuildTab info={info} />}
                 {p.tab === 'errors' && <ErrorsTab />}
-                {p.tab === 'ai' && <AiTab info={info} />}
+                {p.tab === 'ai' && <AiTab info={info} routes={routes} />}
                 {p.tab === 'prefs' && <PrefsTab />}
             </div>
         </div>
