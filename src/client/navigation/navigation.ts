@@ -30,6 +30,16 @@ export function setViewTransitions(enabled: boolean): void {
     viewTransitions = enabled;
 }
 
+// Whether to wrap navigations in a React transition. Off by default: a navigation commits eagerly, so
+// a route's `loading.tsx` shows immediately while its loader runs. On, the current page is kept
+// visible until the next route is ready (smoother, but no loading state). Set from `client.transitions`.
+let navTransitions = false;
+
+/** Enables React-transition (keep-current-page) navigation. Called once by `mount` from `client.transitions`. */
+export function setTransitions(enabled: boolean): void {
+    navTransitions = enabled;
+}
+
 /** Whether the current navigation should animate via the View Transitions API. */
 function shouldViewTransition(): boolean {
     if (!viewTransitions || typeof document === 'undefined' || typeof window === 'undefined') {
@@ -55,18 +65,21 @@ function runListeners(): void {
 }
 
 /**
- * Re-renders subscribers for a location change. Normally wrapped in `startTransition` (smooth: the
- * current page stays while the next route loads). When View Transitions are enabled and supported,
- * the commit runs synchronously inside `document.startViewTransition` so the browser animates the
- * old and new DOM (a crossfade, or shared-element transitions via `view-transition-name`).
+ * Re-renders subscribers for a location change. When View Transitions are enabled and supported, the
+ * commit runs synchronously inside `document.startViewTransition` so the browser animates the old and
+ * new DOM. Otherwise, with `client.transitions` on, it's wrapped in `startTransition` (the current
+ * page stays while the next route loads); by default it commits eagerly, so a route's `loading.tsx`
+ * shows right away instead of holding the previous page.
  */
 function notify(): void {
     if (shouldViewTransition()) {
         (document as ViewTransitionDocument).startViewTransition?.(() => {
             flushSync(runListeners);
         });
-    } else {
+    } else if (navTransitions) {
         startTransition(runListeners);
+    } else {
+        runListeners();
     }
 }
 
