@@ -1,10 +1,10 @@
 import { createRoot } from 'react-dom/client';
 
+import { DevToolbar } from '../dev/devtools.js';
 import {
     DevErrorBoundary,
     DevErrorOverlay,
     initDevErrorOverlay,
-    isDevMode,
 } from '../dev/error-overlay.js';
 import { initNavigation } from '../navigation/navigation.js';
 import { startPrefetcher } from '../navigation/prefetch.js';
@@ -46,14 +46,16 @@ export function mount(
             slots={slots}
         />
     );
-    // In dev, wrap the app in the error overlay so uncaught render/async errors surface on screen
-    // (not a blank page). In production it's omitted entirely.
-    if (isDevMode()) {
+    // In dev, wrap the app in the error overlay + dev toolbar so uncaught errors surface and dev info
+    // is available. The guard is the literal `import.meta.env.DEV` (not `isDevMode()`) so the whole
+    // branch, and the dev-only imports, are dead-code-eliminated and tree-shaken from production.
+    if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
         initDevErrorOverlay();
         createRoot(el).render(
             <>
                 <DevErrorBoundary>{app}</DevErrorBoundary>
                 <DevErrorOverlay />
+                <DevToolbar routes={routes} slots={slots} />
             </>,
         );
     } else {
