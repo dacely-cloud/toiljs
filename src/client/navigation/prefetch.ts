@@ -1,3 +1,4 @@
+import { prefetchRouteData } from '../routing/loader.js';
 import { matchRoute } from '../routing/match.js';
 import type { RouteDef } from '../types.js';
 
@@ -13,6 +14,7 @@ declare global {
 
 let routeTable: RouteDef[] = [];
 const warmed = new WeakSet<RouteDef>();
+const dataWarmed = new Set<string>();
 let io: IntersectionObserver | null = null;
 let mo: MutationObserver | null = null;
 
@@ -51,6 +53,32 @@ function warm(route: RouteDef): void {
 export function prefetch(href: string): void {
     const route = routeForHref(href);
     if (route) warm(route);
+}
+
+/**
+ * Prefetches both the chunk and the loader data for an internal `href`, so a later navigation
+ * commits synchronously (no suspense, no held-page wait). Called on link hover / focus intent, where
+ * running the route's loader early is worth it. No-op for external/unknown/already-warmed targets.
+ */
+export function prefetchData(href: string): void {
+    let url: URL;
+    try {
+        url = new URL(href, window.location.href);
+    } catch {
+        return;
+    }
+    if (url.origin !== window.location.origin) return;
+    const key = url.pathname + url.search;
+    if (dataWarmed.has(key)) return;
+    for (const route of routeTable) {
+        const params = matchRoute(route.pattern, url.pathname);
+        if (params) {
+            dataWarmed.add(key);
+            warm(route);
+            prefetchRouteData(route, params, url.pathname, url.search);
+            return;
+        }
+    }
 }
 
 /** Anchors to skip even when internal: new-tab, downloads, or an explicit `data-no-prefetch` opt-out. */
@@ -120,6 +148,17 @@ export function startPrefetcher(routes: RouteDef[]): void {
             }
         }
     });
+
+    // Hover / focus intent: warm the chunk *and* run the loader for the target so the click commits
+    // synchronously. Delegated on the document so links added later are covered automatically.
+    const onIntent = (event: Event): void => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const a = target.closest('a[href]');
+        if (a instanceof HTMLAnchorElement && isPrefetchable(a) && a.href) prefetchData(a.href);
+    };
+    document.addEventListener('pointerover', onIntent, { passive: true });
+    document.addEventListener('focusin', onIntent);
 
     const begin = (): void => {
         scan(document);
