@@ -34,8 +34,9 @@ interface RouteModule {
 /** Substitutes `:param` / `*catch-all` segments in a route pattern with concrete param values. */
 export function fillPattern(pattern: string, params: StaticParams): string {
     return pattern.replace(/[:*]([A-Za-z0-9_]+)/g, (_m, name: string) => {
-        const value = params[name];
-        return Array.isArray(value) ? value.join('/') : String(value ?? '');
+        const value = params[name] as string | string[] | undefined;
+        if (Array.isArray(value)) return value.join('/');
+        return value ?? '';
     });
 }
 
