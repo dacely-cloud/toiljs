@@ -401,23 +401,35 @@ function DataTab(): ReactNode {
                     <Row k="loaded">
                         {entry.loadedAt ? new Date(entry.loadedAt).toLocaleTimeString() : '-'}
                     </Row>
-                    <div style={{ margin: '8px 0' }}>
-                        <button
-                            className="toil-dt-btn"
-                            onClick={() => {
-                                revalidate();
-                            }}>
-                            Revalidate
-                        </button>{' '}
-                        <button
-                            className="toil-dt-btn"
-                            onClick={() => {
-                                clearLoaderData();
-                            }}>
-                            Clear cache
-                        </button>
-                    </div>
-                    <pre className="toil-dt-pre">{safeJson(entry.data)}</pre>
+                    {entry.hasLoader ? (
+                        <>
+                            <div style={{ margin: '8px 0' }}>
+                                <button
+                                    className="toil-dt-btn"
+                                    onClick={() => {
+                                        revalidate();
+                                    }}>
+                                    Revalidate
+                                </button>{' '}
+                                <button
+                                    className="toil-dt-btn"
+                                    onClick={() => {
+                                        clearLoaderData();
+                                    }}>
+                                    Clear cache
+                                </button>
+                            </div>
+                            {entry.data === undefined ? (
+                                <p className="toil-dt-empty">Loader returned no data.</p>
+                            ) : (
+                                <pre className="toil-dt-pre">{safeJson(entry.data)}</pre>
+                            )}
+                        </>
+                    ) : (
+                        <p className="toil-dt-empty">
+                            This route has no loader, so there is no data to inspect.
+                        </p>
+                    )}
                 </>
             )}
             <p
