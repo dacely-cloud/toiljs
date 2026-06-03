@@ -202,6 +202,27 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                     res.end();
                 }
             });
+            // `/__toil/source?file=` -> the file's text, so the AI tab can include the page's code in
+            // its prompt. Same root-confinement check as `/__toil/open`; capped so a stray huge file
+            // can't bloat the response.
+            server.middlewares.use('/__toil/source', (req, res) => {
+                try {
+                    const url = new URL(req.url ?? '', 'http://localhost');
+                    const file = url.searchParams.get('file');
+                    const abs = file ? path.resolve(file) : '';
+                    if (!abs || !abs.startsWith(cfg.root) || !fs.existsSync(abs)) {
+                        res.statusCode = 404;
+                        res.end();
+                        return;
+                    }
+                    const text = fs.readFileSync(abs, 'utf8').slice(0, 20000);
+                    res.setHeader('content-type', 'text/plain; charset=utf-8');
+                    res.end(text);
+                } catch {
+                    res.statusCode = 400;
+                    res.end();
+                }
+            });
 
             // Trailing slash so a sibling like `routes-extra/` doesn't match the `routes/` prefix.
             const routesPrefix = cfg.routesAbsDir.replace(/\\/g, '/').replace(/\/?$/, '/');
