@@ -259,6 +259,30 @@ toiljs doctor          diagnose project setup and dependencies (--json for CI)
 toiljs update          check for and apply dependency updates (-y to apply all)
 ```
 
+## Dev toolbar
+
+`toiljs dev` injects a floating toolbar (bottom corner) that surfaces the framework's live state and is stripped from production builds entirely, no flag, no leftover bytes. It reads the matched route, params, and active slots; the loader cache (with revalidate and clear buttons); the live `<head>` with an OpenGraph preview and an SEO checklist; resolved config flags and versions; a captured error log; and live toggles for view and loader transitions. Click a route to navigate, or open its file in your editor.
+
+It also ships an **AI tab**: hand off the current page's context to Claude or ChatGPT in one click, or wire a provider for inline answers. The key is read server-side and never reaches the browser.
+
+```ts
+import { defineConfig, AiProvider } from 'toiljs/compiler';
+
+export default defineConfig({
+    client: {
+        devtools: {
+            ai: {
+                provider: AiProvider.Anthropic, // or AiProvider.OpenAI, or a custom endpoint
+                model: 'claude-sonnet-4-6',
+                apiKeyEnv: 'ANTHROPIC_API_KEY', // read by the dev server only
+            },
+        },
+    },
+});
+```
+
+`devtools: false` turns it off; the hand-off links work with no config at all. Press `cmd`/`ctrl`+`K` for a command palette to jump to any route or run a dev action.
+
 ## Tech
 
 <div align="center">
