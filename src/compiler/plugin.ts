@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { type Plugin } from 'vite';
+import { type Plugin, version as viteVersion } from 'vite';
 
 import { AiProvider, type DevtoolsAiConfig, type ResolvedToilConfig } from './config.js';
 import { generate } from './generate.js';
@@ -84,7 +84,9 @@ function devInfo(cfg: ResolvedToilConfig, port: number): Record<string, unknown>
     }
     return {
         toiljs: frameworkVersion(),
-        vite: depVersion(cfg.root, 'vite'),
+        // vite is a dependency of the framework, not the app, so resolving it from the app root
+        // fails; read the running vite's own exported version instead.
+        vite: viteVersion,
         react: depVersion(cfg.root, 'react'),
         port,
         enabled: cfg.devtools,
