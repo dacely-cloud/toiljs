@@ -13,7 +13,7 @@ import { injectSeoHtml, routeSeo } from './seo.js';
 type Ts = typeof TS;
 
 /** Loads the project's TypeScript (used to read each route's static `metadata`), or `null` if absent. */
-async function loadTypeScript(root: string): Promise<Ts | null> {
+export async function loadTypeScript(root: string): Promise<Ts | null> {
     try {
         const resolved = createRequire(path.join(root, 'package.json')).resolve('typescript');
         const mod = (await import(pathToFileURL(resolved).href)) as { default?: Ts } & Ts;

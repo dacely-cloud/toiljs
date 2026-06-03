@@ -359,7 +359,11 @@ export function sitemapXml(
 }
 
 /** `llms.txt` (AI-crawler guidance) contents; empty when disabled. */
-export function llmsTxt(seo: SeoConfig, routes: readonly ScannedRoute[]): string {
+export function llmsTxt(
+    seo: SeoConfig,
+    routes: readonly ScannedRoute[],
+    pages?: readonly LlmsPage[],
+): string {
     if (seo.llms === false) return '';
     const cfg: LlmsConfig = seo.llms === true || seo.llms === undefined ? {} : seo.llms;
     const title = cfg.title ?? seo.title ?? seo.url ?? 'Site';
@@ -368,8 +372,11 @@ export function llmsTxt(seo: SeoConfig, routes: readonly ScannedRoute[]): string
     if (summary !== undefined) out.push(`\n> ${summary}`);
     if (cfg.instructions !== undefined) out.push(`\n${cfg.instructions}`);
 
-    const pages: readonly LlmsPage[] =
+    // Page list precedence: an explicit `seo.llms.pages`, else the build-supplied list (every route's
+    // resolved title/description, including SSG-enumerated dynamic pages), else just the static paths.
+    const resolvedPages: readonly LlmsPage[] =
         cfg.pages ??
+        pages ??
         (seo.url !== undefined
             ? staticPaths(routes).map(
                   (p): LlmsPage => ({
@@ -378,9 +385,9 @@ export function llmsTxt(seo: SeoConfig, routes: readonly ScannedRoute[]): string
                   }),
               )
             : []);
-    if (pages.length) {
+    if (resolvedPages.length) {
         out.push('\n## Pages\n');
-        for (const page of pages) {
+        for (const page of resolvedPages) {
             out.push(
                 `- [${page.title}](${page.url})${page.description !== undefined ? `: ${page.description}` : ''}`,
             );
