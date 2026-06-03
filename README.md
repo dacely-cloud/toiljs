@@ -266,15 +266,19 @@ toiljs update          check for and apply dependency updates (-y to apply all)
 It also ships an **AI tab**: hand off the current page's context to Claude or ChatGPT in one click, or wire a provider for inline answers. The key is read server-side and never reaches the browser.
 
 ```ts
-client: {
-    devtools: {
-        ai: {
-            provider: 'anthropic',          // or 'openai', or a custom endpoint
-            model: 'claude-sonnet-4-6',
-            apiKeyEnv: 'ANTHROPIC_API_KEY',  // read by the dev server only
+import { defineConfig, AiProvider } from 'toiljs/compiler';
+
+export default defineConfig({
+    client: {
+        devtools: {
+            ai: {
+                provider: AiProvider.Anthropic, // or AiProvider.OpenAI, or a custom endpoint
+                model: 'claude-sonnet-4-6',
+                apiKeyEnv: 'ANTHROPIC_API_KEY', // read by the dev server only
+            },
         },
     },
-}
+});
 ```
 
 `devtools: false` turns it off; the hand-off links work with no config at all. Press `cmd`/`ctrl`+`K` for a command palette to jump to any route or run a dev action.
