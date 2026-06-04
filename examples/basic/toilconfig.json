@@ -23,7 +23,7 @@
         ],
         "runtime": "stub",
         "memoryBase": 0,
-        "initialMemory": 1,
+        "initialMemory": 4,
         "debug": false,
         "trapMode": "allow"
     }

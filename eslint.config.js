@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
     // toilscript server (WASM) + its ambient std + build output are not part of the TS project.
-    { ignores: ['build/**', 'src/server/**', 'std/server/**', 'toil-env.d.ts'] },
+    { ignores: ['build/**', 'server/**', 'std/server/**', 'toil-env.d.ts'] },
     eslint.configs.recommended,
     ...tseslint.configs.strictTypeChecked,
     {
