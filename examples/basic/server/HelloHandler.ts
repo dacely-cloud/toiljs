@@ -1,4 +1,4 @@
-import { ToilHandler, Request, Response, Method } from './runtime';
+import { ToilHandler, Request, Response, Method } from 'toiljs/server/runtime';
 
 export class HelloHandler extends ToilHandler {
     public handle(req: Request): Response {

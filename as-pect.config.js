@@ -56,7 +56,7 @@ export default {
     },
 
     /** Enable code coverage. */
-    coverage: ['src/server/**/*.ts', 'src/server/*.ts'],
+    coverage: ['server/**/*.ts', 'server/*.ts'],
 
     /**
      * Specify if the binary wasm file should be written to the file system.
