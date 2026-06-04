@@ -29,6 +29,7 @@ import { Response } from '../response';
  */
 const RESPONSE_BASE: usize = 65536;
 
+@main
 export function handle(req_ofs: i32, req_len: i32): i64 {
     let resp: Response;
 
