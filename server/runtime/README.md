@@ -66,11 +66,11 @@ The runtime is consumed as the `toiljs/server/runtime` library export:
 import { ToilHandler, Request, Response } from 'toiljs/server/runtime';
 
 export class HelloHandler extends ToilHandler {
-  public handle(req: Request): Response {
-    if (req.path == '/')     return Response.text('hello\n');
-    if (req.path == '/json') return Response.json('{"ok":true}');
-    return Response.notFound();
-  }
+    public handle(req: Request): Response {
+        if (req.path == '/') return Response.text('hello\n');
+        if (req.path == '/json') return Response.json('{"ok":true}');
+        return Response.notFound();
+    }
 }
 ```
 
@@ -87,7 +87,7 @@ export * from 'toiljs/server/runtime/exports';
 
 // Forward AS runtime panics to the host's env::abort import.
 export function abort(message: string, fileName: string, line: u32, column: u32): void {
-  revertOnError(message, fileName, line, column);
+    revertOnError(message, fileName, line, column);
 }
 ```
 

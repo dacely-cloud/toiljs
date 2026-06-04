@@ -18,8 +18,18 @@
  *     is replaced by `u16 status`.
  */
 
-import { readU8, readU16, readU32, readBytes, readUtf8 } from './memory';
-import { writeU16, writeU32, writeBytes, writeUtf8, utf8Length } from './memory';
+import {
+    readBytes,
+    readU16,
+    readU32,
+    readU8,
+    readUtf8,
+    utf8Length,
+    writeBytes,
+    writeU16,
+    writeU32,
+    writeUtf8
+} from './memory';
 import { Header, Method, Request } from './request';
 import { Response } from './response';
 
