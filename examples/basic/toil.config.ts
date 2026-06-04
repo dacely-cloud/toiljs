@@ -4,7 +4,7 @@ import { defineConfig } from 'toiljs/compiler';
 export default defineConfig({
     client: {
         // Animate page transitions (View Transitions API; respects prefers-reduced-motion).
-        viewTransitions: true,
+        viewTransitions: false,
         // Build-time SEO: bakes these into the HTML <head> (for JS-less crawlers) and generates
         // robots.txt (with AI-crawler directives), sitemap.xml, and llms.txt.
         seo: {
@@ -14,7 +14,7 @@ export default defineConfig({
             openGraph: { type: 'website', siteName: 'ToilJS' },
             jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'ToilJS' },
             robots: { ai: 'allow' },
-            llms: { instructions: 'ToilJS is a full-stack TypeScript framework. Docs live at /get-started.' },
-        },
-    },
+            llms: { instructions: 'ToilJS is a full-stack TypeScript framework. Docs live at /get-started.' }
+        }
+    }
 });
