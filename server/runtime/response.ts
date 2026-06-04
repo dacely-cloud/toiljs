@@ -17,53 +17,58 @@ export class Response {
         this.headers = headers != null ? headers : new Array<Header>();
     }
 
-    /**
-     * Builder-style: returns `this` so calls can chain.
-     */
-    setHeader(name: string, value: string): Response {
-        this.headers.push(new Header(name, value));
-        return this;
-    }
-
-    // ---- factories ----
-
-    static text(body: string, status: u16 = 200): Response {
+    public static text(body: string, status: u16 = 200): Response {
         const buf = String.UTF8.encode(body);
         const bytes = Uint8Array.wrap(buf);
         const r = new Response(status, bytes);
+
         r.setHeader('content-type', 'text/plain; charset=utf-8');
+
         return r;
     }
 
-    static html(body: string, status: u16 = 200): Response {
+    public static html(body: string, status: u16 = 200): Response {
         const buf = String.UTF8.encode(body);
         const bytes = Uint8Array.wrap(buf);
         const r = new Response(status, bytes);
+
         r.setHeader('content-type', 'text/html; charset=utf-8');
+
         return r;
     }
 
-    static json(body: string, status: u16 = 200): Response {
+    public static json(body: string, status: u16 = 200): Response {
         const buf = String.UTF8.encode(body);
         const bytes = Uint8Array.wrap(buf);
         const r = new Response(status, bytes);
+
         r.setHeader('content-type', 'application/json; charset=utf-8');
+
         return r;
     }
 
-    static notFound(): Response {
+    public static notFound(): Response {
         return Response.text('not found\n', 404);
     }
 
-    static badRequest(msg: string = 'bad request'): Response {
+    public static badRequest(msg: string = 'bad request'): Response {
         return Response.text(msg + '\n', 400);
     }
 
-    static internalError(msg: string = 'internal error'): Response {
+    public static internalError(msg: string = 'internal error'): Response {
         return Response.text(msg + '\n', 500);
     }
 
-    static empty(status: u16): Response {
+    public static empty(status: u16): Response {
         return new Response(status, new Uint8Array(0));
+    }
+
+    /**
+     * Builder-style: returns `this` so calls can chain.
+     */
+    public setHeader(name: string, value: string): Response {
+        this.headers.push(new Header(name, value));
+
+        return this;
     }
 }
