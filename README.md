@@ -30,9 +30,9 @@
 
 ---
 
-**ToilJS is a complete fullstack framework: a React frontend and a typed server, with everything in between already built and wired.** Routing, data loading, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, a strict toolchain, and a compiled server, all configured for you. You run one command and start building your app, not your stack.
+**ToilJS is a fullstack React framework built for hyperscale.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it.
 
-A normal React project is a renderer plus a dozen libraries you choose, install, configure, and keep in sync: a router, a data layer, an image pipeline, SEO tags, a server, lint and format rules. ToilJS replaces all of it with one toolchain whose parts already know about each other. Nothing to assemble, nothing to glue, nothing to configure.
+And it is the entire stack, already wired and configured: routing, data, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, and a strict toolchain. One command scaffolds it, then you build your app, not your stack. Nothing to assemble, nothing to glue, nothing to configure.
 
 ```bash
 npx toiljs create my-app
