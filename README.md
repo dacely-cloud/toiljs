@@ -4,16 +4,16 @@
 
 # ToilJS
 
-### Everything React forgot to ship.
+### The next-gen React framework with a WebAssembly spine.
 
-<sub>Fast by design. Architecture chosen for hyper scale: 50 Gbit/s on commodity hardware.</sub>
+<sub>File-based. Typed end to end. A static React client and a ToilScript server that compiles to WebAssembly, built for the edge.</sub>
 
 <br/>
 
 [![npm](https://img.shields.io/npm/v/toiljs.svg?color=2563ff&label=npm&labelColor=0e1520)](https://www.npmjs.com/package/toiljs)
 [![types](https://img.shields.io/badge/types-included-2563ff.svg?labelColor=0e1520)](https://www.typescriptlang.org/)
 [![react](https://img.shields.io/badge/react-19-22e3ab.svg?labelColor=0e1520)](https://react.dev/)
-[![server](https://img.shields.io/badge/server-WebAssembly-7c3aed.svg?labelColor=0e1520)](#built-for-scale)
+[![server](https://img.shields.io/badge/server-WebAssembly-7c3aed.svg?labelColor=0e1520)](#the-server-toilscript--webassembly)
 [![license](https://img.shields.io/badge/license-Apache--2.0-8b9ab4.svg?labelColor=0e1520)](./LICENSE)
 
 <br/>
@@ -22,12 +22,13 @@
 <img src="https://img.shields.io/badge/TypeScript-3178c6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
 <img src="https://img.shields.io/badge/Vite-646cff?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
 <img src="https://img.shields.io/badge/WebAssembly-654ff0?style=for-the-badge&logo=webassembly&logoColor=white" alt="WebAssembly" />
+<img src="https://img.shields.io/badge/ToilScript-cb9820?style=for-the-badge&logoColor=white" alt="ToilScript" />
 
 </div>
 
 ---
 
-React gives you a renderer and leaves the rest to you: a router, a bundler, data fetching, SEO, an image pipeline, a server. ToilJS is all of it, already wired.
+React gives you a renderer and leaves the rest to you: a router, a bundler, data loading, SEO, an image pipeline, a server. ToilJS is all of it, already wired, on a toolchain you do not have to assemble.
 
 ```bash
 npx toiljs create my-app
@@ -35,93 +36,43 @@ cd my-app
 npm run dev
 ```
 
-Drop a `.tsx` file in `client/routes/` and it is a route: typed, code-split, prefetched, data loaded before render. The `server/` compiles to WebAssembly and self-hosts on uWebSockets. You configured nothing.
-
-## Built for scale
-
-The backend is the point. `server/` is [ToilScript](https://www.npmjs.com/package/toilscript) compiled to a single WebAssembly module (Binaryen), and `toiljs start` self-hosts the app on [hyper-express](https://github.com/kartikk221/hyper-express), backed by [uWebSockets.js](https://github.com/uNetworking/uWebSockets.js), the same core that serves millions of HTTP requests per second.
+Drop a `.tsx` file in `client/routes/` and it is a route: typed, code-split, prefetched, with its data loaded before render. Your `server/` is written in **ToilScript** (TypeScript syntax) and compiles to a single WebAssembly module. You configured nothing.
 
 <div align="center">
 
-![throughput](https://img.shields.io/badge/throughput-50_Gbit%2Fs-2563ff?style=for-the-badge)
-![requests](https://img.shields.io/badge/requests-millions%2Fsec-7c3aed?style=for-the-badge)
-![compute](https://img.shields.io/badge/compute-native_WASM-22e3ab?style=for-the-badge)
-![transport](https://img.shields.io/badge/transport-HTTP%2F3_+_WebTransport-654ff0?style=for-the-badge)
+```
+                          your app
+        ┌──────────────────────┬──────────────────────┐
+        │       client/        │        server/        │
+        │   React + TSX        │    ToilScript (.ts)    │
+        │   static SPA bundle  │   ──▶  WebAssembly     │
+        └──────────┬───────────┴───────────┬───────────┘
+                   │                        │
+            CDN / static host        WASM edge runtime
+                                     (typed RPC between them)
+```
 
 </div>
 
-- **WebAssembly compute.** Your server logic runs as native-speed WASM, not interpreted JS.
-- **Binary on the wire.** The client and server share `BinaryWriter` / `BinaryReader` and `FastMap` / `FastSet`, so you move bytes, not JSON.
-- **HTTP/3 and WebTransport** over QUIC, low-latency streaming without the TCP head-of-line tax.
-- **Built for 50 Gbit/s on commodity hardware** and millions of requests per second, not toy demos.
-
-```ts
-// server/index.ts
-export function add(a: i32, b: i32): i32 {
-    return a + b;
-}
-```
-
-## On by default
-
-Every one of these works the moment you run `create`. No plugins to install, no config to write:
-
-- **Build-time SEO for an SPA**: prerendered `<head>`, `robots.txt`, `sitemap.xml`, `llms.txt`
-- **AI-crawler rules**: per-bot `robots.txt` plus `llms.txt`, one switch
-- **Image optimization on**: imports and plain `<img>` become resized webp
-- **Fonts preloaded** at build
-- **Typed routes**: `href` and `params` checked against your real files
-- **Loaders and mutations** with caching and revalidation, no data library, no `useEffect` fetching
-- **Parallel and intercepting routes** for modals and dashboards
-- **Instant navigation** and **animated view transitions**
-- **WebAssembly backend** on uWebSockets, with **binary IO** on both sides
-
-Anywhere else, that is a dozen packages and their config. Most teams wire three and ship the rest half-done.
-
-## AI-ready
-
-ToilJS treats AI crawlers as first-class. Turn on SEO and the build emits an `llms.txt` describing your site for LLMs, and a `robots.txt` with explicit rules for the AI bots, allow or block GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, anthropic-ai, Google-Extended, PerplexityBot, CCBot, Applebot-Extended, Bytespider, Amazonbot, and Meta-ExternalAgent, with one switch.
-
-```ts
-seo: { llms: { instructions: 'Docs live at /docs.' }, robots: { ai: 'disallow' } }
-```
-
-That one line produces a real `robots.txt`:
-
-```
-User-agent: *
-Allow: /
-
-User-agent: GPTBot
-Disallow: /
-
-User-agent: ClaudeBot
-Disallow: /
-
-User-agent: Google-Extended
-Disallow: /
-
-Sitemap: https://example.com/sitemap.xml
-```
-
-The `toiljs create` wizard can also scaffold assistant files (CLAUDE.md, AGENTS.md, Cursor and Copilot configs) so your repo is ready for coding agents on day one.
+The client is fully static (host it anywhere). The server is portable WebAssembly. The two are separated by design and joined by a typed contract, so the frontend can ship to a CDN while the backend runs wherever WebAssembly does.
 
 ## Everything, at a glance
 
 |  |  |
 | --- | --- |
-| **Routing** | File-based. Dynamic, catch-all, optional catch-all, route groups, nested layouts, templates, parallel slots, and intercepting routes. Every `href` and `params` is typed. |
-| **Data** | A `loader` resolves before render. `useAction` / `<Form>` write then revalidate. Per-route caching. No fetch waterfalls. |
-| **SEO** | Per-route metadata baked into static HTML, plus `robots.txt`, `sitemap.xml`, `llms.txt`, OpenGraph, Twitter, JSON-LD, canonical, theme-color, early hints. |
-| **Assets** | Imported images compressed to webp and resized. Fonts preloaded. React split for caching. Build logs what it saved. |
-| **Realtime** | Built-in WebSocket channels: `connectChannel` / `useChannel`. WebTransport over HTTP/3. |
-| **DX** | HMR, instant navigation, view transitions, typed routes, and a dev error overlay. |
-| **Server** | ToilScript compiled to WebAssembly, self-hosted on uWebSockets with HTTP/3. Binary IO built in. |
-| **Tooling** | Strict TypeScript, ESLint, and Prettier, configured and enforced out of the box. Tailwind v4 optional. |
+| **Routing** | File-based. Dynamic, catch-all, optional catch-all, route groups, nested layouts, templates, parallel slots, and intercepting routes. Every `href` and `params` is typed against your real files. |
+| **Data** | A `loader` resolves before render. `useAction` / `<Form>` write then revalidate. An LRU loader cache with per-route `revalidate`. No fetch waterfalls, no `useEffect` data fetching. |
+| **Rendering + SEO** | Per-route `<head>` baked into static HTML at build, plus `sitemap.xml`, `robots.txt`, `llms.txt`, OpenGraph, Twitter, JSON-LD, canonical, theme-color, early hints. SSG via `generateStaticParams`. |
+| **Search** | Built-in site search over a compiler-baked metadata index, ranked, with a `usePageSearch` hook. Plus `llms.txt` so AI crawlers can read your site. |
+| **Assets** | Imported images compressed to webp and resized via Vite + sharp. Fonts preloaded. React split into its own long-lived chunk. The build logs what it saved. |
+| **Realtime** | Typed WebSocket channels: `connectChannel` / `useChannel`, with reconnect built in. |
+| **Server** | ToilScript compiled to WebAssembly. `Request` / `Response` REST handlers, binary IO on both sides, a typed RPC surface generated from your server. |
+| **Agentic DX** | A dev toolbar with a live AI tab (hand off page context to Claude or ChatGPT), a Cmd+K palette, and scaffolded agent files (CLAUDE.md, AGENTS.md, Cursor, Copilot). |
+| **Toolkit** | Strict TypeScript, ESLint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away. |
 
 ## Routing
 
-The filesystem is the router.
+The filesystem is the router. Every convention below is implemented.
 
 | File or folder | Route |
 | --- | --- |
@@ -144,14 +95,14 @@ Navigation comes with it:
 
 - **`<Toil.Link>`** and **`<Toil.NavLink>`** (active class + `aria-current`), with `href` checked against your real routes.
 - **`navigate` / `back` / `forward` / `refresh`**, plus **`useRouter`**, **`useNavigate`**, **`useLocation`**, **`usePathname`**, **`useParams`**, **`useSearchParams`**, **`useNavigationPending`**.
-- **Hover and viewport prefetching**, so chunks are warm before you click.
+- **Hover and viewport prefetching**, so chunks (and data) are warm before you click. Respects `saveData` and `data-no-prefetch`.
 - **Scroll restoration** on back/forward, scroll-to-`#hash`, and scroll-to-top on new routes.
 - **Instant navigation**: visited pages render synchronously, no flash.
 - **View transitions** (`client.viewTransitions: true`) for animated page changes, respecting `prefers-reduced-motion`.
 
-## Data
+## Data and caching
 
-Read with a `loader`, write with an action. Both keep the UI in sync without manual refetching.
+Read with a `loader`, write with an action. Both keep the UI in sync without manual refetching, and the client caches loader results so repeat navigations are instant.
 
 ```tsx
 export const loader = async ({ params }: Toil.LoaderArgs) => fetchPost(params.id);
@@ -169,20 +120,10 @@ function SaveButton({ title }: { title: string }) {
 
 - **`loader`** resolves in parallel with the route chunk; the page suspends until ready (its `loading.tsx` shows).
 - **`useLoaderData(loader)`** is typed straight from the loader, no generics.
-- **`revalidate`** sets the cache policy per route; **`router.revalidate()`** / **`revalidate(href)`** bust it after a mutation.
-- **`useAction`** and **`<Toil.Form>`** track pending and error state and revalidate on success.
+- **Client cache**: an LRU of loader results keyed by path + search, with `revalidate` set per route (seconds, `false` for forever, or per-navigation). Prefetched entries are reused on commit.
+- **`useAction`** and **`<Toil.Form>`** track pending and error state and revalidate the routes you name on success. `router.revalidate()` / `revalidate(href)` bust the cache after a mutation.
 
-## Components
-
-Zero-import, on the `Toil` global:
-
-- **`Image`** drops in for `<img>`: reserves space (no layout shift), lazy-loads, async-decodes, `priority` for the LCP image, `fill` + `objectFit`, optional blur placeholder.
-- **`Script`** loads external or inline scripts with a `strategy` (`afterInteractive` / `lazyOnload` / `beforeInteractive`), deduplicated so a script never runs twice.
-- **`Form`** submits to an action without a reload, revalidates on success, exposes pending state, optionally resets fields.
-- **`Slot`** renders a parallel `@slot` route, the basis for modal overlays.
-- **`Head`** / **`useHead`** / **`useTitle`** set the title and `<meta>` / `<link>` tags imperatively and compose across the tree.
-
-## Head and SEO
+## Rendering and SEO
 
 A single-page app serves an empty shell. ToilJS pre-renders each route's `<head>` at build, so Google, Facebook, Discord, Slack, and the AI crawlers see real per-page tags without running your JavaScript.
 
@@ -205,14 +146,23 @@ export default defineConfig({
 ```
 
 - **Per-route `metadata`** (or `generateMetadata` derived from the loader's data) wins per page over layout defaults.
-- **Static prerender** writes a `<route>/index.html` for every static route with that route's head baked in.
+- **Static prerender** writes a `<route>/index.html` for every static route with that route's head baked in. **SSG** enumerates dynamic routes via `generateStaticParams` and bakes per-URL HTML.
 - **`robots.txt`**, **`sitemap.xml`**, and **`llms.txt`** generated together.
-- Full **OpenGraph** (image alt/width/height/type, locale), **Twitter card**, **`fb:app_id`**, **JSON-LD**, **canonical**, **theme-color**, and **`preconnect` / `dns-prefetch`** early hints.
-- Output is **XSS-hardened**: attribute values and inline JSON-LD are escaped so injected data can't break out.
+- Full **OpenGraph**, **Twitter card**, **JSON-LD**, **canonical**, **theme-color**, and **`preconnect` / `dns-prefetch`** early hints. Output is XSS-hardened.
 
-## Build and assets
+### AI search, on by default
 
-ToilJS owns Vite and does the boring optimization for you. The build tells you what it did:
+Turn on SEO and the build emits an `llms.txt` describing your site for language models, plus a `robots.txt` with explicit per-bot rules. Allow or block GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, anthropic-ai, Google-Extended, PerplexityBot, CCBot, Applebot-Extended, Bytespider, Amazonbot, and Meta-ExternalAgent with one switch:
+
+```ts
+seo: { llms: { instructions: 'Docs live at /docs.' }, robots: { ai: 'disallow' } }
+```
+
+Your users get search too. The compiler bakes a static index of every page's title, description, and keywords, and `Toil.usePageSearch` (or the pure `searchPages`) returns ranked, navigable results.
+
+## Assets and the Vite build
+
+ToilJS owns Vite, for the dev server and for the ahead-of-time production build, and does the boring optimization for you. The build tells you what it did:
 
 ```
 $ npm run build
@@ -223,11 +173,23 @@ $ npm run build
     → fonts/inter-latin.woff2   24.10 kB
 ```
 
-- **Images** (`vite-imagetools` + `sharp`): every imported raster is compressed to webp, resize and reformat with `?w=400;800&format=webp&as=srcset`. The build logs the savings.
+- **Images** (Vite imagetools + sharp): every imported raster is compressed to webp, with resize and reformat via `?w=400;800&format=webp&as=srcset`. The build logs the savings.
 - **Fonts**: bundled `@font-face` fonts get a `<link rel="preload">` so text paints sooner, also logged.
 - **Chunking**: React is split into its own long-lived chunk; assets land in tidy `images/`, `fonts/`, and `css/` folders.
 - **Node polyfills** (`Buffer`, `global`, `process`) for libraries that expect them.
 - **Styling**: plain CSS out of the box, with Sass, Less, Stylus, and Tailwind v4 a `toiljs configure` away.
+
+You never write an `index.html`, a `main.tsx`, or a Vite config. The framework generates and owns them.
+
+## Components
+
+Zero-import, on the `Toil` global:
+
+- **`Image`** drops in for `<img>`: reserves space (no layout shift), lazy-loads, async-decodes, `priority` for the LCP image, `fill` + `objectFit`, optional blur placeholder.
+- **`Script`** loads external or inline scripts with a `strategy` (`afterInteractive` / `lazyOnload` / `beforeInteractive`), deduplicated so a script never runs twice.
+- **`Form`** submits to an action without a reload, revalidates on success, exposes pending state, optionally resets fields.
+- **`Slot`** renders a parallel `@slot` route, the basis for modal overlays.
+- **`Head`** / **`useHead`** / **`useTitle`** set the title and `<meta>` / `<link>` tags imperatively and compose across the tree.
 
 ## Realtime
 
@@ -237,33 +199,33 @@ A typed WebSocket channel to the server, built in.
 const messages = Toil.useChannel<Message>('/chat');
 ```
 
-`connectChannel` / `useChannel` / `resolveChannelUrl` handle connection, reconnection, and message decoding.
+`connectChannel` / `useChannel` / `resolveChannelUrl` handle connection, reconnection, and message decoding, text or binary frames.
 
-## Binary IO
+## The server: ToilScript + WebAssembly
 
-The same primitives on both sides of the wire, available as globals (and `toiljs/io`): `BinaryWriter`, `BinaryReader`, `FastMap`, `FastSet`. Move structured data without the JSON tax.
+Your backend is written in **ToilScript**, a TypeScript-syntax language that compiles to WebAssembly. You write request handlers; the compiler produces a single portable `.wasm` module.
 
-## Tooling is the standard
-
-ToilJS sets the toolchain so nobody argues about it. Strict TypeScript, ESLint, and Prettier come configured and enforced from the first commit. New apps are wired automatically, nothing to set up, nothing to copy, nothing to bikeshed. This is the standard, not a suggestion.
-
-## CLI
-
-```
-toiljs create [name]   scaffold a new app (styling, AI files, package manager)
-toiljs dev             dev server with HMR
-toiljs build           production build
-toiljs start           self-host the build (hyper-express / uWebSockets)
-toiljs configure       toggle styling, image, font, and SEO features
-toiljs doctor          diagnose project setup and dependencies (--json for CI)
-toiljs update          check for and apply dependency updates (-y to apply all)
+```ts
+// server/HelloHandler.ts
+export class HelloHandler extends ToilHandler {
+    handle(req: Request): Response {
+        if (req.path == '/api/hello') return Response.json('{"hello":"world"}');
+        return Response.notFound();
+    }
+}
 ```
 
-## Dev toolbar
+- **REST handlers**: `Request` (method, path, headers, body) in, `Response` out, with `text` / `html` / `json` / `notFound` / `badRequest` / `internalError` helpers and the full set of HTTP methods.
+- **Binary IO on both sides**: `DataWriter`, `DataReader`, `FastMap`, and `FastSet` are shared client and server globals (and `toiljs/io`), so you can move structured bytes instead of paying the JSON tax.
+- **Typed RPC (preview)**: tag a server function and the compiler generates a typed `Server.*` surface on the client, end to end, no hand-written glue. The typed pipeline is in place today; the network transport is landing next.
 
-`toiljs dev` injects a floating toolbar (bottom corner) that surfaces the framework's live state and is stripped from production builds entirely, no flag, no leftover bytes. It reads the matched route, params, and active slots; the loader cache (with revalidate and clear buttons); the live `<head>` with an OpenGraph preview and an SEO checklist; resolved config flags and versions; a captured error log; and live toggles for view and loader transitions. Click a route to navigate, or open its file in your editor.
+`toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. For where this is headed at scale, see [The road to hyperscale](#the-road-to-hyperscale).
 
-It also ships an **AI tab**: hand off the current page's context to Claude or ChatGPT in one click, or wire a provider for inline answers. The key is read server-side and never reaches the browser.
+## Agentic tooling
+
+`toiljs dev` injects a floating toolbar (stripped from production builds entirely, no flag, no leftover bytes) that surfaces the framework's live state: the matched route, params, and active slots; the loader cache with revalidate and clear buttons; the live `<head>` with an OpenGraph preview and an SEO checklist; resolved config flags and versions; a captured error log; and toggles for view and loader transitions. Press **Cmd/Ctrl+K** for a command palette to jump to any route or run a dev action.
+
+It also ships an **AI tab**: hand off the current page's context (and its source) to Claude or ChatGPT in one click, or wire a provider for inline answers. The API key is read server-side only and never reaches the browser.
 
 ```ts
 import { defineConfig, AiProvider } from 'toiljs/compiler';
@@ -281,24 +243,25 @@ export default defineConfig({
 });
 ```
 
-`devtools: false` turns it off; the hand-off links work with no config at all. Press `cmd`/`ctrl`+`K` for a command palette to jump to any route or run a dev action.
+And the `toiljs create` wizard scaffolds assistant files (CLAUDE.md, AGENTS.md, Cursor, and Copilot configs) so your repo is ready for coding agents on day one.
 
-## Tech
+## The toolkit is the standard
 
-<div align="center">
+ToilJS sets the toolchain so nobody argues about it. Strict TypeScript, ESLint (typescript-eslint, react-hooks, react-refresh, @eslint-react), and Prettier come configured and enforced from the first commit, shipped as `toiljs/tsconfig`, `toiljs/eslint`, and `toiljs/prettier`. New apps extend them automatically and can init git in the same step. Opt in to as much as you want, nothing to copy, nothing to bikeshed.
 
-<img src="https://img.shields.io/badge/React_19-20232a?style=for-the-badge&logo=react&logoColor=61dafb" alt="React 19" />
-<img src="https://img.shields.io/badge/TypeScript-3178c6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
-<img src="https://img.shields.io/badge/Vite-646cff?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
-<img src="https://img.shields.io/badge/WebAssembly-654ff0?style=for-the-badge&logo=webassembly&logoColor=white" alt="WebAssembly" />
-<img src="https://img.shields.io/badge/sharp-99cc00?style=for-the-badge&logo=sharp&logoColor=white" alt="sharp" />
-<img src="https://img.shields.io/badge/ESLint-4b32c3?style=for-the-badge&logo=eslint&logoColor=white" alt="ESLint" />
-<img src="https://img.shields.io/badge/Prettier-f7b93e?style=for-the-badge&logo=prettier&logoColor=black" alt="Prettier" />
-<img src="https://img.shields.io/badge/Tailwind_v4-06b6d4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind v4" />
+## CLI
 
-</div>
+```
+toiljs create [name]   scaffold a new app (template, styling, AI files, git, package manager)
+toiljs dev             dev server with HMR
+toiljs build           ahead-of-time production build
+toiljs start           self-host the built client + WebSocket channel
+toiljs configure       toggle styling and asset features on an existing app
+toiljs doctor          diagnose project setup and dependencies (--json for CI)
+toiljs update          check for and apply dependency updates (-y to apply all)
+```
 
-React 19, TypeScript, Vite, ToilScript (compiles to WebAssembly, on Binaryen), hyper-express + uWebSockets.js, vite-imagetools + sharp, ESLint (typescript-eslint, react-hooks, react-refresh, @eslint-react), Prettier, Tailwind v4 (optional).
+`toiljs create` is interactive (template, CSS preprocessor, Tailwind, AI assistant files, image optimization, git, install, package manager), or fully scriptable with flags and `--yes`.
 
 ## One file does a lot
 
@@ -328,12 +291,55 @@ export default function PostPage() {
 
 No imports. `Toil` is a fully-typed global, tree-shaken at build. The page renders with its data already loaded.
 
+---
+
+## The road to hyperscale
+
+> **Architecture and roadmap.** This section is where Toil is going, not what ships in the box today. The framework above is real and usable now; the platform below is the design it is being built toward.
+
+The reason the client is static and the server is WebAssembly is that the WebAssembly runs on a runtime engineered from scratch for the edge. Toil's backend treats your compiled server as an isolated tenant and is built to serve it at line rate, so the same app that runs on your laptop is designed to scale out across the edge without a rewrite.
+
+<div align="center">
+
+![runtime](https://img.shields.io/badge/runtime-WASM_edge-2563ff?style=for-the-badge)
+![transport](https://img.shields.io/badge/transport-HTTP%2F3_+_WebTransport-654ff0?style=for-the-badge)
+![data](https://img.shields.io/badge/data-edge_replicated-22e3ab?style=for-the-badge)
+![security](https://img.shields.io/badge/security-post--quantum-7c3aed?style=for-the-badge)
+
+</div>
+
+- **A purpose-built WebAssembly edge runtime.** Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process.
+- **HTTP/3 and WebTransport.** Bidirectional streams and datagrams over QUIC for interactive, multiplexed realtime, beyond the WebSocket channel that ships today.
+- **ToilDB, an edge-replicated data layer.** Typed collections declared in ToilScript, where the method name tells you the cost: local reads are fast, appends and CRDT counters/sets merge everywhere, owned writes are fast at the owner, and rare global claims are explicitly slow. Hyperscale data, without a per-query consistency knob to get wrong.
+- **Post-quantum-ready transport.** Forward-looking encryption for the edge as the QUIC layer lands.
+- **Dacely Cloud.** Managed hosting for the whole stack: push your app, the static client goes to the edge and your WebAssembly server runs on the runtime above.
+
+This is the spine the framework was shaped around. Today you write a typed, file-based React app with a WebAssembly server; the roadmap is the platform that runs it at planetary scale.
+
+## Tech
+
+<div align="center">
+
+<img src="https://img.shields.io/badge/React_19-20232a?style=for-the-badge&logo=react&logoColor=61dafb" alt="React 19" />
+<img src="https://img.shields.io/badge/TypeScript-3178c6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+<img src="https://img.shields.io/badge/Vite-646cff?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+<img src="https://img.shields.io/badge/WebAssembly-654ff0?style=for-the-badge&logo=webassembly&logoColor=white" alt="WebAssembly" />
+<img src="https://img.shields.io/badge/ToilScript-cb9820?style=for-the-badge&logoColor=white" alt="ToilScript" />
+<img src="https://img.shields.io/badge/sharp-99cc00?style=for-the-badge&logo=sharp&logoColor=white" alt="sharp" />
+<img src="https://img.shields.io/badge/ESLint-4b32c3?style=for-the-badge&logo=eslint&logoColor=white" alt="ESLint" />
+<img src="https://img.shields.io/badge/Prettier-f7b93e?style=for-the-badge&logo=prettier&logoColor=black" alt="Prettier" />
+<img src="https://img.shields.io/badge/Tailwind_v4-06b6d4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind v4" />
+
+</div>
+
+React 19, TypeScript, Vite, [ToilScript](https://www.npmjs.com/package/toilscript) (TypeScript syntax, compiles to WebAssembly), Vite imagetools + sharp, ESLint (typescript-eslint, react-hooks, react-refresh, @eslint-react), Prettier, Tailwind v4 (optional).
+
 ## Start
 
 ```bash
 npx toiljs create my-app
 ```
 
-Everything in this README is already on. You just build the app.
+Everything in the framework half of this README is already on. You just build the app.
 
-<div align="center"><br/><sub>Apache-2.0</sub></div>
+<div align="center"><br/><sub>Apache-2.0 · <a href="https://toil.org">toil.org</a></sub></div>
