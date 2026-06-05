@@ -161,10 +161,10 @@ function scaffold(
             '}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
-        // Server code is toilscript (native decorators like @main / @remote on functions) that
-        // stock parsers (prettier/eslint/babel) can't parse; generated files don't need formatting.
+        // Generated files don't need formatting. (toilscript server decorators like @main /
+        // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
         '.prettierignore':
-            'node_modules\nbuild\n.toil\nserver\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
+            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
         '.gitignore': 'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
         // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled version.
         '.vscode/settings.json':

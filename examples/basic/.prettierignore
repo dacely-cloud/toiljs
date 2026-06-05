@@ -1,9 +1,7 @@
-# Server code is toilscript (native decorators like @main / @remote on functions),
-# which stock parsers (prettier, eslint, babel) can't parse. Generated files too.
+# Generated files don't need formatting.
 node_modules
 build
 .toil
-server
 shared/server.ts
 toil-env.d.ts
 toil-routes.d.ts

@@ -64,7 +64,8 @@
         },
         "./tsconfig": "./presets/tsconfig.json",
         "./eslint": "./presets/eslint.js",
-        "./prettier": "./presets/prettier.json"
+        "./prettier": "./presets/prettier.json",
+        "./prettier-plugin": "./presets/prettier-plugin.js"
     },
     "bin": {
         "toiljs": "./build/cli/index.js"
