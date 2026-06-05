@@ -114,7 +114,7 @@ function scaffold(
         '@types/react-dom': '^19.2.3',
         eslint: '^10.2.0',
         prettier: '^3.8.1',
-        toilscript: '^0.1.2',
+        toilscript: '^0.1.8',
         typescript: '^6.0.3',
     };
     for (const dep of requiredPackages(features).sort()) {
@@ -126,9 +126,9 @@ function scaffold(
         type: 'module',
         scripts: {
             dev: 'toiljs dev',
-            build: 'toiljs build && toilscript --target release',
+            build: 'toiljs build && toilscript --target release --rpcModule shared/server.ts',
             'build:client': 'toiljs build',
-            'build:server': 'toilscript --target release',
+            'build:server': 'toilscript --target release --rpcModule shared/server.ts',
             lint: 'eslint client',
             typecheck: 'tsc --noEmit',
             format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "client/public/**/*.html"',
@@ -152,10 +152,16 @@ function scaffold(
             '    },\n' +
             '});\n',
         'tsconfig.json':
-            '{\n    "extends": "toiljs/tsconfig",\n    "include": ["client", "toil-env.d.ts", "toil-routes.d.ts"]\n}\n',
+            '{\n' +
+            '    "extends": "toiljs/tsconfig",\n' +
+            '    "compilerOptions": {\n' +
+            '        "paths": { "shared/*": ["./shared/*"] }\n' +
+            '    },\n' +
+            '    "include": ["client", "shared", "toil-env.d.ts", "toil-routes.d.ts"]\n' +
+            '}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
-        '.gitignore': 'node_modules\nbuild\n.toil\ntoil-env.d.ts\ntoil-routes.d.ts\n',
+        '.gitignore': 'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
         // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled version.
         '.vscode/settings.json':
             JSON.stringify({ 'typescript.tsdk': 'node_modules/typescript/lib' }, null, 4) + '\n',

@@ -28,6 +28,7 @@ interface Flags {
     pm?: string;
     yes?: boolean;
     json?: boolean;
+    fix?: boolean;
     target?: string;
 }
 
@@ -99,6 +100,9 @@ function parseArgs(argv: string[]): Flags {
             case '--json':
                 flags.json = true;
                 break;
+            case '--fix':
+                flags.fix = true;
+                break;
             case '--target':
                 flags.target = argv[++i];
                 break;
@@ -134,6 +138,7 @@ function printHelp(): void {
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
             cmd('--json', 'doctor: machine-readable output'),
+            cmd('--fix', 'doctor: auto-fix what it can (typed-RPC wiring)'),
             cmd('--target <t>', 'update: latest | minor | patch | newest | greatest'),
             cmd('-v, --version', 'print the toiljs version'),
             '',
@@ -210,7 +215,7 @@ async function main(): Promise<void> {
         case 'doctor':
             // Skip the banner for --json so stdout stays valid JSON.
             if (!flags.json) banner();
-            await runDoctor({ root: flags.root, cwd: process.cwd(), json: flags.json });
+            await runDoctor({ root: flags.root, cwd: process.cwd(), json: flags.json, fix: flags.fix });
             break;
 
         case 'update':
