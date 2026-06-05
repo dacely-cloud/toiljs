@@ -12,10 +12,15 @@
 
 <br/>
 
+**⚡ First-class WebTransport over HTTP/3**, with automatic WebSocket fallback.
+
+<br/>
+
 [![npm](https://img.shields.io/npm/v/toiljs.svg?color=2563ff&label=npm&labelColor=0e1520)](https://www.npmjs.com/package/toiljs)
 [![types](https://img.shields.io/badge/types-included-2563ff.svg?labelColor=0e1520)](https://www.typescriptlang.org/)
 [![react](https://img.shields.io/badge/react-19-22e3ab.svg?labelColor=0e1520)](https://react.dev/)
 [![server](https://img.shields.io/badge/server-WebAssembly-7c3aed.svg?labelColor=0e1520)](#the-server-toilscript--webassembly)
+[![webtransport](https://img.shields.io/badge/WebTransport-coming-654ff0.svg?labelColor=0e1520)](#realtime)
 [![license](https://img.shields.io/badge/license-Apache--2.0-8b9ab4.svg?labelColor=0e1520)](./LICENSE)
 
 <br/>
