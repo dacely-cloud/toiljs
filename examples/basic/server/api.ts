@@ -4,26 +4,26 @@
 
 @data
 class Todo {
-  id: u64 = 0;
-  title: string = "";
-  done: bool = false;
+    id: u64 = 0;
+    title: string = '';
+    done: bool = false;
 }
 
 @data
 class AddTodo {
-  title: string = "";
+    title: string = '';
 }
 
 @service
 class Todos {
-  @remote add(input: AddTodo): Todo {
-    const t = new Todo();
-    t.title = input.title;
-    return t;
-  }
+    @remote add(input: AddTodo): Todo {
+        const t = new Todo();
+        t.title = input.title;
+        return t;
+    }
 }
 
 @remote
 function ping(n: i32): i32 {
-  return n + 1;
+    return n + 1;
 }
