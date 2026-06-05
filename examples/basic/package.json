@@ -4,9 +4,9 @@
     "type": "module",
     "scripts": {
         "dev": "toiljs dev",
-        "build": "toiljs build && toilscript --target release",
+        "build": "toiljs build && toilscript --target release --rpcModule shared/server.ts",
         "build:client": "toiljs build",
-        "build:server": "toilscript --target release",
+        "build:server": "toilscript --target release --rpcModule shared/server.ts",
         "lint": "eslint client",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write \"client/**/*.{ts,tsx,css}\" \"client/public/**/*.html\""
@@ -21,7 +21,7 @@
         "@types/react-dom": "^19.2.3",
         "eslint": "^10.2.0",
         "prettier": "^3.8.1",
-        "toilscript": "^0.1.7",
+        "toilscript": "^0.1.9",
         "typescript": "^6.0.3"
     }
 }
