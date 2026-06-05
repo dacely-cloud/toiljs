@@ -59,6 +59,7 @@ export const TOIL_ENV_DTS =
     `declare const FastSet: typeof import('toiljs/io').FastSet;\n` +
     `declare const DataWriter: typeof import('toiljs/io').DataWriter;\n` +
     `declare const DataReader: typeof import('toiljs/io').DataReader;\n` +
+    `declare const parseError: typeof import('toiljs/client').parseError;\n` +
     `\n` +
     `${STYLE_MODULES}\n` +
     `\n` +
@@ -292,7 +293,7 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
         `import * as Toil from 'toiljs/client';\n` +
         `import { FastMap, FastSet, DataWriter, DataReader } from 'toiljs/io';\n` +
         `import { pages } from './routes';\n\n` +
-        `Object.assign(globalThis, { Toil, FastMap, FastSet, DataWriter, DataReader, Server: Toil.Server });\n` +
+        `Object.assign(globalThis, { Toil, FastMap, FastSet, DataWriter, DataReader, Server: Toil.Server, parseError: Toil.parseError });\n` +
         `Toil.setViewTransitions(${String(cfg.viewTransitions)});\n` +
         `Toil.setTransitions(${String(cfg.transitions)});\n` +
         `Toil.registerPages(pages);\n`;
