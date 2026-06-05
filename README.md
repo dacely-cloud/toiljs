@@ -370,36 +370,36 @@ flowchart TB
     classDef today fill:#0e1520,stroke:#2563ff,stroke-width:2px,color:#cfe0ff;
     classDef soon fill:#160f1f,stroke:#7c3aed,stroke-width:2px,color:#ead7ff,stroke-dasharray:6 4;
 
-    subgraph BUILD["BUILD &nbsp;·&nbsp; toiljs CLI &nbsp;·&nbsp; shipping today"]
+    subgraph BUILD["BUILD, toiljs CLI, shipping today"]
         direction TB
-        TSX["client/ &nbsp; React + TSX routes"] --> VITE["Vite<br/>HMR + ahead-of-time build"] --> ART["static client<br/>prerendered HTML<br/>sitemap · robots · llms<br/>optimized images + fonts"]
+        TSX["client/ &nbsp; React + TSX routes"] --> VITE["Vite<br/>HMR + ahead-of-time build"] --> ART["static client<br/>prerendered HTML<br/>sitemap, robots, llms<br/>optimized images + fonts"]
         TS["server/ &nbsp; ToilScript .ts"] --> TSC["toilscript compiler"] --> WASM["one .wasm module"]
-        TOOL["toolkit: TypeScript · ESLint · Prettier · git<br/>dev toolbar: routes · loader cache · head/OG · errors<br/>AI tab to Claude / ChatGPT · Cmd-K palette<br/>typed RPC surface Server.*"]
+        TOOL["toolkit: TypeScript, ESLint, Prettier, git<br/>dev toolbar: routes, loader cache, head/OG, errors<br/>AI tab to Claude / ChatGPT, Cmd-K palette<br/>typed RPC surface Server.*"]
     end
 
-    CLIENTS["CLIENTS<br/>browsers · mobile · API clients · AI crawlers / LLMs"]
+    CLIENTS["CLIENTS<br/>browsers, mobile, API clients, AI crawlers / LLMs"]
 
-    subgraph EDGE["EDGE &nbsp;·&nbsp; anycast · multi-region POPs · scale-out &nbsp;·&nbsp; roadmap"]
+    subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, roadmap"]
         direction LR
-        SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images · fonts · css<br/>served from CDN / edge"]
-        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>Request to handler to Response<br/>realtime channels · binary IO<br/>x many tenants x many POPs"]
+        SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images, fonts, css<br/>served from CDN / edge"]
+        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
         SC <-->|"typed RPC&nbsp; Server.*"| RT
     end
 
-    subgraph DATA["ToilDB &nbsp;·&nbsp; edge-replicated typed data &nbsp;·&nbsp; roadmap"]
+    subgraph DATA["ToilDB, edge-replicated typed data, roadmap"]
         direction LR
-        MODES["collections<br/>owned · eventLog · counter · set<br/>unique · escrow · snapshot<br/>local reads fast · CRDT writes merge everywhere<br/>owned writes fast at owner · global claims slow"]
+        MODES["collections<br/>owned, eventLog, counter, set<br/>unique, escrow, snapshot<br/>local reads fast, CRDT writes merge everywhere<br/>owned writes fast at owner, global claims slow"]
         DUR["durable store<br/>structured records"]
         BLOB["blob store<br/>large objects"]
         MODES --> DUR
         MODES --> BLOB
     end
 
-    CTRL["DACELY CLOUD &nbsp;·&nbsp; control plane &nbsp;·&nbsp; roadmap<br/>deploy · distribute · scale<br/>client to the edge · .wasm to the runtime · data replicated"]
+    CTRL["DACELY CLOUD, control plane, roadmap<br/>deploy, distribute, scale<br/>client to the edge, .wasm to the runtime, data replicated"]
 
     ART -->|deploys| SC
     WASM -->|deploys| RT
-    CLIENTS -->|"HTTP/1.1 + WebSocket today<br/>HTTP/3 · QUIC · WebTransport roadmap<br/>TLS today · post-quantum roadmap"| EDGE
+    CLIENTS -->|"HTTP/1.1 + WebSocket today<br/>HTTP/3, QUIC, WebTransport roadmap<br/>TLS today, post-quantum roadmap"| EDGE
     RT -->|"region-replicated"| DATA
     CTRL -. orchestrates .-> EDGE
     CTRL -. orchestrates .-> DATA
@@ -413,46 +413,46 @@ flowchart TB
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│  BUILD  ·  toiljs CLI                                            [today]  │
+│  BUILD     toiljs CLI                                            [today]  │
 │                                                                          │
-│   client/  React + TSX routes ──▶ Vite (HMR · ahead-of-time build) ──┐   │
+│   client/  React + TSX routes ──▶ Vite (HMR   ahead-of-time build) ──┐   │
 │   server/  ToilScript (.ts)   ──▶ toilscript compiler ──▶ one .wasm  │   │
 │                                                                      │   │
-│   toolkit  TypeScript · ESLint · Prettier · git   (opt-in presets)   │   │
-│   dev      toolbar: routes · loader cache · head/OG · errors         │   │
-│            AI tab → Claude / ChatGPT · ⌘K palette                     │   │
-│   emits    static client · prerendered HTML · sitemap·robots·llms    │   │
-│            optimized images / fonts · typed RPC surface (Server.*)    │   │
+│   toolkit  TypeScript   ESLint   Prettier   git   (opt-in presets)   │   │
+│   dev      toolbar: routes   loader cache   head/OG   errors         │   │
+│            AI tab → Claude / ChatGPT   ⌘K palette                     │   │
+│   emits    static client   prerendered HTML   sitemap robots llms    │   │
+│            optimized images / fonts   typed RPC surface (Server.*)    │   │
 └───────────────────────────────────────────────────────────────┬─────┬───┘
                                                        deploys ▼ │     │ ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
 │  CLIENTS                                                                  │
-│  browsers   ·   mobile webviews   ·   API clients   ·   AI crawlers/LLMs  │
+│  browsers       mobile webviews       API clients       AI crawlers/LLMs  │
 └───────────────────────────────────┬──────────────────────────────────────┘
-            HTTP/1.1 + WebSocket  [today]   │   HTTP/3 · QUIC · WebTransport  [soon]
+            HTTP/1.1 + WebSocket  [today]   │   HTTP/3   QUIC   WebTransport  [soon]
                         TLS  [today]        │   post-quantum transport       [soon]
                                             ▼
 ╔══════════════════════════════════════════════════════════════════════════╗
-║  EDGE   ·   anycast · multi-region POPs · scale-out                [soon] ║
+║  EDGE       anycast   multi-region POPs   scale-out                [soon] ║
 ║                                                                          ║
 ║   ┌─────────────────────────┐        ┌─────────────────────────────────┐ ║
 ║   │  STATIC CLIENT          │        │  WASM EDGE RUNTIME              │ ║
 ║   │  React SPA + baked HTML │        │  your ToilScript server as one │ ║
-║   │  images · fonts · css   │   typed│  .wasm, run as an isolated      │ ║
+║   │  images   fonts   css   │   typed│  .wasm, run as an isolated      │ ║
 ║   │  served from CDN / edge │◀──RPC─▶│  per-core tenant at line rate   │ ║
 ║   │                         │ Server.*  Request ▶ handler ▶ Response   │ ║
-║   │  llms·robots·sitemap    │        │  realtime channels · binary IO  │ ║
+║   │  llms robots sitemap    │        │  realtime channels   binary IO  │ ║
 ║   └─────────────────────────┘        └───────────────┬─────────────────┘ ║
 ║        instant, cacheable                  × many tenants × many POPs     ║
 ╚═══════════════════════════════════════════════════════╪══════════════════╝
                                                          ▼   region-replicated
 ╔══════════════════════════════════════════════════════════════════════════╗
-║  ToilDB   ·   edge-replicated, typed data layer                    [soon] ║
+║  ToilDB       edge-replicated, typed data layer                    [soon] ║
 ║                                                                          ║
-║   collections:  owned · eventLog · counter · set · unique · escrow ·     ║
+║   collections:  owned   eventLog   counter   set   unique   escrow       ║
 ║                 snapshot          (the method name tells you the cost)   ║
-║   local reads fast  ·  CRDT writes merge everywhere                       ║
-║   owned writes fast at the owner  ·  global claims explicitly slow        ║
+║   local reads fast     CRDT writes merge everywhere                       ║
+║   owned writes fast at the owner     global claims explicitly slow        ║
 ║                                                                          ║
 ║      ┌──────────────────────┐            ┌──────────────────────┐        ║
 ║      │  durable store       │            │  blob store          │        ║
@@ -461,7 +461,7 @@ flowchart TB
 ╚═══════════════════════════════════════════════════════╪══════════════════╝
                                                          ▼
 ╔══════════════════════════════════════════════════════════════════════════╗
-║  DACELY CLOUD   ·   control plane: deploy · distribute · scale     [soon] ║
+║  DACELY CLOUD       control plane: deploy   distribute   scale     [soon] ║
 ║  push your app ─▶ client to the edge, .wasm to the runtime, data replicated ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
@@ -521,4 +521,4 @@ npx toiljs create my-app
 
 Everything in the framework half of this README is already on. You just build the app.
 
-<div align="center"><br/><sub>Apache-2.0 · <a href="https://toil.org">toil.org</a></sub></div>
+<div align="center"><br/><sub>Apache-2.0, <a href="https://toil.org">toil.org</a></sub></div>
