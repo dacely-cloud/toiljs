@@ -122,6 +122,9 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             alias: {
                 'toiljs/client': cfg.runtimePath,
                 'toiljs/routes': path.join(cfg.toilDir, 'routes.ts'),
+                // The server build emits the typed RPC module here (see create.ts); `shared/*`
+                // lets the client import the generated @data classes without a deep relative path.
+                shared: path.join(cfg.root, 'shared'),
                 ...polyfillShimAliases,
             },
             dedupe: ['react', 'react-dom'],

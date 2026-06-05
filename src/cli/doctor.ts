@@ -26,6 +26,7 @@ import {
     checkRelativeAssets,
     checkRootElement,
     checkRoutesPresent,
+    checkRpcWiring,
     checkSeoUrl,
     checkServerEntry,
     type CheckStatus,
@@ -36,6 +37,9 @@ import {
     checkWasmBuilt,
     findRelativeAssets,
     hasFailures,
+    type RpcFacts,
+    RPC_TOILSCRIPT_MIN,
+    satisfiesMin,
     type SourceFile,
     summarize,
 } from './diagnostics.js';
@@ -53,6 +57,8 @@ export interface DoctorOptions {
     readonly cwd: string;
     /** Emit machine-readable JSON instead of the human report. */
     readonly json?: boolean;
+    /** Auto-fix what can be fixed in place (currently the typed-RPC wiring). */
+    readonly fix?: boolean;
 }
 
 /** Parses a JSON file into a plain object, or null on any error / non-object. */
@@ -81,6 +87,138 @@ function readFile(file: string): string | null {
     } catch {
         return null;
     }
+}
+
+function writeFile(file: string, content: string): void {
+    fs.writeFileSync(file, content);
+}
+
+/** Narrows a value to a plain (non-array) object, or null. */
+function asRecord(value: unknown): Record<string, unknown> | null {
+    return typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
+}
+
+const RPC_MODULE_FLAG = '--rpcModule shared/server.ts';
+const RPC_GITIGNORE_LINE = 'shared/server.ts';
+const RPC_GITIGNORE_RE = /(^|\n)\s*shared\/server\.ts\s*(\r?\n|$)/;
+
+/** Reads the project and reports which parts of the typed-RPC wiring are present. */
+function gatherRpcFacts(root: string): RpcFacts {
+    const pkg = readJsonObject(path.join(root, 'package.json'));
+    const scripts = pkg ? stringRecord(pkg.scripts) : {};
+    const deps = {
+        ...(pkg ? stringRecord(pkg.dependencies) : {}),
+        ...(pkg ? stringRecord(pkg.devDependencies) : {}),
+    };
+    const tsconfig = readJsonObject(path.join(root, 'tsconfig.json'));
+    const gitignore = readFile(path.join(root, '.gitignore'));
+
+    const buildServerWired = (scripts['build:server'] ?? '').includes('--rpcModule');
+
+    let tsconfigWired = false;
+    if (tsconfig) {
+        const include = Array.isArray(tsconfig.include) ? tsconfig.include : [];
+        const paths = asRecord(asRecord(tsconfig.compilerOptions)?.paths);
+        tsconfigWired = include.includes('shared') && paths !== null && 'shared/*' in paths;
+    }
+
+    const gitignoreWired = gitignore !== null && RPC_GITIGNORE_RE.test(gitignore);
+    const range = deps.toilscript;
+    const toilscriptOk = typeof range === 'string' && satisfiesMin(range, RPC_TOILSCRIPT_MIN);
+
+    return { buildServerWired, tsconfigWired, gitignoreWired, toilscriptOk };
+}
+
+interface RpcFixResult {
+    /** Files written. */
+    readonly changed: string[];
+    /** Files that need a manual edit (e.g. tsconfig with comments). */
+    readonly skipped: string[];
+}
+
+/**
+ * Applies the typed-RPC wiring in place: appends `--rpcModule` to the toilscript build scripts,
+ * adds `shared` (+ the `shared/*` alias) to tsconfig, ignores the generated module, and lifts the
+ * toilscript floor. Idempotent; only writes files it actually changes.
+ */
+function applyRpcFix(root: string): RpcFixResult {
+    const changed: string[] = [];
+    const skipped: string[] = [];
+
+    const pkgPath = path.join(root, 'package.json');
+    const pkgRaw = readFile(pkgPath);
+    const pkg = pkgRaw !== null ? readJsonObject(pkgPath) : null;
+    if (pkg !== null) {
+        let touched = false;
+        const scripts = asRecord(pkg.scripts) ?? {};
+        for (const key of ['build', 'build:server']) {
+            const value = scripts[key];
+            if (typeof value === 'string' && value.includes('toilscript') && !value.includes('--rpcModule')) {
+                scripts[key] = `${value} ${RPC_MODULE_FLAG}`;
+                pkg.scripts = scripts;
+                touched = true;
+            }
+        }
+        for (const field of ['devDependencies', 'dependencies']) {
+            const bag = asRecord(pkg[field]);
+            const current = bag?.toilscript;
+            if (bag && typeof current === 'string' && !satisfiesMin(current, RPC_TOILSCRIPT_MIN)) {
+                bag.toilscript = `^${RPC_TOILSCRIPT_MIN}`;
+                touched = true;
+            }
+        }
+        if (touched) {
+            writeFile(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
+            changed.push('package.json');
+        }
+    } else if (pkgRaw !== null) {
+        skipped.push('package.json (unparseable)');
+    }
+
+    const tsPath = path.join(root, 'tsconfig.json');
+    const tsRaw = readFile(tsPath);
+    const tsconfig = tsRaw !== null ? readJsonObject(tsPath) : null;
+    if (tsconfig !== null) {
+        let touched = false;
+        const include = Array.isArray(tsconfig.include)
+            ? [...(tsconfig.include as unknown[])]
+            : ['client', 'toil-env.d.ts', 'toil-routes.d.ts'];
+        if (!include.includes('shared')) {
+            const at = include.indexOf('client');
+            include.splice(at >= 0 ? at + 1 : include.length, 0, 'shared');
+            tsconfig.include = include;
+            touched = true;
+        }
+        const co = asRecord(tsconfig.compilerOptions) ?? {};
+        const paths = asRecord(co.paths) ?? {};
+        if (!('shared/*' in paths)) {
+            paths['shared/*'] = ['./shared/*'];
+            co.paths = paths;
+            tsconfig.compilerOptions = co;
+            touched = true;
+        }
+        if (touched) {
+            writeFile(tsPath, JSON.stringify(tsconfig, null, 4) + '\n');
+            changed.push('tsconfig.json');
+        }
+    } else if (tsRaw !== null) {
+        skipped.push('tsconfig.json (JSON with comments, add "shared" + paths by hand)');
+    }
+
+    const giPath = path.join(root, '.gitignore');
+    const giRaw = readFile(giPath);
+    if (giRaw === null) {
+        writeFile(giPath, `${RPC_GITIGNORE_LINE}\n`);
+        changed.push('.gitignore');
+    } else if (!RPC_GITIGNORE_RE.test(giRaw)) {
+        const sep = giRaw.length === 0 || giRaw.endsWith('\n') ? '' : '\n';
+        writeFile(giPath, `${giRaw}${sep}${RPC_GITIGNORE_LINE}\n`);
+        changed.push('.gitignore');
+    }
+
+    return { changed, skipped };
 }
 
 /** Reads the framework's own package.json (engines + peerDependencies) for the requirements. */
@@ -248,6 +386,10 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
     const peerChecks = Object.keys(meta.peers).map(peerName);
 
+    // Typed-RPC wiring: optionally fix it in place, then read the (possibly updated) state.
+    const rpcFix = serverPresent && opts.fix ? applyRpcFix(root) : null;
+    const rpcFacts = gatherRpcFacts(root);
+
     const groups: CheckGroup[] = [
         {
             title: 'Environment',
@@ -302,6 +444,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                       checkServerEntry(missingEntries),
                       checkToilscriptInstalled(toilscriptInstalled),
                       checkWasmBuilt(wasmExists),
+                      checkRpcWiring(rpcFacts),
                   ]
                 : [checkToilconfig(false)],
         },
@@ -309,10 +452,29 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
 
     const summary = summarize(groups);
     if (opts.json) {
-        process.stdout.write(JSON.stringify({ groups, summary }, null, 2) + '\n');
+        process.stdout.write(JSON.stringify({ groups, summary, fixed: rpcFix }, null, 2) + '\n');
     } else {
         process.stdout.write('\n' + accent('  Doctor') + dim(`  ${root}`) + '\n\n');
         renderHuman(groups);
+        if (rpcFix) renderRpcFix(rpcFix);
+        else if (opts.fix && !serverPresent) {
+            process.stdout.write('  ' + dim('--fix: no server (toilconfig.json) found, nothing to wire.') + '\n\n');
+        }
     }
     if (hasFailures(summary)) process.exitCode = 1;
+}
+
+/** Prints the result of `--fix`, and whether a reinstall is needed (toilscript bump). */
+function renderRpcFix(result: RpcFixResult): void {
+    const out: string[] = [];
+    if (result.changed.length > 0) {
+        out.push('  ' + success('fixed RPC wiring') + dim(`  ${result.changed.join(', ')}`));
+        if (result.changed.includes('package.json')) {
+            out.push('  ' + dim('run your installer (npm/pnpm/yarn) if the toilscript version changed.'));
+        }
+    } else {
+        out.push('  ' + dim('RPC wiring already in place, nothing to fix.'));
+    }
+    for (const item of result.skipped) out.push('  ' + warn('skipped') + dim(`  ${item}`));
+    process.stdout.write(out.join('\n') + '\n\n');
 }

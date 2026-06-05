@@ -87,3 +87,5 @@ export { Form } from './components/Form.js';
 export type { FormProps } from './components/Form.js';
 export { Slot } from './components/Slot.js';
 export type { SlotProps } from './components/Slot.js';
+export { Server } from './rpc.js';
+export { parseError } from './errors.js';
