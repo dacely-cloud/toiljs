@@ -126,7 +126,7 @@ function scaffold(
         type: 'module',
         scripts: {
             dev: 'toiljs dev',
-            build: 'toiljs build && toilscript --target release --rpcModule shared/server.ts',
+            build: 'toilscript --target release --rpcModule shared/server.ts && toiljs build',
             'build:client': 'toiljs build',
             'build:server': 'toilscript --target release --rpcModule shared/server.ts',
             lint: 'eslint client',
