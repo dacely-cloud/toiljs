@@ -9,6 +9,7 @@ import {
     checkPeer,
     checkRelativeAssets,
     checkRootElement,
+    checkRpcWiring,
     checkSeoUrl,
     checkStyling,
     findRelativeAssets,
@@ -120,6 +121,35 @@ describe('config + environment checks', () => {
                 tailwindInstalled: false,
             }).status,
         ).toBe('pass');
+    });
+});
+
+describe('checkRpcWiring', () => {
+    const wired = { buildServerWired: true, tsconfigWired: true, gitignoreWired: true, toilscriptOk: true };
+
+    it('passes when fully wired', () => {
+        expect(checkRpcWiring(wired).status).toBe('pass');
+    });
+
+    it('warns and lists every missing piece', () => {
+        const c = checkRpcWiring({
+            buildServerWired: false,
+            tsconfigWired: false,
+            gitignoreWired: false,
+            toilscriptOk: false,
+        });
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('toilscript');
+        expect(c.detail).toContain('--rpcModule');
+        expect(c.detail).toContain('tsconfig');
+        expect(c.detail).toContain('.gitignore');
+        expect(c.fix).toContain('--fix');
+    });
+
+    it('warns on a single missing piece', () => {
+        const c = checkRpcWiring({ ...wired, gitignoreWired: false });
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('.gitignore');
     });
 });
 

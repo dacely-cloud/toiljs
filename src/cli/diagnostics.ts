@@ -400,6 +400,45 @@ export function checkWasmBuilt(exists: boolean): Check {
           };
 }
 
+// --- Typed RPC (@data / @remote / @service) -------------------------------------------------------
+
+/** The minimum toilscript that emits the RPC client module. */
+export const RPC_TOILSCRIPT_MIN = '0.1.8';
+
+/** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
+export interface RpcFacts {
+    /** `build:server` runs toilscript with `--rpcModule`. */
+    readonly buildServerWired: boolean;
+    /** tsconfig includes `shared` and has the `shared/*` path alias. */
+    readonly tsconfigWired: boolean;
+    /** `.gitignore` ignores the generated `shared/server.ts`. */
+    readonly gitignoreWired: boolean;
+    /** The declared toilscript range is at least {@link RPC_TOILSCRIPT_MIN}. */
+    readonly toilscriptOk: boolean;
+}
+
+/**
+ * One check for the typed-RPC setup (`@data`/`@remote` -> generated `Server`). Warns (does not fail)
+ * when an existing project predates the feature, and points at the one-command upgrade.
+ */
+export function checkRpcWiring(f: RpcFacts): Check {
+    const missing: string[] = [];
+    if (!f.toilscriptOk) missing.push(`toilscript >=${RPC_TOILSCRIPT_MIN}`);
+    if (!f.buildServerWired) missing.push('build:server --rpcModule');
+    if (!f.tsconfigWired) missing.push('tsconfig shared/ + alias');
+    if (!f.gitignoreWired) missing.push('.gitignore shared/server.ts');
+    if (missing.length === 0) {
+        return { id: 'rpc-wiring', label: 'typed RPC wiring', status: 'pass' };
+    }
+    return {
+        id: 'rpc-wiring',
+        label: 'typed RPC wiring',
+        status: 'warn',
+        detail: `missing: ${missing.join(', ')}`,
+        fix: 'Run `toiljs doctor --fix` to wire @data/@remote RPC (build:server, tsconfig, .gitignore, toilscript).',
+    };
+}
+
 // --- Summary --------------------------------------------------------------------------------------
 
 export function summarize(groups: readonly CheckGroup[]): DoctorSummary {
