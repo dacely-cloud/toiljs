@@ -6,7 +6,9 @@
 
 ### The fullstack React framework, built for hyperscale.
 
-<sub>A static React client and a typed ToilScript server, one toolchain, built to run from your laptop to the global edge with zero rewrite.</sub>
+#### The first universal client and server framework.
+
+<sub>Nothing to configure: routing, data, SEO, top-tier tooling, and full AI support, all built in.</sub>
 
 <br/>
 
