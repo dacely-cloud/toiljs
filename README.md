@@ -30,7 +30,9 @@
 
 ---
 
-React gives you a renderer and leaves the rest to you: a router, a bundler, data loading, SEO, an image pipeline, a server. ToilJS is all of it, already wired, on a toolchain you do not have to assemble.
+**ToilJS is a complete fullstack framework: a React frontend and a typed server, with everything in between already built and wired.** Routing, data loading, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, a strict toolchain, and a compiled server, all configured for you. You run one command and start building your app, not your stack.
+
+A normal React project is a renderer plus a dozen libraries you choose, install, configure, and keep in sync: a router, a data layer, an image pipeline, SEO tags, a server, lint and format rules. ToilJS replaces all of it with one toolchain whose parts already know about each other. Nothing to assemble, nothing to glue, nothing to configure.
 
 ```bash
 npx toiljs create my-app
@@ -60,17 +62,23 @@ The client is fully static (host it anywhere). The server is portable WebAssembl
 
 ## Everything, at a glance
 
+This is the full surface area. Every row works the moment `create` finishes, no plugins to install, no config to write.
+
 |  |  |
 | --- | --- |
-| **Routing** | File-based. Dynamic, catch-all, optional catch-all, route groups, nested layouts, templates, parallel slots, and intercepting routes. Every `href` and `params` is typed against your real files. |
+| **Zero config** | One command scaffolds a working app. You never write an `index.html`, a `main.tsx`, a router, or a Vite / build config. The framework generates and owns all of it. |
+| **Routing** | File-based. Dynamic, catch-all, optional catch-all, route groups, nested layouts, templates, loading and error boundaries, parallel slots, and intercepting routes. Every `href` and `params` is typed against your real files. |
+| **Navigation** | `Link` / `NavLink`, programmatic `navigate` / `back` / `forward` / `refresh`, hover and viewport prefetch, scroll restoration, instant back/forward, and animated view transitions. |
 | **Data** | A `loader` resolves before render. `useAction` / `<Form>` write then revalidate. An LRU loader cache with per-route `revalidate`. No fetch waterfalls, no `useEffect` data fetching. |
 | **Rendering + SEO** | Per-route `<head>` baked into static HTML at build, plus `sitemap.xml`, `robots.txt`, `llms.txt`, OpenGraph, Twitter, JSON-LD, canonical, theme-color, early hints. SSG via `generateStaticParams`. |
 | **Search** | Built-in site search over a compiler-baked metadata index, ranked, with a `usePageSearch` hook. Plus `llms.txt` so AI crawlers can read your site. |
 | **Assets** | Imported images compressed to webp and resized via Vite + sharp. Fonts preloaded. React split into its own long-lived chunk. The build logs what it saved. |
-| **Realtime** | Typed WebSocket channels: `connectChannel` / `useChannel`, with reconnect built in. |
-| **Server** | ToilScript compiled to WebAssembly. `Request` / `Response` REST handlers, binary IO on both sides, a typed RPC surface generated from your server. |
+| **Components** | Drop-in `Image` (no layout shift, lazy, blur), `Script` (load strategies, dedupe), `Form`, `Slot`, `Head`, all on a typed `Toil` global, zero imports. |
+| **Realtime** | Typed WebSocket channels: `connectChannel` / `useChannel`, with reconnect built in, text or binary frames. |
+| **Server** | A typed ToilScript server compiled to a portable, native-speed module. `Request` / `Response` REST handlers, binary IO on both sides, and a typed RPC surface generated from your server. |
 | **Agentic DX** | A dev toolbar with a live AI tab (hand off page context to Claude or ChatGPT), a Cmd+K palette, and scaffolded agent files (CLAUDE.md, AGENTS.md, Cursor, Copilot). |
 | **Toolkit** | Strict TypeScript, ESLint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away. |
+| **CLI** | `create`, `dev`, `build`, `start`, `configure`, `doctor` (with `--json` for CI), and `update`. |
 
 ## Routing
 
