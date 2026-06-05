@@ -4,9 +4,9 @@
 
 # ToilJS
 
-### The next-gen React framework with a WebAssembly spine.
+### The fullstack React framework, built for hyperscale.
 
-<sub>File-based. Typed end to end. A static React client and a ToilScript server that compiles to WebAssembly, built for the edge.</sub>
+<sub>A static React client and a typed ToilScript server, one toolchain, built to run from your laptop to the global edge with zero rewrite.</sub>
 
 <br/>
 
