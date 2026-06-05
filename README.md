@@ -58,7 +58,26 @@ Drop a `.tsx` file in `client/routes/` and it is a route: typed, code-split, pre
 
 </div>
 
-The client is fully static (host it anywhere). The server is portable WebAssembly. The two are separated by design and joined by a typed contract, so the frontend can ship to a CDN while the backend runs wherever WebAssembly does.
+The client is fully static (host it anywhere). The server is a portable compiled module. The two are separated by design and joined by a typed contract, so the frontend can ship to a CDN while the backend runs wherever it is deployed.
+
+## Built for scale
+
+Toil's architecture is the scaling story. There is no monolith to keep warm and nothing re-rendering your pages on every request.
+
+- **The client is static.** `build` emits a plain SPA bundle with each route's HTML already prerendered. It has no runtime server dependency, so it ships to any CDN or edge network and is cached and served close to every user.
+- **The server is one portable module.** Your ToilScript backend compiles to a single self-contained module: no Node runtime to boot, no framework cold start, no per-request bootstrap. It is small, it starts instantly, and it runs the same everywhere.
+- **Client and server are decoupled.** They are separate artifacts joined only by a typed contract, so the frontend scales as static files while the backend scales as stateless compute. Neither one bottlenecks the other.
+- **Shaped for the edge.** That compiled module is exactly the unit a hyperscale edge runtime is built to serve: isolated per tenant, replicated across regions, run at line rate.
+
+That is the platform Toil is being built toward. The architecture above ships today; this is the stack that runs it at planetary scale:
+
+- **First-class WebTransport** *(coming)*: realtime over HTTP/3, multiplexed bidirectional streams and datagrams over QUIC with no head-of-line blocking. Toil is built to be the **first framework to ship first-class WebTransport**, and it falls back to WebSocket automatically, so the same channel API simply runs on the fastest transport available. WebSocket channels work today.
+- **A purpose-built edge runtime** *(coming)*: your compiled server runs as an isolated tenant at line rate, replicated across regions, instead of on a general-purpose Node process.
+- **ToilDB, edge-replicated typed data** *(coming)*: typed collections where the method name tells you the cost, local-fast reads, CRDT writes that merge everywhere, owner-routed writes, and rare global claims that are explicitly slow.
+- **Post-quantum-ready transport** *(coming)*: forward-looking encryption as the QUIC layer lands.
+- **Dacely Cloud** *(coming)*: managed hosting for the whole stack, push the app and the client goes to the edge while the server runs on the runtime.
+
+The same app runs on your laptop and is shaped, from the first commit, to fan out across the edge without a rewrite. Full architecture and status in [The road to hyperscale](#the-road-to-hyperscale).
 
 ## Everything, at a glance
 
@@ -74,7 +93,7 @@ This is the full surface area. Every row works the moment `create` finishes, no 
 | **Search** | Built-in site search over a compiler-baked metadata index, ranked, with a `usePageSearch` hook. Plus `llms.txt` so AI crawlers can read your site. |
 | **Assets** | Imported images compressed to webp and resized via Vite + sharp. Fonts preloaded. React split into its own long-lived chunk. The build logs what it saved. |
 | **Components** | Drop-in `Image` (no layout shift, lazy, blur), `Script` (load strategies, dedupe), `Form`, `Slot`, `Head`, all on a typed `Toil` global, zero imports. |
-| **Realtime** | Typed WebSocket channels: `connectChannel` / `useChannel`, with reconnect built in, text or binary frames. |
+| **Realtime** | Typed channels: `connectChannel` / `useChannel`, reconnect built in, text or binary frames. WebSocket today, with first-class WebTransport over HTTP/3 coming (automatic WebSocket fallback). |
 | **Server** | A typed ToilScript server compiled to a portable, native-speed module. `Request` / `Response` REST handlers, binary IO on both sides, and a typed RPC surface generated from your server. |
 | **Agentic DX** | A dev toolbar with a live AI tab (hand off page context to Claude or ChatGPT), a Cmd+K palette, and scaffolded agent files (CLAUDE.md, AGENTS.md, Cursor, Copilot). |
 | **Toolkit** | Strict TypeScript, ESLint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away. |
@@ -203,13 +222,13 @@ Zero-import, on the `Toil` global:
 
 ## Realtime
 
-A typed WebSocket channel to the server, built in.
+One typed channel API for live data in both directions.
 
 ```tsx
 const messages = Toil.useChannel<Message>('/chat');
 ```
 
-`connectChannel` / `useChannel` / `resolveChannelUrl` handle connection, reconnection, and message decoding, text or binary frames.
+`connectChannel` / `useChannel` / `resolveChannelUrl` handle connection, reconnection, and message decoding, text or binary frames. Today the channel runs over WebSocket. Next it rides **WebTransport** over HTTP/3: multiplexed bidirectional streams and datagrams over QUIC with no head-of-line blocking. Toil is built to be the **first framework to ship first-class WebTransport**, with automatic WebSocket fallback, so the same `useChannel` quietly upgrades to the fastest transport the client and network support, with no code change.
 
 ## The server: ToilScript + WebAssembly
 
@@ -259,19 +278,55 @@ And the `toiljs create` wizard scaffolds assistant files (CLAUDE.md, AGENTS.md, 
 
 ToilJS sets the toolchain so nobody argues about it. Strict TypeScript, ESLint (typescript-eslint, react-hooks, react-refresh, @eslint-react), and Prettier come configured and enforced from the first commit, shipped as `toiljs/tsconfig`, `toiljs/eslint`, and `toiljs/prettier`. New apps extend them automatically and can init git in the same step. Opt in to as much as you want, nothing to copy, nothing to bikeshed.
 
+## Configuration
+
+One file, `toil.config.ts`, typed with `defineConfig`. Every option has a sensible default, so most apps only set `seo`.
+
+```ts
+import { defineConfig } from 'toiljs/compiler';
+
+export default defineConfig({
+    client: {
+        srcDir: 'client',          // source root             (default: client)
+        routesDir: 'routes',       // route folder            (default: routes)
+        base: '/',                 // base path               (default: /)
+        port: 3000,                // dev / start port        (default: 3000)
+        images: true,              // webp + resize pipeline  (default: true)
+        fonts: true,               // preload bundled fonts   (default: true)
+        viewTransitions: false,    // animated navigation     (default: false)
+        transitions: false,        // keep page during load   (default: false)
+        devtools: true,            // dev toolbar, or { ai }  (default: true)
+        seo: {
+            // url, title, openGraph, twitter, jsonLd, robots, themeColor, ...
+        },
+        vite: {
+            // escape hatch: a full Vite InlineConfig, merged on top
+        },
+    },
+});
+```
+
+Set any feature to `false` to turn it off. `client.vite` is merged into the generated Vite config for the rare case you need to reach the bundler directly.
+
 ## CLI
 
 ```
-toiljs create [name]   scaffold a new app (template, styling, AI files, git, package manager)
+toiljs create [name]   scaffold a new app
 toiljs dev             dev server with HMR
 toiljs build           ahead-of-time production build
-toiljs start           self-host the built client + WebSocket channel
+toiljs start           self-host the built client + realtime channel
 toiljs configure       toggle styling and asset features on an existing app
-toiljs doctor          diagnose project setup and dependencies (--json for CI)
-toiljs update          check for and apply dependency updates (-y to apply all)
+toiljs doctor          diagnose project setup and dependencies
+toiljs update          check for and apply dependency updates
 ```
 
-`toiljs create` is interactive (template, CSS preprocessor, Tailwind, AI assistant files, image optimization, git, install, package manager), or fully scriptable with flags and `--yes`.
+- **`create [name]`** runs an interactive wizard: template (`app` or `minimal`), CSS flavor (`css` / `sass` / `less` / `stylus`), Tailwind, which AI assistant files to scaffold, image optimization, git init, and package manager (`npm` / `pnpm` / `yarn` / `bun`). Every prompt has a flag (`--template`, `--style`, `--tailwind`, `--ai`, `--images`, `--git`, `--install`, `--pm`), and `--yes` runs it non-interactively.
+- **`dev`** starts the Vite dev server with HMR and regenerates the route table as you add or remove files. `--port` to override.
+- **`build`** produces the optimized static client: prerendered HTML, `sitemap.xml`, `robots.txt`, `llms.txt`, and compressed images and fonts.
+- **`start`** self-hosts the build and a realtime channel at `/_toil` on hyper-express. `--port` (default 3000), `--host` (pass `0.0.0.0` to expose on the network).
+- **`configure`** edits an existing app: switch CSS preprocessor, toggle Tailwind or image optimization, and sync dependencies.
+- **`doctor`** runs read-only checks across environment, routing, config, assets, and the server build, with a fix hint on each. `--json` for CI; it exits non-zero when a check fails.
+- **`update`** checks the registry and groups available updates by major / minor / patch; pick what to apply or pass `-y` for all (`--target` sets the strategy).
 
 ## One file does a lot
 
