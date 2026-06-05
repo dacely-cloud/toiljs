@@ -104,6 +104,15 @@ const RPC_MODULE_FLAG = '--rpcModule shared/server.ts';
 const RPC_GITIGNORE_LINE = 'shared/server.ts';
 const RPC_GITIGNORE_RE = /(^|\n)\s*shared\/server\.ts\s*(\r?\n|$)/;
 
+/**
+ * Whether a dependency range is an ordinary registry semver range (so a deliberate
+ * `latest`/`*`/`file:`/`github:`/`workspace:`/`npm:` pin is left untouched and treated
+ * as already-OK rather than clobbered to a version).
+ */
+function looksLikeSemverRange(range: string): boolean {
+    return /^\s*[v^~>=<]*\s*\d+\.\d+/.test(range);
+}
+
 /** Reads the project and reports which parts of the typed-RPC wiring are present. */
 function gatherRpcFacts(root: string): RpcFacts {
     const pkg = readJsonObject(path.join(root, 'package.json'));
@@ -115,18 +124,25 @@ function gatherRpcFacts(root: string): RpcFacts {
     const tsconfig = readJsonObject(path.join(root, 'tsconfig.json'));
     const gitignore = readFile(path.join(root, '.gitignore'));
 
-    const buildServerWired = (scripts['build:server'] ?? '').includes('--rpcModule');
+    // Either the combined `build` or `build:server` carrying --rpcModule counts (the fixer writes both).
+    const buildServerWired = [scripts['build:server'], scripts['build']].some(
+        (s) => typeof s === 'string' && s.includes('--rpcModule'),
+    );
 
     let tsconfigWired = false;
     if (tsconfig) {
-        const include = Array.isArray(tsconfig.include) ? tsconfig.include : [];
+        // An absent `include` compiles all files, so `shared` is covered implicitly.
+        const include = tsconfig.include;
+        const hasShared = !Array.isArray(include) || include.includes('shared');
         const paths = asRecord(asRecord(tsconfig.compilerOptions)?.paths);
-        tsconfigWired = include.includes('shared') && paths !== null && 'shared/*' in paths;
+        tsconfigWired = hasShared && paths !== null && 'shared/*' in paths;
     }
 
     const gitignoreWired = gitignore !== null && RPC_GITIGNORE_RE.test(gitignore);
     const range = deps.toilscript;
-    const toilscriptOk = typeof range === 'string' && satisfiesMin(range, RPC_TOILSCRIPT_MIN);
+    // A non-semver range (file:/github:/latest/*) can't be assessed; don't flag it.
+    const toilscriptOk =
+        range == null ? false : looksLikeSemverRange(range) ? satisfiesMin(range, RPC_TOILSCRIPT_MIN) : true;
 
     return { buildServerWired, tsconfigWired, gitignoreWired, toilscriptOk };
 }
@@ -161,13 +177,25 @@ function applyRpcFix(root: string): RpcFixResult {
                 touched = true;
             }
         }
+        let toilscriptDeclared = false;
         for (const field of ['devDependencies', 'dependencies']) {
             const bag = asRecord(pkg[field]);
             const current = bag?.toilscript;
-            if (bag && typeof current === 'string' && !satisfiesMin(current, RPC_TOILSCRIPT_MIN)) {
-                bag.toilscript = `^${RPC_TOILSCRIPT_MIN}`;
-                touched = true;
+            if (bag && typeof current === 'string') {
+                toilscriptDeclared = true;
+                // Only lift a real semver range that floors below the minimum; leave file:/latest/* pins alone.
+                if (looksLikeSemverRange(current) && !satisfiesMin(current, RPC_TOILSCRIPT_MIN)) {
+                    bag.toilscript = `^${RPC_TOILSCRIPT_MIN}`;
+                    touched = true;
+                }
             }
+        }
+        if (!toilscriptDeclared) {
+            // A server project needs toilscript; add it so the wiring actually resolves.
+            const dd = asRecord(pkg.devDependencies) ?? {};
+            dd.toilscript = `^${RPC_TOILSCRIPT_MIN}`;
+            pkg.devDependencies = dd;
+            touched = true;
         }
         if (touched) {
             writeFile(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
@@ -182,14 +210,16 @@ function applyRpcFix(root: string): RpcFixResult {
     const tsconfig = tsRaw !== null ? readJsonObject(tsPath) : null;
     if (tsconfig !== null) {
         let touched = false;
-        const include = Array.isArray(tsconfig.include)
-            ? [...(tsconfig.include as unknown[])]
-            : ['client', 'toil-env.d.ts', 'toil-routes.d.ts'];
-        if (!include.includes('shared')) {
-            const at = include.indexOf('client');
-            include.splice(at >= 0 ? at + 1 : include.length, 0, 'shared');
-            tsconfig.include = include;
-            touched = true;
+        // Only touch `include` if it already exists; an absent `include` compiles all files,
+        // and synthesizing one would narrow what TypeScript sees.
+        if (Array.isArray(tsconfig.include)) {
+            const include = [...(tsconfig.include as unknown[])];
+            if (!include.includes('shared')) {
+                const at = include.indexOf('client');
+                include.splice(at >= 0 ? at + 1 : include.length, 0, 'shared');
+                tsconfig.include = include;
+                touched = true;
+            }
         }
         const co = asRecord(tsconfig.compilerOptions) ?? {};
         const paths = asRecord(co.paths) ?? {};
