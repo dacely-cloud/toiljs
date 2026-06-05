@@ -234,6 +234,9 @@ export const TOIL_DOCS: Record<string, string> = {
         '- `toiljs build`, production build → `build/client` (chain `toilscript` for the server).',
         '- `toiljs start`, self-host the built app (hyper-express) with a `/_toil` WebSocket channel.',
         '- `toiljs configure`, toggle styling features on an existing project (see `styling.md`).',
+        '- `toiljs doctor`, diagnose project setup (`--json` for CI). `--fix` auto-wires the typed-RPC',
+        '  setup (build scripts, tsconfig `shared` + alias, `.gitignore`, toilscript version) so an',
+        '  existing project upgrades in one command.',
     ]),
 };
 
