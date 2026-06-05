@@ -47,7 +47,7 @@ const groups: { heading: string; items: { href: Toil.Href; label: string; note: 
         items: [
             { href: '/features/script', label: 'Script', note: 'Toil.Script with a load strategy' },
             { href: '/features/realtime', label: 'WebSocket channel', note: 'Toil.useChannel against /_toil' },
-            { href: '/io', label: 'Binary IO', note: 'BinaryWriter / BinaryReader / FastSet, no import' }
+            { href: '/io', label: 'Binary IO', note: 'DataWriter / DataReader / FastSet, no import' }
         ]
     }
 ];

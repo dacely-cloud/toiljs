@@ -14,5 +14,5 @@ export type u64 = bigint;
 
 export type Selector = number;
 
-/** Anything that can back a {@link BinaryReader}. */
+/** Anything that can back a {@link DataReader}. */
 export type BufferLike = Uint8Array;

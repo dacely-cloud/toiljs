@@ -1,69 +1,66 @@
 import { describe, expect, it } from 'vitest';
 
-import { BinaryReader } from '../src/io/BinaryReader';
-import { BinaryWriter } from '../src/io/BinaryWriter';
+import { DataReader, DataWriter } from '../src/io/codec';
 import { FastMap } from '../src/io/FastMap';
 import { FastSet } from '../src/io/FastSet';
 
-describe('BinaryWriter / BinaryReader', () => {
+describe('DataWriter / DataReader', () => {
     it('round-trips fixed-width integers', () => {
-        const w = new BinaryWriter();
-        w.writeU8(255);
-        w.writeU16(65535);
-        w.writeU32(4294967295);
-        w.writeU64(18446744073709551615n);
-        w.writeI8(-128);
-        w.writeI32(-2147483648);
+        const w = new DataWriter();
+        w.writeU8(255).writeU16(65535).writeU32(4294967295).writeU64(18446744073709551615n);
+        w.writeI8(-128).writeI16(-32768).writeI32(-2147483648).writeI64(-9223372036854775808n);
 
-        const r = new BinaryReader(w.getBuffer());
+        const r = new DataReader(w.toBytes());
         expect(r.readU8()).toBe(255);
         expect(r.readU16()).toBe(65535);
         expect(r.readU32()).toBe(4294967295);
         expect(r.readU64()).toBe(18446744073709551615n);
         expect(r.readI8()).toBe(-128);
+        expect(r.readI16()).toBe(-32768);
         expect(r.readI32()).toBe(-2147483648);
+        expect(r.readI64()).toBe(-9223372036854775808n);
+        expect(r.ok).toBe(true);
+        expect(r.remaining()).toBe(0);
     });
 
-    it('round-trips u256 and strings', () => {
-        const big = 123456789012345678901234567890n;
-        const w = new BinaryWriter();
-        w.writeU256(big);
-        w.writeStringWithLength('hello toil 🛠');
-        w.writeBoolean(true);
+    it('round-trips floats, bool, bytes and strings', () => {
+        const w = new DataWriter();
+        w.writeF32(0.5).writeF64(3.141592653589793).writeBool(true).writeBool(false);
+        w.writeBytes(new Uint8Array([1, 2, 3, 0, 255]));
+        w.writeString('hello toil 🛠');
 
-        const r = new BinaryReader(w.getBuffer());
-        expect(r.readU256()).toBe(big);
-        expect(r.readStringWithLength()).toBe('hello toil 🛠');
-        expect(r.readBoolean()).toBe(true);
+        const r = new DataReader(w.toBytes());
+        expect(r.readF32()).toBe(0.5);
+        expect(r.readF64()).toBe(3.141592653589793);
+        expect(r.readBool()).toBe(true);
+        expect(r.readBool()).toBe(false);
+        expect([...r.readBytes()]).toEqual([1, 2, 3, 0, 255]);
+        expect(r.readString()).toBe('hello toil 🛠');
+        expect(r.ok).toBe(true);
     });
 
-    it('round-trips arrays', () => {
-        const w = new BinaryWriter();
-        w.writeU32Array([1, 2, 3]);
-        w.writeStringArray(['a', 'bb', 'ccc']);
+    it('round-trips u128 / i128 / u256', () => {
+        const u = 123456789012345678901234567890n;
+        const big256 = (2n ** 256n) - 1n;
+        const w = new DataWriter();
+        w.writeU128(u).writeI128(-1234567890123456789n).writeU256(big256);
 
-        const r = new BinaryReader(w.getBuffer());
-        expect(r.readU32Array()).toEqual([1, 2, 3]);
-        expect(r.readStringArray()).toEqual(['a', 'bb', 'ccc']);
+        const r = new DataReader(w.toBytes());
+        expect(r.readU128()).toBe(u);
+        expect(r.readI128()).toBe(-1234567890123456789n);
+        expect(r.readU256()).toBe(big256);
     });
 
-    it('rejects out-of-range values', () => {
-        const w = new BinaryWriter();
-        expect(() => w.writeU8(256)).toThrow();
-        expect(() => w.writeI8(128)).toThrow();
+    it('is little-endian and masks instead of throwing', () => {
+        // u32 1 → 01 00 00 00 (LE); writeU8 masks to a byte, no throw.
+        const bytes = new DataWriter().writeU32(1).writeU8(256).toBytes();
+        expect([...bytes]).toEqual([1, 0, 0, 0, 0]);
     });
 
-    it('rejects negative / overflowing u256 and u128', () => {
-        const w = new BinaryWriter();
-        expect(() => w.writeU256(-1n)).toThrow();
-        expect(() => w.writeU256(2n ** 256n)).toThrow();
-        expect(() => w.writeU128(-1n)).toThrow();
-        expect(() => w.writeU128(2n ** 128n)).toThrow();
-    });
-
-    it('throws when reading past the end', () => {
-        const r = new BinaryReader(new Uint8Array(2));
-        expect(() => r.readU32()).toThrow();
+    it('reports ok=false when reading past the end (no throw)', () => {
+        const r = new DataReader(new Uint8Array(2));
+        expect(r.readU32()).toBe(0);
+        expect(r.ok).toBe(false);
     });
 });
 
