@@ -292,7 +292,7 @@ export function generate(cfg: ResolvedToilConfig): ScannedRoute[] {
         `import * as Toil from 'toiljs/client';\n` +
         `import { FastMap, FastSet, DataWriter, DataReader } from 'toiljs/io';\n` +
         `import { pages } from './routes';\n\n` +
-        `Object.assign(globalThis, { Toil, FastMap, FastSet, DataWriter, DataReader });\n` +
+        `Object.assign(globalThis, { Toil, FastMap, FastSet, DataWriter, DataReader, Server: Toil.Server });\n` +
         `Toil.setViewTransitions(${String(cfg.viewTransitions)});\n` +
         `Toil.setTransitions(${String(cfg.transitions)});\n` +
         `Toil.registerPages(pages);\n`;
