@@ -1,0 +1,28 @@
+import { describe, expect, it } from 'vitest';
+
+import { Server } from '../src/client/rpc';
+
+// `Server` is the runtime behind the generated typed surface. Until the transport
+// is wired, it is a recursive proxy that throws on call.
+describe('Server RPC stub', () => {
+    it('throws on a direct call, naming the path', () => {
+        const s = Server as { ping: () => unknown };
+        expect(() => s.ping()).toThrow(/Server\.ping\(\)/);
+    });
+
+    it('throws on a nested service.method call', () => {
+        const s = Server as { accounts: { getUser: () => unknown } };
+        expect(() => s.accounts.getUser()).toThrow(/Server\.accounts\.getUser\(\)/);
+        expect(() => s.accounts.getUser()).toThrow(/not available yet/);
+    });
+
+    it('is not thenable (so it is not mistaken for a promise)', () => {
+        const s = Server as Record<string, unknown>;
+        expect(s.then).toBeUndefined();
+    });
+
+    it('ignores symbol probes without throwing', () => {
+        const s = Server as Record<PropertyKey, unknown>;
+        expect(s[Symbol.iterator]).toBeUndefined();
+    });
+});
