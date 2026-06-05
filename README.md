@@ -291,6 +291,115 @@ export default function PostPage() {
 
 No imports. `Toil` is a fully-typed global, tree-shaken at build. The page renders with its data already loaded.
 
+## Architecture
+
+One pipeline, from your editor to planetary scale. The build pipeline and the React client ship today; the edge runtime, the ToilDB data layer, and Dacely Cloud are the roadmap (marked in purple).
+
+```mermaid
+flowchart TB
+    classDef today fill:#0e1520,stroke:#2563ff,stroke-width:2px,color:#cfe0ff;
+    classDef soon fill:#160f1f,stroke:#7c3aed,stroke-width:2px,color:#ead7ff,stroke-dasharray:6 4;
+
+    subgraph BUILD["BUILD &nbsp;·&nbsp; toiljs CLI &nbsp;·&nbsp; shipping today"]
+        direction TB
+        TSX["client/ &nbsp; React + TSX routes"] --> VITE["Vite<br/>HMR + ahead-of-time build"] --> ART["static client<br/>prerendered HTML<br/>sitemap · robots · llms<br/>optimized images + fonts"]
+        TS["server/ &nbsp; ToilScript .ts"] --> TSC["toilscript compiler"] --> WASM["one .wasm module"]
+        TOOL["toolkit: TypeScript · ESLint · Prettier · git<br/>dev toolbar: routes · loader cache · head/OG · errors<br/>AI tab to Claude / ChatGPT · Cmd-K palette<br/>typed RPC surface Server.*"]
+    end
+
+    CLIENTS["CLIENTS<br/>browsers · mobile · API clients · AI crawlers / LLMs"]
+
+    subgraph EDGE["EDGE &nbsp;·&nbsp; anycast · multi-region POPs · scale-out &nbsp;·&nbsp; roadmap"]
+        direction LR
+        SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images · fonts · css<br/>served from CDN / edge"]
+        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>Request to handler to Response<br/>realtime channels · binary IO<br/>x many tenants x many POPs"]
+        SC <-->|"typed RPC&nbsp; Server.*"| RT
+    end
+
+    subgraph DATA["ToilDB &nbsp;·&nbsp; edge-replicated typed data &nbsp;·&nbsp; roadmap"]
+        direction LR
+        MODES["collections<br/>owned · eventLog · counter · set<br/>unique · escrow · snapshot<br/>local reads fast · CRDT writes merge everywhere<br/>owned writes fast at owner · global claims slow"]
+        DUR["durable store<br/>structured records"]
+        BLOB["blob store<br/>large objects"]
+        MODES --> DUR
+        MODES --> BLOB
+    end
+
+    CTRL["DACELY CLOUD &nbsp;·&nbsp; control plane &nbsp;·&nbsp; roadmap<br/>deploy · distribute · scale<br/>client to the edge · .wasm to the runtime · data replicated"]
+
+    ART -->|deploys| SC
+    WASM -->|deploys| RT
+    CLIENTS -->|"HTTP/1.1 + WebSocket today<br/>HTTP/3 · QUIC · WebTransport roadmap<br/>TLS today · post-quantum roadmap"| EDGE
+    RT -->|"region-replicated"| DATA
+    CTRL -. orchestrates .-> EDGE
+    CTRL -. orchestrates .-> DATA
+
+    class TSX,VITE,ART,TS,TSC,WASM,TOOL,CLIENTS today;
+    class SC,RT,MODES,DUR,BLOB,CTRL soon;
+```
+
+<details>
+<summary>Same diagram as plain ASCII (for npm and text-only views)</summary>
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  BUILD  ·  toiljs CLI                                            [today]  │
+│                                                                          │
+│   client/  React + TSX routes ──▶ Vite (HMR · ahead-of-time build) ──┐   │
+│   server/  ToilScript (.ts)   ──▶ toilscript compiler ──▶ one .wasm  │   │
+│                                                                      │   │
+│   toolkit  TypeScript · ESLint · Prettier · git   (opt-in presets)   │   │
+│   dev      toolbar: routes · loader cache · head/OG · errors         │   │
+│            AI tab → Claude / ChatGPT · ⌘K palette                     │   │
+│   emits    static client · prerendered HTML · sitemap·robots·llms    │   │
+│            optimized images / fonts · typed RPC surface (Server.*)    │   │
+└───────────────────────────────────────────────────────────────┬─────┬───┘
+                                                       deploys ▼ │     │ ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│  CLIENTS                                                                  │
+│  browsers   ·   mobile webviews   ·   API clients   ·   AI crawlers/LLMs  │
+└───────────────────────────────────┬──────────────────────────────────────┘
+            HTTP/1.1 + WebSocket  [today]   │   HTTP/3 · QUIC · WebTransport  [soon]
+                        TLS  [today]        │   post-quantum transport       [soon]
+                                            ▼
+╔══════════════════════════════════════════════════════════════════════════╗
+║  EDGE   ·   anycast · multi-region POPs · scale-out                [soon] ║
+║                                                                          ║
+║   ┌─────────────────────────┐        ┌─────────────────────────────────┐ ║
+║   │  STATIC CLIENT          │        │  WASM EDGE RUNTIME              │ ║
+║   │  React SPA + baked HTML │        │  your ToilScript server as one │ ║
+║   │  images · fonts · css   │   typed│  .wasm, run as an isolated      │ ║
+║   │  served from CDN / edge │◀──RPC─▶│  per-core tenant at line rate   │ ║
+║   │                         │ Server.*  Request ▶ handler ▶ Response   │ ║
+║   │  llms·robots·sitemap    │        │  realtime channels · binary IO  │ ║
+║   └─────────────────────────┘        └───────────────┬─────────────────┘ ║
+║        instant, cacheable                  × many tenants × many POPs     ║
+╚═══════════════════════════════════════════════════════╪══════════════════╝
+                                                         ▼   region-replicated
+╔══════════════════════════════════════════════════════════════════════════╗
+║  ToilDB   ·   edge-replicated, typed data layer                    [soon] ║
+║                                                                          ║
+║   collections:  owned · eventLog · counter · set · unique · escrow ·     ║
+║                 snapshot          (the method name tells you the cost)   ║
+║   local reads fast  ·  CRDT writes merge everywhere                       ║
+║   owned writes fast at the owner  ·  global claims explicitly slow        ║
+║                                                                          ║
+║      ┌──────────────────────┐            ┌──────────────────────┐        ║
+║      │  durable store       │            │  blob store          │        ║
+║      │  structured records  │            │  large objects       │        ║
+║      └──────────────────────┘            └──────────────────────┘        ║
+╚═══════════════════════════════════════════════════════╪══════════════════╝
+                                                         ▼
+╔══════════════════════════════════════════════════════════════════════════╗
+║  DACELY CLOUD   ·   control plane: deploy · distribute · scale     [soon] ║
+║  push your app ─▶ client to the edge, .wasm to the runtime, data replicated ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+  [today] shipping now      [soon] architecture + roadmap, not yet GA
+```
+
+</details>
+
 ---
 
 ## The road to hyperscale
