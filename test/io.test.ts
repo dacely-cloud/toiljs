@@ -39,16 +39,43 @@ describe('DataWriter / DataReader', () => {
         expect(r.ok).toBe(true);
     });
 
-    it('round-trips u128 / i128 / u256', () => {
+    it('round-trips u128 / i128 / u256 / i256', () => {
         const u = 123456789012345678901234567890n;
         const big256 = (2n ** 256n) - 1n;
         const w = new DataWriter();
-        w.writeU128(u).writeI128(-1234567890123456789n).writeU256(big256);
+        w.writeU128(u).writeI128(-1234567890123456789n).writeU256(big256).writeI256(-(2n ** 200n));
 
         const r = new DataReader(w.toBytes());
         expect(r.readU128()).toBe(u);
         expect(r.readI128()).toBe(-1234567890123456789n);
         expect(r.readU256()).toBe(big256);
+        expect(r.readI256()).toBe(-(2n ** 200n));
+    });
+
+    it('grows past the initial capacity without corruption (regression)', () => {
+        // The default buffer is 64 bytes; this forces several reallocations.
+        const w = new DataWriter();
+        const text = 'z'.repeat(500);
+        for (let i = 0; i < 40; i++) w.writeU64(BigInt(i)); // 320 bytes
+        w.writeString(text);
+
+        const r = new DataReader(w.toBytes());
+        for (let i = 0; i < 40; i++) expect(r.readU64()).toBe(BigInt(i));
+        expect(r.readString()).toBe(text);
+        expect(r.ok).toBe(true);
+    });
+
+    it('round-trips big-endian when be is set, and be flips byte order', () => {
+        expect([...new DataWriter().writeU32(0x01020304).toBytes()]).toEqual([4, 3, 2, 1]);
+        expect([...new DataWriter().writeU32(0x01020304, true).toBytes()]).toEqual([1, 2, 3, 4]);
+
+        const w = new DataWriter();
+        w.writeU16(0xabcd, true).writeI32(-2, true).writeU64(0xdeadbeefn, true).writeU128(123456789012345n, true);
+        const r = new DataReader(w.toBytes());
+        expect(r.readU16(true)).toBe(0xabcd);
+        expect(r.readI32(true)).toBe(-2);
+        expect(r.readU64(true)).toBe(0xdeadbeefn);
+        expect(r.readU128(true)).toBe(123456789012345n);
     });
 
     it('is little-endian and masks instead of throwing', () => {

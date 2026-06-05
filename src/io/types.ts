@@ -12,6 +12,7 @@ export type u16 = number;
 export type u32 = number;
 export type u64 = bigint;
 
+/** A method/route selector encoded as a `u32` on the wire. */
 export type Selector = number;
 
 /** Anything that can back a {@link DataReader}. */
