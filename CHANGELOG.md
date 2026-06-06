@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.21] - 2026-06-06
+
+### Other Changes
+
+- chore: target toilscript ^0.1.14 (typed @data editor members); toiljs 0.0.21 ([#119](https://github.com/dacely-cloud/toiljs/pull/119)) by @BlobMaster41
+
+
+
+
 ## [v0.0.20] - 2026-06-06
 
 ### Other Changes
