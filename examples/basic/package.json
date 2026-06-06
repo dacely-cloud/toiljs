@@ -4,8 +4,7 @@
     "type": "module",
     "scripts": {
         "dev": "toiljs dev",
-        "build": "toilscript --target release --rpcModule shared/server.ts && toiljs build",
-        "build:client": "toiljs build",
+        "build": "toiljs build",
         "build:server": "toilscript --target release --rpcModule shared/server.ts",
         "lint": "eslint client",
         "typecheck": "tsc --noEmit",
