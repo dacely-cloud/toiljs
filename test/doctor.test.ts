@@ -7,6 +7,7 @@ import {
     checkMountSlots,
     checkNode,
     checkPeer,
+    checkPrettierPlugin,
     checkRelativeAssets,
     checkRootElement,
     checkRpcWiring,
@@ -150,6 +151,17 @@ describe('checkRpcWiring', () => {
         const c = checkRpcWiring({ ...wired, gitignoreWired: false });
         expect(c.status).toBe('warn');
         expect(c.detail).toContain('.gitignore');
+    });
+});
+
+describe('checkPrettierPlugin', () => {
+    it('passes when present', () => {
+        expect(checkPrettierPlugin(true).status).toBe('pass');
+    });
+    it('warns (not fails) when missing, pointing at --fix', () => {
+        const c = checkPrettierPlugin(false);
+        expect(c.status).toBe('warn');
+        expect(c.fix).toContain('--fix');
     });
 });
 

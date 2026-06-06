@@ -439,6 +439,23 @@ export function checkRpcWiring(f: RpcFacts): Check {
     };
 }
 
+/**
+ * Whether the project's prettier setup pulls in the toilscript plugin (`toiljs/prettier-plugin`,
+ * or the `toiljs/prettier` shareable that bundles it). Without it, prettier throws on the server's
+ * native function decorators (`@main`, `@remote function ...`).
+ */
+export function checkPrettierPlugin(present: boolean): Check {
+    return present
+        ? { id: 'prettier-plugin', label: 'prettier toilscript plugin', status: 'pass' }
+        : {
+              id: 'prettier-plugin',
+              label: 'prettier toilscript plugin',
+              status: 'warn',
+              detail: 'prettier will fail on @main / @remote-on-function in server code',
+              fix: 'Run `toiljs doctor --fix` to add toiljs/prettier-plugin to your prettier config.',
+          };
+}
+
 // --- Summary --------------------------------------------------------------------------------------
 
 export function summarize(groups: readonly CheckGroup[]): DoctorSummary {
