@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.20] - 2026-06-06
+
+### Other Changes
+
+- fix(cli): toiljs build/dev build the server first; editor-clean example ([#117](https://github.com/dacely-cloud/toiljs/pull/117)) by @BlobMaster41
+- feat(rest): return Response with headers + @data body; editor sees @data members + decorated classes ([#118](https://github.com/dacely-cloud/toiljs/pull/118)) by @BlobMaster41
+
+
+
+
 ## [v0.0.19] - 2026-06-06
 
 ### Other Changes
