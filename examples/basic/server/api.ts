@@ -1,13 +1,16 @@
-// A small but real server: an in-memory players + leaderboard API.
+// A small REST demo: a players list + a leaderboard.
 //
-// `@data` types are the wire model (shared by HTTP and RPC). `@rest` controllers
-// expose HTTP routes; `@service`/`@remote` expose typed RPC. Building the server
-// (toilscript --rpcModule) regenerates the typed client into shared/server.ts:
+// IMPORTANT - the server runs with a FRESH WebAssembly instance per request, so linear memory
+// (and any module-level state, like the `store` below) is reset on every request. It does NOT
+// persist across requests. We seed a few players at module init so the read routes always have
+// data; the write routes (create / addScore) take effect only for the current request's response.
+// For real persistence, call out to a database or KV store from your handler.
+//
+// `@data` types are the wire model (shared by HTTP and RPC). `@rest` controllers expose HTTP
+// routes; `@service`/`@remote` expose typed RPC. Building the server (toilscript --rpcModule)
+// regenerates the typed client into shared/server.ts:
 //   @rest    -> Server.REST.<controller>.<route>(args)  (a working fetch client)
 //   @service -> Server.<service>.<method>()             (RPC, transport TODO)
-//
-// State here is a module-level Map, so it persists across requests for the life of
-// the instance (controllers are constructed per-request). Swap it for a real store later.
 
 import { Response, RouteContext } from 'toiljs/server/runtime';
 
@@ -37,34 +40,34 @@ class Standings {
     players: Player[] = [];
 }
 
-// In-memory store (module-level: persists across requests, unlike per-request controllers).
+// Re-seeded on EVERY request - module memory does not persist across requests (see the note at
+// the top of the file). Swap this for a database/KV to keep data between requests.
 const store = new Map<u64, Player>();
 let nextId: u64 = 1;
 
+function seed(name: string, score: i64): void {
+    const p = new Player();
+    p.id = nextId++;
+    p.name = name;
+    p.score = score;
+    store.set(p.id, p);
+}
+seed('Ada', 120);
+seed('Linus', 95);
+seed('Grace', 140);
+
 /**
- * Player CRUD, mounted at `/players`. On the client:
- *   await Server.REST.players.create({ body: new NewPlayer('Ada') })
+ * Players, mounted at `/players`. On the client:
  *   await Server.REST.players.get({ params: { id } })
+ *   await Server.REST.players.create({ body: new NewPlayer('Bob') })
  *   await Server.REST.players.addScore({ params: { id }, body: new ScoreDelta(10n) })
  */
 @rest('players')
 class Players {
-    /** `POST /players` - create a player from the request body; returns it with its new id. */
-    @post('/')
-    public create(input: NewPlayer): Player {
-        const p = new Player();
-        p.id = nextId++;
-        p.name = input.name;
-        p.score = 0;
-        store.set(p.id, p);
-        return p;
-    }
-
-    /** `GET /players/:id` - returns a `Response` for full control: a real 404 for a missing
-     *  id, a custom header, and the `@data` body serialized with `toJSON()`. (The toilscript
-     *  editor plugin makes the compiler-injected `toJSON()` visible, so this is editor-clean;
-     *  return the `@data` type directly, like the other routes, when you do not need that
-     *  control and the compiler will encode it for you.) */
+    /** `GET /players/:id` - returns a `Response` for full control: a real 404 for a missing id,
+     *  a custom header, and the `@data` body serialized with `toJSON()`. (The toilscript editor
+     *  plugin types the compiler-injected `toJSON()`, so this is clean; return the `@data` type
+     *  directly, like the other routes, when you do not need that control.) */
     @get('/:id')
     public get(ctx: RouteContext): Response {
         const id = u64.parse(ctx.param('id'));
@@ -74,8 +77,21 @@ class Players {
         return Response.json(p.toJSON().toString()).setHeader('cache-control', 'no-store');
     }
 
-    /** `POST /players/:id/score` - add `points` (from the body) to the player named by `:id`,
-     *  and return the updated player. */
+    /** `POST /players` - build a player from the request body and return it with a fresh id.
+     *  Note: it is NOT saved (memory resets next request); persist to a real store to keep it. */
+    @post('/')
+    public create(input: NewPlayer): Player {
+        const p = new Player();
+        p.id = nextId++;
+        p.name = input.name;
+        p.score = 0;
+        store.set(p.id, p);
+
+        return p;
+    }
+
+    /** `POST /players/:id/score` - add `points` (from the body) to the seeded player named by
+     *  `:id` and return it. The change applies to this response only (memory resets next request). */
     @post('/:id/score')
     public addScore(input: ScoreDelta, ctx: RouteContext): Player {
         const id = u64.parse(ctx.param('id'));
@@ -93,7 +109,7 @@ class Players {
  */
 @rest('leaderboard')
 class Leaderboard {
-    /** `GET /leaderboard` - every player, highest score first. */
+    /** `GET /leaderboard` - the seeded players, highest score first. */
     @get('/')
     public top(): Standings {
         const board = new Standings();
@@ -104,15 +120,13 @@ class Leaderboard {
     }
 }
 
-/** Typed RPC service (transport still a TODO): reached as `Server.admin.reset()` on the client. */
+/** Typed RPC service (transport still a TODO): reached as `Server.stats.playerCount()` on the client. */
 @service
-class Admin {
-    /** Wipe the in-memory store. */
+class Stats {
+    /** Number of seeded players (the RPC transport is a TODO, so this throws on the client for now). */
     @remote
-    public reset(): i32 {
-        store.clear();
-        nextId = 1;
-        return 0;
+    public playerCount(): i32 {
+        return store.size;
     }
 }
 
