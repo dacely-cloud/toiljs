@@ -1,5 +1,22 @@
 # Changelog
 
+## [v0.0.19] - 2026-06-06
+
+### Other Changes
+
+- feat(devtools): include the route's source code in AI prompts ([#108](https://github.com/dacely-cloud/toiljs/pull/108)) by @BlobMaster41
+- fix(security): dev-endpoint hardening + full-codebase audit fixes ([#109](https://github.com/dacely-cloud/toiljs/pull/109)) by @BlobMaster41
+- refactor(server): expose runtime as the toiljs/server/runtime library… ([#110](https://github.com/dacely-cloud/toiljs/pull/110)) by @BlobMaster41
+- feat: server/runtime export + typed @data RPC client (Server, codec, doctor) ([#111](https://github.com/dacely-cloud/toiljs/pull/111)) by @BlobMaster41
+- fix(io/cli): codec buffer-growth crash + i256, doctor --fix hardening ([#112](https://github.com/dacely-cloud/toiljs/pull/112)) by @BlobMaster41
+- chore: toiljs 0.0.17 + RPC example demo + toolchain on toilscript 0.1.9 ([#113](https://github.com/dacely-cloud/toiljs/pull/113)) by @BlobMaster41
+- fix(compiler): server-first build order + actionable error for missing shared/server ([#114](https://github.com/dacely-cloud/toiljs/pull/114)) by @BlobMaster41
+- feat: prettier formats toilscript server (plugin) + doctor coverage; toilscript ^0.1.10 ([#115](https://github.com/dacely-cloud/toiljs/pull/115)) by @BlobMaster41
+- feat(rest): @rest/@route HTTP layer + generated Server.REST fetch client ([#116](https://github.com/dacely-cloud/toiljs/pull/116)) by @BlobMaster41
+
+
+
+
 ## [v0.0.16] - 2026-06-03
 
 ### Other Changes
