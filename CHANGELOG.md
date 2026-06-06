@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.22] - 2026-06-06
+
+### Other Changes
+
+- fix(example): server memory is per-request, not persistent ([#120](https://github.com/dacely-cloud/toiljs/pull/120)) by @BlobMaster41
+- chore: target toilscript ^0.1.15 (lint-clean generated client); toiljs 0.0.22 ([#121](https://github.com/dacely-cloud/toiljs/pull/121)) by @BlobMaster41
+
+
+
+
 ## [v0.0.21] - 2026-06-06
 
 ### Other Changes
