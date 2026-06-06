@@ -1,12 +1,9 @@
-// Demo of the generated, typed `Server` surface (see ../../shared/server.ts, emitted
-// by the server build). `Server` is global (no import), typed from the server: scalars
-// (Server.ping(10)) and structs built on the client and passed in. The @data classes
-// are constructed with their generated constructor. Transport is not wired yet, so a
-// real call throws; this page shows the typing and reports the stub error via the
-// global `parseError`.
+// Demo of the generated, typed `Server` RPC surface (see ../../shared/server.ts, emitted
+// by the server build from `@service`/`@remote`). `Server` is global (no import) and typed
+// from the server: `Server.ping(n)` (free `@remote`) and `Server.admin.reset()` (a
+// `@service` method). Transport is not wired yet, so a real call throws; this page shows
+// the typing and reports the stub error via the global `parseError`.
 import { useState } from 'react';
-
-import { AddTodo } from 'shared/server';
 
 export default function RpcDemo() {
     const [result, setResult] = useState('not called');
@@ -21,12 +18,11 @@ export default function RpcDemo() {
         }
     };
 
-    // Struct in / struct out: build a @data class on the client and pass it.
-    const onAdd = async () => {
+    // A @service method: namespaced under its service key.
+    const onReset = async () => {
         try {
-            const input = new AddTodo('buy milk');
-            const todo = await Server.todos.add(input); // typed Promise<Todo>
-            setResult(`added "${todo.title}" (id ${todo.id})`);
+            await Server.admin.reset();
+            setResult('admin.reset -> store cleared');
         } catch (err) {
             setResult(parseError(err));
         }
@@ -36,13 +32,12 @@ export default function RpcDemo() {
         <main>
             <h1>RPC</h1>
             <p>
-                <code>Server</code> is typed from the server build, no import. Calling throws until
-                the transport lands.
+                <code>Server</code> (RPC) is typed from the server build, no import. Calling throws until the transport
+                lands. For working server calls today, use the REST client.
             </p>
-            <button onClick={onPing}>Server.ping(10)</button>{' '}
-            <button onClick={onAdd}>Server.todos.add(new AddTodo(…))</button>
+            <button onClick={onPing}>Server.ping(10)</button> <button onClick={onReset}>Server.admin.reset()</button>
             <p>{result}</p>
-            <Toil.Link href="/">Back home</Toil.Link>
+            <Toil.Link href="/rest">See the REST demo</Toil.Link> · <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
 }
