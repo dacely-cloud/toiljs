@@ -38,6 +38,22 @@ export default function RestDemo() {
         }
     };
 
+    // GET /players/:id  ->  this route returns a Response, so the client gets the raw fetch
+    // Response (read its status, headers, and body yourself).
+    const onGet = async () => {
+        try {
+            const res = await Server.REST.players.get({ params: { id: 1 } });
+            if (!res.ok) {
+                note(`get #1 -> ${res.status} (create #1 first)`);
+                return;
+            }
+            const p = await res.json();
+            note(`#${p.id} ${p.name} (cache-control: ${res.headers.get('cache-control')})`);
+        } catch (err) {
+            note(parseError(err));
+        }
+    };
+
     // GET /leaderboard  ->  typed Promise<Standings>, a @data wrapper of Player[].
     const onBoard = async () => {
         try {
@@ -56,7 +72,7 @@ export default function RestDemo() {
                 <code>@rest</code> controllers. It needs the server running to respond.
             </p>
             <button onClick={onCreate}>create player</button> <button onClick={onScore}>award points to #1</button>{' '}
-            <button onClick={onBoard}>leaderboard</button>
+            <button onClick={onGet}>get #1 (raw Response)</button> <button onClick={onBoard}>leaderboard</button>
             <ul>
                 {log.map((line, i) => (
                     <li key={i}>{line}</li>

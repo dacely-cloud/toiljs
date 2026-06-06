@@ -60,12 +60,18 @@ class Players {
         return p;
     }
 
-    /** `GET /players/:id` - fetch one player by its path param. Returns the typed `@data`
-     *  Player (the compiler encodes it for the route's stream); a missing id yields id 0. */
+    /** `GET /players/:id` - returns a `Response` for full control: a real 404 for a missing
+     *  id, a custom header, and the `@data` body serialized with `toJSON()`. (The toilscript
+     *  editor plugin makes the compiler-injected `toJSON()` visible, so this is editor-clean;
+     *  return the `@data` type directly, like the other routes, when you do not need that
+     *  control and the compiler will encode it for you.) */
     @get('/:id')
-    public get(ctx: RouteContext): Player {
+    public get(ctx: RouteContext): Response {
         const id = u64.parse(ctx.param('id'));
-        return store.has(id) ? store.get(id) : new Player();
+        if (!store.has(id)) return Response.notFound();
+        const p = store.get(id);
+
+        return Response.json(p.toJSON().toString()).setHeader('cache-control', 'no-store');
     }
 
     /** `POST /players/:id/score` - add `points` (from the body) to the player named by `:id`,
