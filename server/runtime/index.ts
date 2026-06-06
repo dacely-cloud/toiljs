@@ -18,3 +18,9 @@ export { Header, Method, Request } from './request';
 export { Response } from './response';
 export { ToilHandler } from './handlers/ToilHandler';
 export { Server, ServerEnvironment } from './env/Server';
+
+// HTTP layer (`@rest` / `@route`).
+export { Rest, RestRegistry, RouteFn } from './rest/Rest';
+export { RouteContext } from './rest/RouteContext';
+export { matchRoute } from './rest/match';
+export { RestHandler } from './rest/RestHandler';
