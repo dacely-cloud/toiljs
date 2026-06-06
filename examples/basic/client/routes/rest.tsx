@@ -6,7 +6,7 @@
 // `Response` to inspect (status, `.json()`, ...). Needs the server running to respond.
 import { useState } from 'react';
 
-import { NewPlayer, type Player, ScoreDelta } from 'shared/server';
+import { NewPlayer, ScoreDelta } from 'shared/server';
 
 export default function RestDemo() {
     const [log, setLog] = useState<string[]>([]);
@@ -24,20 +24,14 @@ export default function RestDemo() {
         }
     };
 
-    // POST /players/:id/score  ->  path param + body; route returns a Response, so we get
-    // the raw fetch Response and parse it ourselves.
+    // POST /players/:id/score  ->  path param + body, typed Promise<Player> back.
     const onScore = async () => {
         try {
             const points = BigInt(1 + Math.floor(Math.random() * 10));
-            const res = await Server.REST.players.addScore({
+            const p = await Server.REST.players.addScore({
                 params: { id: 1 },
                 body: new ScoreDelta(points)
             });
-            if (!res.ok) {
-                note(`addScore -> ${res.status} (create player #1 first)`);
-                return;
-            }
-            const p = (await res.json()) as Player;
             note(`#${p.id} ${p.name} -> ${p.score}`);
         } catch (err) {
             note(parseError(err));

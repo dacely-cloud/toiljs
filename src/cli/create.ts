@@ -126,8 +126,7 @@ function scaffold(
         type: 'module',
         scripts: {
             dev: 'toiljs dev',
-            build: 'toilscript --target release --rpcModule shared/server.ts && toiljs build',
-            'build:client': 'toiljs build',
+            build: 'toiljs build',
             'build:server': 'toilscript --target release --rpcModule shared/server.ts',
             lint: 'eslint client',
             typecheck: 'tsc --noEmit',
@@ -165,7 +164,8 @@ function scaffold(
         // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
         '.prettierignore':
             'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
-        '.gitignore': 'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
+        '.gitignore':
+            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
         // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled version.
         '.vscode/settings.json':
             JSON.stringify({ 'typescript.tsdk': 'node_modules/typescript/lib' }, null, 4) + '\n',
