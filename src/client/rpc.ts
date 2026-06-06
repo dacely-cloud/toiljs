@@ -3,10 +3,34 @@
  * the toilscript server build into the project's `shared/server.ts`
  * (`declare global { const Server }`); this module is the runtime behind it.
  *
- * The client<->server transport is not wired yet, so any call throws. The pipeline
- * (tags -> generated types -> proxy) is in place; only the network dispatch is a
- * TODO. Build the server (`npm run build:server`) to (re)generate the typed surface.
+ * Two surfaces live under `Server`:
+ *   - `Server.REST.<controller>.<route>(args)` is a WORKING fetch client. The
+ *     generated `shared/server.ts` attaches it to `globalThis.__toilRest` when
+ *     imported; the proxy below surfaces it under `Server.REST`.
+ *   - `Server.<service>.<method>()` (RPC) is not wired yet, so any call throws.
+ *     The pipeline (tags -> generated types -> proxy) is in place; only the
+ *     network dispatch is a TODO. Build the server (`npm run build:server`) to
+ *     (re)generate the typed surface.
  */
+
+/** A recursive proxy that throws on call, used when the REST client hasn't loaded. */
+function restMissingStub(path: string): unknown {
+    const call = (): never => {
+        throw new Error(
+            `toiljs REST: ${path}() is unavailable. The generated REST client has not loaded - ` +
+                `import a type from your 'shared/server' (so the client attaches), or run 'npm run build:server'.`,
+        );
+    };
+    return new Proxy(call, {
+        get(_target, prop) {
+            if (typeof prop === 'symbol' || prop === 'then') return undefined;
+            return restMissingStub(`${path}.${String(prop)}`);
+        },
+        apply() {
+            return call();
+        },
+    });
+}
 
 /** Builds a recursive proxy that throws on call, supporting `Server.svc.method()`. */
 function rpcStub(path: string): unknown {
@@ -20,6 +44,11 @@ function rpcStub(path: string): unknown {
         get(_target, prop) {
             // Not thenable, and ignore symbol probes (e.g. from awaiting/inspection).
             if (typeof prop === 'symbol' || prop === 'then') return undefined;
+            // `Server.REST` surfaces the generated fetch client attached by shared/server.ts.
+            if (path === 'Server' && prop === 'REST') {
+                const rest = (globalThis as { __toilRest?: unknown }).__toilRest;
+                return rest !== undefined ? rest : restMissingStub('Server.REST');
+            }
             return rpcStub(`${path}.${prop}`);
         },
         apply() {
