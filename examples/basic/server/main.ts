@@ -13,7 +13,6 @@ Server.handler = () => {
 // VERY IMPORTANT
 export * from 'toiljs/server/runtime/exports';
 
-
 // VERY IMPORTANT
 export function abort(message: string, fileName: string, line: u32, column: u32): void {
     revertOnError(message, fileName, line, column);

@@ -1,0 +1,7 @@
+# Generated files don't need formatting.
+node_modules
+build
+.toil
+shared/server.ts
+toil-env.d.ts
+toil-routes.d.ts
