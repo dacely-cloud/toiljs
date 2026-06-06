@@ -114,7 +114,7 @@ function scaffold(
         '@types/react-dom': '^19.2.3',
         eslint: '^10.2.0',
         prettier: '^3.8.1',
-        toilscript: '^0.1.9',
+        toilscript: '^0.1.10',
         typescript: '^6.0.3',
     };
     for (const dep of requiredPackages(features).sort()) {
@@ -161,6 +161,10 @@ function scaffold(
             '}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
+        // Generated files don't need formatting. (toilscript server decorators like @main /
+        // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
+        '.prettierignore':
+            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
         '.gitignore': 'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
         // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled version.
         '.vscode/settings.json':

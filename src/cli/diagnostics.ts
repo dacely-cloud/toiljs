@@ -402,8 +402,8 @@ export function checkWasmBuilt(exists: boolean): Check {
 
 // --- Typed RPC (@data / @remote / @service) -------------------------------------------------------
 
-/** The minimum toilscript with the RPC client module + the hardened (CWE-770-safe) decoders. */
-export const RPC_TOILSCRIPT_MIN = '0.1.9';
+/** Minimum toilscript: RPC codegen + hardened (CWE-770-safe) decoders + editor decorator decls. */
+export const RPC_TOILSCRIPT_MIN = '0.1.10';
 
 /** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
 export interface RpcFacts {
@@ -437,6 +437,23 @@ export function checkRpcWiring(f: RpcFacts): Check {
         detail: `missing: ${missing.join(', ')}`,
         fix: 'Run `toiljs doctor --fix` to wire @data/@remote RPC (build:server, tsconfig, .gitignore, toilscript).',
     };
+}
+
+/**
+ * Whether the project's prettier setup pulls in the toilscript plugin (`toiljs/prettier-plugin`,
+ * or the `toiljs/prettier` shareable that bundles it). Without it, prettier throws on the server's
+ * native function decorators (`@main`, `@remote function ...`).
+ */
+export function checkPrettierPlugin(present: boolean): Check {
+    return present
+        ? { id: 'prettier-plugin', label: 'prettier toilscript plugin', status: 'pass' }
+        : {
+              id: 'prettier-plugin',
+              label: 'prettier toilscript plugin',
+              status: 'warn',
+              detail: 'prettier will fail on @main / @remote-on-function in server code',
+              fix: 'Run `toiljs doctor --fix` to add toiljs/prettier-plugin to your prettier config.',
+          };
 }
 
 // --- Summary --------------------------------------------------------------------------------------

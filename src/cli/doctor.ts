@@ -23,6 +23,7 @@ import {
     checkNode,
     checkPackageManager,
     checkPeer,
+    checkPrettierPlugin,
     checkRelativeAssets,
     checkRootElement,
     checkRoutesPresent,
@@ -91,6 +92,29 @@ function readFile(file: string): string | null {
 
 function writeFile(file: string, content: string): void {
     fs.writeFileSync(file, content);
+}
+
+/**
+ * Whether `name` is installed for the project at `root`. Tries Node resolution first (handles
+ * hoisting), then falls back to walking `node_modules`, since a strict `exports` map can make
+ * `require.resolve('<pkg>')` throw even when the package is present (the toilscript false positive).
+ */
+function isPackageInstalled(root: string, name: string): boolean {
+    const require = createRequire(path.join(root, 'package.json'));
+    for (const id of [`${name}/package.json`, name]) {
+        try {
+            require.resolve(id);
+            return true;
+        } catch {
+            // try the next resolution strategy
+        }
+    }
+    for (let dir = root; ; ) {
+        if (fs.existsSync(path.join(dir, 'node_modules', name, 'package.json'))) return true;
+        const parent = path.dirname(dir);
+        if (parent === dir) return false;
+        dir = parent;
+    }
 }
 
 /** Narrows a value to a plain (non-array) object, or null. */
@@ -251,6 +275,89 @@ function applyRpcFix(root: string): RpcFixResult {
     return { changed, skipped };
 }
 
+const PRETTIER_PLUGIN = 'toiljs/prettier-plugin';
+const PRETTIER_MENTION = /toiljs\/prettier(-plugin)?/;
+const PRETTIER_CONFIG_FILES = [
+    '.prettierrc',
+    '.prettierrc.json',
+    '.prettierrc.json5',
+    '.prettierrc.yaml',
+    '.prettierrc.yml',
+    '.prettierrc.js',
+    '.prettierrc.cjs',
+    '.prettierrc.mjs',
+    '.prettierrc.ts',
+    'prettier.config.js',
+    'prettier.config.cjs',
+    'prettier.config.mjs',
+    'prettier.config.ts',
+];
+
+/** Whether any prettier config (file or package.json field) pulls in the toilscript plugin. */
+function prettierPluginPresent(root: string, pkg: Record<string, unknown> | null): boolean {
+    if (pkg && pkg.prettier !== undefined && PRETTIER_MENTION.test(JSON.stringify(pkg.prettier))) {
+        return true;
+    }
+    for (const name of PRETTIER_CONFIG_FILES) {
+        const raw = readFile(path.join(root, name));
+        if (raw !== null && PRETTIER_MENTION.test(raw)) return true;
+    }
+    return false;
+}
+
+/**
+ * Adds `toiljs/prettier-plugin` to the project's prettier config so prettier can format the
+ * toilscript server. Handles the common cases (package.json `prettier`, a JSON `.prettierrc`,
+ * or no config at all); warns for shapes it can't safely edit (a JS config, or a string preset).
+ */
+function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): RpcFixResult {
+    const changed: string[] = [];
+    const skipped: string[] = [];
+    if (prettierPluginPresent(root, pkg)) return { changed, skipped };
+
+    // package.json "prettier" object.
+    const pkgPath = path.join(root, 'package.json');
+    const pkgConfig = pkg ? asRecord(pkg.prettier) : null;
+    if (pkgConfig !== null) {
+        const full = readJsonObject(pkgPath);
+        const target = full ? asRecord(full.prettier) : null;
+        if (full && target) {
+            target.plugins = [...(Array.isArray(target.plugins) ? target.plugins : []), PRETTIER_PLUGIN];
+            writeFile(pkgPath, JSON.stringify(full, null, 4) + '\n');
+            changed.push('package.json');
+            return { changed, skipped };
+        }
+    }
+
+    // A JSON .prettierrc / .prettierrc.json object.
+    for (const name of ['.prettierrc', '.prettierrc.json']) {
+        const filePath = path.join(root, name);
+        const raw = readFile(filePath);
+        if (raw === null) continue;
+        const obj = readJsonObject(filePath);
+        if (obj === null) {
+            skipped.push(`${name} (add "${PRETTIER_PLUGIN}" to plugins by hand)`);
+            return { changed, skipped };
+        }
+        obj.plugins = [...(Array.isArray(obj.plugins) ? obj.plugins : []), PRETTIER_PLUGIN];
+        writeFile(filePath, JSON.stringify(obj, null, 4) + '\n');
+        changed.push(name);
+        return { changed, skipped };
+    }
+
+    // A JS/TS config we can't safely edit.
+    const jsConfig = PRETTIER_CONFIG_FILES.find((name) => readFile(path.join(root, name)) !== null);
+    if (jsConfig) {
+        skipped.push(`${jsConfig} (add "${PRETTIER_PLUGIN}" to its plugins by hand)`);
+        return { changed, skipped };
+    }
+
+    // No config at all: create one.
+    writeFile(path.join(root, '.prettierrc.json'), JSON.stringify({ plugins: [PRETTIER_PLUGIN] }, null, 4) + '\n');
+    changed.push('.prettierrc.json');
+    return { changed, skipped };
+}
+
 /** Reads the framework's own package.json (engines + peerDependencies) for the requirements. */
 function frameworkMeta(): { node: string; peers: Record<string, string> } {
     const pkgPath = path.resolve(
@@ -384,12 +491,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
             ? toilconfig.entries.filter((e): e is string => typeof e === 'string')
             : [];
         missingEntries = entries.filter((e) => !fs.existsSync(path.join(root, e)));
-        try {
-            createRequire(path.join(root, 'package.json')).resolve('toilscript');
-            toilscriptInstalled = true;
-        } catch {
-            toilscriptInstalled = false;
-        }
+        toilscriptInstalled = isPackageInstalled(root, 'toilscript');
         const targets =
             typeof toilconfig.targets === 'object' && toilconfig.targets !== null
                 ? (toilconfig.targets as Record<string, unknown>)
@@ -416,9 +518,18 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
     const peerChecks = Object.keys(meta.peers).map(peerName);
 
-    // Typed-RPC wiring: optionally fix it in place, then read the (possibly updated) state.
+    // Server tooling (RPC wiring + the prettier plugin): optionally fix in place, then re-read.
     const rpcFix = serverPresent && opts.fix ? applyRpcFix(root) : null;
+    const prettierFix = serverPresent && opts.fix ? applyPrettierFix(root, projectPkg) : null;
     const rpcFacts = gatherRpcFacts(root);
+    const prettierPresent = prettierPluginPresent(root, readJsonObject(path.join(root, 'package.json')));
+    const serverFix =
+        rpcFix || prettierFix
+            ? {
+                  changed: [...(rpcFix?.changed ?? []), ...(prettierFix?.changed ?? [])],
+                  skipped: [...(rpcFix?.skipped ?? []), ...(prettierFix?.skipped ?? [])],
+              }
+            : null;
 
     const groups: CheckGroup[] = [
         {
@@ -475,6 +586,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                       checkToilscriptInstalled(toilscriptInstalled),
                       checkWasmBuilt(wasmExists),
                       checkRpcWiring(rpcFacts),
+                      checkPrettierPlugin(prettierPresent),
                   ]
                 : [checkToilconfig(false)],
         },
@@ -482,11 +594,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
 
     const summary = summarize(groups);
     if (opts.json) {
-        process.stdout.write(JSON.stringify({ groups, summary, fixed: rpcFix }, null, 2) + '\n');
+        process.stdout.write(JSON.stringify({ groups, summary, fixed: serverFix }, null, 2) + '\n');
     } else {
         process.stdout.write('\n' + accent('  Doctor') + dim(`  ${root}`) + '\n\n');
         renderHuman(groups);
-        if (rpcFix) renderRpcFix(rpcFix);
+        if (serverFix) renderRpcFix(serverFix);
         else if (opts.fix && !serverPresent) {
             process.stdout.write('  ' + dim('--fix: no server (toilconfig.json) found, nothing to wire.') + '\n\n');
         }
