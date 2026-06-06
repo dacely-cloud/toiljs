@@ -49,6 +49,7 @@ export default function RestDemo() {
                 note(`get #1 -> ${res.status}`);
                 return;
             }
+
             const p = await res.json();
             note(`#${p.id} ${p.name} (cache-control: ${res.headers.get('cache-control')})`);
         } catch (err) {
