@@ -456,6 +456,31 @@ export function checkPrettierPlugin(present: boolean): Check {
           };
 }
 
+export interface RestFacts {
+    /** The server declares at least one `@rest` controller. */
+    readonly hasControllers: boolean;
+    /** Some server file dispatches them: a `Rest.dispatch(` call, or a `RestHandler`. */
+    readonly dispatched: boolean;
+}
+
+/**
+ * Guards the easy-to-miss wiring step for the HTTP layer: a `@rest` controller self-registers,
+ * but its routes are only served if a handler calls `Rest.dispatch(req)` (or the project uses
+ * `RestHandler`). Without that, the routes silently 404 - a confusing footgun, so we warn.
+ */
+export function checkRestDispatch(f: RestFacts): Check {
+    if (!f.hasControllers || f.dispatched) {
+        return { id: 'rest-dispatch', label: 'REST dispatch wiring', status: 'pass' };
+    }
+    return {
+        id: 'rest-dispatch',
+        label: 'REST dispatch wiring',
+        status: 'warn',
+        detail: '@rest controllers found, but nothing calls Rest.dispatch(req) - their routes will not be served',
+        fix: 'In your handler add `const hit = Rest.dispatch(req); if (hit != null) return hit;`, or set `Server.handler = () => new RestHandler()`.',
+    };
+}
+
 // --- Summary --------------------------------------------------------------------------------------
 
 export function summarize(groups: readonly CheckGroup[]): DoctorSummary {

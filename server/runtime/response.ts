@@ -51,6 +51,16 @@ export class Response {
         return r;
     }
 
+    /**
+     * A raw binary body, tagged `application/octet-stream`. Used by `@route`
+     * methods with `stream: DataStream.Binary` to ship a `@data` `encode()`.
+     */
+    static bytes(body: Uint8Array, status: u16 = 200): Response {
+        const r = new Response(status, body);
+        r.setHeader('content-type', 'application/octet-stream');
+        return r;
+    }
+
     static notFound(): Response {
         return Response.text('not found\n', 404);
     }
