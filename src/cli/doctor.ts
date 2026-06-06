@@ -25,6 +25,7 @@ import {
     checkPeer,
     checkPrettierPlugin,
     checkRelativeAssets,
+    checkRestDispatch,
     checkRootElement,
     checkRoutesPresent,
     checkRpcWiring,
@@ -38,6 +39,7 @@ import {
     checkWasmBuilt,
     findRelativeAssets,
     hasFailures,
+    type RestFacts,
     type RpcFacts,
     RPC_TOILSCRIPT_MIN,
     satisfiesMin,
@@ -166,9 +168,61 @@ function gatherRpcFacts(root: string): RpcFacts {
     const range = deps.toilscript;
     // A non-semver range (file:/github:/latest/*) can't be assessed; don't flag it.
     const toilscriptOk =
-        range == null ? false : looksLikeSemverRange(range) ? satisfiesMin(range, RPC_TOILSCRIPT_MIN) : true;
+        range == null
+            ? false
+            : looksLikeSemverRange(range)
+              ? satisfiesMin(range, RPC_TOILSCRIPT_MIN)
+              : true;
 
     return { buildServerWired, tsconfigWired, gitignoreWired, toilscriptOk };
+}
+
+/** The server `.ts` sources, read from the directories of the toilconfig entries (capped). */
+function serverSources(root: string, toilconfig: Record<string, unknown> | null): string[] {
+    const dirs = new Set<string>();
+    const entries = Array.isArray(toilconfig?.entries)
+        ? (toilconfig.entries as unknown[]).filter((e): e is string => typeof e === 'string')
+        : [];
+    for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
+
+    const out: string[] = [];
+    const cap = 200;
+    const maxDepth = 16; // bounds the walk so a symlink cycle in a hostile project can't hang doctor
+    const visit = (current: string, depth: number): void => {
+        if (out.length >= cap || depth > maxDepth) return;
+        let listing: fs.Dirent[];
+        try {
+            listing = fs.readdirSync(current, { withFileTypes: true });
+        } catch {
+            return;
+        }
+        for (const entry of listing) {
+            if (out.length >= cap) break;
+            const full = path.join(current, entry.name);
+            // isDirectory() follows symlinks; the depth cap keeps a symlink cycle bounded.
+            if (entry.isDirectory()) {
+                if (entry.name !== 'node_modules') visit(full, depth + 1);
+            } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
+                const src = readFile(full);
+                if (src !== null) out.push(src);
+            }
+        }
+    };
+    for (const dir of dirs) visit(dir, 0);
+    return out;
+}
+
+/** Scans the server sources for `@rest` controllers and whether anything dispatches them. */
+function gatherRestFacts(root: string, toilconfig: Record<string, unknown> | null): RestFacts {
+    let hasControllers = false;
+    let dispatched = false;
+    for (const src of serverSources(root, toilconfig)) {
+        if (/@rest\b/.test(src)) hasControllers = true;
+        if (/\bRest\s*\.\s*dispatch\s*\(/.test(src) || /\bRestHandler\b/.test(src))
+            dispatched = true;
+        if (hasControllers && dispatched) break;
+    }
+    return { hasControllers, dispatched };
 }
 
 interface RpcFixResult {
@@ -195,7 +249,11 @@ function applyRpcFix(root: string): RpcFixResult {
         const scripts = asRecord(pkg.scripts) ?? {};
         for (const key of ['build', 'build:server']) {
             const value = scripts[key];
-            if (typeof value === 'string' && value.includes('toilscript') && !value.includes('--rpcModule')) {
+            if (
+                typeof value === 'string' &&
+                value.includes('toilscript') &&
+                !value.includes('--rpcModule')
+            ) {
                 scripts[key] = `${value} ${RPC_MODULE_FLAG}`;
                 pkg.scripts = scripts;
                 touched = true;
@@ -322,7 +380,10 @@ function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): Rp
         const full = readJsonObject(pkgPath);
         const target = full ? asRecord(full.prettier) : null;
         if (full && target) {
-            target.plugins = [...(Array.isArray(target.plugins) ? target.plugins : []), PRETTIER_PLUGIN];
+            target.plugins = [
+                ...(Array.isArray(target.plugins) ? target.plugins : []),
+                PRETTIER_PLUGIN,
+            ];
             writeFile(pkgPath, JSON.stringify(full, null, 4) + '\n');
             changed.push('package.json');
             return { changed, skipped };
@@ -353,7 +414,10 @@ function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): Rp
     }
 
     // No config at all: create one.
-    writeFile(path.join(root, '.prettierrc.json'), JSON.stringify({ plugins: [PRETTIER_PLUGIN] }, null, 4) + '\n');
+    writeFile(
+        path.join(root, '.prettierrc.json'),
+        JSON.stringify({ plugins: [PRETTIER_PLUGIN] }, null, 4) + '\n',
+    );
     changed.push('.prettierrc.json');
     return { changed, skipped };
 }
@@ -522,7 +586,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const rpcFix = serverPresent && opts.fix ? applyRpcFix(root) : null;
     const prettierFix = serverPresent && opts.fix ? applyPrettierFix(root, projectPkg) : null;
     const rpcFacts = gatherRpcFacts(root);
-    const prettierPresent = prettierPluginPresent(root, readJsonObject(path.join(root, 'package.json')));
+    const restFacts = gatherRestFacts(root, toilconfig);
+    const prettierPresent = prettierPluginPresent(
+        root,
+        readJsonObject(path.join(root, 'package.json')),
+    );
     const serverFix =
         rpcFix || prettierFix
             ? {
@@ -586,6 +654,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                       checkToilscriptInstalled(toilscriptInstalled),
                       checkWasmBuilt(wasmExists),
                       checkRpcWiring(rpcFacts),
+                      checkRestDispatch(restFacts),
                       checkPrettierPlugin(prettierPresent),
                   ]
                 : [checkToilconfig(false)],
@@ -600,7 +669,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
         renderHuman(groups);
         if (serverFix) renderRpcFix(serverFix);
         else if (opts.fix && !serverPresent) {
-            process.stdout.write('  ' + dim('--fix: no server (toilconfig.json) found, nothing to wire.') + '\n\n');
+            process.stdout.write(
+                '  ' + dim('--fix: no server (toilconfig.json) found, nothing to wire.') + '\n\n',
+            );
         }
     }
     if (hasFailures(summary)) process.exitCode = 1;
@@ -612,7 +683,9 @@ function renderRpcFix(result: RpcFixResult): void {
     if (result.changed.length > 0) {
         out.push('  ' + success('fixed RPC wiring') + dim(`  ${result.changed.join(', ')}`));
         if (result.changed.includes('package.json')) {
-            out.push('  ' + dim('run your installer (npm/pnpm/yarn) if the toilscript version changed.'));
+            out.push(
+                '  ' + dim('run your installer (npm/pnpm/yarn) if the toilscript version changed.'),
+            );
         }
     } else {
         out.push('  ' + dim('RPC wiring already in place, nothing to fix.'));

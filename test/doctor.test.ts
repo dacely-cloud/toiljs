@@ -9,6 +9,7 @@ import {
     checkPeer,
     checkPrettierPlugin,
     checkRelativeAssets,
+    checkRestDispatch,
     checkRootElement,
     checkRpcWiring,
     checkSeoUrl,
@@ -126,7 +127,12 @@ describe('config + environment checks', () => {
 });
 
 describe('checkRpcWiring', () => {
-    const wired = { buildServerWired: true, tsconfigWired: true, gitignoreWired: true, toilscriptOk: true };
+    const wired = {
+        buildServerWired: true,
+        tsconfigWired: true,
+        gitignoreWired: true,
+        toilscriptOk: true,
+    };
 
     it('passes when fully wired', () => {
         expect(checkRpcWiring(wired).status).toBe('pass');
@@ -151,6 +157,23 @@ describe('checkRpcWiring', () => {
         const c = checkRpcWiring({ ...wired, gitignoreWired: false });
         expect(c.status).toBe('warn');
         expect(c.detail).toContain('.gitignore');
+    });
+});
+
+describe('checkRestDispatch', () => {
+    it('passes when there are no @rest controllers', () => {
+        expect(checkRestDispatch({ hasControllers: false, dispatched: false }).status).toBe('pass');
+    });
+
+    it('passes when controllers are dispatched', () => {
+        expect(checkRestDispatch({ hasControllers: true, dispatched: true }).status).toBe('pass');
+    });
+
+    it('warns when controllers exist but nothing dispatches them', () => {
+        const c = checkRestDispatch({ hasControllers: true, dispatched: false });
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('Rest.dispatch');
+        expect(c.fix).toContain('RestHandler');
     });
 });
 

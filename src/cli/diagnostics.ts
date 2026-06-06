@@ -402,8 +402,8 @@ export function checkWasmBuilt(exists: boolean): Check {
 
 // --- Typed RPC (@data / @remote / @service) -------------------------------------------------------
 
-/** Minimum toilscript: RPC codegen + hardened (CWE-770-safe) decoders + editor decorator decls. */
-export const RPC_TOILSCRIPT_MIN = '0.1.10';
+/** Minimum toilscript: the @rest/@route HTTP layer + RPC codegen + hardened decoders + editor decls. */
+export const RPC_TOILSCRIPT_MIN = '0.1.11';
 
 /** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
 export interface RpcFacts {
@@ -454,6 +454,31 @@ export function checkPrettierPlugin(present: boolean): Check {
               detail: 'prettier will fail on @main / @remote-on-function in server code',
               fix: 'Run `toiljs doctor --fix` to add toiljs/prettier-plugin to your prettier config.',
           };
+}
+
+export interface RestFacts {
+    /** The server declares at least one `@rest` controller. */
+    readonly hasControllers: boolean;
+    /** Some server file dispatches them: a `Rest.dispatch(` call, or a `RestHandler`. */
+    readonly dispatched: boolean;
+}
+
+/**
+ * Guards the easy-to-miss wiring step for the HTTP layer: a `@rest` controller self-registers,
+ * but its routes are only served if a handler calls `Rest.dispatch(req)` (or the project uses
+ * `RestHandler`). Without that, the routes silently 404 - a confusing footgun, so we warn.
+ */
+export function checkRestDispatch(f: RestFacts): Check {
+    if (!f.hasControllers || f.dispatched) {
+        return { id: 'rest-dispatch', label: 'REST dispatch wiring', status: 'pass' };
+    }
+    return {
+        id: 'rest-dispatch',
+        label: 'REST dispatch wiring',
+        status: 'warn',
+        detail: '@rest controllers found, but nothing calls Rest.dispatch(req) - their routes will not be served',
+        fix: 'In your handler add `const hit = Rest.dispatch(req); if (hit != null) return hit;`, or set `Server.handler = () => new RestHandler()`.',
+    };
 }
 
 // --- Summary --------------------------------------------------------------------------------------
