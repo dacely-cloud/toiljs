@@ -60,22 +60,24 @@ class Players {
         return p;
     }
 
-    /** `GET /players/:id` - fetch one player by its path param, or 404. */
+    /** `GET /players/:id` - fetch one player by its path param. Returns the typed `@data`
+     *  Player (the compiler encodes it for the route's stream); a missing id yields id 0. */
     @get('/:id')
-    public get(ctx: RouteContext): Response {
-        const id = U64.parseInt(ctx.param('id'));
-        if (!store.has(id)) return Response.notFound();
-        return Response.json(store.get(id).toJSON().toString());
+    public get(ctx: RouteContext): Player {
+        const id = u64.parse(ctx.param('id'));
+        return store.has(id) ? store.get(id) : new Player();
     }
 
-    /** `POST /players/:id/score` - add `points` (from the body) to the player named by `:id`. */
+    /** `POST /players/:id/score` - add `points` (from the body) to the player named by `:id`,
+     *  and return the updated player. */
     @post('/:id/score')
-    public addScore(input: ScoreDelta, ctx: RouteContext): Response {
-        const id = U64.parseInt(ctx.param('id'));
-        if (!store.has(id)) return Response.notFound();
+    public addScore(input: ScoreDelta, ctx: RouteContext): Player {
+        const id = u64.parse(ctx.param('id'));
+        if (!store.has(id)) return new Player();
         const p = store.get(id);
         p.score += input.points;
-        return Response.json(p.toJSON().toString());
+
+        return p;
     }
 }
 
