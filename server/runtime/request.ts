@@ -31,12 +31,7 @@ export class Request {
     headers: Array<Header>;
     body: Uint8Array;
 
-    constructor(
-        method: Method,
-        path: string,
-        headers: Array<Header>,
-        body: Uint8Array,
-    ) {
+    constructor(method: Method, path: string, headers: Array<Header>, body: Uint8Array) {
         this.method = method;
         this.path = path;
         this.headers = headers;
