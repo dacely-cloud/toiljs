@@ -22,11 +22,6 @@
  * the edge's `AbortImport::execute` only logs `line`/`column`.
  */
 
-export function revertOnError(
-    _message: string,
-    _fileName: string,
-    _line: u32,
-    _column: u32,
-): void {
+export function revertOnError(_message: string, _fileName: string, _line: u32, _column: u32): void {
     unreachable();
 }
