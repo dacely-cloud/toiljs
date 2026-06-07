@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.25] - 2026-06-07
+
+### Other Changes
+
+- fix(build)+feat(dev): visible server build + server-side hot reload ([#124](https://github.com/dacely-cloud/toiljs/pull/124)) by @BlobMaster41
+
+
+
+
 ## [v0.0.24] - 2026-06-07
 
 ### Other Changes
