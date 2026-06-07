@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.24] - 2026-06-07
+
+### Other Changes
+
+- feat(create): default install to Yes ([#123](https://github.com/dacely-cloud/toiljs/pull/123)) by @BlobMaster41
+
+
+
+
 ## [v0.0.23] - 2026-06-07
 
 ### Other Changes
