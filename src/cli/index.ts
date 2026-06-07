@@ -30,6 +30,7 @@ interface Flags {
     json?: boolean;
     fix?: boolean;
     target?: string;
+    server?: boolean;
 }
 
 function parseArgs(argv: string[]): Flags {
@@ -106,6 +107,9 @@ function parseArgs(argv: string[]): Flags {
             case '--target':
                 flags.target = argv[++i];
                 break;
+            case '--server':
+                flags.server = true;
+                break;
             default:
                 if (!arg.startsWith('-') && flags.name === undefined) flags.name = arg;
         }
@@ -137,6 +141,7 @@ function printHelp(): void {
             cmd('--no-ai', 'create: skip AI assistant files (CLAUDE.md, etc.)'),
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
+            cmd('--server', 'build: build only the server (regenerate shared/server.ts + wasm)'),
             cmd('--json', 'doctor: machine-readable output'),
             cmd('--fix', 'doctor: auto-fix what it can (typed-RPC wiring)'),
             cmd('--target <t>', 'update: latest | minor | patch | newest | greatest'),
@@ -194,9 +199,17 @@ async function main(): Promise<void> {
 
         case 'build':
             banner();
-            process.stdout.write(dim('  building for production…') + '\n\n');
-            await build({ root: flags.root });
-            process.stdout.write('\n' + success('  ✓ ') + bold('build complete') + '\n\n');
+            process.stdout.write(
+                dim(flags.server ? '  building the server…' : '  building for production…') +
+                    '\n\n',
+            );
+            await build({ root: flags.root, serverOnly: flags.server });
+            process.stdout.write(
+                '\n' +
+                    success('  ✓ ') +
+                    bold(flags.server ? 'server build complete' : 'build complete') +
+                    '\n\n',
+            );
             break;
 
         case 'start': {
@@ -215,7 +228,12 @@ async function main(): Promise<void> {
         case 'doctor':
             // Skip the banner for --json so stdout stays valid JSON.
             if (!flags.json) banner();
-            await runDoctor({ root: flags.root, cwd: process.cwd(), json: flags.json, fix: flags.fix });
+            await runDoctor({
+                root: flags.root,
+                cwd: process.cwd(),
+                json: flags.json,
+                fix: flags.fix,
+            });
             break;
 
         case 'update':
