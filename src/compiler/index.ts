@@ -12,18 +12,18 @@ import { prerenderStaticParams } from './ssg.js';
 import { createViteConfig } from './vite.js';
 
 /**
- * Every server `.ts` source file (under the directories of the toilconfig `entries`, or `server/`
- * by default). Passed to toilscript as explicit entries so a dropped-in `@data`/`@rest` file is
- * compiled - and its surface picked up into `shared/server.ts` - even if the toilconfig lists only
- * `main.ts`. Paths are returned relative to `root`.
- */
-/**
  * A `@data`/`@rest`/`@service`/`@remote` declaration - a file with one defines client surface.
  * Anchored to line-start (after indentation) so a mention in a comment (e.g. `// the @rest ...`)
  * does not count.
  */
 const SURFACE_DECORATOR = /^[ \t]*@(data|rest|service|remote)\b/m;
 
+/**
+ * Every server `.ts` source file (under the directories of the toilconfig `entries`, or `server/`
+ * by default). Passed to toilscript as explicit entries so a dropped-in `@data`/`@rest` file is
+ * compiled - and its surface picked up into `shared/server.ts` - even if the toilconfig lists only
+ * `main.ts`. Paths are returned relative to `root`.
+ */
 function serverEntryFiles(root: string): string[] {
     let entries: string[] = [];
     try {
@@ -147,8 +147,15 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
  *  builds just the server (regenerates `shared/server.ts` + the wasm) and skips the client. */
 export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     const cfg = await loadConfig(opts);
+    // The server is always built first so the client's generated `shared/server.ts` is current.
+    // toilscript is quiet on success, so announce the step explicitly (otherwise it looks skipped).
+    // For `serverOnly` the CLI narrates the step, so stay quiet here to avoid doubling up.
+    const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
+    if (hasServer && !opts.serverOnly)
+        process.stdout.write('  building the server (toilscript)…\n');
     await buildServer(cfg.root);
     if (opts.serverOnly) return;
+    if (hasServer) process.stdout.write('  ✓ server built; building the client (vite)…\n');
     generate(cfg);
     await viteBuild(await createViteConfig(cfg));
     // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
