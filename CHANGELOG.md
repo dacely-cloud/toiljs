@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.23] - 2026-06-07
+
+### Other Changes
+
+- fix(create): scaffold a real server + compile all server files (fixes missing shared/) ([#122](https://github.com/dacely-cloud/toiljs/pull/122)) by @BlobMaster41
+
+
+
+
 ## [v0.0.22] - 2026-06-06
 
 ### Other Changes
