@@ -543,7 +543,7 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     }
 
     let initGit = opts.git ?? false;
-    let install = opts.install ?? false;
+    let install = opts.install ?? true;
     const pm = opts.pm ?? 'npm';
     if (!isPackageManager(pm)) {
         cancel(`Unsupported package manager: ${pm} (use npm, pnpm, yarn, or bun).`);
@@ -559,7 +559,7 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
             initGit = g;
         }
         if (opts.install === undefined) {
-            const i = await confirm({ message: 'Install dependencies now?', initialValue: false });
+            const i = await confirm({ message: 'Install dependencies now?', initialValue: true });
             bail(i);
             install = i;
         }
