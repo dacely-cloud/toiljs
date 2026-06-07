@@ -8,8 +8,12 @@
 ./.idea
 .DS_Store
 
-# Examples: ship only basic/client (the `toiljs create` starter), not the rest or build artifacts.
+# Examples: ship basic/client + basic/server (the `toiljs create` starters), not build artifacts.
 examples/*
 !examples/basic
 examples/basic/*
 !examples/basic/client
+!examples/basic/server
+# ...but never the example's generated/build output.
+examples/basic/server/shared
+examples/basic/build
