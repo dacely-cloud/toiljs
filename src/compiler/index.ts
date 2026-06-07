@@ -18,6 +18,30 @@ import { createViteConfig } from './vite.js';
  */
 const SURFACE_DECORATOR = /^[ \t]*@(data|rest|service|remote)\b/m;
 
+/** The toilconfig `entries` (relative paths), or `null` when there is no readable toilconfig. */
+function toilconfigEntries(root: string): string[] | null {
+    try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
+            entries?: unknown;
+        };
+        return Array.isArray(cfg.entries)
+            ? cfg.entries.filter((e): e is string => typeof e === 'string')
+            : [];
+    } catch {
+        return null;
+    }
+}
+
+/** The directories that hold server source (the toilconfig entries' dirs, or `server/`). */
+function serverDirs(root: string): string[] {
+    const entries = toilconfigEntries(root);
+    if (entries === null) return [];
+    const dirs = new Set<string>();
+    for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
+    if (dirs.size === 0) dirs.add(path.join(root, 'server'));
+    return [...dirs];
+}
+
 /**
  * Every server `.ts` source file (under the directories of the toilconfig `entries`, or `server/`
  * by default). Passed to toilscript as explicit entries so a dropped-in `@data`/`@rest` file is
@@ -25,17 +49,8 @@ const SURFACE_DECORATOR = /^[ \t]*@(data|rest|service|remote)\b/m;
  * `main.ts`. Paths are returned relative to `root`.
  */
 function serverEntryFiles(root: string): string[] {
-    let entries: string[] = [];
-    try {
-        const cfg = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
-            entries?: unknown;
-        };
-        if (Array.isArray(cfg.entries)) {
-            entries = cfg.entries.filter((e): e is string => typeof e === 'string');
-        }
-    } catch {
-        return [];
-    }
+    const entries = toilconfigEntries(root);
+    if (entries === null) return [];
 
     // Start from the toilconfig entries (normalized), then add any server file that declares a
     // surface, so a dropped-in @data/@rest file is compiled even when it is not listed. Non-surface
@@ -43,9 +58,7 @@ function serverEntryFiles(root: string): string[] {
     // toilscript's "class is not a WebAssembly export" warning for handler classes.
     const result = new Set<string>(entries.map((e) => path.relative(root, path.resolve(root, e))));
 
-    const dirs = new Set<string>();
-    for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
-    if (dirs.size === 0) dirs.add(path.join(root, 'server'));
+    const dirs = serverDirs(root);
 
     let scanned = 0;
     const cap = 500;
@@ -123,6 +136,55 @@ async function buildServer(root: string): Promise<void> {
     });
 }
 
+/**
+ * Watches the server source dirs and rebuilds the server (toilscript) on change, so editing a
+ * `@data`/`@rest` file under `toiljs dev` regenerates `shared/server.ts` - which Vite then HMRs
+ * into the client - the server-side equivalent of Vite's client HMR. Client-only edits never touch
+ * these dirs, so they only trigger Vite, never a server rebuild. Rebuilds are debounced and never
+ * overlap. A no-op for client-only projects.
+ */
+function watchServer(root: string): void {
+    const dirs = serverDirs(root);
+    if (dirs.length === 0) return;
+
+    let building = false;
+    let queued = false;
+    const rebuild = (): void => {
+        if (building) {
+            queued = true;
+            return;
+        }
+        building = true;
+        process.stdout.write('  server change detected, rebuilding…\n');
+        buildServer(root)
+            .then(() => process.stdout.write('  ✓ server rebuilt\n'))
+            .catch((e: unknown) => process.stdout.write(`  server rebuild failed: ${String(e)}\n`))
+            .finally(() => {
+                building = false;
+                if (queued) {
+                    queued = false;
+                    rebuild();
+                }
+            });
+    };
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onChange = (file: string | null): void => {
+        if (!file || !file.endsWith('.ts') || file.endsWith('.d.ts')) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(rebuild, 150); // debounce bursts (save-all, formatters)
+    };
+    for (const dir of dirs) {
+        try {
+            fs.watch(dir, { recursive: true }, (_event, file) =>
+                onChange(typeof file === 'string' ? file : null),
+            );
+        } catch {
+            // Recursive watch unsupported here: hot server rebuild is unavailable, dev still runs.
+        }
+    }
+}
+
 export interface ToilCommandOptions {
     readonly root?: string;
     readonly port?: number;
@@ -135,11 +197,17 @@ export interface ToilCommandOptions {
 /** Starts the Vite dev server (HMR + transforms) for the client app. Returns the running server. */
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
+    // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
+    const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
+    if (hasServer) process.stdout.write('  building the server (toilscript)…\n');
     await buildServer(cfg.root);
+    if (hasServer) process.stdout.write('  ✓ server built\n');
     generate(cfg);
     const server = await createServer(await createViteConfig(cfg));
     await server.listen();
     server.printUrls();
+    // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts.
+    if (hasServer) watchServer(cfg.root);
     return server;
 }
 
