@@ -51,7 +51,13 @@ interface HandleExports {
 }
 
 /** Host functions the dev server provides under `env` (see `host.ts`). */
-const PROVIDED_IMPORTS = new Set(['abort', 'set_status', 'set_header', 'respond_file', 'thread_spawn']);
+const PROVIDED_IMPORTS = new Set([
+    'abort', 'set_status', 'set_header', 'respond_file', 'thread_spawn',
+    // Web Crypto host functions (see ./crypto.ts).
+    'crypto.fill_random', 'crypto.random_uuid', 'crypto.take_result', 'crypto.digest',
+    'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
+    'crypto.sign', 'crypto.verify', 'crypto.derive_bits',
+]);
 
 export class WasmServerModule {
     private module: WebAssembly.Module | null = null;
