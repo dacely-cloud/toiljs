@@ -130,7 +130,7 @@ function scaffold(
             'build:server': 'toiljs build --server',
             lint: 'eslint client',
             typecheck: 'tsc --noEmit',
-            format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "client/public/**/*.html"',
+            format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "client/public/**/*.html" "server/**/*.ts"',
         },
         dependencies: {
             toiljs: `^${toilVersion}`,
