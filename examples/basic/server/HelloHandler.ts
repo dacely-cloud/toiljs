@@ -22,6 +22,9 @@ export class HelloHandler extends ToilHandler {
         if (req.path == '/echo') {
             return Response.text('you GET ' + req.path + '\n');
         }
-        return Response.notFound();
+        // Unhandled (not a plain notFound): tells the host this server has no
+        // answer for the path, so it may serve it itself. Under `toiljs dev`
+        // that falls through to Vite (client routes, assets).
+        return Response.unhandled();
     }
 }

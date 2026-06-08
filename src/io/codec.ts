@@ -22,7 +22,9 @@ const utf8Decoder = new TextDecoder();
  * {@link toBytes} for an exact-length copy of what was written.
  */
 export class DataWriter {
-    private buf: Uint8Array;
+    // `ArrayBuffer`-backed (not the `ArrayBufferLike` default) so `toBytes()` yields a
+    // `Uint8Array<ArrayBuffer>`, which `fetch`/`Blob`/`Response` accept as a `BodyInit`.
+    private buf: Uint8Array<ArrayBuffer>;
     private view: DataView;
     private off = 0;
 
@@ -120,7 +122,7 @@ export class DataWriter {
     length(): number { return this.off; }
 
     /** A fresh copy of exactly the bytes written. */
-    toBytes(): Uint8Array { return this.buf.slice(0, this.off); }
+    toBytes(): Uint8Array<ArrayBuffer> { return this.buf.slice(0, this.off); }
 }
 
 /**
