@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.0.29] - 2026-06-08
+
+### Other Changes
+
+- fix(dev): buffer Vite proxy responses + yield page routes to the client ([#129](https://github.com/dacely-cloud/toiljs/pull/129)) by @BlobMaster41
+- chore: bump toolchain to toilscript ^0.1.18 ([#130](https://github.com/dacely-cloud/toiljs/pull/130)) by @BlobMaster41
+- chore: release v0.0.29 ([#131](https://github.com/dacely-cloud/toiljs/pull/131)) by @BlobMaster41
+
+
+
+
 ## [v0.0.28] - 2026-06-08
 
 ### Other Changes
