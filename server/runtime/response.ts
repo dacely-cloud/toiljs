@@ -6,6 +6,16 @@
 
 import { Header } from './request';
 
+/**
+ * Marker header on the runtime's fallback 404 (no route matched, no handler
+ * wired). The host can use it to fall through to another layer, the dev
+ * server hands such requests to Vite (client routes, assets), and strips the
+ * marker before anything reaches the browser. A deliberate
+ * `Response.notFound()` does not carry it. Mirrored as `UNHANDLED_HEADER` in
+ * `src/devserver/module.ts`.
+ */
+export const TOIL_UNHANDLED_HEADER: string = 'x-toil-unhandled';
+
 export class Response {
     status: u16;
     headers: Array<Header>;
@@ -61,6 +71,19 @@ export class Response {
 
     public static notFound(): Response {
         return Response.text('not found\n', 404);
+    }
+
+    /**
+     * The "this server has no answer for that path" 404: a `notFound()`
+     * carrying {@link TOIL_UNHANDLED_HEADER} so the host may serve the path
+     * itself (static files, the client app). Returned by the framework when
+     * dispatch misses; handlers that mean "looked it up, does not exist"
+     * should return `notFound()` instead.
+     */
+    public static unhandled(): Response {
+        const r = Response.notFound();
+        r.setHeader(TOIL_UNHANDLED_HEADER, '1');
+        return r;
     }
 
     public static badRequest(msg: string = 'bad request'): Response {
