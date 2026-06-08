@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
+import pc from 'picocolors';
 import { build as viteBuild, createServer, type ViteDevServer } from 'vite';
 import { startBackend, type RunningBackend } from 'toiljs/backend';
 
@@ -155,10 +156,12 @@ function watchServer(root: string): void {
             return;
         }
         building = true;
-        process.stdout.write('  server change detected, rebuilding…\n');
+        process.stdout.write(pc.dim('  server changed, rebuilding…') + '\n');
         buildServer(root)
-            .then(() => process.stdout.write('  ✓ server rebuilt\n'))
-            .catch((e: unknown) => process.stdout.write(`  server rebuild failed: ${String(e)}\n`))
+            .then(() => process.stdout.write(pc.green('  ✓ ') + pc.dim('server rebuilt') + '\n'))
+            .catch((e: unknown) =>
+                process.stdout.write(pc.red(`  ✗ server rebuild failed: ${String(e)}`) + '\n'),
+            )
             .finally(() => {
                 building = false;
                 if (queued) {
@@ -199,9 +202,9 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     const cfg = await loadConfig(opts);
     // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
     const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
-    if (hasServer) process.stdout.write('  building the server (toilscript)…\n');
+    if (hasServer) process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
     await buildServer(cfg.root);
-    if (hasServer) process.stdout.write('  ✓ server built\n');
+    if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
     generate(cfg);
     const server = await createServer(await createViteConfig(cfg));
     await server.listen();
@@ -220,10 +223,13 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     // For `serverOnly` the CLI narrates the step, so stay quiet here to avoid doubling up.
     const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
     if (hasServer && !opts.serverOnly)
-        process.stdout.write('  building the server (toilscript)…\n');
+        process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
     await buildServer(cfg.root);
     if (opts.serverOnly) return;
-    if (hasServer) process.stdout.write('  ✓ server built; building the client (vite)…\n');
+    if (hasServer)
+        process.stdout.write(
+            pc.green('  ✓ ') + pc.dim('server built; building the client (vite)…') + '\n',
+        );
     generate(cfg);
     await viteBuild(await createViteConfig(cfg));
     // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
