@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
+import net from 'node:net';
 import path from 'node:path';
 
 import pc from 'picocolors';
-import { build as viteBuild, createServer, type ViteDevServer } from 'vite';
+import { build as viteBuild, createServer, mergeConfig, type ViteDevServer } from 'vite';
 import { startBackend, type RunningBackend } from 'toiljs/backend';
+import { startDevServer } from 'toiljs/devserver';
 
 import { loadConfig } from './config.js';
 import { generate } from './generate.js';
@@ -140,11 +142,14 @@ async function buildServer(root: string): Promise<void> {
 /**
  * Watches the server source dirs and rebuilds the server (toilscript) on change, so editing a
  * `@data`/`@rest` file under `toiljs dev` regenerates `shared/server.ts` - which Vite then HMRs
- * into the client - the server-side equivalent of Vite's client HMR. Client-only edits never touch
- * these dirs, so they only trigger Vite, never a server rebuild. Rebuilds are debounced and never
- * overlap. A no-op for client-only projects.
+ * into the client - and the dev server hot-swaps the recompiled wasm: the server-side equivalent
+ * of Vite's client HMR. Client-only edits never touch these dirs, so they only trigger Vite,
+ * never a server rebuild. Rebuilds are debounced and never overlap. Rides Vite's chokidar
+ * watcher instead of a separate `fs.watch`: the native recursive watcher silently stops
+ * delivering events on Linux after editors replace files via rename, which left hot reload
+ * working exactly once. A no-op for client-only projects.
  */
-function watchServer(root: string): void {
+function watchServer(root: string, watcher: ViteDevServer['watcher']): void {
     const dirs = serverDirs(root);
     if (dirs.length === 0) return;
 
@@ -172,20 +177,47 @@ function watchServer(root: string): void {
     };
 
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const onChange = (file: string | null): void => {
-        if (!file || !file.endsWith('.ts') || file.endsWith('.d.ts')) return;
+    const isServerSource = (file: string): boolean =>
+        file.endsWith('.ts') &&
+        !file.endsWith('.d.ts') &&
+        dirs.some((dir) => file === dir || file.startsWith(dir + path.sep));
+    watcher.add(dirs);
+    watcher.on('all', (_event, file) => {
+        if (!isServerSource(file)) return;
         if (timer) clearTimeout(timer);
         timer = setTimeout(rebuild, 150); // debounce bursts (save-all, formatters)
-    };
-    for (const dir of dirs) {
-        try {
-            fs.watch(dir, { recursive: true }, (_event, file) =>
-                onChange(typeof file === 'string' ? file : null),
-            );
-        } catch {
-            // Recursive watch unsupported here: hot server rebuild is unavailable, dev still runs.
-        }
+    });
+}
+
+/** The server wasm artifact path from the toilconfig `release` target (toilscript's output). */
+function serverWasmFile(root: string): string {
+    let outFile = 'build/server/release.wasm';
+    try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
+            targets?: Record<string, { outFile?: string }>;
+        };
+        outFile = cfg.targets?.release?.outFile ?? outFile;
+    } catch {
+        // No readable toilconfig: caller already gated on its existence; keep the default.
     }
+    return path.resolve(root, outFile);
+}
+
+/** An OS-assigned free loopback port (for the internal Vite server behind the dev front). */
+async function freeLoopbackPort(): Promise<number> {
+    return new Promise((resolve, reject) => {
+        const probe = net.createServer();
+        probe.once('error', reject);
+        probe.listen(0, '127.0.0.1', () => {
+            const address = probe.address();
+            if (address === null || typeof address === 'string') {
+                probe.close();
+                reject(new Error('could not allocate a loopback port'));
+                return;
+            }
+            probe.close(() => resolve(address.port));
+        });
+    });
 }
 
 export interface ToilCommandOptions {
@@ -197,7 +229,16 @@ export interface ToilCommandOptions {
     readonly serverOnly?: boolean;
 }
 
-/** Starts the Vite dev server (HMR + transforms) for the client app. Returns the running server. */
+/**
+ * Starts the dev server. Client-only projects get the plain Vite dev server on
+ * the configured port, unchanged. Projects with a server target
+ * (toilconfig.json) get the WASM dev server in front: a uWebSockets.js server
+ * on the configured port that dispatches requests into the ToilScript server
+ * wasm (same envelope ABI as the production edge) and transparently proxies
+ * everything the server does not claim, HMR websocket included, to a Vite dev
+ * server on an internal loopback port. Vite keeps 100% of its dev behavior;
+ * it just stops being the public listener. Returns the running Vite server.
+ */
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
     // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
@@ -206,11 +247,45 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     await buildServer(cfg.root);
     if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
     generate(cfg);
-    const server = await createServer(await createViteConfig(cfg));
+
+    if (!hasServer) {
+        const server = await createServer(await createViteConfig(cfg));
+        await server.listen();
+        server.printUrls();
+        return server;
+    }
+
+    // Vite moves to an internal loopback port; the WASM dev server takes the public one.
+    const vitePort = await freeLoopbackPort();
+    const viteConfig = mergeConfig(await createViteConfig(cfg), {
+        server: { port: vitePort, host: '127.0.0.1', strictPort: true },
+    });
+    const server = await createServer(viteConfig);
     await server.listen();
-    server.printUrls();
-    // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts.
-    if (hasServer) watchServer(cfg.root);
+
+    const front = await startDevServer({
+        root: cfg.root,
+        port: cfg.port,
+        wasmFile: serverWasmFile(cfg.root),
+        vite: { host: '127.0.0.1', port: vitePort },
+    });
+    server.httpServer?.once('close', () => {
+        void front.close();
+    });
+    process.stdout.write(
+        '\n  ' +
+            pc.green('➜') +
+            '  ' +
+            pc.bold('Local') +
+            ':   ' +
+            pc.cyan(`http://localhost:${pc.bold(String(front.port))}/`) +
+            pc.dim('  (wasm server + vite)') +
+            '\n',
+    );
+
+    // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts
+    // and the dev server hot-swaps the recompiled wasm module.
+    watchServer(cfg.root, server.watcher);
     return server;
 }
 
