@@ -15,7 +15,7 @@
  */
 
 export { Header, Method, Request } from './request';
-export { Response } from './response';
+export { Response, TOIL_UNHANDLED_HEADER } from './response';
 export { ToilHandler } from './handlers/ToilHandler';
 export { Server, ServerEnvironment } from './env/Server';
 

@@ -12,11 +12,12 @@ import { Response } from '../response';
 export class ToilHandler {
     /**
      * Override to declare your routes. The default implementation
-     * returns a generic 404 so a handler that hasn't been wired up
-     * still produces a valid envelope.
+     * returns an unhandled-marked 404 so a handler that hasn't been
+     * wired up still produces a valid envelope, and the host knows it
+     * may serve the path itself.
      */
     public handle(_req: Request): Response {
-        return Response.notFound();
+        return Response.unhandled();
     }
 
     /**
