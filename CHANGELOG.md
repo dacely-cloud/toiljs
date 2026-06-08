@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.28] - 2026-06-08
+
+### Other Changes
+
+- feat(dev): Web Crypto host functions in the dev server ([#127](https://github.com/dacely-cloud/toiljs/pull/127)) by @BlobMaster41
+- harden(dev): bounds-safe params reader + short-GCM guard in the crypto mock ([#128](https://github.com/dacely-cloud/toiljs/pull/128)) by @BlobMaster41
+
+
+
+
 
 ## [v0.0.26] - 2026-06-08
 
