@@ -1,4 +1,4 @@
-import { ToilHandler, Request, Response, Method, Rest } from 'toiljs/server/runtime';
+import { Method, Request, Response, Rest, ToilHandler } from 'toiljs/server/runtime';
 
 export class HelloHandler extends ToilHandler {
     public handle(req: Request): Response {
@@ -13,15 +13,15 @@ export class HelloHandler extends ToilHandler {
         if (req.method != Method.GET && req.method != Method.HEAD) {
             return Response.empty(405).setHeader('allow', 'GET, HEAD');
         }
-        if (req.path == '/') {
-            return Response.text('hello from toiljs\n');
-        }
+
         if (req.path == '/json') {
             return Response.json('{"hello":"toiljs"}\n');
         }
+
         if (req.path == '/echo') {
             return Response.text('you GET ' + req.path + '\n');
         }
+
         // Unhandled (not a plain notFound): tells the host this server has no
         // answer for the path, so it may serve it itself. Under `toiljs dev`
         // that falls through to Vite (client routes, assets).
