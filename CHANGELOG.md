@@ -1,16 +1,5 @@
 # Changelog
 
-## [Unreleased]
-
-### Added
-
-- Dev server now provides the Web Crypto host functions (`env.crypto.*`) so
-  crypto-using guests run under `npm run dev`. `src/devserver/crypto.ts` mocks
-  the edge's `digest`/`encrypt`/`decrypt`/`sign`/`verify`/`importKey`/
-  `exportKey`/`deriveBits` + `getRandomValues`/`randomUUID` + the variable-length
-  `take_result` ABI, backed by Node's `crypto` (no metering in dev). Raw-format
-  import of asymmetric keys (EC/Ed25519/X25519) is dev-unsupported (Node needs
-  DER); use pkcs8/spki in dev — the production edge supports raw too.
 
 ## [v0.0.26] - 2026-06-08
 
