@@ -81,21 +81,31 @@ function writeBytes(ref: MemoryRef, ptr: number, bytes: Buffer | Uint8Array): vo
 class ParamReader {
     private pos = 0;
     constructor(private readonly buf: Buffer) {}
+    /** Bounds-check before a read so a malformed buffer throws a controlled
+     *  error (trap-equivalent, caught by the dispatcher) rather than a raw
+     *  Node RangeError. */
+    private need(n: number): void {
+        if (n < 0 || this.pos + n > this.buf.length)
+            throw new Error('crypto: malformed params buffer (truncated)');
+    }
     readI32(): number {
+        this.need(4);
         const v = this.buf.readInt32LE(this.pos);
         this.pos += 4;
         return v;
     }
     readU32(): number {
+        this.need(4);
         const v = this.buf.readUInt32LE(this.pos);
         this.pos += 4;
         return v;
     }
     readBlob(): Buffer {
         const n = this.readU32();
-        const s = this.buf.subarray(this.pos, this.pos + n);
+        this.need(n);
+        const s = Buffer.from(this.buf.subarray(this.pos, this.pos + n));
         this.pos += n;
-        return Buffer.from(s);
+        return s;
     }
 }
 
@@ -275,6 +285,9 @@ function aesOp(
                 const ct = Buffer.concat([c.update(data), c.final()]);
                 return stash(cs, Buffer.concat([ct, c.getAuthTag()]));
             }
+            // Ciphertext must be at least the 16-byte tag; shorter input can
+            // never authenticate.
+            if (data.length < 16) return ERR_OPERATION_FAILED;
             const d = nodeCrypto.createDecipheriv(
                 aesAlgName(e.raw.length, 'gcm'), e.raw, iv,
             ) as nodeCrypto.DecipherGCM;
