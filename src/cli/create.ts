@@ -265,7 +265,12 @@ function minimalServer(): Record<string, string> {
             '        if (req.method != Method.GET && req.method != Method.HEAD) {\n' +
             "            return Response.empty(405).setHeader('allow', 'GET, HEAD');\n" +
             '        }\n' +
-            "        return Response.text('hello from toiljs\\n');\n" +
+            "        if (req.path == '/api/hello') {\n" +
+            "            return Response.text('hello from toiljs\\n');\n" +
+            '        }\n' +
+            '        // Yield page routes and assets to the client: under `toiljs dev`\n' +
+            '        // this falls through to Vite so the app renders at /.\n' +
+            '        return Response.unhandled();\n' +
             '    }\n' +
             '}\n',
         'server/main.ts':

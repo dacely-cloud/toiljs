@@ -6,8 +6,6 @@
  * websocket through Node's built-in `WebSocket` client, both loopback-only.
  */
 
-import { Readable } from 'node:stream';
-
 import {
     type Request,
     type Response,
@@ -77,11 +75,18 @@ export async function proxyToVite(
         if (!SKIP_RESPONSE_HEADERS.has(name)) response.header(name, value);
     });
 
-    if (upstream.body === null) {
+    // Buffer the full upstream body and send it with a content-length, instead
+    // of streaming it. uWS/hyper-express chunked-streaming of a `fetch` body
+    // emitted an INVALID chunked encoding in the browser
+    // (net::ERR_INVALID_CHUNKED_ENCODING), so client modules failed to load. Dev
+    // responses are finite (HMR rides the separate websocket), so buffering is
+    // safe and sidesteps the chunked framing entirely.
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    if (buf.length === 0) {
         response.send();
         return;
     }
-    await response.stream(Readable.fromWeb(upstream.body));
+    response.send(buf);
 }
 
 /**
