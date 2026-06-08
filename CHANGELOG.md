@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.26] - 2026-06-08
+
+### Other Changes
+
+- fix(dev): color server build/rebuild logs + format server files ([#125](https://github.com/dacely-cloud/toiljs/pull/125)) by @BlobMaster41
+
+
+
+
 ## [v0.0.25] - 2026-06-07
 
 ### Other Changes
