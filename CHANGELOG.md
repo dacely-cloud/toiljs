@@ -1,13 +1,5 @@
 # Changelog
 
-## [v0.0.27] - 2026-06-08
-
-### Other Changes
-
-- feat(dev): WASM dev server fronting Vite (uWebSockets.js + WebAssembly) ([#126](https://github.com/dacely-cloud/toiljs/pull/126)) by @BlobMaster41
-
-
-
 
 ## [v0.0.26] - 2026-06-08
 

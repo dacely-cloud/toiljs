@@ -17,6 +17,8 @@
  * `WebAssembly.Instance`, so offering the full surface costs nothing.
  */
 
+import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
+
 /** Limits identical to the edge's `set_header` / `respond_file` bounds. */
 const MAX_TOTAL_HEADERS_BYTES = 64 * 1024;
 const MAX_HEADER_NAME_LEN = 256;
@@ -47,11 +49,13 @@ export interface DispatchState {
     headerBytes: number;
     /** File path from `respond_file`, or `null`; when set, the envelope body is ignored. */
     sendfile: string | null;
+    /** Per-dispatch Web Crypto keystore + result scratch (mirrors the edge). */
+    crypto: CryptoState;
 }
 
 /** A fresh, zeroed per-dispatch state (the edge resets the same way before each request). */
 export function freshDispatchState(): DispatchState {
-    return { status: null, headers: [], headerBytes: 0, sendfile: null };
+    return { status: null, headers: [], headerBytes: 0, sendfile: null, crypto: freshCryptoState() };
 }
 
 /**
@@ -132,6 +136,10 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
             },
 
             thread_spawn: (_startArg: number): number => -1,
+
+            // Web Crypto host functions (`env.crypto.*`), backed by Node's
+            // `crypto`. The dev server skips metering, so these charge nothing.
+            ...buildCryptoImports(ref, state.crypto),
         },
     };
 }
