@@ -22,6 +22,18 @@ export class HelloHandler extends ToilHandler {
             return Response.text('you GET ' + req.path + '\n');
         }
 
+        // Web Crypto demo. `crypto` is a global (no import), synchronous: the
+        // same SubtleCrypto-style API the browser has, running in the server
+        // wasm via metered host functions.
+        if (req.path == '/api/hash') {
+            const digest = crypto.sha256Text(req.path);
+            return Response.json('{"sha256":"' + crypto.toHex(digest) + '"}\n');
+        }
+
+        if (req.path == '/api/uuid') {
+            return Response.text(crypto.randomUUID() + '\n');
+        }
+
         // Unhandled (not a plain notFound): tells the host this server has no
         // answer for the path, so it may serve it itself. Under `toiljs dev`
         // that falls through to Vite (client routes, assets).
