@@ -268,6 +268,10 @@ function minimalServer(): Record<string, string> {
             "        if (req.path == '/api/hello') {\n" +
             "            return Response.text('hello from toiljs\\n');\n" +
             '        }\n' +
+            "        if (req.path == '/api/hash') {\n" +
+            '            // `crypto` is a global (no import), synchronous Web Crypto.\n' +
+            "            return Response.text(crypto.toHex(crypto.sha256Text(req.path)) + '\\n');\n" +
+            '        }\n' +
             '        // Yield page routes and assets to the client: under `toiljs dev`\n' +
             '        // this falls through to Vite so the app renders at /.\n' +
             '        return Response.unhandled();\n' +
