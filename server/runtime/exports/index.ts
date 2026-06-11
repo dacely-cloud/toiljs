@@ -21,6 +21,17 @@ import { Response } from '../response';
 export function handle(req_ofs: i32, req_len: i32): i64 {
     let resp: Response;
 
+    // TAIL DELIVERY: a request too large for the low envelope window is
+    // parked by the edge in grown pages ABOVE the heap and arrives with
+    // `req_ofs != 0`. Advance the bump allocator past its end before
+    // decoding, so no decode-time allocation (body copy, strings) can
+    // land inside the envelope while it is still being read. The edge
+    // retires this instance after the response, so the burned span is
+    // never paid again.
+    if (req_ofs != 0) {
+        heap.alloc(<usize>req_ofs + <usize>req_len);
+    }
+
     const req = decodeRequest(<usize>req_ofs, <usize>req_len);
     if (req == null) {
         // Truncated or malformed envelope — host shouldn't send these
