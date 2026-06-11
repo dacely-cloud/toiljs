@@ -22,7 +22,7 @@
             "multi-value"
         ],
         "runtime": "stub",
-        "memoryBase": 0,
+        "memoryBase": 65536,
         "initialMemory": 4,
         "debug": false,
         "trapMode": "allow"

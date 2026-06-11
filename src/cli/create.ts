@@ -203,8 +203,14 @@ function scaffold(
                             'multi-value',
                         ],
                         runtime: 'stub',
-                        memoryBase: 0,
-                        initialMemory: 1,
+                        // Reserve [0, 64 KiB) for the request envelope the
+                        // edge writes at offset 0. Static data starts ABOVE
+                        // it, so a large request can never overwrite guest
+                        // state; the edge rejects envelopes past this window.
+                        // Raise to accept larger request bodies (costs
+                        // initial memory).
+                        memoryBase: 65536,
+                        initialMemory: 4,
                         debug: false,
                         trapMode: 'allow',
                     },
