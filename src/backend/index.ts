@@ -1,5 +1,5 @@
 /**
- * toiljs backend, the self-host / dev server, built on @btc-vision/hyper-express (uWebSockets.js)
+ * toiljs backend, the self-host / dev server, built on @dacely/hyper-express (uWebSockets.js)
  * for very high throughput. It serves the built client (static assets + SPA fallback) and exposes
  * a WebSocket channel for realtime / live updates.
  *
@@ -15,7 +15,7 @@ import {
     type Request,
     type Response,
     type Websocket,
-} from '@btc-vision/hyper-express';
+} from '@dacely/hyper-express';
 
 const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
 const MAX_BODY_BUFFER = 1024 * 32;

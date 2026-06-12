@@ -11,7 +11,7 @@ import {
     type Response,
     type Server,
     type Websocket,
-} from '@btc-vision/hyper-express';
+} from '@dacely/hyper-express';
 
 /** Where the internal Vite dev server listens (always loopback). */
 export interface ViteTarget {
