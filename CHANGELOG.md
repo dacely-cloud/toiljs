@@ -9,6 +9,15 @@
 
 
 
+## [v0.0.32] - 2026-06-12
+
+### Other Changes
+
+- feat(cli): warn on every command when a newer toiljs is available ([#139](https://github.com/dacely-cloud/toiljs/pull/139)) by @BlobMaster41
+
+
+
+
 ## [v0.0.31] - 2026-06-12
 
 ### Other Changes
