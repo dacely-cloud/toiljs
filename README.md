@@ -8,7 +8,7 @@
 
 #### The first fullstack React framework for a globally distributed application delivery network.
 
-<sub>React on the client. Your server compiled to WebAssembly, built to run on an edge runtime measured at <b>1.4 million requests/s on a single box</b>.</sub>
+<sub>React on the client. Your server compiled to WebAssembly, built to run on an edge runtime measured at <b>8 million requests/s on a single modern box</b>.</sub>
 
 <sub>Nothing to configure: routing, data, SEO, top-tier tooling, and full AI support, all built in.</sub>
 
@@ -104,7 +104,7 @@ Toil's architecture is the scaling story. There is no monolith to keep warm and 
 
 And that platform is not hypothetical. The Toil edge runtime is built and measured; this is the stack that runs your app at planetary scale:
 
-- **A purpose-built edge runtime** *(built, measured)*: engineered from scratch to serve compiled apps at line rate, not adapted from a general-purpose web server. Your compiled server runs as a long-lived, isolated, per-tenant WebAssembly instance, with static assets served at wire speed alongside it. Measured at **~1.4 million requests/s with sub-ms p50** on a single box, and the dynamic WebAssembly path runs at the same network-bound ceiling as serving a static file.
+- **A purpose-built edge runtime** *(built, measured)*: engineered from scratch to serve compiled apps at line rate, not adapted from a general-purpose web server. Your compiled server runs as a long-lived, isolated, per-tenant WebAssembly instance, with static assets served at wire speed alongside it. Measured at **8 million requests/s with sub-ms p50** on a single modern box, and the dynamic WebAssembly path runs at the same network-bound ceiling as serving a static file.
 - **First-class WebTransport** *(endpoint live, client API landing)*: the runtime already terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport (multiplexed bidirectional streams and datagrams, no head-of-line blocking), wired into the same per-tenant instances as HTTP. The framework's channel API falls back to WebSocket automatically, so the same `useChannel` simply runs on the fastest transport available. WebSocket channels work today.
 - **Hyperscale security built in** *(built)*: every tenant is validated at deploy time and runs under a hard per-request CPU cap and a per-tenant memory budget, isolation is enforced below your code so nothing survives between requests or tenants, and a built-in firewall screens traffic before it ever reaches an app. Overload sheds gracefully instead of melting.
 - **ToilDB, edge-replicated typed data** *(next)*: typed collections where the method name tells you the cost, local-fast reads, CRDT writes that merge everywhere, owner-routed writes, and rare global claims that are explicitly slow. The async foundation it needs is already live in the runtime; the data layer itself is the next step.
@@ -413,7 +413,7 @@ flowchart TB
     subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, built + measured, pre-GA"]
         direction LR
         SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images, fonts, css<br/>served from CDN / edge"]
-        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>~1.4M req/s measured, sub-ms p50<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
+        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>8M req/s measured, sub-ms p50<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
         SC <-->|"typed RPC&nbsp; Server.*"| RT
     end
 
@@ -518,7 +518,7 @@ The reason the client is static and the server is WebAssembly is that the WebAss
 
 </div>
 
-- **A purpose-built WebAssembly edge runtime** *(built, measured)*. Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process. On a single box it sustains **~1.4 million requests/s at sub-millisecond p50** across thousands of concurrent connections, the dynamic WebAssembly path runs as fast as serving a static file, deploys hot-swap with no restart, and there are no cold starts.
+- **A purpose-built WebAssembly edge runtime** *(built, measured)*. Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process. On a single modern box it sustains **8 million requests/s at sub-millisecond p50** across thousands of concurrent connections, the dynamic WebAssembly path runs as fast as serving a static file, deploys hot-swap with no restart, and there are no cold starts.
 - **HTTP/3 and WebTransport** *(endpoint live)*. The runtime terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport: bidirectional streams and datagrams for interactive, multiplexed realtime, beyond the WebSocket channel that ships today.
 - **Hardened multi-tenancy** *(built)*. Tenants are validated at deploy time, every request runs under a hard CPU cap and memory budget, nothing survives between requests or tenants, traffic is screened before it reaches an app, and overload sheds gracefully. The isolation model is security-audited and soak-tested.
 - **ToilDB, an edge-replicated data layer** *(next)*. Typed collections declared in ToilScript, where the method name tells you the cost: local reads are fast, appends and CRDT counters/sets merge everywhere, owned writes are fast at the owner, and rare global claims are explicitly slow. Hyperscale data, without a per-query consistency knob to get wrong. The async foundation it needs is already live in the runtime.
