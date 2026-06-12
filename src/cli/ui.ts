@@ -142,6 +142,19 @@ const TAGLINES: ReadonlyArray<(a: (s: string) => string) => string> = [
     (a) => `full stack, ${a('zero distance')} to your users`,
     (a) => `${a('react')} up front, ${a('wasm')} at every edge`,
     (a) => `deployed where your ${a('users')} are`,
+    (a) => `the framework with a ${a('delivery network')} built in`,
+    (a) => `no regions, just ${a('the world')}`,
+    (a) => `${a('planet-scale')} apps from a single repo`,
+    (a) => `every request served ${a('next door')}`,
+    (a) => `frontend, backend, ${a('worldwide')}`,
+    (a) => `${a('hyper scale')} without the ops team`,
+    (a) => `your backend, ${a('compiled to wasm')}, running everywhere`,
+    (a) => `the internet is your ${a('runtime')}`,
+    (a) => `the speed of light is the ${a('only bottleneck')}`,
+    (a) => `static speed, ${a('dynamic everything')}`,
+    (a) => `scale to ${a('millions')} before lunch`,
+    (a) => `latency is a choice, choose ${a('zero')}`,
+    (a) => `build ${a('better')}, ship ${a('faster')}`,
 ];
 
 /** A random brand tagline, accent words colored. */
