@@ -14,10 +14,11 @@
 
 import { Response, RouteContext } from 'toiljs/server/runtime';
 
-/** A leaderboard player. */
+/** A leaderboard player. The `u256` id shows native bignums riding the wire: it crosses
+ *  JSON as four 64-bit limbs and lands on the client as one `bigint`. */
 @data
 class Player {
-    id: u64 = 0;
+    id: u256 = u256.Zero;
     name: string = '';
     score: i64 = 0;
 }
@@ -47,10 +48,10 @@ let nextId: u64 = 1;
 
 function seed(name: string, score: i64): void {
     const p = new Player();
-    p.id = nextId++;
+    p.id = u256.fromU64(nextId++);
     p.name = name;
     p.score = score;
-    store.set(p.id, p);
+    store.set(p.id.toU64(), p);
 }
 seed('Ada', 120);
 seed('Linus', 95);
@@ -82,10 +83,10 @@ class Players {
     @post('/')
     public create(input: NewPlayer): Player {
         const p = new Player();
-        p.id = nextId++;
+        p.id = u256.fromU64(nextId++);
         p.name = input.name;
         p.score = 0;
-        store.set(p.id, p);
+        store.set(p.id.toU64(), p);
 
         return p;
     }
