@@ -62,9 +62,9 @@
 
 ---
 
-**ToilJS is the first fullstack React framework built for a globally distributed application delivery network.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it. On the Toil edge runtime that is not a slogan but a measurement: a request that runs your code is served as fast as a static file, so dynamic costs you nothing. And the edge is not limited to CPU: GPU hardware acceleration is coming, projected to take a single box from 8 million requests/s today to 50-200 million.
+**ToilJS is the first fullstack React framework built for a globally distributed application delivery network.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it. On the Toil edge runtime that is not a slogan but a measurement: a request that runs your code is served as fast as a static file, so dynamic costs you nothing. The edge is not limited to CPU either: GPU hardware acceleration is coming, projected to take a single box from 8 million requests/s today to 50-200 million.
 
-And it is the entire stack, already wired and configured: routing, data, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, and a strict toolchain. One command scaffolds it, then you build your app, not your stack. Nothing to assemble, nothing to glue, nothing to configure.
+It is also the entire stack, already wired and configured: routing, data, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, and a strict toolchain. One command scaffolds it, then you build your app, not your stack. Nothing to assemble, nothing to glue, nothing to configure.
 
 ```bash
 npx toiljs create my-app
@@ -102,7 +102,7 @@ Toil's architecture is the scaling story. There is no monolith to keep warm and 
 - **Client and server are decoupled.** They are separate artifacts joined only by a typed contract, so the frontend scales as static files while the backend scales as stateless compute. Neither one bottlenecks the other.
 - **Shaped for the edge.** That compiled module is exactly the unit a hyperscale edge runtime is built to serve: isolated per tenant, replicated across regions, run at line rate.
 
-And that platform is not hypothetical. The Toil edge runtime is built and measured; this is the stack that runs your app at planetary scale:
+That platform is not hypothetical. The Toil edge runtime is built and measured; this is the stack that runs your app at planetary scale:
 
 - **A purpose-built edge runtime** *(built, measured)*: engineered from scratch to serve compiled apps at line rate, not adapted from a general-purpose web server. Your compiled server runs as a long-lived, isolated, per-tenant WebAssembly instance, with static assets served at wire speed alongside it. Measured at **8 million requests/s with sub-ms p50** on a single modern box, and the dynamic WebAssembly path runs at the same network-bound ceiling as serving a static file.
 - **First-class WebTransport** *(endpoint live, client API landing)*: the runtime already terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport (multiplexed bidirectional streams and datagrams, no head-of-line blocking), wired into the same per-tenant instances as HTTP. The framework's channel API falls back to WebSocket automatically, so the same `useChannel` simply runs on the fastest transport available. WebSocket channels work today.
@@ -307,7 +307,7 @@ export default defineConfig({
 });
 ```
 
-And the `toiljs create` wizard scaffolds assistant files (CLAUDE.md, AGENTS.md, Cursor, and Copilot configs) so your repo is ready for coding agents on day one.
+The `toiljs create` wizard also scaffolds assistant files (CLAUDE.md, AGENTS.md, Cursor, and Copilot configs) so your repo is ready for coding agents on day one.
 
 ## The toolkit is the standard
 
