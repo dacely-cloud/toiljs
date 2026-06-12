@@ -2,7 +2,11 @@
 
 ## [v0.0.33] - 2026-06-12
 
-- No changes
+### Other Changes
+
+- feat(cli): frame the update warning in its own bordered box by @BlobMaster41
+- feat(cli): randomized banner taglines by @BlobMaster41
+- docs(readme): new positioning, table of contents, edge runtime capabilities and roadmap by @BlobMaster41
 
 
 ## [v0.0.32] - 2026-06-12
