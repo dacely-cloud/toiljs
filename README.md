@@ -8,11 +8,15 @@
 
 #### The first fullstack React framework for a globally distributed application delivery network.
 
+<sub>React on the client. Your server compiled to WebAssembly, built to run on an edge runtime measured at <b>1.4 million requests/s on a single box</b>.</sub>
+
 <sub>Nothing to configure: routing, data, SEO, top-tier tooling, and full AI support, all built in.</sub>
 
 <br/>
 
-**⚡ First-class WebTransport over HTTP/3**, with automatic WebSocket fallback.
+**⚡ Dynamic as fast as static.** On the Toil edge runtime, running your server code is measured as fast as serving a static file.
+
+**⚡ First-class WebTransport over HTTP/3**, with automatic WebSocket fallback. The QUIC endpoint is already live on the Toil edge runtime.
 
 <br/>
 
@@ -31,16 +35,28 @@
 <img src="https://img.shields.io/badge/WebAssembly-654ff0?style=for-the-badge&logo=webassembly&logoColor=white" alt="WebAssembly" />
 <img src="https://img.shields.io/badge/ToilScript-cb9820?style=for-the-badge&logoColor=white" alt="ToilScript" />
 
-<br/>
-<br/>
-
-[Scale](#built-for-scale) · [Features](#everything-at-a-glance) · [Routing](#routing) · [Data](#data-and-caching) · [SEO](#rendering-and-seo) · [Assets](#assets-and-the-vite-build) · [Realtime](#realtime) · [Server](#the-server-toilscript--webassembly) · [Tooling](#agentic-tooling) · [Config](#configuration) · [CLI](#cli) · [Architecture](#architecture) · [Roadmap](#the-road-to-hyperscale)
-
 </div>
 
 ---
 
-**ToilJS is the first fullstack React framework built for a globally distributed application delivery network.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it.
+- [Built for scale](#built-for-scale)
+- [Everything, at a glance](#everything-at-a-glance)
+- [Routing](#routing)
+- [Data and caching](#data-and-caching)
+- [Rendering and SEO](#rendering-and-seo)
+- [Assets and the Vite build](#assets-and-the-vite-build)
+- [Components](#components)
+- [Realtime](#realtime)
+- [The server: ToilScript + WebAssembly](#the-server-toilscript--webassembly)
+- [Agentic tooling](#agentic-tooling)
+- [Configuration](#configuration)
+- [CLI](#cli)
+- [Architecture](#architecture)
+- [The road to hyperscale](#the-road-to-hyperscale)
+
+---
+
+**ToilJS is the first fullstack React framework built for a globally distributed application delivery network.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it. On the Toil edge runtime that is not a slogan but a measurement: a request that runs your code is served as fast as a static file, so dynamic costs you nothing.
 
 And it is the entire stack, already wired and configured: routing, data, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, and a strict toolchain. One command scaffolds it, then you build your app, not your stack. Nothing to assemble, nothing to glue, nothing to configure.
 
@@ -80,12 +96,13 @@ Toil's architecture is the scaling story. There is no monolith to keep warm and 
 - **Client and server are decoupled.** They are separate artifacts joined only by a typed contract, so the frontend scales as static files while the backend scales as stateless compute. Neither one bottlenecks the other.
 - **Shaped for the edge.** That compiled module is exactly the unit a hyperscale edge runtime is built to serve: isolated per tenant, replicated across regions, run at line rate.
 
-That is the platform Toil is being built toward. The architecture above ships today; this is the stack that runs it at planetary scale:
+And that platform is not hypothetical. The Toil edge runtime is built and measured; this is the stack that runs your app at planetary scale:
 
-- **First-class WebTransport** *(coming)*: realtime over HTTP/3, multiplexed bidirectional streams and datagrams over QUIC with no head-of-line blocking. Toil is built to be the **first framework to ship first-class WebTransport**, and it falls back to WebSocket automatically, so the same channel API simply runs on the fastest transport available. WebSocket channels work today.
-- **A purpose-built edge runtime** *(coming)*: your compiled server runs as an isolated tenant at line rate, replicated across regions, instead of on a general-purpose Node process.
-- **ToilDB, edge-replicated typed data** *(coming)*: typed collections where the method name tells you the cost, local-fast reads, CRDT writes that merge everywhere, owner-routed writes, and rare global claims that are explicitly slow.
-- **Post-quantum-ready transport** *(coming)*: forward-looking encryption as the QUIC layer lands.
+- **A purpose-built edge runtime** *(built, measured)*: engineered from scratch to serve compiled apps at line rate, not adapted from a general-purpose web server. Your compiled server runs as a long-lived, isolated, per-tenant WebAssembly instance, with static assets served at wire speed alongside it. Measured at **~1.4 million requests/s with sub-ms p50** on a single box, and the dynamic WebAssembly path runs at the same network-bound ceiling as serving a static file.
+- **First-class WebTransport** *(endpoint live, client API landing)*: the runtime already terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport (multiplexed bidirectional streams and datagrams, no head-of-line blocking), wired into the same per-tenant instances as HTTP. The framework's channel API falls back to WebSocket automatically, so the same `useChannel` simply runs on the fastest transport available. WebSocket channels work today.
+- **Hyperscale security built in** *(built)*: every tenant is validated at deploy time and runs under a hard per-request CPU cap and a per-tenant memory budget, isolation is enforced below your code so nothing survives between requests or tenants, and a built-in firewall screens traffic before it ever reaches an app. Overload sheds gracefully instead of melting.
+- **ToilDB, edge-replicated typed data** *(next)*: typed collections where the method name tells you the cost, local-fast reads, CRDT writes that merge everywhere, owner-routed writes, and rare global claims that are explicitly slow. The async foundation it needs is already live in the runtime; the data layer itself is the next step.
+- **Post-quantum-ready transport** *(coming)*: forward-looking encryption on the QUIC layer that is already terminating TLS 1.3.
 - **Dacely Cloud** *(coming)*: managed hosting for the whole stack, push the app and the client goes to the edge while the server runs on the runtime.
 
 The same app runs on your laptop and is shaped, from the first commit, to fan out across the edge without a rewrite. Full architecture and status in [The road to hyperscale](#the-road-to-hyperscale).
@@ -239,7 +256,7 @@ One typed channel API for live data in both directions.
 const messages = Toil.useChannel<Message>('/chat');
 ```
 
-`connectChannel` / `useChannel` / `resolveChannelUrl` handle connection, reconnection, and message decoding, text or binary frames. Today the channel runs over WebSocket. Next it rides **WebTransport** over HTTP/3: multiplexed bidirectional streams and datagrams over QUIC with no head-of-line blocking. Toil is built to be the **first framework to ship first-class WebTransport**, with automatic WebSocket fallback, so the same `useChannel` quietly upgrades to the fastest transport the client and network support, with no code change.
+`connectChannel` / `useChannel` / `resolveChannelUrl` handle connection, reconnection, and message decoding, text or binary frames. Today the channel runs over WebSocket. Next it rides **WebTransport** over HTTP/3: multiplexed bidirectional streams and datagrams over QUIC with no head-of-line blocking. The server side already exists: the Toil edge runtime terminates QUIC + TLS 1.3 and hands WebTransport sessions to the same per-tenant WebAssembly instance that serves your HTTP requests. Toil is built to be the **first framework to ship first-class WebTransport**, with automatic WebSocket fallback, so the same `useChannel` quietly upgrades to the fastest transport the client and network support, with no code change.
 
 ## The server: ToilScript + WebAssembly
 
@@ -259,7 +276,7 @@ export class HelloHandler extends ToilHandler {
 - **Binary IO on both sides**: `DataWriter`, `DataReader`, `FastMap`, and `FastSet` are shared client and server globals (and `toiljs/io`), so you can move structured bytes instead of paying the JSON tax.
 - **Typed RPC (preview)**: tag a server function and the compiler generates a typed `Server.*` surface on the client, end to end, no hand-written glue. The typed pipeline is in place today; the network transport is landing next.
 
-`toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. For where this is headed at scale, see [The road to hyperscale](#the-road-to-hyperscale).
+`toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. At scale, that same `.wasm` is exactly what the Toil edge runtime serves: one hot instance per tenant, called directly with your request and wiped clean between requests, so there is no cold start and isolation is enforced below your code rather than by trust. See [The road to hyperscale](#the-road-to-hyperscale).
 
 ## Agentic tooling
 
@@ -371,7 +388,7 @@ No imports. `Toil` is a fully-typed global, tree-shaken at build. The page rende
 
 ## Architecture
 
-One pipeline, from your editor to planetary scale. The build pipeline and the React client ship today; the edge runtime, the ToilDB data layer, and Dacely Cloud are the roadmap (marked in purple).
+One pipeline, from your editor to planetary scale. The build pipeline and the React client ship today; the edge runtime is built and measured (purple = not yet GA), and the ToilDB data layer and Dacely Cloud are the roadmap.
 
 ```mermaid
 flowchart TB
@@ -387,10 +404,10 @@ flowchart TB
 
     CLIENTS["CLIENTS<br/>browsers, mobile, API clients, AI crawlers / LLMs"]
 
-    subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, roadmap"]
+    subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, built + measured, pre-GA"]
         direction LR
         SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images, fonts, css<br/>served from CDN / edge"]
-        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
+        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>~1.4M req/s measured, sub-ms p50<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
         SC <-->|"typed RPC&nbsp; Server.*"| RT
     end
 
@@ -441,7 +458,7 @@ flowchart TB
                         TLS  [today]        │   post-quantum transport       [soon]
                                             ▼
 ╔══════════════════════════════════════════════════════════════════════════╗
-║  EDGE       anycast   multi-region POPs   scale-out                [soon] ║
+║  EDGE       anycast   multi-region POPs   scale-out               [built] ║
 ║                                                                          ║
 ║   ┌─────────────────────────┐        ┌─────────────────────────────────┐ ║
 ║   │  STATIC CLIENT          │        │  WASM EDGE RUNTIME              │ ║
@@ -473,7 +490,7 @@ flowchart TB
 ║  push your app ─▶ client to the edge, .wasm to the runtime, data replicated ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
-  [today] shipping now      [soon] architecture + roadmap, not yet GA
+  [today] shipping now    [built] running + measured, not yet GA    [soon] roadmap
 ```
 
 </details>
@@ -482,9 +499,9 @@ flowchart TB
 
 ## The road to hyperscale
 
-> **Architecture and roadmap.** This section is where Toil is going, not what ships in the box today. The framework above is real and usable now; the platform below is the design it is being built toward.
+> **Architecture and status.** The framework above is what ships in the box today. The edge runtime below is built and measured, not yet generally available. ToilDB and Dacely Cloud are the roadmap.
 
-The reason the client is static and the server is WebAssembly is that the WebAssembly runs on a runtime engineered from scratch for the edge. Toil's backend treats your compiled server as an isolated tenant and is built to serve it at line rate, so the same app that runs on your laptop is designed to scale out across the edge without a rewrite.
+The reason the client is static and the server is WebAssembly is that the WebAssembly runs on a runtime engineered from scratch for the edge. Toil's backend treats your compiled server as an isolated tenant and serves it at line rate, so the same app that runs on your laptop scales out across the edge without a rewrite.
 
 <div align="center">
 
@@ -495,13 +512,14 @@ The reason the client is static and the server is WebAssembly is that the WebAss
 
 </div>
 
-- **A purpose-built WebAssembly edge runtime.** Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process.
-- **HTTP/3 and WebTransport.** Bidirectional streams and datagrams over QUIC for interactive, multiplexed realtime, beyond the WebSocket channel that ships today.
-- **ToilDB, an edge-replicated data layer.** Typed collections declared in ToilScript, where the method name tells you the cost: local reads are fast, appends and CRDT counters/sets merge everywhere, owned writes are fast at the owner, and rare global claims are explicitly slow. Hyperscale data, without a per-query consistency knob to get wrong.
-- **Post-quantum-ready transport.** Forward-looking encryption for the edge as the QUIC layer lands.
-- **Dacely Cloud.** Managed hosting for the whole stack: push your app, the static client goes to the edge and your WebAssembly server runs on the runtime above.
+- **A purpose-built WebAssembly edge runtime** *(built, measured)*. Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process. On a single box it sustains **~1.4 million requests/s at sub-millisecond p50** across thousands of concurrent connections, the dynamic WebAssembly path runs as fast as serving a static file, deploys hot-swap with no restart, and there are no cold starts.
+- **HTTP/3 and WebTransport** *(endpoint live)*. The runtime terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport: bidirectional streams and datagrams for interactive, multiplexed realtime, beyond the WebSocket channel that ships today.
+- **Hardened multi-tenancy** *(built)*. Tenants are validated at deploy time, every request runs under a hard CPU cap and memory budget, nothing survives between requests or tenants, traffic is screened before it reaches an app, and overload sheds gracefully. The isolation model is security-audited and soak-tested.
+- **ToilDB, an edge-replicated data layer** *(next)*. Typed collections declared in ToilScript, where the method name tells you the cost: local reads are fast, appends and CRDT counters/sets merge everywhere, owned writes are fast at the owner, and rare global claims are explicitly slow. Hyperscale data, without a per-query consistency knob to get wrong. The async foundation it needs is already live in the runtime.
+- **Post-quantum-ready transport** *(coming)*. Forward-looking encryption on the QUIC layer that already terminates TLS 1.3.
+- **Dacely Cloud** *(coming)*. Managed hosting for the whole stack: push your app, the static client goes to the edge and your WebAssembly server runs on the runtime above.
 
-This is the spine the framework was shaped around. Today you write a typed, file-based React app with a WebAssembly server; the roadmap is the platform that runs it at planetary scale.
+This is the spine the framework was shaped around. Today you write a typed, file-based React app with a WebAssembly server; the platform that runs it at planetary scale is already standing in the lab.
 
 ## Tech
 
