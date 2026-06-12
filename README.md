@@ -39,20 +39,26 @@
 
 ---
 
-- [Built for scale](#built-for-scale)
-- [Everything, at a glance](#everything-at-a-glance)
-- [Routing](#routing)
-- [Data and caching](#data-and-caching)
-- [Rendering and SEO](#rendering-and-seo)
-- [Assets and the Vite build](#assets-and-the-vite-build)
-- [Components](#components)
-- [Realtime](#realtime)
-- [The server: ToilScript + WebAssembly](#the-server-toilscript--webassembly)
-- [Agentic tooling](#agentic-tooling)
-- [Configuration](#configuration)
-- [CLI](#cli)
-- [Architecture](#architecture)
-- [The road to hyperscale](#the-road-to-hyperscale)
+<details>
+<summary><b>Table of contents</b></summary>
+<br/>
+
+1. [Built for scale](#built-for-scale)
+2. [Everything, at a glance](#everything-at-a-glance)
+3. [Routing](#routing)
+4. [Data and caching](#data-and-caching)
+5. [Rendering and SEO](#rendering-and-seo)
+6. [Assets and the Vite build](#assets-and-the-vite-build)
+7. [Components](#components)
+8. [Realtime](#realtime)
+9. [The server: ToilScript + WebAssembly](#the-server-toilscript--webassembly)
+10. [Agentic tooling](#agentic-tooling)
+11. [Configuration](#configuration)
+12. [CLI](#cli)
+13. [Architecture](#architecture)
+14. [The road to hyperscale](#the-road-to-hyperscale)
+
+</details>
 
 ---
 
