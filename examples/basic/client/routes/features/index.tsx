@@ -49,6 +49,12 @@ const groups: { heading: string; items: { href: Toil.Href; label: string; note: 
             { href: '/features/realtime', label: 'WebSocket channel', note: 'Toil.useChannel against /_toil' },
             { href: '/io', label: 'Binary IO', note: 'DataWriter / DataReader / FastSet, no import' }
         ]
+    },
+    {
+        heading: 'Server',
+        items: [
+            { href: '/crypto', label: 'Web Crypto', note: 'crypto.sha256 / subtle, global, runs in the server wasm' }
+        ]
     }
 ];
 

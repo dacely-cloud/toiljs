@@ -203,8 +203,14 @@ function scaffold(
                             'multi-value',
                         ],
                         runtime: 'stub',
-                        memoryBase: 0,
-                        initialMemory: 1,
+                        // Reserve [0, 64 KiB) for the request envelope the
+                        // edge writes at offset 0. Static data starts ABOVE
+                        // it, so a large request can never overwrite guest
+                        // state; the edge rejects envelopes past this window.
+                        // Raise to accept larger request bodies (costs
+                        // initial memory).
+                        memoryBase: 65536,
+                        initialMemory: 4,
                         debug: false,
                         trapMode: 'allow',
                     },
@@ -267,6 +273,10 @@ function minimalServer(): Record<string, string> {
             '        }\n' +
             "        if (req.path == '/api/hello') {\n" +
             "            return Response.text('hello from toiljs\\n');\n" +
+            '        }\n' +
+            "        if (req.path == '/api/hash') {\n" +
+            '            // `crypto` is a global (no import), synchronous Web Crypto.\n' +
+            "            return Response.text(crypto.toHex(crypto.sha256Text(req.path)) + '\\n');\n" +
             '        }\n' +
             '        // Yield page routes and assets to the client: under `toiljs dev`\n' +
             '        // this falls through to Vite so the app renders at /.\n' +

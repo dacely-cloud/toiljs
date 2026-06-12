@@ -17,21 +17,20 @@ import { Server } from '../env/Server';
 import { decodeRequest, encodeResponse } from '../envelope';
 import { Response } from '../response';
 
-/**
- * Linear-memory offset where we lay out the response envelope.
- *
- * The host writes the request envelope starting at offset 0. We pick
- * `65536` (one wasm page in) so the response never overlaps with the
- * request, no matter how big the request grew. The edge's
- * LimitingTunables caps the linear memory at 1024 pages (64 MiB), so
- * we still have 63 MiB of room past `RESPONSE_BASE` for the response
- * envelope.
- */
-const RESPONSE_BASE: usize = 65536;
-
 @main
 export function handle(req_ofs: i32, req_len: i32): i64 {
     let resp: Response;
+
+    // TAIL DELIVERY: a request too large for the low envelope window is
+    // parked by the edge in grown pages ABOVE the heap and arrives with
+    // `req_ofs != 0`. Advance the bump allocator past its end before
+    // decoding, so no decode-time allocation (body copy, strings) can
+    // land inside the envelope while it is still being read. The edge
+    // retires this instance after the response, so the burned span is
+    // never paid again.
+    if (req_ofs != 0) {
+        heap.alloc(<usize>req_ofs + <usize>req_len);
+    }
 
     const req = decodeRequest(<usize>req_ofs, <usize>req_len);
     if (req == null) {
@@ -46,7 +45,27 @@ export function handle(req_ofs: i32, req_len: i32): i64 {
         handler.onRequestCompleted(req, resp);
     }
 
-    const total = encodeResponse(resp, RESPONSE_BASE);
+    // Lay out the response envelope IMMEDIATELY AFTER the live heap, not at a
+    // fixed high page. The host resets linear memory between requests by
+    // restoring only the contiguous region the tenant actually touched; parking
+    // the response at a fixed 64 KiB (when the heap reaches only ~12 KiB) forced
+    // the reset to zero the whole ~52 KiB gap every request — the dominant write
+    // bandwidth at scale. `heap.alloc` hands back the slot just past the bump
+    // pointer, so request + static + heap + response form ONE contiguous span
+    // and the soft guard tightens to it automatically. Encode runs AFTER decode,
+    // so it can never clobber the request; the max() keeps it clear of an
+    // oversized request envelope regardless.
+    let bound: usize = 512 + <usize>resp.body.length;
+    for (let i = 0, n = resp.headers.length; i < n; i++) {
+        const h = resp.headers[i];
+        bound +=
+            <usize>String.UTF8.byteLength(h.name) + <usize>String.UTF8.byteLength(h.value) + 8;
+    }
+    let dst = <usize>heap.alloc(bound);
+    const req_end = <usize>req_ofs + <usize>req_len;
+    if (dst < req_end) dst = req_end;
+
+    const total = encodeResponse(resp, dst);
     Server.resetCurrentHandler();
-    return ((<i64>RESPONSE_BASE) << 32) | (<i64>total);
+    return ((<i64>dst) << 32) | (<i64>total);
 }
