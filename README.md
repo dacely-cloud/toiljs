@@ -4,9 +4,9 @@
 
 # ToilJS
 
-### The fullstack React framework, built for hyperscale.
+### Build better. Ship faster.
 
-#### The first universal client and server framework.
+#### The first fullstack React framework for a globally distributed application delivery network.
 
 <sub>Nothing to configure: routing, data, SEO, top-tier tooling, and full AI support, all built in.</sub>
 
@@ -31,11 +31,16 @@
 <img src="https://img.shields.io/badge/WebAssembly-654ff0?style=for-the-badge&logo=webassembly&logoColor=white" alt="WebAssembly" />
 <img src="https://img.shields.io/badge/ToilScript-cb9820?style=for-the-badge&logoColor=white" alt="ToilScript" />
 
+<br/>
+<br/>
+
+[Scale](#built-for-scale) · [Features](#everything-at-a-glance) · [Routing](#routing) · [Data](#data-and-caching) · [SEO](#rendering-and-seo) · [Assets](#assets-and-the-vite-build) · [Realtime](#realtime) · [Server](#the-server-toilscript--webassembly) · [Tooling](#agentic-tooling) · [Config](#configuration) · [CLI](#cli) · [Architecture](#architecture) · [Roadmap](#the-road-to-hyperscale)
+
 </div>
 
 ---
 
-**ToilJS is a fullstack React framework built for hyperscale.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it.
+**ToilJS is the first fullstack React framework built for a globally distributed application delivery network.** That is the whole point. Most React frameworks are built for convenience and start to buckle the moment real traffic arrives. Toil is built the other way around: for scale that serves the millionth request as easily as the first. Your client ships as a static bundle to the edge, and your server compiles to a single portable module designed to run at line rate, so the app you write on your laptop is shaped from day one to take serious load instead of folding under it.
 
 And it is the entire stack, already wired and configured: routing, data, caching, SEO, site search, an image and font pipeline, realtime, a dev toolbar with AI, and a strict toolchain. One command scaffolds it, then you build your app, not your stack. Nothing to assemble, nothing to glue, nothing to configure.
 
@@ -51,19 +56,20 @@ Drop a `.tsx` file in `client/routes/` and it is a route: typed, code-split, pre
 
 ```
                           your app
-        ┌──────────────────────┬──────────────────────┐
-        │       client/        │        server/        │
-        │   React + TSX        │    ToilScript (.ts)    │
-        │   static SPA bundle  │   ──▶  WebAssembly     │
-        └──────────┬───────────┴───────────┬───────────┘
-                   │                        │
-            CDN / static host        WASM edge runtime
-                                     (typed RPC between them)
+       ┌──────────────────────┬──────────────────────┐
+       │       client/        │       server/        │
+       │     React + TSX      │   ToilScript (.ts)   │
+       │  static SPA bundle   │   ──▶  WebAssembly   │
+       └──────────┬───────────┴──────────┬───────────┘
+                  │                      │
+                  ▼                      ▼
+          CDN / static host       WASM edge runtime
+                  └───── typed RPC ──────┘
 ```
 
 </div>
 
-The client is fully static (host it anywhere). The server is a portable compiled module. The two are separated by design and joined by a typed contract, so the frontend can ship to a CDN while the backend runs wherever it is deployed.
+The client is fully static (host it anywhere). The server is a portable compiled module. The two are separated by design and joined by a typed contract, so the frontend ships to any CDN while the backend runs wherever it is deployed. That split is what makes the delivery network global: static files replicate everywhere for free, and one small module is trivial to run in many places at once.
 
 ## Built for scale
 
@@ -332,6 +338,8 @@ toiljs update          check for and apply dependency updates
 - **`configure`** edits an existing app: switch CSS preprocessor, toggle Tailwind or image optimization, and sync dependencies.
 - **`doctor`** runs read-only checks across environment, routing, config, assets, and the server build, with a fix hint on each. `--json` for CI; it exits non-zero when a check fails.
 - **`update`** checks the registry and groups available updates by major / minor / patch; pick what to apply or pass `-y` for all (`--target` sets the strategy).
+
+Every command also verifies you are on the latest toiljs, both the project install and the global CLI, and prints a boxed warning with the exact update command when one is behind. The registry answer is cached for an hour and the check never slows down or fails your build; opt out with `TOILJS_NO_UPDATE_CHECK=1`.
 
 ## One file does a lot
 
