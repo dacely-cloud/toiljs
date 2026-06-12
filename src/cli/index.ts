@@ -9,6 +9,7 @@ import { build, dev, start } from 'toiljs/compiler';
 import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
 import { runDoctor } from './doctor.js';
+import { notifyIfOutdated } from './notify.js';
 import { runUpdate } from './update.js';
 import { type Preprocessor, PREPROCESSORS } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
@@ -147,6 +148,9 @@ function printHelp(): void {
             cmd('--target <t>', 'update: latest | minor | patch | newest | greatest'),
             cmd('-v, --version', 'print the toiljs version'),
             '',
+            dim('  Every command checks npm for a newer toiljs and warns when outdated.'),
+            dim('  Set TOILJS_NO_UPDATE_CHECK=1 to opt out.'),
+            '',
         ].join('\n') + '\n',
     );
 }
@@ -160,6 +164,11 @@ async function main(): Promise<void> {
     }
 
     const flags = parseArgs(rest);
+
+    // Every invocation (including `npm run dev` / `npm run build`, which call this CLI)
+    // checks that the installed toiljs is the latest release. Warns on stderr, never blocks
+    // the command; opt out with TOILJS_NO_UPDATE_CHECK=1.
+    await notifyIfOutdated(flags.root);
 
     switch (command) {
         case 'create':
