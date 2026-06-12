@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { box } from '../src/cli/ui';
+import { box, tagline } from '../src/cli/ui';
+
+describe('tagline', () => {
+    it('always yields a non-empty line, whichever variant is drawn', () => {
+        for (let i = 0; i < 100; i++) {
+            const t = tagline();
+            expect(t.length).toBeGreaterThan(0);
+            expect(t).not.toContain('undefined');
+        }
+    });
+});
 
 describe('box', () => {
     it('frames lines in a rounded box sized to the widest line', () => {

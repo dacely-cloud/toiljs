@@ -128,10 +128,30 @@ export function box(lines: readonly string[], paint: (s: string) => string = (s)
     ].join('\n');
 }
 
-/** Prints the brand banner: gradient logo + tagline + version. */
+/**
+ * Banner taglines, one is picked at random per invocation. Each is a function so the accented
+ * words pick up the brand color (or stay plain when color is disabled). The theme: TOIL is the
+ * first full-stack framework for a globally distributed application delivery network.
+ */
+const TAGLINES: ReadonlyArray<(a: (s: string) => string) => string> = [
+    (a) => `the most performant ${a('react')} framework`,
+    (a) => `bringing ${a('hyper scale')} to anyone`,
+    (a) => `the first full-stack ${a('application delivery network')}`,
+    (a) => `your app, ${a('globally distributed')} by default`,
+    (a) => `one build, ${a('the whole planet')}`,
+    (a) => `full stack, ${a('zero distance')} to your users`,
+    (a) => `${a('react')} up front, ${a('wasm')} at every edge`,
+    (a) => `deployed where your ${a('users')} are`,
+];
+
+/** A random brand tagline, accent words colored. */
+export function tagline(): string {
+    return TAGLINES[Math.floor(Math.random() * TAGLINES.length)](brand);
+}
+
+/** Prints the brand banner: gradient logo + random tagline + version. */
 export function banner(): void {
     const lines = colorEnabled() ? ART.map(gradientLine) : ART.slice();
-    const tagline = `  the most performant ${brand('react')} framework`;
     const ver = `${dim('  v')}${brand(version())}`;
-    process.stdout.write('\n' + lines.join('\n') + '\n\n' + tagline + '   ' + ver + '\n\n');
+    process.stdout.write('\n' + lines.join('\n') + '\n\n  ' + tagline() + '   ' + ver + '\n\n');
 }
