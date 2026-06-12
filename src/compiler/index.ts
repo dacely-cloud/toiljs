@@ -6,8 +6,10 @@ import path from 'node:path';
 
 import pc from 'picocolors';
 import { build as viteBuild, createServer, mergeConfig, type ViteDevServer } from 'vite';
-import { startBackend, type RunningBackend } from 'toiljs/backend';
-import { startDevServer } from 'toiljs/devserver';
+// The server modules pull in @btc-vision/hyper-express, whose uWebSockets.js native
+// addon loads at import time. Only `dev`/`start` need them, so they are imported
+// lazily; `create`/`build`/`doctor` must never touch the native binary.
+import type { RunningBackend } from 'toiljs/backend';
 
 import { loadConfig } from './config.js';
 import { generate } from './generate.js';
@@ -263,6 +265,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     const server = await createServer(viteConfig);
     await server.listen();
 
+    const { startDevServer } = await import('toiljs/devserver');
     const front = await startDevServer({
         root: cfg.root,
         port: cfg.port,
@@ -322,6 +325,7 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
     if (!fs.existsSync(path.join(outDir, 'index.html'))) {
         throw new Error(`No build found in ${outDir}. Run \`toiljs build\` first.`);
     }
+    const { startBackend } = await import('toiljs/backend');
     return startBackend({ root: outDir, port: cfg.port, host: opts.host });
 }
 
