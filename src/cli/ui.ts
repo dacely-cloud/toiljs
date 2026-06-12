@@ -102,6 +102,32 @@ export function version(): string {
     return '0.0.0';
 }
 
+// eslint-disable-next-line no-control-regex -- matching our own escape sequences is the point
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+/** The on-screen width of `s`, ignoring ANSI color codes. */
+function visibleWidth(s: string): number {
+    return s.replace(ANSI_RE, '').length;
+}
+
+/**
+ * Frames already-colored lines in a rounded box sized to the widest line. `paint` colors the
+ * border (the content keeps its own colors); padding is measured on the visible text, so ANSI
+ * codes inside the lines never skew the right edge. Returns the box without a trailing newline.
+ */
+export function box(lines: readonly string[], paint: (s: string) => string = (s) => s): string {
+    const width = lines.reduce((w, l) => Math.max(w, visibleWidth(l)), 0);
+    const side = paint('│');
+    const body = lines.map(
+        (l) => `  ${side}  ${l}${' '.repeat(width - visibleWidth(l))}  ${side}`,
+    );
+    return [
+        '  ' + paint(`╭${'─'.repeat(width + 4)}╮`),
+        ...body,
+        '  ' + paint(`╰${'─'.repeat(width + 4)}╯`),
+    ].join('\n');
+}
+
 /** Prints the brand banner: gradient logo + tagline + version. */
 export function banner(): void {
     const lines = colorEnabled() ? ART.map(gradientLine) : ART.slice();

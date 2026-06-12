@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { detectPackageManager } from './update.js';
-import { accent, bold, dim, version as cliVersion, warn } from './ui.js';
+import { accent, bold, box, dim, version as cliVersion, warn } from './ui.js';
 import {
     findOutdated,
     isCacheFresh,
@@ -88,12 +88,12 @@ function projectToiljsVersion(root: string): string | null {
 }
 
 function noticeLines(latest: string, rows: OutdatedRow[]): string {
-    const header = warn('  ⚠ ') + bold(`a newer toiljs is available: ${accent(latest)}`);
+    const header = warn('⚠ ') + bold(`a newer toiljs is available: ${accent(latest)}`);
     const body = rows.map((row) => {
         const where = row.scope === 'project' ? 'this project has' : 'your global CLI is';
-        return `    ${where} ${row.installed}${dim(', update with')} ${accent(row.command)}`;
+        return `${where} ${row.installed}${dim(', update with')} ${accent(row.command)}`;
     });
-    return '\n' + [header, ...body].join('\n') + '\n';
+    return '\n' + box([header, '', ...body], warn) + '\n';
 }
 
 /**
