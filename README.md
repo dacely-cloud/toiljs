@@ -16,7 +16,7 @@
 
 **⚡ Dynamic as fast as static.** On the Toil edge runtime, running your server code is measured as fast as serving a static file.
 
-**⚡ First-class WebTransport over HTTP/3**, with automatic WebSocket fallback. The QUIC endpoint is already live on the Toil edge runtime.
+**⚡ First-class WebTransport over HTTP/3**, with automatic WebSocket fallback.
 
 <br/>
 
