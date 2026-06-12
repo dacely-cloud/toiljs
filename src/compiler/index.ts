@@ -6,7 +6,7 @@ import path from 'node:path';
 
 import pc from 'picocolors';
 import { build as viteBuild, createServer, mergeConfig, type ViteDevServer } from 'vite';
-// The server modules pull in @btc-vision/hyper-express, whose uWebSockets.js native
+// The server modules pull in @dacely/hyper-express, whose uWebSockets.js native
 // addon loads at import time. Only `dev`/`start` need them, so they are imported
 // lazily; `create`/`build`/`doctor` must never touch the native binary.
 import type { RunningBackend } from 'toiljs/backend';

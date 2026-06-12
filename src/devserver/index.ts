@@ -1,5 +1,5 @@
 /**
- * The toiljs WASM dev server: a uWebSockets.js front (via @btc-vision/hyper-express,
+ * The toiljs WASM dev server: a uWebSockets.js front (via @dacely/hyper-express,
  * the same stack as `toiljs/backend`) that dispatches HTTP requests into the
  * ToilScript-compiled server wasm exactly like the production edge does, and
  * proxies everything the server does not claim to an internal Vite dev server,
@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Server, type Request, type Response } from '@btc-vision/hyper-express';
+import { Server, type Request, type Response } from '@dacely/hyper-express';
 import pc from 'picocolors';
 
 import { METHOD_CODES, type EnvelopeRequest } from './envelope.js';
