@@ -75,22 +75,30 @@ Caching is **always opt-in.** A response with no `Toil-Cache-Control` directive
 "cache every GET" mode, because an automatic window cannot tell a personalized
 response from a public one and would key it without a per-user component.
 
-## Memory bounds
+## Memory bounds and disk spill
 
-The edge cache is per-core and entirely in RAM (no disk spill); it is hard-capped
-so it can never exhaust node memory:
+The edge cache is per-core and hard-capped so it can never exhaust node memory.
+It has two tiers:
 
-- **Per-entry cap** — a response whose footprint exceeds ~256 KB is not cached
-  (the `Toil-Cache` tag reports it as not stored). Cache small responses;
-  stream large ones.
-- **Per-core byte budget** — each core holds at most ~128 MB of cached
-  responses. An insert that would exceed it first drops expired entries, then
-  evicts the soonest-to-expire entries to make room.
-- **Entry-count cap** — a secondary bound on the number of distinct entries per
-  core.
+- **RAM tier** — small, short-TTL responses. Bounded by a per-core byte budget
+  (each core holds at most ~128 MB) plus an entry-count cap; an insert that would
+  exceed the budget drops expired entries first, then evicts the soonest-to-expire
+  ones. A response over ~256 KB does not go in the RAM tier.
+- **Disk tier (spill)** — when the operator enables `--spill-dir`, a **big**
+  (over the ~256 KB RAM cap) or **long-TTL** (≥ 10 min) cacheable response is
+  written to disk instead and served back zero-RAM via a memory map, the same way
+  static files are served. This keeps the RAM tier for the hot working set while
+  still caching large bodies and long-lived entries. Writes (and unlinks) are
+  offloaded to a sibling thread so they never stall the request path; a separate
+  per-core disk budget caps total spilled bytes, with the same expiry + eviction.
+  If spill is not enabled, a big response is simply not cached (reported as not
+  stored by the `Toil-Cache` tag).
 
-Expiry is enforced on read (a past-TTL entry is a miss) and reclaimed on the
-next insert that needs room. Nothing persists across a process restart.
+From a tenant's point of view nothing changes: you still just set a
+`Toil-Cache-Control` directive (via `@cache` / `Response.cache(...)`). The edge
+decides RAM vs disk; both honor the same TTL and the same safety rails above.
+Expiry is enforced on read (a past-TTL entry is a miss) and reclaimed on the next
+insert that needs room. Nothing persists across a process restart.
 
 ## Choosing TTLs
 
