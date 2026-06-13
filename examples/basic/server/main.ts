@@ -9,6 +9,7 @@ import { AppHandler } from './core/AppHandler';
 import './routes/Players';
 import './routes/Leaderboard';
 import './routes/Session';
+import './routes/PqDemo';
 import './services/Stats';
 import './services/remotes';
 

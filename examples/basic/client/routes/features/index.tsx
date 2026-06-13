@@ -3,7 +3,8 @@
 // template) and is baked into build/client/features/index.html at build time.
 export const metadata: Toil.Metadata = {
     title: 'Features',
-    description: 'Live demos of every ToilJS feature: routing, data, head/SEO, components, realtime, and binary IO.',
+    description:
+        'Live demos of every ToilJS feature: routing, data, REST + RPC, post-quantum auth and sessions, cookies, Web Crypto, head/SEO, components, realtime, and binary IO.',
     openGraph: { title: 'Every ToilJS feature, demoed', type: 'website' }
 };
 
@@ -32,7 +33,37 @@ const groups: { heading: string; items: { href: Toil.Href; label: string; note: 
                 href: '/features/actions',
                 label: 'Actions + Form',
                 note: 'useAction / <Form>, pending state, revalidate'
-            }
+            },
+            { href: '/io', label: 'Binary IO', note: 'DataWriter / DataReader / FastSet, no import' }
+        ]
+    },
+    {
+        heading: 'Server API',
+        items: [
+            { href: '/rest', label: 'REST controllers', note: '@rest / @get / @post, typed body + RouteContext' },
+            { href: '/rpc', label: 'Typed RPC', note: '@service / @remote, called as Server.* with no fetch' },
+            { href: '/search', label: 'Search', note: 'server-backed search endpoint' }
+        ]
+    },
+    {
+        heading: 'Auth and security',
+        items: [
+            {
+                href: '/pq',
+                label: 'Post-quantum auth',
+                note: 'ML-DSA-44: derive + sign in the browser, edge verifies (crypto.mldsa_verify)'
+            },
+            {
+                href: '/auth',
+                label: 'Sessions and @user / @auth',
+                note: 'signed session cookie, guarded /session/me, typed getUser()'
+            },
+            {
+                href: '/cookies',
+                label: 'Cookies and SecureCookies',
+                note: 'Cookie builder + HMAC-signed / AES-GCM cookies, no import'
+            },
+            { href: '/crypto', label: 'Web Crypto', note: 'crypto.sha256 / subtle, global, runs in the server wasm' }
         ]
     },
     {
@@ -46,14 +77,7 @@ const groups: { heading: string; items: { href: Toil.Href; label: string; note: 
         heading: 'Components and runtime',
         items: [
             { href: '/features/script', label: 'Script', note: 'Toil.Script with a load strategy' },
-            { href: '/features/realtime', label: 'WebSocket channel', note: 'Toil.useChannel against /_toil' },
-            { href: '/io', label: 'Binary IO', note: 'DataWriter / DataReader / FastSet, no import' }
-        ]
-    },
-    {
-        heading: 'Server',
-        items: [
-            { href: '/crypto', label: 'Web Crypto', note: 'crypto.sha256 / subtle, global, runs in the server wasm' }
+            { href: '/features/realtime', label: 'WebSocket channel', note: 'Toil.useChannel against /_toil' }
         ]
     }
 ];
