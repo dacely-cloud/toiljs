@@ -5,6 +5,7 @@
  */
 
 import { Header } from './request';
+import { Cookie } from './http/cookie';
 
 /**
  * Marker header on the runtime's fallback 404 (no route matched, no handler
@@ -105,6 +106,34 @@ export class Response {
         this.headers.push(new Header(name, value));
 
         return this;
+    }
+
+    /**
+     * Append a `Set-Cookie` for `cookie`. Each call adds its own header entry,
+     * so multiple cookies are emitted as separate `Set-Cookie` headers (never
+     * folded). Builder-style: returns `this`.
+     */
+    public setCookie(cookie: Cookie): Response {
+        this.headers.push(new Header('set-cookie', cookie.serialize()));
+
+        return this;
+    }
+
+    /** Shorthand for `setCookie(new Cookie(name, value))` (no attributes). */
+    public setCookieKV(name: string, value: string): Response {
+        return this.setCookie(new Cookie(name, value));
+    }
+
+    /**
+     * Append a `Set-Cookie` that deletes `name`: empty value, `Max-Age=0`, and
+     * an epoch `Expires`. `path` (default `/`) and `domain` must match the
+     * cookie being cleared for the browser to drop it. Builder-style.
+     */
+    public clearCookie(name: string, path: string = '/', domain: string = ''): Response {
+        const c = new Cookie(name, '').path(path).maxAge(0).expires(0);
+        if (domain.length > 0) c.domain(domain);
+
+        return this.setCookie(c);
     }
 
     /**

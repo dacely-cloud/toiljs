@@ -9,6 +9,7 @@
 
 import { Potential } from '../lang/Potential';
 import { ToilHandler } from '../handlers/ToilHandler';
+import { Request } from '../request';
 
 @final
 export class ServerEnvironment {
@@ -29,6 +30,16 @@ export class ServerEnvironment {
     public _current: Potential<ToilHandler> = null;
 
     /**
+     * The request being dispatched right now. Set by `runtime/exports::handle`
+     * immediately after decode and cleared in {@link resetCurrentHandler}, so an
+     * ambient accessor like `AuthService.getUser()` can read the current
+     * request's cookies with no argument. Strictly single-request lifetime (the
+     * wasm processes one request per `handle` and memory resets between them);
+     * never cache it across requests.
+     */
+    public currentRequest: Request | null = null;
+
+    /**
      * Build (or reuse) the handler for this request. Called once per
      * dispatch from `runtime/exports::handle`.
      */
@@ -45,6 +56,7 @@ export class ServerEnvironment {
      */
     public resetCurrentHandler(): void {
         this._current = null;
+        this.currentRequest = null;
     }
 }
 

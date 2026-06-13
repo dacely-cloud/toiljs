@@ -4,6 +4,7 @@
 
 ### Other Changes
 
+- feat(server): global cookie library (Cookie / Cookies / SecureCookies) covering RFC 6265bis attributes, prefixes, percent/base64url encoding, signing (HMAC-SHA256), and encryption (AES-256-GCM), with as-pect and end-to-end tests by @BlobMaster41
 - fix: bignum @data fields cross JSON as decimal strings (exact past 2^53), toolchain on toilscript ^0.1.21 by @BlobMaster41
 - test(rpc): regression test for the bignum JSON wire format by @BlobMaster41
 - refactor(server): structured server layout (core/models/routes/services/scheduled) in the example and create templates by @BlobMaster41

@@ -55,8 +55,14 @@ export default {
         return resp;
     },
 
-    /** Enable code coverage. */
-    coverage: ['server/**/*.ts', 'server/*.ts'],
+    /**
+     * Enable code coverage. `securecookies.ts` is excluded: it depends on the
+     * toilscript crypto std (`crypto` / `data` / `bindings/webcrypto`), which the
+     * as-pect compiler (`@btc-vision/assemblyscript`) does not ship, so it cannot
+     * compile here. It is covered end-to-end against the real wasm in
+     * `test/devserver.test.ts`.
+     */
+    coverage: ['server/**/*.ts', 'server/*.ts', '!server/runtime/http/securecookies.ts'],
 
     /**
      * Specify if the binary wasm file should be written to the file system.

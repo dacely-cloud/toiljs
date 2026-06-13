@@ -17,6 +17,14 @@ import { Server } from '../env/Server';
 import { decodeRequest, encodeResponse } from '../envelope';
 import { Response } from '../response';
 
+// Ensure the cookie library is in every build so its `@global` types
+// (`Cookie`, `Cookies`, `SecureCookies`, ...) register as ambient globals,
+// usable in a handler with no import, even for a `main.ts` that imports only
+// `exports`.
+import '../http/cookie';
+import '../http/cookies';
+import '../http/securecookies';
+
 @main
 export function handle(req_ofs: i32, req_len: i32): i64 {
     let resp: Response;
@@ -39,6 +47,9 @@ export function handle(req_ofs: i32, req_len: i32): i64 {
         // garbage return value.
         resp = Response.badRequest('malformed request envelope');
     } else {
+        // Publish the request ambiently so AuthService.getUser()/hasSession()
+        // can read its cookies with no argument. Cleared in resetCurrentHandler.
+        Server.currentRequest = req;
         const handler = Server.currentHandler();
         handler.onRequestStarted(req);
         resp = handler.handle(req);

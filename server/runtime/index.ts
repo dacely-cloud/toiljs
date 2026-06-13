@@ -24,3 +24,10 @@ export { Rest, RestRegistry, RouteFn } from './rest/Rest';
 export { RouteContext } from './rest/RouteContext';
 export { matchRoute } from './rest/match';
 export { RestHandler } from './rest/RestHandler';
+
+// Cookies (`Cookie` / `Cookies` / `SecureCookies`). These are also ambient
+// globals (`@global`), so a handler can use them with no import; the re-export
+// keeps them importable and pulls the modules into every build.
+export { Cookie, SameSite, CookieEncoding, CookiePrefix, CookieValidation } from './http/cookie';
+export { Cookies, CookieMap } from './http/cookies';
+export { SecureCookies } from './http/securecookies';

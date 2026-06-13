@@ -9,7 +9,12 @@
 // the `crypto.mldsa_verify` host import (toil-backend `mldsa_verify_import.rs`,
 // and the toiljs dev-server mock).
 
-import { DataWriter } from 'data';
+import { DataWriter, DataReader } from 'data';
+
+import { Server } from '../runtime/env/Server';
+import { base64UrlDecode, base64UrlEncode } from '../runtime/http/base64';
+import { Cookie, SameSite } from '../runtime/http/cookie';
+import { SecureCookies } from '../runtime/http/securecookies';
 
 // Host import: ML-DSA-44 (FIPS 204) verify. Returns 1 (valid), 0 (invalid), or
 // a negative error code. The keypair is client-derived; only public material

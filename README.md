@@ -282,6 +282,7 @@ export class HelloHandler extends ToilHandler {
 - **REST handlers**: `Request` (method, path, headers, body) in, `Response` out, with `text` / `html` / `json` / `notFound` / `badRequest` / `internalError` helpers and the full set of HTTP methods.
 - **Binary IO on both sides**: `DataWriter`, `DataReader`, `FastMap`, and `FastSet` are shared client and server globals (and `toiljs/io`), so you can move structured bytes instead of paying the JSON tax.
 - **Typed RPC (preview)**: tag a server function and the compiler generates a typed `Server.*` surface on the client, end to end, no hand-written glue. The typed pipeline is in place today; the network transport is landing next.
+- **Cookies**: a complete RFC 6265bis layer as a global (no import). Read with `req.cookie('sid')`, write with `resp.setCookie(Cookie.create('sid', token).httpOnly().secure().sameSite(SameSite.Lax))`, and reach for `SecureCookies` when you need HMAC-signed or AES-256-GCM-encrypted values.
 
 `toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. At scale, that same `.wasm` is exactly what the Toil edge runtime serves: one hot instance per tenant, called directly with your request and wiped clean between requests, so there is no cold start and isolation is enforced below your code rather than by trust. See [The road to hyperscale](#the-road-to-hyperscale).
 

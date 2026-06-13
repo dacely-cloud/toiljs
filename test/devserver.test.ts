@@ -198,4 +198,46 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('dispatch into the example server 
         const b = get(m, '/json');
         expect(Buffer.from(a.body).toString()).toBe(Buffer.from(b.body).toString());
     });
+
+    // Exercises `SecureCookies` (HMAC-SHA256) end-to-end through the real
+    // toilscript-compiled wasm with the Node-backed `env.crypto.*` host imports:
+    // `/api/cookies/set` seals a signed `__Host-session`, `/api/cookies/inspect`
+    // parses + verifies it. (as-pect cannot compile the crypto std, so this is its coverage.)
+    const sessionCookie = (m: WasmServerModule): string => {
+        const res = get(m, '/api/cookies/set');
+        expect(res.status).toBe(200);
+        const pair = res.headers
+            .filter(([n]) => n === 'set-cookie')
+            .map(([, v]) => v.split(';')[0])
+            .find((v) => v.startsWith('__Host-session='));
+        expect(pair).toBeDefined();
+        return pair!; // "__Host-session=<sealed>"
+    };
+    const inspect = (m: WasmServerModule, cookie: string): string =>
+        Buffer.from(
+            m.dispatch({
+                method: 'GET',
+                path: '/api/cookies/inspect',
+                headers: [
+                    ['host', 'localhost:3000'],
+                    ['cookie', cookie],
+                ],
+                body: new Uint8Array(0),
+            }).body,
+        ).toString();
+
+    it('round-trips a signed cookie (SecureCookies sign -> unsign)', () => {
+        const m = load();
+        expect(inspect(m, sessionCookie(m))).toContain('"session":"user-42"');
+    });
+
+    it('rejects a tampered signed cookie', () => {
+        const m = load();
+        const pair = sessionCookie(m);
+        const eq = pair.indexOf('=');
+        const name = pair.slice(0, eq);
+        const val = pair.slice(eq + 1);
+        const tampered = `${name}=${val[0] === 'A' ? 'B' : 'A'}${val.slice(1)}`;
+        expect(inspect(m, tampered)).toContain('"session":null');
+    });
 });

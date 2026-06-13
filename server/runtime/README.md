@@ -17,6 +17,67 @@ request. This runtime gives you:
   request, runs your handler, encodes the response, and returns the
   packed i64 the host expects.
 
+## Cookies
+
+A complete HTTP cookie layer (RFC 6265bis, including `SameSite`, `Partitioned`/CHIPS,
+and the `__Host-` / `__Secure-` prefixes). `Cookie`, `Cookies`, and `SecureCookies`
+are ambient globals, usable in a handler with **no import**, exactly like `crypto`.
+
+Read:
+
+```ts
+const sid = req.cookie('sid');   // string | null
+const jar = req.cookies();       // CookieMap: get / has / names / size
+```
+
+Write (the builder hangs off `Response`; every attribute is a chained setter):
+
+```ts
+return Response.json('{"ok":true}').setCookie(
+    Cookie.create('sid', token)
+        .httpOnly()
+        .secure()
+        .sameSite(SameSite.Lax)
+        .maxAge(3600)
+        .asHostPrefixed(),       // forces Secure, Path=/, no Domain
+);
+
+resp.clearCookie('sid');         // expires it (Max-Age=0 + epoch Expires)
+```
+
+Each `setCookie` emits its own `Set-Cookie` header (cookies are never folded). The
+builder covers `domain`, `path`, `maxAge`, `expires` (epoch seconds, rendered as an
+IMF-fixdate) / `expiresRaw`, `secure`, `httpOnly`, `sameSite`, `partitioned`,
+`priority`, and arbitrary `extension(...)`. `SameSite=None` and `Partitioned` imply
+`Secure`, and `Max-Age` is clamped to the 400-day cap. `cookie.validate()` returns a
+structured result; `cookie.serialize(true)` throws on a hard violation. Values are
+percent-encoded by default (arbitrary UTF-8 is safe), switchable with
+`.withEncoding(CookieEncoding.Raw)` or `CookieEncoding.Base64Url`.
+
+Parse and serialize the request side:
+
+```ts
+const jar = Cookies.parse('a=1; b=2');                // CookieMap
+const one = Cookies.get(header, 'a');                 // string | null
+const line = Cookies.serialize('a', 'b');             // 'a=b'
+const cookie = Cookies.parseSetCookie(setCookieLine); // Set-Cookie -> Cookie
+```
+
+Signed and encrypted values with `SecureCookies`, built on the `crypto` global. Keys
+are caller-supplied raw bytes (HMAC: any length, AES: 16 or 32 bytes); add more for
+rotation. Verification and decryption never throw on bad input, a tampered or
+truncated value returns `null`:
+
+```ts
+const signer = SecureCookies.signed(key);    // HMAC-SHA256: readable, bound to the cookie name
+const sealed = signer.sign('session', userId);
+const id = signer.unsign('session', sealed); // string | null
+
+const box = SecureCookies.encrypted(key);    // AES-256-GCM: confidential + authenticated
+resp.setCookie(box.seal(Cookie.create('session', userId).httpOnly()));
+const open = box.open(req.cookies(), 'session'); // string | null
+```
+
 ## Wire contract
 
 Source of truth: `toil-backend/src/http/envelope.rs`.

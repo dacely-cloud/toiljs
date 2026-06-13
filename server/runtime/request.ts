@@ -4,6 +4,8 @@
  * memory. See `envelope.ts`.
  */
 
+import { Cookies, CookieMap } from './http/cookies';
+
 export enum Method {
     GET = 0,
     POST = 1,
@@ -31,6 +33,9 @@ export class Request {
     headers: Array<Header>;
     body: Uint8Array;
 
+    // Lazily parsed `Cookie` header, cached for the life of the request.
+    private _cookies: CookieMap | null = null;
+
     constructor(method: Method, path: string, headers: Array<Header>, body: Uint8Array) {
         this.method = method;
         this.path = path;
@@ -51,5 +56,24 @@ export class Request {
             }
         }
         return null;
+    }
+
+    /**
+     * The request's cookies, parsed from the `Cookie` header (values are
+     * percent-decoded). Parsed once and cached; an empty map if there is no
+     * `Cookie` header.
+     */
+    cookies(): CookieMap {
+        const cached = this._cookies;
+        if (cached != null) return cached;
+        const h = this.header('cookie');
+        const map = h == null ? new CookieMap() : Cookies.parse(h);
+        this._cookies = map;
+        return map;
+    }
+
+    /** A single cookie value by name, or `null` if absent. */
+    cookie(name: string): string | null {
+        return this.cookies().get(name);
     }
 }

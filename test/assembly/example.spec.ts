@@ -1,4 +1,8 @@
-import { Method, Response } from '../../server/runtime';
+// Imports the specific modules rather than the runtime index: the index
+// re-exports `SecureCookies`, which depends on the toilscript crypto std the
+// as-pect compiler does not ship (see test/assembly/cookie.spec.ts).
+import { Method } from '../../server/runtime/request';
+import { Response } from '../../server/runtime/response';
 
 describe('server runtime', () => {
     it('numbers the HTTP methods per the wire contract', () => {
