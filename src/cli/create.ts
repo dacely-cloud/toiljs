@@ -175,12 +175,10 @@ function scaffold(
         'toilconfig.json':
             JSON.stringify(
                 {
-                    // `toiljs build` compiles every server/*.ts so dropped-in @data/@rest files are
-                    // picked up; these entries are the fallback when running `toilscript` directly.
-                    entries:
-                        template === 'minimal'
-                            ? ['server/main.ts']
-                            : ['server/main.ts', 'server/api.ts'],
+                    // `toiljs build` compiles every decorated server file (recursively) so
+                    // dropped-in @data/@rest files are picked up; main.ts imports the surface
+                    // modules so a direct `toilscript` run builds the same server.
+                    entries: ['server/main.ts'],
                     targets: {
                         release: {
                             outFile: 'build/server/release.wasm',
@@ -261,12 +259,18 @@ function scaffold(
     return files;
 }
 
-/** A minimal but working server for the `minimal` template (the `app` template copies examples/basic/server). */
+/**
+ * A minimal but working server for the `minimal` template (the `app` template copies
+ * examples/basic/server). Same folder conventions as the full starter, just fewer files:
+ * the entry in main.ts, the handler under core/, and a README mapping where new
+ * routes/services/models go.
+ */
 function minimalServer(): Record<string, string> {
     return {
-        'server/HelloHandler.ts':
+        'server/core/AppHandler.ts':
             "import { ToilHandler, Request, Response, Method } from 'toiljs/server/runtime';\n\n" +
-            'export class HelloHandler extends ToilHandler {\n' +
+            '/** Every request enters here. Add `@rest` controllers under routes/ as you grow. */\n' +
+            'export class AppHandler extends ToilHandler {\n' +
             '    public handle(req: Request): Response {\n' +
             '        if (req.method != Method.GET && req.method != Method.HEAD) {\n' +
             "            return Response.empty(405).setHeader('allow', 'GET, HEAD');\n" +
@@ -285,15 +289,31 @@ function minimalServer(): Record<string, string> {
             '}\n',
         'server/main.ts':
             "import { Server } from 'toiljs/server/runtime';\n" +
-            "import { revertOnError } from 'toiljs/server/runtime/abort/abort';\n" +
-            "import { HelloHandler } from './HelloHandler';\n\n" +
+            "import { revertOnError } from 'toiljs/server/runtime/abort/abort';\n\n" +
+            "import { AppHandler } from './core/AppHandler';\n\n" +
+            '// As you add surface modules (@rest routes, @service/@remote RPC), import them here\n' +
+            '// so a direct `toilscript` run builds the same server `toiljs build` does, e.g.:\n' +
+            "//   import './routes/Players';\n\n" +
             '// Wire your handler here.\n' +
-            'Server.handler = () => new HelloHandler();\n\n' +
+            'Server.handler = () => new AppHandler();\n\n' +
             '// Required: re-export the WASM entry points and the abort hook.\n' +
             "export * from 'toiljs/server/runtime/exports';\n" +
             'export function abort(message: string, fileName: string, line: u32, column: u32): void {\n' +
             '    revertOnError(message, fileName, line, column);\n' +
             '}\n',
+        'server/README.md':
+            '# server/\n\n' +
+            'Your ToilScript backend, compiled to a single WebAssembly module. One folder per concern:\n\n' +
+            '| Folder | What lives here |\n' +
+            '| --- | --- |\n' +
+            '| `main.ts` | The entry point: wires the handler and imports the surface modules. |\n' +
+            '| `core/` | The request handler and shared app logic (state, helpers). |\n' +
+            '| `models/` | `@data` classes, the typed wire model shared by HTTP and RPC. One type per file. |\n' +
+            '| `routes/` | `@rest` controllers (HTTP). One controller per file, named after its class. |\n' +
+            '| `services/` | `@service` classes and free `@remote` functions (typed RPC). |\n' +
+            '| `scheduled/` | Reserved for scheduled tasks (not shipped yet). |\n\n' +
+            'New decorated files are picked up automatically by `toiljs build`/`dev`; also add an import\n' +
+            'in `main.ts` so a direct `toilscript` run builds the same server.\n',
     };
 }
 
@@ -586,7 +606,27 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     if (template === 'app') {
         // Copy the example client + server (the single starter source), set the <title>, then style.
         await fs.cp(appClientDir(), path.join(targetDir, 'client'), { recursive: true });
-        await fs.cp(appServerDir(), path.join(targetDir, 'server'), { recursive: true });
+        // Only the canonical starter layout ships; anything else sitting in the example's
+        // server/ (local experiments, scratch entries) stays out of scaffolded apps.
+        const serverAllow = new Set([
+            'main.ts',
+            'README.md',
+            'tsconfig.json',
+            'core',
+            'models',
+            'routes',
+            'services',
+            'scheduled',
+        ]);
+        const serverSrc = appServerDir();
+        await fs.cp(serverSrc, path.join(targetDir, 'server'), {
+            recursive: true,
+            filter: (src) => {
+                const rel = path.relative(serverSrc, src);
+                if (rel === '') return true;
+                return serverAllow.has(rel.split(path.sep)[0]);
+            },
+        });
         const indexHtml = path.join(targetDir, 'client', 'public', 'index.html');
         const html = await fs.readFile(indexHtml, 'utf8');
         await fs.writeFile(
@@ -628,5 +668,5 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     steps.push(`${accent('npm run build')} ${dim('build for production')}`);
     note(steps.map((l) => dim('  ') + l).join('\n'), 'Next steps');
 
-    outro(`Created ${accent(path.basename(name))}, happy building! ${dim('· v' + version())}`);
+    outro(`Created ${accent(path.basename(name))}, happy building! ${dim('(v' + version() + ')')}`);
 }

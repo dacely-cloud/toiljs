@@ -1,10 +1,15 @@
 import { Method, Request, Response, Rest, ToilHandler } from 'toiljs/server/runtime';
 
-export class HelloHandler extends ToilHandler {
+/**
+ * The app's request handler: every request enters here. `@rest` controllers (see
+ * `routes/`) are tried first via `Rest.dispatch`; whatever they do not claim falls
+ * through to the hand-rolled demo endpoints below, then yields to the client.
+ */
+export class AppHandler extends ToilHandler {
     public handle(req: Request): Response {
-        // Try the @rest controllers first (see api.ts). Rest.dispatch returns the
-        // first matching route's Response, or null if nothing matched - then we fall
-        // through to our own logic. REST composes; it never takes over handle().
+        // Rest.dispatch returns the first matching route's Response, or null if nothing
+        // matched - then we fall through to our own logic. REST composes; it never takes
+        // over handle().
         const hit = Rest.dispatch(req);
         if (hit != null) {
             return hit;

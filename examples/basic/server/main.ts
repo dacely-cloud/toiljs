@@ -1,13 +1,22 @@
 import { Server } from 'toiljs/server/runtime';
 import { revertOnError } from 'toiljs/server/runtime/abort/abort';
-import { HelloHandler } from './HelloHandler';
+
+import { AppHandler } from './core/AppHandler';
+
+// Surface modules: @rest routes and @service/@remote RPC. `toiljs build` discovers every
+// decorated file under server/ on its own; importing them here keeps a direct `toilscript`
+// run (which only sees the toilconfig entries) building the exact same server.
+import './routes/Players';
+import './routes/Leaderboard';
+import './services/Stats';
+import './services/remotes';
 
 // DO NOT TOUCH THIS.
 Server.handler = () => {
     // ONLY CHANGE THE HANDLER CLASS NAME.
     // DO NOT ADD CUSTOM LOGIC HERE.
 
-    return new HelloHandler();
+    return new AppHandler();
 };
 
 // VERY IMPORTANT
