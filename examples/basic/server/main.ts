@@ -8,6 +8,7 @@ import { AppHandler } from './core/AppHandler';
 // run (which only sees the toilconfig entries) building the exact same server.
 import './routes/Players';
 import './routes/Leaderboard';
+import './routes/Session';
 import './services/Stats';
 import './services/remotes';
 

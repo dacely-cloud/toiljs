@@ -19,6 +19,10 @@ export { Response, TOIL_UNHANDLED_HEADER } from './response';
 export { ToilHandler } from './handlers/ToilHandler';
 export { Server, ServerEnvironment } from './env/Server';
 
+// Wall-clock (`Time.nowMillis()` / `Time.nowSeconds()`), backed by the host
+// `Date.now()` binding. Ambient global (`@global`), also re-exported here.
+export { Time } from './time';
+
 // HTTP layer (`@rest` / `@route`).
 export { Rest, RestRegistry, RouteFn } from './rest/Rest';
 export { RouteContext } from './rest/RouteContext';
@@ -31,3 +35,4 @@ export { RestHandler } from './rest/RestHandler';
 export { Cookie, SameSite, CookieEncoding, CookiePrefix, CookieValidation } from './http/cookie';
 export { Cookies, CookieMap } from './http/cookies';
 export { SecureCookies } from './http/securecookies';
+export { base64UrlEncode, base64UrlDecode } from './http/base64';

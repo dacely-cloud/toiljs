@@ -11,10 +11,15 @@
 
 import { DataWriter, DataReader } from 'data';
 
-import { Server } from '../runtime/env/Server';
-import { base64UrlDecode, base64UrlEncode } from '../runtime/http/base64';
-import { Cookie, SameSite } from '../runtime/http/cookie';
-import { SecureCookies } from '../runtime/http/securecookies';
+import {
+    Server,
+    SecureCookies,
+    Cookie,
+    SameSite,
+    Time,
+    base64UrlEncode,
+    base64UrlDecode,
+} from 'toiljs/server/runtime';
 
 // Host import: ML-DSA-44 (FIPS 204) verify. Returns 1 (valid), 0 (invalid), or
 // a negative error code. The keypair is client-derived; only public material
@@ -32,7 +37,150 @@ declare function __toilMldsaVerify(
     ctxLen: i32,
 ): i32;
 
+// HMAC key for signing session cookies. The SAME secret must be configured on
+// every edge instance (a sealed cookie minted by one is opened by another) and
+// must NEVER reach the client. There is no host-config secret mechanism yet, so
+// the tenant supplies one at startup via `AuthService.setSecret(...)` (a
+// build-time constant is consistent across instances). The default below is a
+// well-known DEV placeholder: a deployment that does not call `setSecret` gets a
+// loud, insecure-but-functional session so local dev works out of the box.
+// TODO(secret): replace with a per-deployment host-config secret.
+let __sessionSecret: Uint8Array = Uint8Array.wrap(
+    String.UTF8.encode('toil-dev-insecure-session-secret-CHANGE-ME'),
+);
+
 export namespace AuthService {
+    /** Signed session cookie name. `__Host-` pairs with `asHostPrefixed()`
+     *  (Secure, Path=/, no Domain) for the strongest browser scoping. */
+    export const SESSION_COOKIE: string = '__Host-toil_sess';
+
+    /** Session payload format version (first byte of the sealed payload). */
+    const SESSION_VERSION: u8 = 1;
+
+    /** Default session lifetime if `mintSession` is called without a ttl. */
+    export const DEFAULT_SESSION_TTL_SECS: u64 = 86400; // 24h
+
+    /**
+     * Configure the server secret used to sign session cookies. Call once at
+     * startup from the tenant's `main.ts`. Must be identical on every edge
+     * instance and kept out of any client bundle.
+     */
+    export function setSecret(secret: Uint8Array): void {
+        __sessionSecret = secret;
+    }
+
+    /**
+     * The verified session payload (the `@user` codec bytes) for the current
+     * request, or `null` if there is no session, the signature does not verify,
+     * or it has expired. Reads the ambient request's cookies (no argument), so
+     * it is only meaningful during a dispatch.
+     */
+    export function getSessionBytes(): Uint8Array | null {
+        const req = Server.currentRequest;
+        if (req == null) return null;
+
+        const sealed = SecureCookies.signed(__sessionSecret).open(req.cookies(), SESSION_COOKIE);
+        if (sealed == null) return null;
+
+        const payload = base64UrlDecode(sealed);
+        if (payload == null) return null;
+
+        const r = new DataReader(payload);
+        if (r.readU8() != SESSION_VERSION) return null; // version
+        r.readU64();                                     // iat (unused on read)
+        const exp = r.readU64();
+        const userBytes = r.readBytes();
+        if (!r.ok) return null;                          // truncated/malformed
+
+        if (Time.nowSeconds() >= exp) return null;       // expired
+
+        return userBytes;
+    }
+
+    /** Whether the current request carries a valid, unexpired session. The
+     *  toilscript `@auth` guard calls this before running the route. */
+    export function hasSession(): bool {
+        return getSessionBytes() != null;
+    }
+
+    /**
+     * The authenticated user for the current request, decoded from the verified
+     * session, or `null`. Auto-typed to the tenant's `@user` class with NO type
+     * argument: the toilscript `@user` transform injects a `@global` subclass
+     * `AuthUser extends <YourUser>` and a `__toilDecodeAuthUser` decoder, so this
+     * returns the user's own fields. Tenants without a `@user` class never call
+     * this, so AssemblyScript skips compiling it (the injected globals are
+     * absent there, which is fine).
+     */
+    // @ts-ignore: AuthUser / __toilDecodeAuthUser are injected by the @user transform
+    export function getUser(): AuthUser | null {
+        const bytes = getSessionBytes();
+        // @ts-ignore: __toilDecodeAuthUser is injected by the @user transform
+        return bytes == null ? null : __toilDecodeAuthUser(bytes);
+    }
+
+    /**
+     * Mint a signed session cookie carrying `userData` (the `@user` codec bytes,
+     * i.e. `myUser.encode()`), valid for `ttlSecs`. Set it on the response with
+     * `Response.setCookie(...)`. HMAC-signed, HttpOnly, Secure, SameSite=Lax,
+     * `__Host-` scoped. The value stays readable but cannot be forged or moved.
+     */
+    export function mintSession(userData: Uint8Array, ttlSecs: u64 = DEFAULT_SESSION_TTL_SECS): Cookie {
+        const now = Time.nowSeconds();
+        const w = new DataWriter();
+        w.writeU8(SESSION_VERSION);
+        w.writeU64(now);
+        w.writeU64(now + ttlSecs);
+        w.writeBytes(userData);
+
+        const cookie = Cookie.create(SESSION_COOKIE, base64UrlEncode(w.toBytes()))
+            .httpOnly()
+            .secure()
+            .sameSite(SameSite.Lax)
+            .maxAge(<i64>ttlSecs)
+            .asHostPrefixed();
+        return SecureCookies.signed(__sessionSecret).seal(cookie);
+    }
+
+    /** A `Set-Cookie` that immediately clears the session (logout). */
+    export function clearSession(): Cookie {
+        return Cookie.create(SESSION_COOKIE, '')
+            .httpOnly()
+            .secure()
+            .sameSite(SameSite.Lax)
+            .maxAge(0)
+            .asHostPrefixed();
+    }
+
+    /** Readable companion cookie name: a NON-HttpOnly copy of the user data for
+     *  the client's `getUser()` to display. UNTRUSTED: the server always
+     *  re-verifies the signed session and never reads this; treat it as
+     *  display-only (a client can forge it, but only fools its own UI). */
+    export const USER_COOKIE: string = '__Secure-toil_user';
+
+    /**
+     * A readable companion cookie carrying `userData` (the `@user` codec bytes,
+     * base64url) for the client. Secure + SameSite=Lax but NOT HttpOnly, so the
+     * browser exposes it to `document.cookie`. Set it alongside
+     * {@link mintSession}; the server NEVER trusts it.
+     */
+    export function userCookie(userData: Uint8Array, ttlSecs: u64 = DEFAULT_SESSION_TTL_SECS): Cookie {
+        return Cookie.create(USER_COOKIE, base64UrlEncode(userData))
+            .secure()
+            .sameSite(SameSite.Lax)
+            .maxAge(<i64>ttlSecs)
+            .asSecurePrefixed();
+    }
+
+    /** A `Set-Cookie` that clears the readable companion cookie (logout). */
+    export function clearUserCookie(): Cookie {
+        return Cookie.create(USER_COOKIE, '')
+            .secure()
+            .sameSite(SameSite.Lax)
+            .maxAge(0)
+            .asSecurePrefixed();
+    }
+
     /** FIPS 204 signing context (domain separator) for login. Byte-identical
      *  on the client signer and this verifier; binds a signature to "login" so
      *  it can never validate against another operation reusing the keypair. */

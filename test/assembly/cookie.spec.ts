@@ -129,6 +129,16 @@ describe('Cookie.serialize', () => {
     it('strips control characters from the name', () => {
         expect<string>(new Cookie('a\r\nb', 'v').serialize()).toStrictEqual('ab=v');
     });
+
+    it('strips semicolons from a raw value (no attribute injection)', () => {
+        expect<string>(
+            Cookie.create('a', 'b; Secure').withEncoding(CookieEncoding.Raw).serialize(),
+        ).toStrictEqual('a=b Secure');
+    });
+
+    it('reduces the name to token chars (no attribute injection)', () => {
+        expect<string>(new Cookie('a;Domain=evil', 'v').serialize()).toStrictEqual('aDomainevil=v');
+    });
 });
 
 // --- validation -------------------------------------------------------------

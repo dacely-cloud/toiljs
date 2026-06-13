@@ -97,25 +97,49 @@ function allCookieOctet(s: string): bool {
 }
 
 /**
- * Remove control characters (C0 + DEL). They are invalid in cookie names,
- * values, and attribute values per RFC 6265bis, and CR/LF would otherwise enable
- * header injection. Fast path: returns the input unchanged when it is clean, so
- * the common (already-safe) case costs one scan and no allocation.
+ * Keep only RFC 7230 `token` characters. A cookie name MUST be a token, so this
+ * drops anything (CR/LF, `;`, `=`, whitespace, ...) that could break out of the
+ * name and inject an attribute or a header. Fast path returns a clean input as-is.
  */
-function stripControls(s: string): string {
-    let bad = false;
+function tokenize(s: string): string {
+    let clean = true;
     for (let i = 0; i < s.length; i++) {
-        const c = s.charCodeAt(i);
-        if (c < 0x20 || c == 0x7f) {
-            bad = true;
+        if (!isTokenChar(s.charCodeAt(i))) {
+            clean = false;
             break;
         }
     }
-    if (!bad) return s;
+    if (clean) return s;
     let out = '';
     for (let i = 0; i < s.length; i++) {
         const c = s.charCodeAt(i);
-        if (c >= 0x20 && c != 0x7f) out += String.fromCharCode(c);
+        if (isTokenChar(c)) out += String.fromCharCode(c);
+    }
+    return out;
+}
+
+/**
+ * Strip the characters that could break out of a value or attribute on the wire:
+ * control characters (C0 + DEL), which enable CR/LF header injection, and `;`,
+ * which would otherwise start a new cookie attribute. Defense in depth: the
+ * default percent encoding already removes these from the value, and they are
+ * invalid in these positions per the cookie grammar, so nothing legitimate is
+ * lost (base64url sealed values are unaffected). Fast path returns a clean input.
+ */
+function stripUnsafe(s: string): string {
+    let clean = true;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c < 0x20 || c == 0x7f || c == 0x3b) {
+            clean = false;
+            break;
+        }
+    }
+    if (clean) return s;
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c >= 0x20 && c != 0x7f && c != 0x3b) out += String.fromCharCode(c);
     }
     return out;
 }
@@ -347,18 +371,19 @@ export class Cookie {
             }
         }
 
-        // Strip control characters from every caller-supplied part as a
-        // defense-in-depth guard against header injection (CR/LF). The default
-        // value encodings never emit controls; this covers raw values, the name,
-        // and attribute values. Controls are invalid in all of these per the
-        // cookie grammar, so it never drops legitimate data.
-        let s = stripControls(this.name) + '=' + stripControls(this.encodedValue());
+        // Sanitize every caller-supplied part to its grammar as defense in depth
+        // against header injection (CR/LF) and cookie-attribute injection (`;`).
+        // The name is reduced to RFC token characters; values and attribute
+        // values have controls and `;` stripped. These are invalid in these
+        // positions per the cookie grammar, so nothing legitimate is dropped, and
+        // base64url sealed values pass through untouched.
+        let s = tokenize(this.name) + '=' + stripUnsafe(this.encodedValue());
 
-        if (this._domain.length > 0) s += '; Domain=' + stripControls(this._domain);
-        if (this._path.length > 0) s += '; Path=' + stripControls(this._path);
+        if (this._domain.length > 0) s += '; Domain=' + stripUnsafe(this._domain);
+        if (this._path.length > 0) s += '; Path=' + stripUnsafe(this._path);
 
         if (this._expiresRaw.length > 0) {
-            s += '; Expires=' + stripControls(this._expiresRaw);
+            s += '; Expires=' + stripUnsafe(this._expiresRaw);
         } else if (this._hasExpires) {
             s += '; Expires=' + imfFixdate(this._expires);
         }
@@ -376,10 +401,10 @@ export class Cookie {
         if (this.effectiveSecure()) s += '; Secure';
         if (this._httpOnly) s += '; HttpOnly';
         if (this._partitioned) s += '; Partitioned';
-        if (this._priority.length > 0) s += '; Priority=' + stripControls(this._priority);
+        if (this._priority.length > 0) s += '; Priority=' + stripUnsafe(this._priority);
 
         for (let i = 0; i < this._extensions.length; i++) {
-            s += '; ' + stripControls(this._extensions[i]);
+            s += '; ' + stripUnsafe(this._extensions[i]);
         }
 
         return s;

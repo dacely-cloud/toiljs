@@ -25,6 +25,12 @@ import '../http/cookie';
 import '../http/cookies';
 import '../http/securecookies';
 
+// Surface the edge-SSR `render(i32, i32) -> i64` export. Optional at the host:
+// a build with no SSR routes still exports `render`, but its `Ssr` registry is
+// empty so every call returns the fail-safe empty result. The compiler injects
+// the route-render registrations (and their imports) into the user's main.ts.
+export { render } from './render';
+
 @main
 export function handle(req_ofs: i32, req_len: i32): i64 {
     let resp: Response;
