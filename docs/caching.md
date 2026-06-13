@@ -59,7 +59,11 @@ return Response.bytes(blob).cacheFor(5);
 
 The cache layer refuses to store anything unsafe, regardless of the directive:
 
-- only **2xx** responses are cached;
+- **5xx** responses are never cached — a server error is transient, and `@cache`
+  wraps the whole route, so a `@cache`d route that hits a blip returns its 500
+  carrying the directive; caching it would serve the failure for the full TTL.
+  **2xx, 3xx, and 4xx are cacheable** (a redirect or a `404`/`410` is a
+  deterministic function of the request key);
 - a response that sets a **`Set-Cookie`** is never cached;
 - a response to an **authenticated** request is not cached unless you pass
   `allowAuth = true` — this prevents one user's personalized response from being
