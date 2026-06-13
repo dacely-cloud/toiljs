@@ -419,7 +419,9 @@ coverage
 # Toil client compiler working dir + example build output
 .toil
 toil-env.d.ts
+toil-server-env.d.ts
 examples/*/build
 examples/*/.toil
 examples/*/toil-env.d.ts
 examples/*/toil-routes.d.ts
+examples/*/server/toil-server-env.d.ts
