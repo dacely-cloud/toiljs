@@ -49,10 +49,36 @@ let __sessionSecret: Uint8Array = Uint8Array.wrap(
     String.UTF8.encode('toil-dev-insecure-session-secret-CHANGE-ME'),
 );
 
+// Whether the current request arrived over HTTPS. A TLS edge / proxy signals it
+// with `x-forwarded-proto: https`; absent (plain HTTP, including `toiljs dev`)
+// the session uses plain cookies so they actually round-trip in the browser.
+// Over HTTPS the cookies keep their hardened `__Host-`/`__Secure-` prefixes and
+// the `Secure` flag. The signature + expiry checks are identical either way.
+function __reqIsSecure(): bool {
+    const req = Server.currentRequest;
+    if (req == null) return false;
+    const proto = req.header('x-forwarded-proto');
+    return proto != null && proto == 'https';
+}
+
 export namespace AuthService {
-    /** Signed session cookie name. `__Host-` pairs with `asHostPrefixed()`
-     *  (Secure, Path=/, no Domain) for the strongest browser scoping. */
+    /** Signed session cookie name (the HTTPS form). `__Host-` pairs with
+     *  `asHostPrefixed()` (Secure, Path=/, no Domain) for the strongest browser
+     *  scoping; over plain HTTP the unprefixed `toil_sess` is used instead. */
     export const SESSION_COOKIE: string = '__Host-toil_sess';
+
+    /** Base (unprefixed) cookie names; the `__Host-`/`__Secure-` prefixes are
+     *  added only when the request is secure (see `__reqIsSecure`). */
+    const SESSION_BASE: string = 'toil_sess';
+    const USER_BASE: string = 'toil_user';
+
+    /** The session / companion cookie name actually used for `secure`. */
+    function sessionCookieName(secure: bool): string {
+        return secure ? '__Host-' + SESSION_BASE : SESSION_BASE;
+    }
+    function userCookieName(secure: bool): string {
+        return secure ? '__Secure-' + USER_BASE : USER_BASE;
+    }
 
     /** Session payload format version (first byte of the sealed payload). */
     const SESSION_VERSION: u8 = 1;
@@ -79,7 +105,10 @@ export namespace AuthService {
         const req = Server.currentRequest;
         if (req == null) return null;
 
-        const sealed = SecureCookies.signed(__sessionSecret).open(req.cookies(), SESSION_COOKIE);
+        const sealed = SecureCookies.signed(__sessionSecret).open(
+            req.cookies(),
+            sessionCookieName(__reqIsSecure()),
+        );
         if (sealed == null) return null;
 
         const payload = base64UrlDecode(sealed);
@@ -133,23 +162,24 @@ export namespace AuthService {
         w.writeU64(now + ttlSecs);
         w.writeBytes(userData);
 
-        const cookie = Cookie.create(SESSION_COOKIE, base64UrlEncode(w.toBytes()))
+        const secure = __reqIsSecure();
+        let cookie = Cookie.create(SESSION_BASE, base64UrlEncode(w.toBytes()))
             .httpOnly()
-            .secure()
             .sameSite(SameSite.Lax)
-            .maxAge(<i64>ttlSecs)
-            .asHostPrefixed();
+            .maxAge(<i64>ttlSecs);
+        cookie = secure ? cookie.asHostPrefixed() : cookie.path('/');
         return SecureCookies.signed(__sessionSecret).seal(cookie);
     }
 
     /** A `Set-Cookie` that immediately clears the session (logout). */
     export function clearSession(): Cookie {
-        return Cookie.create(SESSION_COOKIE, '')
+        const secure = __reqIsSecure();
+        let cookie = Cookie.create(SESSION_BASE, '')
             .httpOnly()
-            .secure()
             .sameSite(SameSite.Lax)
-            .maxAge(0)
-            .asHostPrefixed();
+            .maxAge(0);
+        cookie = secure ? cookie.asHostPrefixed() : cookie.path('/');
+        return cookie;
     }
 
     /** Readable companion cookie name: a NON-HttpOnly copy of the user data for
@@ -165,20 +195,22 @@ export namespace AuthService {
      * {@link mintSession}; the server NEVER trusts it.
      */
     export function userCookie(userData: Uint8Array, ttlSecs: u64 = DEFAULT_SESSION_TTL_SECS): Cookie {
-        return Cookie.create(USER_COOKIE, base64UrlEncode(userData))
-            .secure()
+        const secure = __reqIsSecure();
+        let cookie = Cookie.create(USER_BASE, base64UrlEncode(userData))
             .sameSite(SameSite.Lax)
-            .maxAge(<i64>ttlSecs)
-            .asSecurePrefixed();
+            .maxAge(<i64>ttlSecs);
+        cookie = secure ? cookie.asSecurePrefixed() : cookie.path('/');
+        return cookie;
     }
 
     /** A `Set-Cookie` that clears the readable companion cookie (logout). */
     export function clearUserCookie(): Cookie {
-        return Cookie.create(USER_COOKIE, '')
-            .secure()
+        const secure = __reqIsSecure();
+        let cookie = Cookie.create(USER_BASE, '')
             .sameSite(SameSite.Lax)
-            .maxAge(0)
-            .asSecurePrefixed();
+            .maxAge(0);
+        cookie = secure ? cookie.asSecurePrefixed() : cookie.path('/');
+        return cookie;
     }
 
     /** FIPS 204 signing context (domain separator) for login. Byte-identical
