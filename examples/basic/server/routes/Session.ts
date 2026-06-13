@@ -20,9 +20,10 @@ import { DataReader, DataWriter } from 'data';
  * calls `AuthService.setSecret(...)` once at startup (see server/main.ts).
  */
 
-// @user: the authenticated-user shape. Exactly one per program.
+// @user: the authenticated-user shape. Exactly one per program. Exported so
+// other routes (the PQ login) can mint a session via its generated codec.
 @user
-class Account {
+export class Account {
     username: string = '';
     admin: bool = false;
     score: u64 = 0;
