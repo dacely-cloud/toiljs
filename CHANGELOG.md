@@ -2,7 +2,11 @@
 
 ## [v0.0.34] - 2026-06-13
 
-- No changes
+### Other Changes
+
+- fix: bignum @data fields cross JSON as decimal strings (exact past 2^53), toolchain on toilscript ^0.1.21 by @BlobMaster41
+- test(rpc): regression test for the bignum JSON wire format by @BlobMaster41
+- refactor(server): structured server layout (core/models/routes/services/scheduled) in the example and create templates by @BlobMaster41
 
 
 ## [v0.0.33] - 2026-06-12
