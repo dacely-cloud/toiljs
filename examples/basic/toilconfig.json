@@ -27,6 +27,9 @@
         "memoryBase": 65536,
         "initialMemory": 4,
         "debug": false,
-        "trapMode": "allow"
+        "trapMode": "allow",
+        "lib": [
+            "node_modules/toiljs/server/globals"
+        ]
     }
 }

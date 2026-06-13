@@ -17,6 +17,8 @@
 
 import * as nodeCrypto from 'node:crypto';
 
+import { ml_dsa44 } from '@btc-vision/post-quantum/ml-dsa.js';
+
 import type { MemoryRef } from './host.js';
 
 // --- ABI id tables (must match the std + Rust backend) ----------------------
@@ -211,6 +213,27 @@ export function buildCryptoImports(
 
         'crypto.derive_bits': (h: number, pp: number, pl: number, lengthBits: number): number =>
             deriveBitsOp(cs, ref, h, pp, pl, lengthBits),
+
+        // ML-DSA-44 (FIPS 204) verify for the auth primitive. Mirrors the edge
+        // host (`mldsa_verify_import.rs`): same size asserts, 1/0/neg result.
+        // Backed by the same noble lib the client signs with, so dev == prod.
+        'crypto.mldsa_verify': (
+            pkPtr: number, pkLen: number,
+            msgPtr: number, msgLen: number,
+            sigPtr: number, sigLen: number,
+            ctxPtr: number, ctxLen: number,
+        ): number => {
+            if (pkLen !== 1312 || sigLen !== 2420 || ctxLen > 255) return -4;
+            try {
+                const pk = new Uint8Array(readBytes(ref, pkPtr, pkLen));
+                const msg = new Uint8Array(readBytes(ref, msgPtr, msgLen));
+                const sig = new Uint8Array(readBytes(ref, sigPtr, sigLen));
+                const ctx = new Uint8Array(readBytes(ref, ctxPtr, ctxLen));
+                return ml_dsa44.verify(sig, msg, pk, { context: ctx }) ? 1 : 0;
+            } catch {
+                return -1;
+            }
+        },
     };
 }
 
