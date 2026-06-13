@@ -90,7 +90,7 @@ function relFromToil(cfg: ResolvedToilConfig, abs: string): string {
     return rel;
 }
 
-function findLayout(cfg: ResolvedToilConfig): string | undefined {
+export function findLayout(cfg: ResolvedToilConfig): string | undefined {
     return ['layout.tsx', 'layout.jsx']
         .map((name) => path.join(cfg.clientAbsDir, name))
         .find((p) => fs.existsSync(p));
@@ -189,7 +189,7 @@ function specialIn(dir: string, base: string): string | undefined {
  * ancestor directory down to the file's own. With `includeClientRoot`, `client/<base>` is prepended
  * as the outermost (used by templates; the root `client/layout.tsx` is instead the top-level layout).
  */
-function findSpecialChain(
+export function findSpecialChain(
     cfg: ResolvedToilConfig,
     routeFile: string,
     base: string,

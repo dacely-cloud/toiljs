@@ -14,6 +14,7 @@ import type { RunningBackend } from 'toiljs/backend';
 import { loadConfig } from './config.js';
 import { generate } from './generate.js';
 import { prerenderStaticParams } from './ssg.js';
+import { extractTemplates } from './template-build.js';
 import { createViteConfig } from './vite.js';
 
 /**
@@ -312,6 +313,10 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     await viteBuild(await createViteConfig(cfg));
     // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
     await prerenderStaticParams(cfg);
+    // Edge SSR: render `export const ssr = true` routes to template-with-holes
+    // (`_ssr/*.tmpl|slots` + the guest `Slot` module), copied into the edge host
+    // bundle. No-op when no route opts in.
+    await extractTemplates(cfg);
 }
 
 /**

@@ -260,6 +260,62 @@ export function readRouteData(
     return entry.value;
 }
 
+/**
+ * Seed the loader cache from server-rendered hydration state, BEFORE the first
+ * client render (called by `mount` on an SSR document). The route's module
+ * still loads (the browser needs the component), but its `loader` does NOT
+ * re-run: the server's `data` is used, so the first client render reproduces
+ * the server HTML and `hydrateRoot` stays clean. The entry is `prefetched`, so
+ * the NEXT navigation re-evaluates the route's `revalidate` policy normally.
+ *
+ * For a flash-free hydrate the SSR document should modulepreload the route
+ * chunk, so `route.load()` resolves in a microtask and the root never suspends.
+ */
+export function hydrateLoaderData(
+    route: RouteDef,
+    params: RouteParams,
+    pathname: string,
+    search: string,
+    data: unknown,
+): void {
+    const key = loaderKey(pathname, search);
+    if (cache.has(key)) return;
+    const epoch = navigationEpoch();
+    const entry: Entry = {
+        status: 'pending',
+        promise: Promise.resolve(),
+        loadedAt: 0,
+        revalidate: 0,
+        epoch,
+        hasLoader: true,
+        prefetched: true,
+    };
+    entry.promise = route.load().then(
+        async (mod: RouteModule) => {
+            const searchParams = new URLSearchParams(search);
+            let head: HeadSpec | undefined;
+            if (mod.generateMetadata) {
+                head = resolveMetadata(await mod.generateMetadata({ params, searchParams, data }));
+            } else if (mod.metadata) {
+                head = resolveMetadata(mod.metadata);
+            }
+            entry.value = { Component: mod.default, data, head };
+            entry.revalidate = mod.revalidate ?? 0;
+            entry.loadedAt = Date.now();
+            entry.status = 'done';
+            emitCache();
+        },
+        (error: unknown) => {
+            entry.error = error;
+            entry.loadedAt = Date.now();
+            entry.status = 'error';
+            emitCache();
+        },
+    );
+    cache.set(key, entry);
+    emitCache();
+}
+
 /** Clears all cached loader data, so the next render re-runs loaders (used by router.refresh). */
 export function clearLoaderData(): void {
     cache.clear();

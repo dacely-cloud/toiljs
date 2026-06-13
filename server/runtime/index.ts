@@ -23,6 +23,11 @@ export { Server, ServerEnvironment } from './env/Server';
 // `Date.now()` binding. Ambient global (`@global`), also re-exported here.
 export { Time } from './time';
 
+// Edge SSR (`render` entrypoint): the render router + the typed slot-values
+// API a route's `render(req)` fills. See `./exports/render`.
+export { Ssr, SsrRegistry, RenderFn } from './ssr/Ssr';
+export { SlotValues, SlotValue, HtmlBuilder } from './ssr/slots';
+
 // HTTP layer (`@rest` / `@route`).
 export { Rest, RestRegistry, RouteFn } from './rest/Rest';
 export { RouteContext } from './rest/RouteContext';

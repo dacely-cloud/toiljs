@@ -68,7 +68,7 @@ export function encodeValues(v: SlotValues, dst_ofs: usize): u32 {
     cur += 2;
     for (let i = 0; i < v.slots.length; i++) {
         const s = v.slots[i];
-        writeU16(cur, s.slotId);
+        writeU16(cur, <u16>s.slotId);
         cur += 2;
         writeU8(cur, s.kind);
         cur += 1;

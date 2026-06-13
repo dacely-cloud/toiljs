@@ -152,6 +152,43 @@ export class WasmServerModule {
         };
     }
 
+    /**
+     * Run one request through the guest `render` entrypoint (edge SSR). Returns
+     * the raw values-envelope bytes (status + template_hash + headers + slot
+     * values) that the edge splices against the template manifest. Throws if
+     * the module has no `render` export. Mirrors {@link dispatch}'s fresh-
+     * instance + grow-and-write-envelope contract.
+     */
+    dispatchRender(req: EnvelopeRequest): Uint8Array {
+        if (this.module === null) throw new Error(`server wasm not loaded (${this.wasmPath})`);
+
+        const envelope = encodeRequestEnvelope(req);
+        const ref: MemoryRef = { memory: null };
+        const state = freshDispatchState();
+        const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
+        const exports = instance.exports as unknown as HandleExports & {
+            render?: (reqOfs: number, reqLen: number) => bigint;
+        };
+        if (typeof exports.render !== 'function')
+            throw new Error(`guest wasm has no 'render' export (${this.wasmPath})`);
+        ref.memory = exports.memory;
+
+        const reqOfs = exports.memory.buffer.byteLength;
+        exports.memory.grow(Math.ceil(envelope.length / WASM_PAGE) || 1);
+        Buffer.from(exports.memory.buffer).set(envelope, reqOfs);
+
+        const packed = exports.render(reqOfs, envelope.length);
+        const { ptr, len } = unpackHandleResult(packed);
+
+        const memSize = exports.memory.buffer.byteLength;
+        if (len > memSize || ptr + len > memSize)
+            throw new Error(
+                `guest returned out-of-bounds values: ptr=${String(ptr)} len=${String(len)}`,
+            );
+        // Copy out of the (about-to-be-dropped) instance's memory.
+        return new Uint8Array(exports.memory.buffer, ptr, len).slice();
+    }
+
     /** Fail instantiation up front, with names, when the guest needs imports we do not provide. */
     private assertImportSurface(module: WebAssembly.Module): void {
         const missing = WebAssembly.Module.imports(module)

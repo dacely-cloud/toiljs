@@ -40,10 +40,12 @@ export namespace SlotKind {
 // @ts-ignore: decorator
 @inline export const HASH_LEN: i32 = 32;
 
-/** One filled hole: its stable id, kind, and the already-escaped bytes. */
+/** One filled hole: its stable id, kind, and the already-escaped bytes. The id
+ * is held as `i32` so a generated `Slot` enum member (AS enums are `i32`) is
+ * passed without a cast; it is narrowed to `u16` only at encode time. */
 export class SlotValue {
     constructor(
-        public slotId: u16,
+        public slotId: i32,
         public kind: u8,
         public bytes: Uint8Array,
     ) {}
@@ -98,27 +100,27 @@ export class SlotValues {
     constructor(public templateHash: StaticArray<u8>) {}
 
     /** A text hole: React-escaped. */
-    setText(slotId: u16, value: string): SlotValues {
+    setText(slotId: i32, value: string): SlotValues {
         this.slots.push(new SlotValue(slotId, SlotKind.TEXT, utf8(escapeHtml(value))));
         return this;
     }
 
     /** A raw-HTML hole: inserted verbatim. The author owns sanitisation, same
      * as React `dangerouslySetInnerHTML`. */
-    setRaw(slotId: u16, html: string): SlotValues {
+    setRaw(slotId: i32, html: string): SlotValues {
         this.slots.push(new SlotValue(slotId, SlotKind.RAW, utf8(html)));
         return this;
     }
 
     /** An attribute-value hole. */
-    setAttr(slotId: u16, value: string): SlotValues {
+    setAttr(slotId: i32, value: string): SlotValues {
         this.slots.push(new SlotValue(slotId, SlotKind.ATTR, utf8(escapeHtml(value))));
         return this;
     }
 
     /** A repeat region: the guest pre-stamped + concatenated rows (built via
      * [`HtmlBuilder`]); the host inserts them verbatim at the region offset. */
-    setRepeat(slotId: u16, rows: HtmlBuilder): SlotValues {
+    setRepeat(slotId: i32, rows: HtmlBuilder): SlotValues {
         this.slots.push(new SlotValue(slotId, SlotKind.REPEAT, rows.toBytes()));
         return this;
     }

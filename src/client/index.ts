@@ -36,7 +36,7 @@ export {
     useNavigationPending,
 } from './routing/hooks.js';
 export type { RouterInstance } from './routing/hooks.js';
-export { useLoaderData, revalidate, invalidateLoaderData } from './routing/loader.js';
+export { useLoaderData, revalidate, invalidateLoaderData, LoaderDataContext } from './routing/loader.js';
 export type {
     LoaderArgs,
     LoaderFunction,
