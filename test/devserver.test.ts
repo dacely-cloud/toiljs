@@ -187,8 +187,9 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('dispatch into the example server 
         });
         expect(r.unhandled).toBe(false);
         expect(r.status).toBe(200);
-        // The u256 id crosses JSON as four 64-bit limbs (3 seeded players, so the next id is 4).
-        expect(Buffer.from(r.body).toString()).toBe('{"id":[4,0,0,0],"name":"ada","score":0}');
+        // u256 id and i64 score cross JSON as decimal strings, exact at any size (3 seeded
+        // players, so the new player's id is 4).
+        expect(Buffer.from(r.body).toString()).toBe('{"id":"4","name":"ada","score":"0"}');
     });
 
     it('keeps requests isolated across instances (fresh state per dispatch)', () => {
