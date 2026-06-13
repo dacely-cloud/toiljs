@@ -70,6 +70,28 @@ Because `@auth` guards and body-decode run before the cache directive is applied
 an unauthorized request is rejected with 401 before anything is cached, and a
 cached entry is only ever produced from a handler that actually ran.
 
+Caching is **always opt-in.** A response with no `Toil-Cache-Control` directive
+(i.e. no `@cache` / `Response.cache(...)`) is never stored — there is no blind
+"cache every GET" mode, because an automatic window cannot tell a personalized
+response from a public one and would key it without a per-user component.
+
+## Memory bounds
+
+The edge cache is per-core and entirely in RAM (no disk spill); it is hard-capped
+so it can never exhaust node memory:
+
+- **Per-entry cap** — a response whose footprint exceeds ~256 KB is not cached
+  (the `Toil-Cache` tag reports it as not stored). Cache small responses;
+  stream large ones.
+- **Per-core byte budget** — each core holds at most ~128 MB of cached
+  responses. An insert that would exceed it first drops expired entries, then
+  evicts the soonest-to-expire entries to make room.
+- **Entry-count cap** — a secondary bound on the number of distinct entries per
+  core.
+
+Expiry is enforced on read (a past-TTL entry is a miss) and reclaimed on the
+next insert that needs room. Nothing persists across a process restart.
+
 ## Choosing TTLs
 
 - Public, slow-changing data (a leaderboard, a catalog): a few minutes of edge
@@ -79,11 +101,3 @@ cached entry is only ever produced from a handler that actually ran.
 - Anything with a `Set-Cookie` or behind `@auth`: leave it uncached unless you
   have thought through `allowAuth` and are certain the body is identical for
   every authorized caller.
-
-## Operator-level GET micro-cache
-
-Independently of per-route directives, the edge operator can enable a per-core
-micro-cache for identical `GET`s within a short window (`--get-cache-ms`). It is
-transparent to handler code; it just collapses bursts of the exact same request
-on a single core. Tenant-directed caching via `@cache`/`Response.cache` is the
-mechanism you control from the app.
