@@ -10,6 +10,54 @@ travels with the values so the edge can reject a guest/template skew.
 This is for server-rendered HTML. JSON/binary API endpoints use
 [Routing](./routing.md) instead.
 
+## Authoring a route
+
+Opt a route in with `export const ssr = true`. toiljs renders it ONCE at build
+into the template (the static HTML shell, holes removed) and generates its typed
+`Slot` module; at request time the server fills only the holes and the browser
+hydrates the result in place, so an SSR route is served about as fast as a static
+file while still delivering real first-paint HTML and SEO.
+
+Mark the dynamic bits of the page with the hole markers from `toiljs/client`.
+They are transparent in the browser (they just render their children), so the
+same component is your normal client UI; only the build and the server treat them
+specially.
+
+- `<Hole id="name">{value}</Hole>`, a text hole (HTML-escaped for you).
+- `<RawHtml id="bio" html={s} />`, a raw-HTML block (you own sanitisation, like
+  `dangerouslySetInnerHTML`).
+- `<Repeat id="rows" each={items}>{(item) => <li>...</li>}</Repeat>`, a repeated
+  region; the row markup is captured once and stamped per item.
+- `<Island>{...}</Island>`, a client-only escape hatch: empty in the server HTML,
+  rendered after hydration (no first paint or SEO). Put router-hook-driven or
+  otherwise non-server-safe content here.
+
+```tsx
+import { Hole, Repeat, RawHtml, useLoaderData } from 'toiljs/client';
+
+export const ssr = true;
+export const loader = ({ params }: Toil.LoaderArgs) => loadProfile(params.name);
+
+export default function Profile() {
+  const d = useLoaderData<typeof loader>();
+  return (
+    <main>
+      <h1>@<Hole id="username">{d.username}</Hole></h1>
+      <RawHtml id="bio" html={d.bioHtml} />
+      <ul>
+        <Repeat id="posts" each={d.posts}>
+          {(p) => <li><Hole id="title">{p.title}</Hole></li>}
+        </Repeat>
+      </ul>
+    </main>
+  );
+}
+```
+
+The build derives each hole's `Slot` id and the template `HASH` from this render,
+emits the template manifest the edge serves, and the matching `Slot` module you
+import in the server `render` below.
+
 ## The `render` entrypoint
 
 `render(req_ofs, req_len) -> i64` is a wasm export (re-exported by your `main.ts`
@@ -94,6 +142,23 @@ server-rendered markup and client hydration agree:
 
 (`'` becomes `&#x27;` — React's exact choice — not `&#39;`.) Use `setRaw` /
 `HtmlBuilder.raw` only for markup you have produced or sanitized yourself.
+
+## Hydration and SSR-safe routes
+
+The browser hydrates the server HTML in place rather than re-rendering it: the
+markup the edge splices is byte-for-byte what React would produce for the same
+data (the holes are escaped exactly as React escapes them, above), so
+`hydrateRoot` matches with no flash and no client re-render.
+
+For that to hold, an SSR route and the layouts above it must render under static
+markup: use the hole markers and `useLoaderData`, and move anything that needs
+router hooks or browser-only APIs into an `<Island>`. A route that cannot render
+this way is skipped at build (with a warning) and falls back to normal client
+rendering, so opting in is always safe.
+
+Build output for an SSR route lands in `build/client/_ssr/` (the template and its
+binary manifest) alongside the generated `Slot` module; routes without
+`ssr = true` are untouched.
 
 ## The values envelope
 
