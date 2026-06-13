@@ -17,6 +17,66 @@ generated client (`getUser()`).
 - **client `Auth` + generated `getUser()`** — derive the keypair from a
   password, register/login, and read the user for display.
 
+## Flow at a glance
+
+Register sends only a public key; login proves identity with a one-time
+signature the server verifies (it never holds a secret); `@auth` then checks the
+HMAC-signed session cookie on every guarded request.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as User
+    participant C as Browser<br/>toiljs/client Auth
+    participant S as Edge wasm<br/>AuthService
+    participant DB as Your store<br/>accounts + challenges
+
+    rect rgb(14, 21, 32)
+    Note over U,DB: Register, the password never leaves the browser
+    U->>C: Auth.register(username, password)
+    C->>C: Argon2id, then ML-DSA-44 keypair,<br/>keep public key, zeroize secret key
+    C->>S: POST /auth/register { username, publicKey 1312 B }
+    S->>DB: store Account { username, publicKey }
+    S-->>C: 200 ok
+    end
+
+    rect rgb(22, 15, 31)
+    Note over U,DB: Login, the server holds no secret
+    U->>C: Auth.login(username, password)
+    C->>S: GET /auth/challenge { username }
+    S->>DB: create + store challenge (cid, nonce, iat, exp)
+    S-->>C: { cid, aud, nonce, iat, exp }
+    C->>C: re-derive keypair,<br/>sign buildLoginMessage(...) once
+    C->>S: POST /auth/login { cid, signature 2420 B }
+    S->>DB: atomic consume challenge(cid)
+    S->>S: rebuild message from stored values,<br/>verifyLogin via crypto.mldsa_verify
+    alt signature valid
+        S-->>C: 200 + Set-Cookie __Host-toil_sess (HttpOnly, signed)<br/>and __Secure-toil_user (readable, display only)
+    else invalid or unknown user
+        S-->>C: 401, constant time, anti-enumeration
+    end
+    end
+
+    rect rgb(13, 25, 18)
+    Note over U,DB: Guarded request, the @auth guard
+    U->>C: open or call an @auth route
+    C->>S: request, cookies sent automatically
+    S->>S: @auth checks AuthService.hasSession(),<br/>verify HMAC + expiry on __Host-toil_sess
+    alt valid session
+        S->>S: handler runs,<br/>AuthService.getUser() returns the @user
+        S-->>C: 200 response
+    else missing or invalid session
+        S-->>C: 401 before the handler and body-decode
+    end
+    C->>C: getUser() reads __Secure-toil_user,<br/>untrusted, UI only
+    end
+```
+
+The two cookies are the trust boundary: the HttpOnly `__Host-toil_sess` is the
+only one the server trusts (it re-verifies its signature and expiry every
+request), while the readable `__Secure-toil_user` exists solely so the client
+`getUser()` can show a name without a round-trip and must never gate anything.
+
 ## `@user`
 
 Mark one class per program as the user type. It becomes a `@data` codec (so it
