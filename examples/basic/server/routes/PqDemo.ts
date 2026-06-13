@@ -1,6 +1,8 @@
 import { Response, RouteContext, SecureCookies, base64UrlEncode, base64UrlDecode } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
 
+import { Account } from './Session';
+
 /**
  * Post-quantum identity demo (server half), challenge-response.
  *
@@ -95,15 +97,34 @@ class PqDemo {
         if (!br.ok) return Response.text('INVALID: malformed challenge\n', 401);
         if (Time.nowSeconds() >= exp) return Response.text('INVALID: challenge expired\n', 401);
 
+        // TODO(db): single-use consume is NOT implemented yet (no KV/DB host
+        // binding available). The real fix is an ATOMIC consume of `cid` here --
+        // Redis GETDEL / SQL DELETE ... RETURNING -- so a given challenge verifies
+        // at most once. Until that exists, this token is replayable within its
+        // TTL: a captured {token, signature} re-verifies until `exp`. The
+        // production login (server/routes/Auth.ts) shows the atomic-consume shape.
+
         // 2. Rebuild the message from the SERVER's values (inside the token,
         //    never client-echoed) and verify the ML-DSA-44 signature.
         const message = AuthService.buildLoginMessage(sub, AUD, cid, nonce, iat, exp);
-        const ok = AuthService.verifyLogin(pk, message, sig);
-        return Response.text(
-            ok
-                ? 'VALID: server-issued challenge signed and verified (ML-DSA-44, FIPS 204)\n'
-                : 'INVALID: signature did not verify\n',
-            ok ? 200 : 401,
+        if (!AuthService.verifyLogin(pk, message, sig)) {
+            return Response.text('INVALID: signature did not verify\n', 401);
+        }
+
+        // 3. FULL AUTH: a valid post-quantum proof logs the user in. Mint the
+        //    signed session for the proven `sub` via the @user codec, plus the
+        //    readable companion. Every `@auth` route now recognises this user
+        //    and `AuthService.getUser()` returns `{ username: sub, ... }`.
+        const account = new Account();
+        account.username = sub;
+        account.admin = sub == 'root';
+        const userData = account.encode();
+        const resp = Response.text(
+            'VALID: ML-DSA-44 (FIPS 204) verified; session established (@auth ready)\n',
+            200,
         );
+        resp.setCookie(AuthService.mintSession(userData, 3600));
+        resp.setCookie(AuthService.userCookie(userData, 3600));
+        return resp;
     }
 }

@@ -11,7 +11,7 @@
  * JSON, byte-identical to the server's `AuthService.buildLoginMessage`.
  */
 
-import { argon2id } from 'hash-wasm';
+import { argon2id, sha256 } from 'hash-wasm';
 import { ml_dsa44 } from '@btc-vision/post-quantum/ml-dsa.js';
 
 import { DataReader, DataWriter } from 'toiljs/io';
@@ -230,10 +230,15 @@ export interface IdentityProof {
 }
 
 /** Deterministic 16-byte Argon2id salt for the demo, so the same
- *  username + password always maps to the same identity (keypair). */
+ *  username + password always maps to the same identity (keypair).
+ *  Uses hash-wasm's SHA-256 (pure WebAssembly), not `crypto.subtle`, so it
+ *  works in an insecure context (plain HTTP), where `crypto.subtle` is
+ *  undefined. */
 async function demoSalt(username: string): Promise<Uint8Array> {
-    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('pq-demo|' + username));
-    return new Uint8Array(digest).slice(0, 16);
+    const hex = await sha256('pq-demo|' + username);
+    const out = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+    return out;
 }
 
 /**
