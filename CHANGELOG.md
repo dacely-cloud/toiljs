@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.37] - 2026-06-13
+
+### Other Changes
+
+- fix(auth): PQ login over HTTP + full @auth session ([#150](https://github.com/dacely-cloud/toiljs/pull/150)) by @BlobMaster41
+
+
+
+
 ## [v0.0.36] - 2026-06-13
 
 - No changes
