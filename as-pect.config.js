@@ -58,7 +58,7 @@ export default {
     /**
      * Enable code coverage. `securecookies.ts` is excluded: it depends on the
      * toilscript crypto std (`crypto` / `data` / `bindings/webcrypto`), which the
-     * as-pect compiler (`@btc-vision/assemblyscript`) does not ship, so it cannot
+     * as-pect compiler does not ship, so it cannot
      * compile here. It is covered end-to-end against the real wasm in
      * `test/devserver.test.ts`.
      */

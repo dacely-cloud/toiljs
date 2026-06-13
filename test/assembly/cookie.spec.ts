@@ -2,7 +2,7 @@
 // integration). Imports the specific modules rather than the runtime index so
 // `securecookies.ts` is not pulled into the as-pect graph: it depends on the
 // toilscript crypto std (`crypto` / `data` / `bindings/webcrypto`), which the
-// as-pect compiler (`@btc-vision/assemblyscript`) does not ship. `SecureCookies`
+// as-pect compiler does not ship. `SecureCookies`
 // is exercised end-to-end against the real toilscript-compiled wasm in
 // `test/devserver.test.ts`.
 import { Method, Request, Header } from '../../server/runtime/request';

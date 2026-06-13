@@ -30,7 +30,7 @@ export default function Header() {
             <nav className="nav-links">
                 <Toil.Link href="https://toil.org/docs">Docs</Toil.Link>
                 <a
-                    href="https://github.com/btc-vision/toiljs"
+                    href="https://github.com/dacely-cloud/toiljs"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="nav-github">

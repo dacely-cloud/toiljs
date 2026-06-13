@@ -125,7 +125,7 @@ export default function Home() {
                 </Toil.Link>
                 <a
                     className="btn btn-secondary"
-                    href="https://github.com/btc-vision/toiljs"
+                    href="https://github.com/dacely-cloud/toiljs"
                     target="_blank"
                     rel="noopener noreferrer">
                     <GitHubIcon />

@@ -1,9 +1,8 @@
 /**
- * Base class every toiljs server-side handler extends, analog to
- * btc-runtime's `OP_NET`. Override `handle(req)` to produce the
- * response. The framework calls `onRequestStarted` / `onRequestCompleted`
- * around every call so the user can hook for logging or metrics
- * without re-implementing `handle`.
+ * Base class every toiljs server-side handler extends. Override
+ * `handle(req)` to produce the response. The framework calls
+ * `onRequestStarted` / `onRequestCompleted` around every call so the user
+ * can hook for logging or metrics without re-implementing `handle`.
  */
 
 import { Request } from '../request';

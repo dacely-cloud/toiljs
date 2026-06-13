@@ -1,6 +1,5 @@
 /**
- * Public surface of the toiljs server runtime, analog to
- * `@btc-vision/btc-runtime/runtime`. The user does
+ * Public surface of the toiljs server runtime. The user does
  *
  * ```ts
  * import { Server, ToilHandler, Response } from './runtime';

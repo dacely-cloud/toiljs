@@ -1,6 +1,5 @@
 /**
- * Server — the runtime singleton, analog to btc-runtime's
- * `Blockchain`.
+ * Server: the runtime singleton.
  *
  * The user's `main.ts` assigns `Server.handler = () => new MyHandler()`.
  * The `handle(req_ofs, req_len)` wasm export in `runtime/exports`

@@ -59,7 +59,7 @@
 - ⬆️(deps-dev): Bump @microsoft/api-extractor from 7.58.7 to 7.58.8 in the dev-deps group ([#134](https://github.com/dacely-cloud/toiljs/pull/134)) by @dependabot[bot]
 - ⬆️(deps): Bump sharp from 0.34.5 to 0.35.0 in the production-deps group ([#135](https://github.com/dacely-cloud/toiljs/pull/135)) by @dependabot[bot]
 - deps: switch hyper-express to @dacely/hyper-express@6.17.4 ([#137](https://github.com/dacely-cloud/toiljs/pull/137)) by @BlobMaster41
-- release 0.0.31: @dacely/hyper-express + @dacely/toilscript-loader, drop @btc-vision direct deps ([#138](https://github.com/dacely-cloud/toiljs/pull/138)) by @BlobMaster41
+- release 0.0.31: @dacely/hyper-express + @dacely/toilscript-loader, drop external direct deps ([#138](https://github.com/dacely-cloud/toiljs/pull/138)) by @BlobMaster41
 
 
 
