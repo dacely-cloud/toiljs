@@ -106,4 +106,60 @@ export class Response {
 
         return this;
     }
+
+    /**
+     * Mark this response cacheable at the toil edge and/or the browser.
+     *
+     * `edgeTtlMinutes` caches the response on the edge node (per-core,
+     * keyed by host + method + path + request body) for up to that many
+     * minutes -- the ONLY way a POST response is cached. `browserTtlSeconds`
+     * emits a `Cache-Control: max-age` for the client.
+     *
+     * Host-side safety, enforced no matter what you ask for: the edge TTL
+     * is clamped to 24h, only 2xx responses are edge-cached, a response
+     * carrying a `Set-Cookie` is never edge-cached, and an AUTHENTICATED
+     * request (one with a `Cookie` or `Authorization` header) is not
+     * edge-cached unless you pass `allowAuth = true`. Only mark a response
+     * cacheable when its body is a pure function of (host, path, body) --
+     * never per-user data keyed by a cookie/header that is not in the path
+     * or body, or one user's response could be served to another.
+     *
+     * Builder-style: returns `this`.
+     */
+    public cache(
+        edgeTtlMinutes: u16,
+        browserTtlSeconds: u32 = 0,
+        privateScope: bool = false,
+        allowAuth: bool = false,
+    ): Response {
+        let v = '';
+        if (edgeTtlMinutes > 0) {
+            v = 'edge=' + edgeTtlMinutes.toString();
+        }
+        if (browserTtlSeconds > 0) {
+            if (v.length > 0) v += '; ';
+            v += 'browser=' + browserTtlSeconds.toString();
+        }
+        if (privateScope) {
+            if (v.length > 0) v += '; ';
+            v += 'scope=private';
+        }
+        if (allowAuth) {
+            if (v.length > 0) v += '; ';
+            v += 'auth=1';
+        }
+        if (v.length > 0) {
+            this.setHeader('toil-cache-control', v);
+        }
+
+        return this;
+    }
+
+    /**
+     * Shorthand for {@link cache}: edge-cache this response for `minutes`
+     * minutes (no browser caching).
+     */
+    public cacheFor(minutes: u16): Response {
+        return this.cache(minutes);
+    }
 }

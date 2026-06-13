@@ -25,6 +25,7 @@ import path from 'node:path';
 import { Server, type Request, type Response } from '@dacely/hyper-express';
 import pc from 'picocolors';
 
+import { applyCacheRule, lookupCache } from './cache.js';
 import { METHOD_CODES, type EnvelopeRequest } from './envelope.js';
 import { WasmServerModule } from './module.js';
 import { proxyToVite, wireWebsocketProxy, type ViteTarget } from './proxy.js';
@@ -210,10 +211,29 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
 
         if (dispatchable && module.available) {
             const envelopeReq = await toEnvelopeRequest(request);
+            // Honor the tenant cache directive locally, same rules as the
+            // edge: serve an identical request from the per-process cache,
+            // else dispatch and apply/strip the directive on the response.
+            const cacheHost = request.headers.host ?? 'dev';
+            const hasAuth =
+                request.headers.cookie !== undefined || request.headers.authorization !== undefined;
+            const cached = lookupCache(cacheHost, request.method, request.url, envelopeReq.body);
+            if (cached !== null) {
+                sendWasmResponse(response, root, cached);
+                return;
+            }
             try {
                 const result = module.dispatch(envelopeReq);
                 if (!result.unhandled) {
-                    sendWasmResponse(response, root, result);
+                    const finalized = applyCacheRule(
+                        cacheHost,
+                        request.method,
+                        request.url,
+                        envelopeReq.body,
+                        hasAuth,
+                        result,
+                    );
+                    sendWasmResponse(response, root, finalized);
                     return;
                 }
             } catch (e) {
