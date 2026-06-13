@@ -10,8 +10,8 @@
 
 export { mount } from './routing/mount.js';
 export { Router } from './routing/Router.js';
-export { Auth, register as authRegister, login as authLogin, buildLoginMessage, LOGIN_CONTEXT } from './auth.js';
-export type { KdfParams, Challenge, AuthOptions } from './auth.js';
+export { Auth, register as authRegister, login as authLogin, proveIdentity, buildLoginMessage, LOGIN_CONTEXT } from './auth.js';
+export type { KdfParams, Challenge, AuthOptions, IdentityProof } from './auth.js';
 export { Link } from './navigation/Link.js';
 export type { LinkProps } from './navigation/Link.js';
 export { NavLink, matchActive } from './navigation/NavLink.js';
