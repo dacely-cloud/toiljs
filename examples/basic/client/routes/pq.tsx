@@ -1,12 +1,15 @@
-// Post-quantum identity demo. The browser derives an ML-DSA-44 keypair from a
-// password (Argon2id -> ML-DSA-44.KeyGen, all client-side, the password never
-// leaves), signs a login challenge, and POSTs the public key + signature to the
-// edge, which verifies it via the `crypto.mldsa_verify` host import
+// Post-quantum identity demo, challenge-response. The browser fetches a
+// SERVER-issued challenge (a fresh nonce the edge HMAC-signs into a token),
+// derives an ML-DSA-44 keypair from a password (Argon2id, all client-side, the
+// password never leaves), signs the message built from the server's nonce, and
+// POSTs the public key + signature + token to the edge, which re-opens the token
+// (rejecting a forged/expired one) and verifies via `crypto.mldsa_verify`
 // (server/routes/PqDemo.ts). The secret key is wiped right after signing.
 //
-// This shows the post-quantum crypto end-to-end (derive -> sign -> edge verify)
-// in one request. It is NOT the production login (no server-issued challenge, so
-// no anti-replay) -- see Auth.login / server/routes/Auth.ts and docs/auth.md.
+// The nonce is server-chosen and tamper-proof, so a client cannot pre-sign or
+// swap in its own. It still isn't the full production login (no single-use
+// consume -> within the TTL a captured proof could be replayed; that needs a
+// store) -- see Auth.login / server/routes/Auth.ts and docs/auth.md.
 import { useCallback, useState } from 'react';
 
 import { Auth, type IdentityProof } from 'toiljs/client';
@@ -67,10 +70,11 @@ export default function Pq(): React.JSX.Element {
         <main style={{ maxWidth: 680 }}>
             <h1>Post-quantum identity</h1>
             <p>
-                The browser stretches the password with <strong>Argon2id</strong>, expands it into an{' '}
-                <strong>ML-DSA-44</strong> (FIPS 204) keypair, and signs a login challenge. Only the public key and
-                the signature are sent; the edge verifies them with the <code>crypto.mldsa_verify</code> host import.
-                The password and secret key never leave this tab.
+                The edge issues a fresh, HMAC-signed <strong>challenge</strong> (a server-chosen nonce). The browser
+                stretches the password with <strong>Argon2id</strong>, expands it into an <strong>ML-DSA-44</strong>{' '}
+                (FIPS 204) keypair, and signs the message built from <em>that</em> nonce. Only the public key,
+                signature, and the server's token are sent back; the edge re-opens the token and verifies with the{' '}
+                <code>crypto.mldsa_verify</code> host import. The password and secret key never leave this tab.
             </p>
 
             <div style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
@@ -98,8 +102,8 @@ export default function Pq(): React.JSX.Element {
 
             {proof && (
                 <p style={{ marginTop: 16, fontFamily: 'monospace', fontSize: '0.85rem', opacity: 0.8 }}>
-                    Argon2id: {proof.deriveMs} ms · public key {proof.publicKeyHex}… (1312 B) · signature{' '}
-                    {proof.signatureLen} B
+                    server nonce {proof.nonceHex}… · Argon2id {proof.deriveMs} ms · public key {proof.publicKeyHex}…
+                    (1312 B) · signature {proof.signatureLen} B
                 </p>
             )}
 
@@ -118,9 +122,10 @@ export default function Pq(): React.JSX.Element {
             )}
 
             <p style={{ marginTop: 24, opacity: 0.7, fontSize: '0.9rem' }}>
-                This is a stateless crypto demo, not the production login (no server-issued challenge, so no
-                anti-replay). The full register/login protocol is in <code>server/routes/Auth.ts</code>; sessions and{' '}
-                <code>getUser()</code> are on the <Toil.Link href="/auth">Auth</Toil.Link> page.
+                The challenge is server-issued and tamper-proof, but stateless, so it has no single-use consume (within
+                the TTL a captured proof could be replayed). The full register/login protocol with an atomic
+                challenge consume is in <code>server/routes/Auth.ts</code>; sessions and <code>getUser()</code> are on
+                the <Toil.Link href="/auth">Auth</Toil.Link> page.
             </p>
             <p>
                 <Toil.Link href="/features">Back to features</Toil.Link>

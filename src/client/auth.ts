@@ -214,33 +214,64 @@ function toHex(bytes: Uint8Array): string {
 
 /** The signed identity proof produced by {@link proveIdentity}. */
 export interface IdentityProof {
-    /** The wire envelope to POST: `str(sub) str(aud) bytes(cid) bytes(nonce)
-     *  u64(iat) u64(exp) bytes(publicKey) bytes(signature)`. The server reads
-     *  it, rebuilds the login message, and `AuthService.verifyLogin`s it. */
+    /** The wire envelope to POST to `/pq/verify`: `str(sub) str(token)
+     *  bytes(publicKey) bytes(signature)`, where `token` is the edge's
+     *  HMAC-signed challenge. The server re-opens the token, rebuilds the login
+     *  message from the values inside it, and `AuthService.verifyLogin`s it. */
     readonly envelope: Uint8Array;
     /** First bytes of the 1312-byte ML-DSA-44 public key, for display. */
     readonly publicKeyHex: string;
+    /** First bytes of the SERVER-issued nonce that was signed, for display. */
+    readonly nonceHex: string;
     /** Signature length (always 2420 for ML-DSA-44), for display. */
     readonly signatureLen: number;
     /** Argon2id wall-clock spent deriving the keypair, ms (for display). */
     readonly deriveMs: number;
 }
 
+/** Deterministic 16-byte Argon2id salt for the demo, so the same
+ *  username + password always maps to the same identity (keypair). */
+async function demoSalt(username: string): Promise<Uint8Array> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('pq-demo|' + username));
+    return new Uint8Array(digest).slice(0, 16);
+}
+
 /**
- * DEMO helper: run the full post-quantum identity path in the browser -- stretch
- * the password with Argon2id, expand it into an ML-DSA-44 keypair, and sign a
- * login challenge -- returning the wire envelope a server verifies with
- * `AuthService.verifyLogin`. The secret key and seed are wiped before returning;
- * only the public key + signature leave.
+ * DEMO helper: run the full post-quantum challenge-response in the browser.
+ * Fetches a SERVER-issued challenge (`GET {baseUrl}/challenge`), stretches the
+ * password with Argon2id into an ML-DSA-44 keypair, signs the login message
+ * built from the SERVER's nonce/cid/iat/exp, and returns the wire envelope the
+ * edge verifies (`AuthService.verifyLogin`). The secret key and seed are wiped
+ * before returning; only the public key + signature leave the tab.
  *
- * This is for showing the crypto end-to-end (derive -> sign -> edge verify) in
- * ONE request. It is NOT the production login: there is no server-issued
- * challenge, so it has no anti-replay protection -- use {@link login} for that.
- * Demo-light Argon2id params (16 MiB / 2 passes) keep it responsive in a tab; a
- * real deployment uses >= 256 MiB.
+ * The nonce is server-chosen and tamper-proof (the challenge token is
+ * HMAC-signed by the edge), so a client cannot pre-sign or substitute its own.
+ * It is still NOT the full production login -- there is no single-use consume, so
+ * within the challenge TTL a captured proof could be replayed; that needs an
+ * atomic store (see {@link login} and server/routes/Auth.ts). Demo-light
+ * Argon2id params (16 MiB / 2 passes) keep it responsive in a tab; a real
+ * deployment uses >= 256 MiB.
  */
-export async function proveIdentity(username: string, password: string): Promise<IdentityProof> {
-    const salt = crypto.getRandomValues(new Uint8Array(16));
+export async function proveIdentity(
+    username: string,
+    password: string,
+    opts: { baseUrl?: string } = {},
+): Promise<IdentityProof> {
+    const baseUrl = opts.baseUrl ?? '/pq';
+
+    // 1. Server-issued challenge: aud, cid, nonce, iat, exp, and the signed token.
+    const cres = await fetch(baseUrl + '/challenge', { credentials: 'same-origin' });
+    if (!cres.ok) throw new Error('pq: challenge request failed');
+    const cr = new DataReader(new Uint8Array(await cres.arrayBuffer()));
+    const aud = cr.readString();
+    const cid = cr.readBytes();
+    const nonce = cr.readBytes();
+    const iat = cr.readU64();
+    const exp = cr.readU64();
+    const token = cr.readString();
+
+    // 2. Derive the keypair and sign the message built from the SERVER's values.
+    const salt = await demoSalt(username);
     const t0 = Date.now();
     const seed = await argon2id({
         password: new TextEncoder().encode(password.normalize('NFKC')),
@@ -253,13 +284,7 @@ export async function proveIdentity(username: string, password: string): Promise
     });
     const deriveMs = Date.now() - t0;
 
-    const cid = crypto.getRandomValues(new Uint8Array(16));
-    const nonce = crypto.getRandomValues(new Uint8Array(32));
-    const iat = BigInt(Math.floor(Date.now() / 1000));
-    const exp = iat + 120n;
-    const aud = 'pq-demo';
     const message = buildLoginMessage(username, aud, cid, nonce, iat, exp);
-
     let publicKey: Uint8Array;
     let signature: Uint8Array;
     try {
@@ -276,13 +301,10 @@ export async function proveIdentity(username: string, password: string): Promise
         wipe(seed);
     }
 
+    // 3. Envelope: sub + the server's token + the public key + the signature.
     const envelope = new DataWriter()
         .writeString(username)
-        .writeString(aud)
-        .writeBytes(cid)
-        .writeBytes(nonce)
-        .writeU64(iat)
-        .writeU64(exp)
+        .writeString(token)
         .writeBytes(publicKey)
         .writeBytes(signature)
         .toBytes();
@@ -290,6 +312,7 @@ export async function proveIdentity(username: string, password: string): Promise
     return {
         envelope,
         publicKeyHex: toHex(publicKey.slice(0, 16)),
+        nonceHex: toHex(nonce.slice(0, 16)),
         signatureLen: signature.length,
         deriveMs,
     };
