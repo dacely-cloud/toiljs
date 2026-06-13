@@ -1,94 +1,33 @@
 /**
- * Editor-only ambient declarations for the toiljs cookie globals.
+ * Editor-only ambient declarations for the toiljs server-runtime globals.
  *
  * `Cookie`, `Cookies`, `SecureCookies`, and the `SameSite` / `CookieEncoding` /
  * `CookiePrefix` enums are `@global` in the toiljs server runtime, so a handler
- * uses them with no import (exactly like `crypto`). The toilscript compiler
- * registers them from the runtime; this file just gives the editor their shapes
- * so it does not flag the unimported names. It is auto-included by the server
- * `tsconfig.json` (`include: ["./**/*.ts"]`) and ignored by the compiler.
+ * uses them with no import (exactly like `crypto`). These ALIAS the real runtime
+ * types (the same trick the IO globals use in `toil-env.d.ts`), so a globally-
+ * built `Cookie` is the exact type the runtime APIs (`Response.setCookie`,
+ * `SecureCookies.seal`, ...) expect. Redeclaring them as standalone classes
+ * makes a second, nominally-incompatible `Cookie` (private fields) that fails
+ * assignment. The toilscript compiler registers the globals itself; this file
+ * is editor-only, auto-included by the server tsconfig and ignored by the
+ * compiler.
  *
- * `toiljs create` scaffolds this file; keep it in sync with
- * `toiljs/server/runtime/http/*`.
+ * `toiljs create` scaffolds this file.
  */
 
-declare enum SameSite {
-    Default = 0,
-    None = 1,
-    Lax = 2,
-    Strict = 3,
-}
-
-declare enum CookieEncoding {
-    Percent = 0,
-    Raw = 1,
-    Base64Url = 2,
-}
-
-declare enum CookiePrefix {
-    None = 0,
-    Secure = 1,
-    Host = 2,
-}
-
-declare class CookieValidation {
-    valid: bool;
-    errors: Array<string>;
-    fail(msg: string): void;
-}
-
-declare class Cookie {
-    name: string;
-    value: string;
-    encoding: CookieEncoding;
-    constructor(name: string, value: string);
-    static create(name: string, value: string): Cookie;
-    domain(v: string): Cookie;
-    path(v: string): Cookie;
-    maxAge(seconds: i64): Cookie;
-    expires(epochSeconds: i64): Cookie;
-    expiresRaw(date: string): Cookie;
-    secure(on?: bool): Cookie;
-    httpOnly(on?: bool): Cookie;
-    sameSite(s: SameSite): Cookie;
-    partitioned(on?: bool): Cookie;
-    priority(p: string): Cookie;
-    extension(av: string): Cookie;
-    withEncoding(e: CookieEncoding): Cookie;
-    asSecurePrefixed(): Cookie;
-    asHostPrefixed(): Cookie;
-    detectedPrefix(): CookiePrefix;
-    encodedValue(): string;
-    validate(): CookieValidation;
-    serialize(strict?: bool): string;
-    toString(): string;
-}
-
-declare class CookieMap {
-    set(name: string, value: string): void;
-    get(name: string): string | null;
-    has(name: string): bool;
-    names(): Array<string>;
-    readonly size: i32;
-}
-
-declare class Cookies {
-    static parse(cookieHeader: string): CookieMap;
-    static get(cookieHeader: string, name: string): string | null;
-    static serialize(name: string, value: string): string;
-    static parseSetCookie(setCookie: string): Cookie;
-    static encodeValue(raw: string): string;
-    static decodeValue(enc: string): string;
-}
-
-declare class SecureCookies {
-    static signed(key: Uint8Array): SecureCookies;
-    static encrypted(key: Uint8Array): SecureCookies;
-    addKey(key: Uint8Array): SecureCookies;
-    sign(name: string, value: string): string;
-    unsign(name: string, sealed: string): string | null;
-    encrypt(name: string, value: string): string;
-    decrypt(name: string, sealed: string): string | null;
-    seal(cookie: Cookie): Cookie;
-    open(jar: CookieMap, name: string): string | null;
-}
+declare const SameSite: typeof import('toiljs/server/runtime/http/cookie').SameSite;
+type SameSite = import('toiljs/server/runtime/http/cookie').SameSite;
+declare const CookieEncoding: typeof import('toiljs/server/runtime/http/cookie').CookieEncoding;
+type CookieEncoding = import('toiljs/server/runtime/http/cookie').CookieEncoding;
+declare const CookiePrefix: typeof import('toiljs/server/runtime/http/cookie').CookiePrefix;
+type CookiePrefix = import('toiljs/server/runtime/http/cookie').CookiePrefix;
+declare const CookieValidation: typeof import('toiljs/server/runtime/http/cookie').CookieValidation;
+type CookieValidation = import('toiljs/server/runtime/http/cookie').CookieValidation;
+declare const Cookie: typeof import('toiljs/server/runtime/http/cookie').Cookie;
+type Cookie = import('toiljs/server/runtime/http/cookie').Cookie;
+declare const CookieMap: typeof import('toiljs/server/runtime/http/cookies').CookieMap;
+type CookieMap = import('toiljs/server/runtime/http/cookies').CookieMap;
+declare const Cookies: typeof import('toiljs/server/runtime/http/cookies').Cookies;
+type Cookies = import('toiljs/server/runtime/http/cookies').Cookies;
+declare const SecureCookies: typeof import('toiljs/server/runtime/http/securecookies').SecureCookies;
+type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;
