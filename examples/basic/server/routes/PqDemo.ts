@@ -1,7 +1,7 @@
 import { Response, RouteContext, SecureCookies, base64UrlEncode, base64UrlDecode } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
 
-import { Account } from './Session';
+import { encodeSessionUser } from './Session';
 
 /**
  * Post-quantum identity demo (server half), challenge-response.
@@ -115,10 +115,7 @@ class PqDemo {
         //    signed session for the proven `sub` via the @user codec, plus the
         //    readable companion. Every `@auth` route now recognises this user
         //    and `AuthService.getUser()` returns `{ username: sub, ... }`.
-        const account = new Account();
-        account.username = sub;
-        account.admin = sub == 'root';
-        const userData = account.encode();
+        const userData = encodeSessionUser(sub);
         const resp = Response.text(
             'VALID: ML-DSA-44 (FIPS 204) verified; session established (@auth ready)\n',
             200,

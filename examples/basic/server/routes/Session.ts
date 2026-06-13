@@ -20,13 +20,22 @@ import { DataReader, DataWriter } from 'data';
  * calls `AuthService.setSecret(...)` once at startup (see server/main.ts).
  */
 
-// @user: the authenticated-user shape. Exactly one per program. Exported so
-// other routes (the PQ login) can mint a session via its generated codec.
+// @user: the authenticated-user shape. Exactly one per program.
 @user
-export class Account {
+class Account {
     username: string = '';
     admin: bool = false;
     score: u64 = 0;
+}
+
+/** Encode the @user session payload for `username` (admin if `root`). Exported
+ * as a FUNCTION (not the class, which would warn AS235 "only ... become WASM
+ * exports") so the PQ login can mint a session via the same generated codec. */
+export function encodeSessionUser(username: string): Uint8Array {
+    const u = new Account();
+    u.username = username;
+    u.admin = username == 'root';
+    return u.encode();
 }
 
 @rest('session')

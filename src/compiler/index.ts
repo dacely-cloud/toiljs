@@ -12,7 +12,7 @@ import { build as viteBuild, createServer, mergeConfig, type ViteDevServer } fro
 import type { RunningBackend } from 'toiljs/backend';
 
 import { loadConfig } from './config.js';
-import { generate } from './generate.js';
+import { generate, TOIL_SERVER_ENV_DTS } from './generate.js';
 import { prerenderStaticParams } from './ssg.js';
 import { extractTemplates } from './template-build.js';
 import { createViteConfig } from './vite.js';
@@ -108,6 +108,19 @@ function serverEntryFiles(root: string): string[] {
  */
 async function buildServer(root: string): Promise<void> {
     if (!fs.existsSync(path.join(root, 'toilconfig.json'))) return;
+
+    // Regenerate the editor-only server-globals d.ts each build (the same way
+    // `generate` rewrites `toil-env.d.ts`), so an existing project auto-migrates
+    // to the current shapes without re-scaffolding or running doctor. Best
+    // effort; an unwritable dir never blocks the build.
+    for (const dir of serverDirs(root)) {
+        try {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(path.join(dir, 'toil-server-env.d.ts'), TOIL_SERVER_ENV_DTS);
+        } catch {
+            // editor-only; ignore write failures
+        }
+    }
 
     const require = createRequire(path.join(root, 'package.json'));
     let binJs: string;
@@ -337,7 +350,7 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
 export { defineConfig, loadConfig, AiProvider } from './config.js';
 export { scanRoutes } from './routes.js';
 export type { ScannedRoute } from './routes.js';
-export { TOIL_ENV_DTS } from './generate.js';
+export { TOIL_ENV_DTS, TOIL_SERVER_ENV_DTS } from './generate.js';
 export { AI_HELPERS, AI_HELPER_IDS, aiHelperFiles, TOIL_DOCS } from './docs.js';
 export type { AiHelper } from './docs.js';
 export type {

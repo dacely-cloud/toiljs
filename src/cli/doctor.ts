@@ -10,7 +10,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfig, type ResolvedToilConfig, scanRoutes } from 'toiljs/compiler';
+import { loadConfig, type ResolvedToilConfig, scanRoutes, TOIL_SERVER_ENV_DTS } from 'toiljs/compiler';
 
 import {
     type Check,
@@ -328,6 +328,32 @@ function applyRpcFix(root: string): RpcFixResult {
         const sep = giRaw.length === 0 || giRaw.endsWith('\n') ? '' : '\n';
         writeFile(giPath, `${giRaw}${sep}${RPC_GITIGNORE_LINE}\n`);
         changed.push('.gitignore');
+    }
+
+    // Migrate the editor-only server-globals d.ts to the current shapes (the
+    // exact content `toiljs build`/`dev` regenerate), in each server source dir.
+    // This is what fixes a stale, scaffolded `toil-server-env.d.ts` whose
+    // standalone class decls made a second, incompatible `Cookie`.
+    const serverToilconfig = readJsonObject(path.join(root, 'toilconfig.json'));
+    if (serverToilconfig !== null) {
+        const entries = Array.isArray(serverToilconfig.entries)
+            ? (serverToilconfig.entries as unknown[]).filter((e): e is string => typeof e === 'string')
+            : [];
+        const dirs = new Set<string>();
+        for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
+        if (dirs.size === 0) dirs.add(path.join(root, 'server'));
+        for (const dir of dirs) {
+            const envPath = path.join(dir, 'toil-server-env.d.ts');
+            if (readFile(envPath) !== TOIL_SERVER_ENV_DTS) {
+                try {
+                    fs.mkdirSync(dir, { recursive: true });
+                    writeFile(envPath, TOIL_SERVER_ENV_DTS);
+                    changed.push(path.relative(root, envPath));
+                } catch {
+                    // editor-only; ignore write failures
+                }
+            }
+        }
     }
 
     return { changed, skipped };
