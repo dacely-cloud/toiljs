@@ -57,6 +57,7 @@ const PROVIDED_IMPORTS = new Set([
     'crypto.fill_random', 'crypto.random_uuid', 'crypto.take_result', 'crypto.digest',
     'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
     'crypto.sign', 'crypto.verify', 'crypto.derive_bits',
+    'crypto.mldsa_verify',
 ]);
 
 export class WasmServerModule {
