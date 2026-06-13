@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.38] - 2026-06-13
+
+### Other Changes
+
+- fix(server-env): auto-generate the cookie-globals d.ts (fixes Cookie TS2345) ([#151](https://github.com/dacely-cloud/toiljs/pull/151)) by @BlobMaster41
+
+
+
+
 ## [v0.0.37] - 2026-06-13
 
 ### Other Changes
