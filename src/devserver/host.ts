@@ -49,13 +49,23 @@ export interface DispatchState {
     headerBytes: number;
     /** File path from `respond_file`, or `null`; when set, the envelope body is ignored. */
     sendfile: string | null;
+    /** The connecting client's IP for `client_ip` (the edge uses the socket peer);
+     *  set per dispatch from the Node request's `socket.remoteAddress`, '' if unknown. */
+    clientIp: string;
     /** Per-dispatch Web Crypto keystore + result scratch (mirrors the edge). */
     crypto: CryptoState;
 }
 
 /** A fresh, zeroed per-dispatch state (the edge resets the same way before each request). */
 export function freshDispatchState(): DispatchState {
-    return { status: null, headers: [], headerBytes: 0, sendfile: null, crypto: freshCryptoState() };
+    return {
+        status: null,
+        headers: [],
+        headerBytes: 0,
+        sendfile: null,
+        clientIp: '',
+        crypto: freshCryptoState(),
+    };
 }
 
 /**
@@ -133,6 +143,22 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 if (pathLen > MAX_PATH_LEN)
                     throw new Error(`respond_file path too long: ${String(pathLen)} bytes`);
                 state.sendfile = readBytes(ref, pathPtr, pathLen).toString('utf8');
+            },
+
+            // Write the client's IP (set per dispatch from the connection's
+            // remote address) into the guest buffer. Returns the byte length,
+            // 0 if unknown, -1 if the buffer is too small. Mirrors the edge's
+            // `client_ip_import.rs`.
+            client_ip: (outPtr: number, cap: number): number => {
+                const ip = state.clientIp;
+                if (ip.length === 0) return 0;
+                const bytes = Buffer.from(ip, 'utf8');
+                if (bytes.length > cap) return -1;
+                const m = mem(ref);
+                if (outPtr < 0 || outPtr + bytes.length > m.length)
+                    throw new Error('client_ip write out of bounds');
+                bytes.copy(m, outPtr);
+                return bytes.length;
             },
 
             thread_spawn: (_startArg: number): number => -1,

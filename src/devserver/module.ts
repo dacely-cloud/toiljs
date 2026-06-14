@@ -109,6 +109,7 @@ export class WasmServerModule {
 
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.clientIp = req.clientIp ?? '';
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
@@ -165,6 +166,7 @@ export class WasmServerModule {
         const envelope = encodeRequestEnvelope(req);
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.clientIp = req.clientIp ?? '';
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports & {
             render?: (reqOfs: number, reqLen: number) => bigint;

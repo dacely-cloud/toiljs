@@ -41,6 +41,9 @@ export interface EnvelopeRequest {
     /** Full request header list, passed through to the guest. */
     readonly headers: readonly (readonly [string, string])[];
     readonly body: Uint8Array;
+    /** The connecting client's IP for the `client_ip` import / `ctx.clientIp()`.
+     *  The edge uses the unspoofable socket peer; the dev server best-efforts it. */
+    readonly clientIp?: string;
 }
 
 /** The decoded guest response envelope. */

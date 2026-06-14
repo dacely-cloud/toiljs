@@ -7,6 +7,14 @@
 
 import { Request } from '../request';
 
+// Host import: write the request's UNSPOOFABLE peer IP (the socket's remote
+// address, NOT a client-supplied header) into a guest buffer. Returns the byte
+// length written, 0 when there is no peer IP, or -1 if the buffer is too small.
+// Backed by `client_ip_import.rs` on the edge and the dev-server host.
+// @ts-ignore: decorator
+@external('env', 'client_ip')
+declare function __toilClientIp(ptr: usize, cap: i32): i32;
+
 export class RouteContext {
     /** The raw incoming request (method, path, headers, body). */
     request: Request;
@@ -53,6 +61,20 @@ export class RouteContext {
         const body = this.request.body;
         if (body.length == 0) return '';
         return String.UTF8.decodeUnsafe(body.dataStart, body.byteLength);
+    }
+
+    /**
+     * The connecting client's IP as a string ("203.0.113.7" or an IPv6 form),
+     * or "" if unavailable. This is the TRUSTED socket peer the edge observed,
+     * not a forgeable header like X-Forwarded-For, so it is safe to key rate
+     * limits, geo, or audit logs on it.
+     */
+    clientIp(): string {
+        const cap = 64; // max IPv6 text is 45 bytes; 64 leaves headroom
+        const buf = new Uint8Array(cap);
+        const n = __toilClientIp(buf.dataStart, cap);
+        if (n <= 0) return '';
+        return String.UTF8.decodeUnsafe(buf.dataStart, n);
     }
 
     private ensureQuery(): void {
