@@ -11,6 +11,7 @@ import './routes/Players';
 import './routes/Leaderboard';
 import './routes/Session';
 import './routes/PqDemo';
+import './routes/EnvDemo';
 import './services/Stats';
 import './services/remotes';
 
