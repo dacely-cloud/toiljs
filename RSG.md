@@ -37,14 +37,14 @@ This is the whole point of the system. The most common lie in this space is call
 
 ## The grade table
 
-| Grade | Topology + distribution | Availability | Data path | Delivered p99 | Program performance + architecture | Dependencies | Security |
-|---|---|---|---|---|---|---|---|
-| **AAA** | Active/active multi-region plus real edge compute, logic runs next to the user | 99.99%+, automated cross-region failover, no single point of failure | Globally distributed writes, sub-50ms reads almost everywhere | under 100ms | Edge-native, clean separation of requests, tasks, and compute, no blocking work on the hot path, near-optimal per request | Zero third party on the critical path, you own the stack | Zero trust, TLS everywhere, data encrypted at rest, passwords hashed never plaintext, pen-tested, audited compliance |
-| **AA** | Primary region plus standby regions, geo read replicas, partial edge | 99.95 to 99.99%, automated regional failover | Cross-region reads, single-region writes | under 200ms | Good architecture, mostly clean separation, minor hot-path waste | Few trusted dependencies, none critical | WAF plus DDoS, encryption, compliance underway |
-| **A** | One region, multi-AZ, autoscaling stateless tier | 99.9%, survives an AZ failure | Single region, read replicas plus cache | under 500ms | Reasonable structure, some coupling, acceptable efficiency | Several third-party deps, managed | TLS, auth, secrets management, basic WAF |
-| **B** | Single region, serverless or one small group (Vercel-style) | ~99.5%, DB is effectively a single point of failure | One primary DB, latency equals distance to it | under 1s | Works but coupled, blocking work on the request path | Leans on third-party platforms and services | TLS plus auth, platform defaults |
-| **C** | One server, one database | best effort, no real SLA | Single DB, no redundancy | 1 to 3s | Monolithic, tangled, no separation | Glued together from third-party pieces | Hand-rolled, minimal |
-| **D** | Localhost, single process | none | Local | over 3s | Whatever compiles | Anything | None |
+| Grade | Topology + distribution | Availability | Data path | Delivered p99 | Program performance + architecture | Dependencies | Security | Client performance + reach |
+|---|---|---|---|---|---|---|---|---|
+| **AAA** | Active/active multi-region plus real edge compute, logic runs next to the user | 99.99%+, automated cross-region failover, no single point of failure | Globally distributed writes, sub-50ms reads almost everywhere | under 100ms | Edge-native, clean separation of requests, tasks, and compute, no blocking work on the hot path, near-optimal per request | Zero third party on the critical path, you own the stack | Zero trust, TLS everywhere, data encrypted at rest, passwords hashed never plaintext, pen-tested, audited compliance | Smooth on old and low-end devices, small bundle, no main-thread jank, linear-or-better hot paths, degrades gracefully |
+| **AA** | Primary region plus standby regions, geo read replicas, partial edge | 99.95 to 99.99%, automated regional failover | Cross-region reads, single-region writes | under 200ms | Good architecture, mostly clean separation, minor hot-path waste | Few trusted dependencies, none critical | WAF plus DDoS, encryption, compliance underway | Fast on mid-range and a few-years-old hardware, minor jank only on the weakest, good complexity at normal scale |
+| **A** | One region, multi-AZ, autoscaling stateless tier | 99.9%, survives an AZ failure | Single region, read replicas plus cache | under 500ms | Reasonable structure, some coupling, acceptable efficiency | Several third-party deps, managed | TLS, auth, secrets management, basic WAF | Smooth on current mainstream hardware, struggles on genuinely old devices, acceptable complexity at typical sizes |
+| **B** | Single region, serverless or one small group (Vercel-style) | ~99.5%, DB is effectively a single point of failure | One primary DB, latency equals distance to it | under 1s | Works but coupled, blocking work on the request path | Leans on third-party platforms and services | TLS plus auth, platform defaults | Needs fairly modern hardware to feel good, laggy on older devices, some quadratic paths that bite at larger data |
+| **C** | One server, one database | best effort, no real SLA | Single DB, no redundancy | 1 to 3s | Monolithic, tangled, no separation | Glued together from third-party pieces | Hand-rolled, minimal | Comfortable only on new hardware, janky elsewhere, quadratic-or-worse hot paths, heavy bundle |
+| **D** | Localhost, single process | none | Local | over 3s | Whatever compiles | Anything | None | Needs high-end hardware, unusable on anything old, pathological complexity, freezes on constrained devices |
 
 Each axis maps to a numeric level for scoring: `AAA = 5`, `AA = 4`, `A = 3`, `B = 2`, `C = 1`, `D = 0`.
 
@@ -133,6 +133,26 @@ For AAA you need whichever of these your data actually triggers, certified by an
 
 This axis also interacts with dependencies: if you outsource a security-critical function to a third party on your critical path, you constrain both axes at once, because you are now trusting a system you cannot inspect.
 
+### 8. Client performance + reach
+
+How well the thing you ship actually runs on the user's own hardware, including old and low-end devices, and how its cost grows as data grows. This is separate from delivered latency on purpose. Latency is measured at the user, but it is usually measured on a decent device on a decent connection, so it can look excellent while the app stutters on a five-year-old phone with a weak CPU and little memory. A fast server does not save a bloated client. This axis grades the experience of the person on the worst hardware that still matters to you, not the best.
+
+It climbs from "requires a high-end device and falls apart on anything old" up to "smooth on years-old low-end hardware, small footprint, no main-thread jank, and stays fast as data scales." A site that only feels good on a new flagship and lags hard on older devices is failing this axis no matter how clean the backend is.
+
+#### Algorithmic complexity is part of this
+
+How an operation scales with input size is graded here, because bad complexity is invisible on a fast machine with small data and brutal on a slow machine with real data. An O(n²) routine on a hot path looks fine in a demo and freezes a phone once the list gets long. The rule:
+
+| Hot-path complexity (on work that grows with user data) | Effect on this axis |
+|---|---|
+| Linear or better, or linearithmic where unavoidable (sorting) | no penalty |
+| Quadratic, O(n²), on a path that grows with user data | caps this axis at **C** |
+| Worse than quadratic (cubic, exponential) on such a path | caps this axis at **D** |
+
+The caps apply to work that actually scales with user input or data set size. A quadratic loop over a fixed list of three things is not the target, a quadratic loop over a user's growing collection is. The test: as a real user's data gets larger, does the cost explode? If yes, this axis is capped until it is fixed.
+
+Footprint counts too: bundle size, memory use, and main-thread blocking. A multi-megabyte JavaScript bundle that takes seconds to parse on a low-end device is a real failure here even if every algorithm inside it is linear.
+
 ---
 
 ## Latency thresholds
@@ -217,6 +237,7 @@ Active/active multi-region, edge everywhere, distributed data, hardened security
 | Program + architecture | AA |
 | Dependencies | AA |
 | Security | AAA |
+| Client performance + reach | AA |
 
 Minimum is **C**, set by latency. Result: **`RSG C, latency-bound, watch`**. Every dollar spent on global topology is wasted while a one-second response time drags the whole system to C.
 
@@ -233,8 +254,26 @@ A boring single-region web app on one host, tight code, 120ms p99, strong guardr
 | Program + architecture | AA |
 | Dependencies | A |
 | Security | A |
+| Client performance + reach | A |
 
 Minimum is **B**, set by the single-region topology, availability, and data path together. Result: **`RSG B, topology-bound, availability-bound, data-bound, stable`**.
+
+### Slick but heavy on old hardware
+
+A polished single-page app, AAA backend, fast servers, great security, but the frontend ships a multi-megabyte bundle and renders a long list with an O(n²) routine. On a new laptop it feels instant. On a four-year-old phone it stutters and the list freezes once it grows.
+
+| Axis | Level |
+|---|---|
+| Topology | AAA |
+| Availability | AAA |
+| Data path | AAA |
+| Delivered p99 (measured on a fast device) | AAA |
+| Program + architecture | AA |
+| Dependencies | AA |
+| Security | AAA |
+| Client performance + reach | C |
+
+Minimum is **C**, set by client performance, because the O(n²) hot path caps that axis at C on its own. Result: **`RSG C, client-performance-bound`**. The server latency measured AAA on a fast device and hid the problem entirely, which is exactly why this axis exists as its own column.
 
 ### The takeaway
 
@@ -249,6 +288,8 @@ The boring fast app (B) outranks the global slow one (C). That is the entire rea
 **Why program performance is a first-class axis.** Latency and distribution describe the pipes. Program performance describes what flows through them. A clean global pipe carrying slow code is a slow product. Making code quality its own required axis means you cannot buy your way to AAA with infrastructure alone.
 
 **Why dependencies is so unforgiving.** Every third party on your critical path is a system you cannot inspect, cannot fix, and cannot fully secure. At the top tier, where the difference between AA and AAA is "everything works, always, and is fully owned," a critical-path dependency is a real cap, not a nitpick.
+
+**Why client performance is separate from latency.** Delivered latency is usually measured on a capable device, so it can read AAA while the app is unusable on old or low-end hardware. The two axes fail independently: a fast server with a bloated, quadratic client is fast for some users and broken for the rest. Grading the worst hardware that still matters, rather than the best, is the only way to catch this.
 
 **Why guardrails are a tag and not an axis.** Grading intent is subjective and gameable. Grading results is objective. Bad code already loses points on latency and program performance, today, measurably. Guardrails only predict the future, so they belong in a predictive tag, not in the present-tense score.
 
