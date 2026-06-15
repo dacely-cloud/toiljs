@@ -45,7 +45,8 @@ TOIL_EMAIL_ENABLED=true
 TOIL_EMAIL_FROM=you@example.com       # validated; single address, no CRLF
 TOIL_EMAIL_PROVIDER=resend            # resend | gmail | smtp
 TOIL_EMAIL_API_KEY=re_xxxxxxxxxxxx    # the provider credential
-TOIL_EMAIL_MAX_PER_MIN=60             # per-tenant send budget
+TOIL_EMAIL_MAX_PER_MIN=60             # per-host send budget: rolling 1-minute cap
+TOIL_EMAIL_MAX_PER_DAY=0              # per-host send budget: rolling 24-hour cap (0 = unlimited)
 TOIL_EMAIL_MAX_PER_RECIPIENT_PER_HOUR=5   # anti-abuse cap per recipient
 ```
 
@@ -259,7 +260,10 @@ last-verified-at and reject at or before it.
 All enforced authoritatively in the single mailer (so the counts are exact across
 all workers):
 
-- **Per-tenant budget** — `max_per_min` (a token bucket). Over it → `Budget`.
+- **Per-host budget** — two rolling windows, both enforced: a 1-minute cap
+  (`max_per_min`) and a 24-hour cap (`max_per_day`, `0` = unlimited). Over either
+  one → `Budget`. Each host's caps, in-window sends, and reject counts are visible
+  per host at `GET /_admin/email`.
 - **Per-recipient cap** — `max_per_recipient_per_hour`. Over it →
   `RecipientCapped`.
 - **Dedup** — identical `(host, recipient, purpose)` within ~30s → `Deduped`.
