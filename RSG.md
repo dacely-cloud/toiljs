@@ -102,7 +102,7 @@ These are not point deductions, they are caps. If any are true, the security axi
 
 | If this is true | Security axis caps at |
 |---|---|
-| Passwords or secrets sent or stored in plaintext (your auth example) | **D** |
+| Passwords or secrets sent or stored in plaintext | **D** |
 | Any sensitive data travels unencrypted (no TLS) | **D** |
 | No authentication on an endpoint that exposes sensitive data | **D** |
 | Secrets committed into the repository | **C** |
