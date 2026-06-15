@@ -27,9 +27,15 @@ and as a named export from `toiljs/server/runtime`.
   REST fetch client.
 - [Caching](./caching.md): the `@cache` decorator and `Response.cache(...)`
   (edge vs browser TTL, private scope, auth gating).
+- [Rate limiting](./ratelimit.md): the `@ratelimit` decorator (FixedWindow /
+  SlidingWindow / TokenBucket), keyed on the unspoofable client IP, with
+  `429` + `Retry-After`.
 - [Auth, sessions, and `@user`](./auth.md): `@auth` route guards, the `@user`
   type, `AuthService` (post-quantum login, signed sessions, `getUser()`), and
   the client half.
+- [Email](./email.md): `EmailService`, `EmailTemplate`, the `emails/` React
+  template pipeline, the stateless `TwoFactor` codes, provider config
+  (Resend / Gmail / SMTP), and limits.
 - [Cookies](./cookies.md): the `Cookie` builder, the `Cookies` parser/codec,
   `CookieMap`, `SecureCookies` (HMAC signing and AES-256-GCM encryption), the
   `base64url` helpers, and the `Request` / `Response` integration.
