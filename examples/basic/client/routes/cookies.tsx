@@ -62,6 +62,7 @@ export default function CookiesDemo() {
             setErr(String(e));
         }
     };
+
     const getJSON = async <T,>(url: string): Promise<T> => {
         const res = await fetch(url);
         if (!res.ok) throw new Error(`${url} -> ${String(res.status)}`);

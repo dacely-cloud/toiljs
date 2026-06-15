@@ -143,7 +143,19 @@ async function buildServer(root: string): Promise<void> {
     // Explicit entries (every server file) override the toilconfig entries; the target options
     // (optimization, features, runtime) still come from the toilconfig's `release` target.
     const files = serverEntryFiles(root);
-    const args = [binJs, ...files, '--target', 'release', '--rpcModule', 'shared/server.ts'];
+    // Suppress AS235 ("only variables/functions/enums become wasm exports"): a
+    // `@data`/`@rest` class is intentionally `export class` (so other server
+    // files import it), but never a wasm export — the warning is pure noise here.
+    const args = [
+        binJs,
+        ...files,
+        '--target',
+        'release',
+        '--rpcModule',
+        'shared/server.ts',
+        '--disableWarning',
+        '235',
+    ];
 
     await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, args, { cwd: root, stdio: 'inherit' });

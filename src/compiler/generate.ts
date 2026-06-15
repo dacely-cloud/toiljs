@@ -108,6 +108,7 @@ export const TOIL_SERVER_ENV_DTS =
     `type Cookies = import('toiljs/server/runtime/http/cookies').Cookies;\n` +
     `declare const SecureCookies: typeof import('toiljs/server/runtime/http/securecookies').SecureCookies;\n` +
     `type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;\n` +
+    `declare const Time: typeof import('toiljs/server/runtime/time').Time;\n` +
     `// Email, rate-limit, 2FA, and auth globals (server/globals/*), hand-declared\n` +
     `// because their AssemblyScript source can't be type-aliased from tsc.\n` +
     `declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, TryLater, BadRecipient, ProviderError }\n` +

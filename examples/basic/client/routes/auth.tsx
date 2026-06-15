@@ -19,6 +19,7 @@ function readCookie(name: string): string | null {
         const eq = p.indexOf('=');
         if (eq > 0 && p.slice(0, eq) === name) return p.slice(eq + 1);
     }
+
     return null;
 }
 
@@ -99,6 +100,7 @@ export default function Auth(): React.JSX.Element {
                 setLog('GET /session/me -> 401 (no valid session)');
                 return;
             }
+
             const r = new DataReader(new Uint8Array(await res.arrayBuffer()));
             setVerified({ username: r.readString(), admin: r.readBool(), score: r.readU64().toString() });
             setLog('GET /session/me -> 200 (server-verified session)');
