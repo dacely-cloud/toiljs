@@ -107,7 +107,7 @@ These are not point deductions, they are caps. If any are true, the security axi
 | Known unpatched critical vulnerabilities (CVEs) in the stack | **C** |
 | No protection against the standard attack classes (injection, XSS, CSRF, access control) | **C** |
 
-So an auth system that sends a plaintext password to a server is a **D** on security, which makes the entire application a **D**, regardless of how global, fast, or clean it is. That is exactly the result you wanted, and the disqualifier table makes it automatic rather than a judgment call.
+So an auth system that sends a plaintext password to a server is a **D** on security, which makes the entire application a **D**, regardless of how global, fast, or clean it is. The disqualifier table makes this automatic rather than a judgment call.
 
 #### What "compliance" actually means
 
