@@ -18,6 +18,8 @@
  */
 
 import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
+import { EmailStatus, getEmailService } from './email/index.js';
+import { parseEmailBlob } from './email/wire.js';
 import { devEnvGet, devEnvGetSecure } from './env.js';
 import { ratelimitCheck } from './ratelimit.js';
 
@@ -210,21 +212,36 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 return d.allowed ? 1 : -Math.max(1, d.retryAfterSecs);
             },
 
-            // `env::email_send`: the dev server has no email provider, so it
-            // parses the recipient for a log line and reports Sent (0), the same
-            // i32 contract the edge returns. The suspension is a host-side concern
-            // on the edge (call_async); the wasm just sees an i32 either way.
+            // `env::email_send`: the FULL email pipeline in dev (./email): parse +
+            // recipient validation + dedup + per-min/day budget + per-recipient cap
+            // run SYNCHRONOUSLY (exact status — BadRecipient/Deduped/Budget/
+            // RecipientCapped), then the real provider send is FIRE-AND-FORGET (a
+            // sync wasm import can't await it), so the guest gets Sent optimistically
+            // and the true outcome is logged. Unconfigured email stays a log-only
+            // mock returning Sent. Mirrors the edge's `email_send_import.rs`.
             email_send: (reqPtr: number, reqLen: number): number => {
-                // Header: u16 to_len | u16 subj_len | u16 purpose_len | u32 body_len
-                // | u32 html_len (14 bytes), then payloads; `to` is first.
                 const raw = readBytes(ref, reqPtr, reqLen);
-                let to = '<unparsed>';
-                if (raw.length >= 14) {
-                    const toLen = raw.readUInt16LE(0);
-                    if (14 + toLen <= raw.length) to = raw.toString('utf8', 14, 14 + toLen);
+                const svc = getEmailService();
+                if (svc === null) {
+                    const to = parseEmailBlob(raw)?.to ?? '<unparsed>';
+                    process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
+                    return EmailStatus.Sent;
                 }
-                process.stdout.write(`  ✉ dev email_send -> ${to} (not actually sent)\n`);
-                return 0; // EmailStatus.Sent
+                const { status, parsed } = svc.prepare(raw);
+                if (parsed === null) {
+                    process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
+                    return status;
+                }
+                void svc
+                    .deliver(parsed)
+                    .then((s) => {
+                        const label = s === EmailStatus.Sent ? 'sent' : EmailStatus[s];
+                        process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (${label})\n`);
+                    })
+                    .catch((e: unknown) => {
+                        process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`);
+                    });
+                return EmailStatus.Sent; // optimistic; sync wasm can't await the send
             },
 
             // `Environment.get` / `getSecure`: copy one tenant env value into the

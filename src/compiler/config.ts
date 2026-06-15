@@ -3,10 +3,12 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { type InlineConfig } from 'vite';
+import { type EmailBackendConfig } from 'toiljs/shared';
 
 import { type SeoConfig } from './seo.js';
 
 export type { SeoConfig } from './seo.js';
+export type { EmailBackendConfig, SmtpBackendConfig } from 'toiljs/shared';
 
 /** Built-in AI providers the dev toolbar can proxy to. */
 export enum AiProvider {
@@ -103,6 +105,15 @@ export interface ServerConfig {
     readonly srcDir?: string;
     /** Server build output directory, relative to root. Default `build/server`. */
     readonly outDir?: string;
+    /**
+     * Email backend config (the dev server and the future Node self-host). The
+     * non-secret pieces — provider, `from`, send caps, SMTP host/port/user. The
+     * API key / SMTP password is a SECRET and lives ONLY in `.env.secrets`
+     * (`TOIL_EMAIL_API_KEY`); any `TOIL_EMAIL_*` env var overrides the matching
+     * field here. The production edge ignores this (it reads `TOIL_EMAIL_*` from
+     * the per-tenant env store); this drives `toiljs dev` / self-host.
+     */
+    readonly email?: EmailBackendConfig;
 }
 
 /**
@@ -144,6 +155,8 @@ export interface ResolvedToilConfig {
     readonly devtoolsAi: DevtoolsAiConfig | null;
     /** Build-time SEO config, or `null` when not configured. */
     readonly seo: SeoConfig | null;
+    /** The `server.email` backend config (dev / self-host), or `null` when unset. */
+    readonly email: EmailBackendConfig | null;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
     readonly runtimePath: string;
     readonly vite: InlineConfig;
@@ -215,6 +228,7 @@ export async function loadConfig(
                 ? (client.devtools.ai ?? null)
                 : null,
         seo: client.seo ?? null,
+        email: user.server?.email ?? null,
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
     };

@@ -25,7 +25,10 @@ import path from 'node:path';
 import { Server, type Request, type Response } from '@dacely/hyper-express';
 import pc from 'picocolors';
 
+import type { EmailBackendConfig } from 'toiljs/shared';
+
 import { applyCacheRule, lookupCache } from './cache.js';
+import { initEmailService } from './email/index.js';
 import { METHOD_CODES, type EnvelopeRequest } from './envelope.js';
 import { WasmServerModule } from './module.js';
 import { proxyToVite, wireWebsocketProxy, type ViteTarget } from './proxy.js';
@@ -81,6 +84,12 @@ export interface DevServerOptions {
     readonly vite: ViteTarget;
     /** Max request body bytes. Default 8 MB. */
     readonly maxBodyLength?: number;
+    /**
+     * The `toil.config.ts` `server.email` section (non-secret). When set (and the
+     * API key is in `.env.secrets`), `EmailService.send` really sends in dev;
+     * otherwise it stays a log-only mock. See `./email`.
+     */
+    readonly email?: EmailBackendConfig;
 }
 
 /** A running dev server. */
@@ -170,6 +179,17 @@ function sendWasmResponse(
 export async function startDevServer(options: DevServerOptions): Promise<RunningDevServer> {
     const host = options.host ?? '127.0.0.1';
     const root = path.resolve(options.root);
+
+    // Wire the email service from toil.config `server.email` + `.env.secrets`
+    // (TOIL_EMAIL_*). Configured -> real sends; otherwise the import stays a
+    // log-only mock. A partial-but-invalid config logs why it stayed off.
+    const emailInit = initEmailService(root, options.email);
+    if (emailInit.service !== null) {
+        process.stdout.write(pc.dim(`  ✉ email enabled: ${emailInit.note}`) + '\n');
+    } else if (emailInit.note !== null) {
+        process.stdout.write(pc.yellow('  ! ') + pc.dim(`email off: ${emailInit.note}`) + '\n');
+    }
+
     const module = new WasmServerModule(options.wasmFile);
 
     let warnedMissing = false;
