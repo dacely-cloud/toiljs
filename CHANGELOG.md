@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.0.40] - 2026-06-15
+
+### Other Changes
+
+- feat: email globals (EmailService/EmailTemplate/2FA) + React emails/ pipeline + client.ip ([#152](https://github.com/dacely-cloud/toiljs/pull/152)) by @BlobMaster41
+- chore(emails): install juice@^12.1.0 for build-time CSS inlining ([#153](https://github.com/dacely-cloud/toiljs/pull/153)) by @BlobMaster41
+- docs: Email and Rate limiting guides ([#154](https://github.com/dacely-cloud/toiljs/pull/154)) by @BlobMaster41
+- chore: require toilscript ^0.1.23 (@ratelimit decorator) ([#155](https://github.com/dacely-cloud/toiljs/pull/155)) by @BlobMaster41
+- chore: release v0.0.40 ([#156](https://github.com/dacely-cloud/toiljs/pull/156)) by @BlobMaster41
+
+
+
+
 ## [v0.0.39] - 2026-06-13
 
 - No changes
