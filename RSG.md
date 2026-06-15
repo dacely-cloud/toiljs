@@ -8,8 +8,6 @@
 
 RSG is an internal rubric for grading how resilient, distributed, fast, lean, and secure an application actually is, as a single letter from **AAA** down to **D**. It exists to force one honest conversation: a system is only as good as its weakest link, and a good network must never be allowed to flatter bad code.
 
-This document is the canonical spec. It supersedes any earlier draft that used fewer axes.
-
 ---
 
 ## Table of contents
