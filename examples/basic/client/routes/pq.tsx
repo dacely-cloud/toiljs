@@ -10,10 +10,12 @@
 // swap in its own. It still isn't the full production login (no single-use
 // consume -> within the TTL a captured proof could be replayed; that needs a
 // store) -- see Auth.login / server/routes/Auth.ts and docs/auth.md.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Auth, type IdentityProof } from 'toiljs/client';
 import { Account } from 'shared/server';
+
+import { useBrowserValue } from '../lib/useBrowserValue';
 
 /** Read the readable companion cookie under either name (HTTP `toil_user` or
  * HTTPS `__Secure-toil_user`) and decode it. Display-only / untrusted. */
@@ -82,11 +84,11 @@ export default function Pq(): React.JSX.Element {
     const [busy, setBusy] = useState(false);
     const [proof, setProof] = useState<IdentityProof | null>(null);
     const [result, setResult] = useState<Result | null>(null);
-    const [companion, setCompanion] = useState<Account | null>(null);
     const [verified, setVerified] = useState<VerifiedUser | null | 'none'>(null);
 
-    const refreshCompanion = useCallback(() => setCompanion(readCompanion()), []);
-    useEffect(refreshCompanion, [refreshCompanion]);
+    // Hydration-safe: null on the server and first paint, the live companion
+    // cookie after mount; `refreshCompanion()` re-reads after a PQ login.
+    const [companion, refreshCompanion] = useBrowserValue(readCompanion, null);
 
     const prove = useCallback(
         async (doTamper: boolean) => {
