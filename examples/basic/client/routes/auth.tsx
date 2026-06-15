@@ -8,9 +8,11 @@
 // `GET /session/me` is the server re-verifying the signed session (trusted).
 // The full post-quantum register/login (ML-DSA-44) needs an account store and is
 // stubbed in server/routes/Auth.ts; see docs/auth.md.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { Account } from 'shared/server';
+
+import { useBrowserValue } from '../lib/useBrowserValue';
 
 /** Read one cookie value from `document.cookie`, or null. */
 function readCookie(name: string): string | null {
@@ -71,13 +73,13 @@ interface VerifiedUser {
 
 export default function Auth(): React.JSX.Element {
     const [username, setUsername] = useState('ada');
-    const [companion, setCompanion] = useState<Account | null>(null);
     const [verified, setVerified] = useState<VerifiedUser | null | 'none'>(null);
     const [busy, setBusy] = useState(false);
     const [log, setLog] = useState<string>('');
 
-    const refreshCompanion = useCallback(() => setCompanion(readCompanion()), []);
-    useEffect(refreshCompanion, [refreshCompanion]);
+    // Hydration-safe: null on the server and first paint, the live companion
+    // cookie after mount; `refreshCompanion()` re-reads after a login/logout.
+    const [companion, refreshCompanion] = useBrowserValue(readCompanion, null);
 
     const devLogin = useCallback(async () => {
         setBusy(true);

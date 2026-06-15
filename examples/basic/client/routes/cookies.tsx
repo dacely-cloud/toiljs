@@ -3,7 +3,9 @@
 // surface plus HMAC signing and AES-256-GCM encryption, running in the server wasm.
 // These controls call the `/api/cookies/*` routes in `server/core/AppHandler.ts`.
 // Needs the server running to respond.
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
+
+import { useBrowserValue } from '../lib/useBrowserValue';
 
 export const metadata: Toil.Metadata = {
     title: 'Cookies',
@@ -41,6 +43,11 @@ const card: CSSProperties = {
 };
 const label: CSSProperties = { opacity: 0.7, fontSize: '0.8rem', marginTop: 6 };
 
+/** The cookies JS can read (HttpOnly cookies are absent from `document.cookie`). */
+function readJsCookies(): string {
+    return document.cookie || '(nothing visible to JS)';
+}
+
 export default function CookiesDemo() {
     const [gallery, setGallery] = useState<Record<string, string> | null>(null);
     const [setResp, setSetResp] = useState<SetResp | null>(null);
@@ -48,11 +55,11 @@ export default function CookiesDemo() {
     const [cleared, setCleared] = useState<string[] | null>(null);
     const [seal, setSeal] = useState<SealResp | null>(null);
     const [sealInput, setSealInput] = useState('hello toiljs');
-    const [jsCookies, setJsCookies] = useState('');
     const [err, setErr] = useState('');
 
-    const readJs = (): void => setJsCookies(document.cookie || '(nothing visible to JS)');
-    useEffect(readJs, []);
+    // Hydration-safe: '' on the server and first paint, the live `document.cookie`
+    // after mount; `readJs()` re-reads after a Set/Clear/Seal action.
+    const [jsCookies, readJs] = useBrowserValue(readJsCookies, '');
 
     const guard = async (fn: () => Promise<void>): Promise<void> => {
         setErr('');
