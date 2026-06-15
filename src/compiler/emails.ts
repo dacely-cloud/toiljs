@@ -291,8 +291,15 @@ export async function renderEmails(cfg: ResolvedToilConfig): Promise<void> {
     }
 
     if (rendered.length === 0) return;
+    // Only (re)write when the output actually changed: an unconditional write
+    // bumps the file's mtime every rebuild, which under `dev` would re-trigger
+    // the watcher. (The watcher also ignores this file by name; this is belt-and-
+    // suspenders and avoids needless work.)
+    const next = renderModuleSource(rendered);
+    const prev = fs.existsSync(generatedPath) ? fs.readFileSync(generatedPath, 'utf8') : null;
+    if (prev === next) return;
     fs.mkdirSync(path.dirname(generatedPath), { recursive: true });
-    fs.writeFileSync(generatedPath, renderModuleSource(rendered));
+    fs.writeFileSync(generatedPath, next);
     process.stdout.write(
         `  ✓ emails: generated ${String(rendered.length)} template${rendered.length === 1 ? '' : 's'} (${rendered
             .map((r) => r.name)
