@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.41] - 2026-06-15
+
+### Other Changes
+
+- fix(dev): stop emails rebuild loop + editor types for server globals (v0.0.41) ([#157](https://github.com/dacely-cloud/toiljs/pull/157)) by @BlobMaster41
+
+
+
+
 ## [v0.0.40] - 2026-06-15
 
 ### Other Changes
