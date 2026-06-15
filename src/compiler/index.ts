@@ -11,7 +11,8 @@ import { build as viteBuild, createServer, mergeConfig, type ViteDevServer } fro
 // lazily; `create`/`build`/`doctor` must never touch the native binary.
 import type { RunningBackend } from 'toiljs/backend';
 
-import { loadConfig } from './config.js';
+import { loadConfig, type ResolvedToilConfig } from './config.js';
+import { renderEmails } from './emails.js';
 import { generate, TOIL_SERVER_ENV_DTS } from './generate.js';
 import { prerenderStaticParams } from './ssg.js';
 import { extractTemplates } from './template-build.js';
@@ -165,9 +166,11 @@ async function buildServer(root: string): Promise<void> {
  * delivering events on Linux after editors replace files via rename, which left hot reload
  * working exactly once. A no-op for client-only projects.
  */
-function watchServer(root: string, watcher: ViteDevServer['watcher']): void {
+function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher']): void {
+    const root = cfg.root;
     const dirs = serverDirs(root);
     if (dirs.length === 0) return;
+    const emailsDir = path.join(root, 'emails');
 
     let building = false;
     let queued = false;
@@ -178,7 +181,10 @@ function watchServer(root: string, watcher: ViteDevServer['watcher']): void {
         }
         building = true;
         process.stdout.write(pc.dim('  server changed, rebuilding…') + '\n');
-        buildServer(root)
+        // Recompile emails/*.tsx -> the generated module before the server build,
+        // so editing an email template hot-reloads like any other server change.
+        renderEmails(cfg)
+            .then(() => buildServer(root))
             .then(() => process.stdout.write(pc.green('  ✓ ') + pc.dim('server rebuilt') + '\n'))
             .catch((e: unknown) =>
                 process.stdout.write(pc.red(`  ✗ server rebuild failed: ${String(e)}`) + '\n'),
@@ -197,9 +203,11 @@ function watchServer(root: string, watcher: ViteDevServer['watcher']): void {
         file.endsWith('.ts') &&
         !file.endsWith('.d.ts') &&
         dirs.some((dir) => file === dir || file.startsWith(dir + path.sep));
-    watcher.add(dirs);
+    const isEmailSource = (file: string): boolean =>
+        /\.(tsx|jsx)$/.test(file) && (file === emailsDir || file.startsWith(emailsDir + path.sep));
+    watcher.add([...dirs, emailsDir]);
     watcher.on('all', (_event, file) => {
-        if (!isServerSource(file)) return;
+        if (!isServerSource(file) && !isEmailSource(file)) return;
         if (timer) clearTimeout(timer);
         timer = setTimeout(rebuild, 150); // debounce bursts (save-all, formatters)
     });
@@ -260,6 +268,8 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
     const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
     if (hasServer) process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
+    // Compile emails/*.tsx -> generated server module BEFORE toilscript builds it in.
+    await renderEmails(cfg);
     await buildServer(cfg.root);
     if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
     generate(cfg);
@@ -302,7 +312,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
 
     // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts
     // and the dev server hot-swaps the recompiled wasm module.
-    watchServer(cfg.root, server.watcher);
+    watchServer(cfg, server.watcher);
     return server;
 }
 
@@ -316,6 +326,8 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
     if (hasServer && !opts.serverOnly)
         process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
+    // Compile emails/*.tsx -> generated server module BEFORE toilscript builds it in.
+    await renderEmails(cfg);
     await buildServer(cfg.root);
     if (opts.serverOnly) return;
     if (hasServer)

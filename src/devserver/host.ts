@@ -18,6 +18,7 @@
  */
 
 import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
+import { ratelimitCheck } from './ratelimit.js';
 
 /** Limits identical to the edge's `set_header` / `respond_file` bounds. */
 const MAX_TOTAL_HEADERS_BYTES = 64 * 1024;
@@ -49,13 +50,23 @@ export interface DispatchState {
     headerBytes: number;
     /** File path from `respond_file`, or `null`; when set, the envelope body is ignored. */
     sendfile: string | null;
+    /** The connecting client's IP for `client_ip` (the edge uses the socket peer);
+     *  set per dispatch from the Node request's `socket.remoteAddress`, '' if unknown. */
+    clientIp: string;
     /** Per-dispatch Web Crypto keystore + result scratch (mirrors the edge). */
     crypto: CryptoState;
 }
 
 /** A fresh, zeroed per-dispatch state (the edge resets the same way before each request). */
 export function freshDispatchState(): DispatchState {
-    return { status: null, headers: [], headerBytes: 0, sendfile: null, crypto: freshCryptoState() };
+    return {
+        status: null,
+        headers: [],
+        headerBytes: 0,
+        sendfile: null,
+        clientIp: '',
+        crypto: freshCryptoState(),
+    };
 }
 
 /**
@@ -133,6 +144,60 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 if (pathLen > MAX_PATH_LEN)
                     throw new Error(`respond_file path too long: ${String(pathLen)} bytes`);
                 state.sendfile = readBytes(ref, pathPtr, pathLen).toString('utf8');
+            },
+
+            // Write the client's IP (set per dispatch from the connection's
+            // remote address) into the guest buffer. Returns the byte length,
+            // 0 if unknown, -1 if the buffer is too small. Mirrors the edge's
+            // `client_ip_import.rs`.
+            client_ip: (outPtr: number, cap: number): number => {
+                const ip = state.clientIp;
+                if (ip.length === 0) return 0;
+                const bytes = Buffer.from(ip, 'utf8');
+                if (bytes.length > cap) return -1;
+                const m = mem(ref);
+                if (outPtr < 0 || outPtr + bytes.length > m.length)
+                    throw new Error('client_ip write out of bounds');
+                bytes.copy(m, outPtr);
+                return bytes.length;
+            },
+
+            // `@ratelimit` decorator hook. Accounts one event for this request
+            // against the dev limiter, keyed on the explicit guest key when
+            // given (`keyLen > 0`), else the client IP. Returns the remaining
+            // budget (>= 0, allowed) or a negative `Retry-After` in seconds
+            // (denied). Mirrors the edge's `ratelimit_check_import.rs`.
+            ratelimit_check: (
+                routeId: number,
+                strategy: number,
+                limit: number,
+                window: number,
+                keyPtr: number,
+                keyLen: number,
+            ): number => {
+                const identity =
+                    keyLen > 0
+                        ? readBytes(ref, keyPtr, keyLen).toString('utf8')
+                        : state.clientIp || '0';
+                const d = ratelimitCheck(routeId, strategy, limit, window, identity, Date.now());
+                return d.allowed ? 1 : -Math.max(1, d.retryAfterSecs);
+            },
+
+            // `env::email_send`: the dev server has no email provider, so it
+            // parses the recipient for a log line and reports Sent (0), the same
+            // i32 contract the edge returns. The suspension is a host-side concern
+            // on the edge (call_async); the wasm just sees an i32 either way.
+            email_send: (reqPtr: number, reqLen: number): number => {
+                // Header: u16 to_len | u16 subj_len | u16 purpose_len | u32 body_len
+                // | u32 html_len (14 bytes), then payloads; `to` is first.
+                const raw = readBytes(ref, reqPtr, reqLen);
+                let to = '<unparsed>';
+                if (raw.length >= 14) {
+                    const toLen = raw.readUInt16LE(0);
+                    if (14 + toLen <= raw.length) to = raw.toString('utf8', 14, 14 + toLen);
+                }
+                process.stdout.write(`  ✉ dev email_send -> ${to} (not actually sent)\n`);
+                return 0; // EmailStatus.Sent
             },
 
             thread_spawn: (_startArg: number): number => -1,

@@ -108,12 +108,19 @@ function resolveSendfile(root: string, file: string): string | null {
 async function toEnvelopeRequest(request: Request): Promise<EnvelopeRequest> {
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
     const body = hasBody ? new Uint8Array(await request.buffer()) : new Uint8Array(0);
+    // Dev parity for `client_ip`: the edge keys on the unspoofable socket peer,
+    // but the dev server has no DPDK socket, so best-effort from a proxy's
+    // `x-forwarded-for`, else localhost, so `ctx.clientIp()` returns a value.
+    const xff = request.headers['x-forwarded-for'];
+    const clientIp =
+        typeof xff === 'string' && xff.length > 0 ? xff.split(',')[0]!.trim() : '127.0.0.1';
     return {
         method: request.method,
         // `url` keeps the query string; the guest's RouteContext parses it off the path.
         path: request.url,
         headers: Object.entries(request.headers),
         body,
+        clientIp,
     };
 }
 

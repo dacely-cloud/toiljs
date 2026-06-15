@@ -53,6 +53,7 @@ interface HandleExports {
 /** Host functions the dev server provides under `env` (see `host.ts`). */
 const PROVIDED_IMPORTS = new Set([
     'abort', 'set_status', 'set_header', 'respond_file', 'thread_spawn', 'Date.now',
+    'client_ip', 'ratelimit_check', 'email_send',
     // Web Crypto host functions (see ./crypto.ts).
     'crypto.fill_random', 'crypto.random_uuid', 'crypto.take_result', 'crypto.digest',
     'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
@@ -109,6 +110,7 @@ export class WasmServerModule {
 
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.clientIp = req.clientIp ?? '';
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
@@ -165,6 +167,7 @@ export class WasmServerModule {
         const envelope = encodeRequestEnvelope(req);
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.clientIp = req.clientIp ?? '';
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports & {
             render?: (reqOfs: number, reqLen: number) => bigint;
