@@ -6,6 +6,7 @@ import { AppHandler } from './core/AppHandler';
 // Surface modules: @rest routes and @service/@remote RPC. `toiljs build` discovers every
 // decorated file under server/ on its own; importing them here keeps a direct `toilscript`
 // run (which only sees the toilconfig entries) building the exact same server.
+import './routes/Auth';
 import './routes/Players';
 import './routes/Leaderboard';
 import './routes/Session';
