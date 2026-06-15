@@ -1,6 +1,6 @@
 # Resilience and Scale Grade (RSG)
 
-> One grade for an application across seven axes, where your grade is your weakest axis, never the average and never the best.
+> One grade for an application across eight axes, where your grade is your weakest axis, never the average and never the best.
 
 ![status](https://img.shields.io/badge/status-spec-2dd4bf)
 ![type](https://img.shields.io/badge/type-rubric-84cc16)
@@ -14,7 +14,7 @@ RSG is an internal rubric for grading how resilient, distributed, fast, lean, an
 
 - [The core rule](#the-core-rule)
 - [The grade table](#the-grade-table)
-- [The seven axes](#the-seven-axes)
+- [The eight axes](#the-eight-axes)
 - [Latency thresholds](#latency-thresholds)
 - [How to score](#how-to-score)
 - [The binding axis](#the-binding-axis)
@@ -48,11 +48,11 @@ This is the whole point of the system. The most common lie in this space is call
 
 Each axis maps to a numeric level for scoring: `AAA = 5`, `AA = 4`, `A = 3`, `B = 2`, `C = 1`, `D = 0`.
 
-Security has hard caps on top of these levels. Some failures, like a plaintext password or no TLS, disqualify a system from a high grade outright, see [hard security disqualifiers](#hard-security-disqualifiers).
+Security has hard caps on top of these levels. Some failures, like no TLS or storing passwords in readable form, disqualify a system outright, and others cap it below AAA, see [the security axis](#7-security).
 
 ---
 
-## The seven axes
+## The eight axes
 
 ### 1. Topology + distribution
 
@@ -82,9 +82,9 @@ How much of your critical path you actually own. AAA means zero third party on t
 
 This axis grades how hard your system is to break into and how much damage a breach would do. It is descriptive and specific, because vague security language is how insecure systems pass review. Each level is a concrete checklist, and certain failures are hard caps no matter how good everything else looks.
 
-**AAA security.** All traffic encrypted in transit with modern TLS. All sensitive data encrypted at rest. Passwords and secrets are never transmitted or stored in readable form, passwords are salted and hashed with a slow algorithm built for it (argon2, bcrypt, or scrypt), and secrets live in a managed vault with rotation, never in code or in a committed config file. Every request is authenticated and authorized with no implicit trust between services (zero trust). The system actively defends against the standard attack classes: injection, cross-site scripting, request forgery, server-side request forgery, and broken access control. There is a WAF and DDoS protection in front, auth events are logged and monitored, and there is a written incident-response plan. And it is independently verified: a third-party penetration test plus the formal compliance certification appropriate to the data (see below on what compliance means).
+**AAA security.** All traffic encrypted in transit with modern TLS, all sensitive data encrypted at rest. The auth design never lets the server see a raw password at all: it uses a password-authenticated key exchange (such as SRP or OPAQUE) or a quantum-resistant equivalent, so that even a fully compromised server, proxy, or log file never captures a usable credential. Where credentials are stored, they are salted and hashed with a slow algorithm built for it (argon2, bcrypt, or scrypt). Secrets live in a managed vault with rotation, never in code or a committed config file. Every request is authenticated and authorized with no implicit trust between services (zero trust). The system actively defends against the standard attack classes: injection, cross-site scripting, request forgery, server-side request forgery, and broken access control. There is a WAF and DDoS protection in front, auth events are logged and monitored, and there is a written incident-response plan. And it is independently verified: a third-party penetration test plus the formal compliance certification appropriate to the data (see below on what compliance means).
 
-**AA security.** Encryption in transit and at rest, properly hashed passwords, secrets management, a WAF and DDoS protection, the common attack classes covered, and monitoring. The gap from AAA is the absence of independent verification: no recent third-party pen test, or compliance work started but not certified. Secure in practice, not yet audited.
+**AA security.** Encryption in transit and at rest, the server receives the raw password over TLS and immediately hashes it with argon2, bcrypt, or scrypt (the standard, acceptable pattern that most of the web runs on), secrets management, a WAF and DDoS protection, the common attack classes covered, and monitoring. The gap from AAA is twofold: no independent verification (no recent third-party pen test, or compliance work started but not certified), and the server still handles a usable credential, which is a breach surface AAA designs out. Secure in practice, not yet audited.
 
 **A security.** TLS everywhere, authentication and authorization in place, secrets kept out of the codebase, passwords hashed, and a basic WAF. The standard attack classes are mostly handled but not formally tested. Reasonable for a product handling normal user data, short of regulated or high-value data.
 
@@ -94,20 +94,30 @@ This axis grades how hard your system is to break into and how much damage a bre
 
 **D security.** Effectively none. No meaningful auth, no encryption, or worse.
 
-#### Hard security disqualifiers
+#### Hard disqualifiers (catastrophic, cap at D)
 
-These are not point deductions, they are caps. If any are true, the security axis cannot exceed the listed grade no matter what else is in place, which under the weakest-link rule caps the whole system.
+These are not point deductions, they are caps. If any is true, the security axis is **D**, and under the weakest-link rule the whole system is D, no matter how global, fast, or clean it is.
 
-| If this is true | Security axis caps at |
+| If this is true | Why it is catastrophic |
 |---|---|
-| Passwords or secrets sent or stored in plaintext | **D** |
-| Any sensitive data travels unencrypted (no TLS) | **D** |
-| No authentication on an endpoint that exposes sensitive data | **D** |
-| Secrets committed into the repository | **C** |
-| Known unpatched critical vulnerabilities (CVEs) in the stack | **C** |
-| No protection against the standard attack classes (injection, XSS, CSRF, access control) | **C** |
+| Sensitive data transmitted with no TLS (in the clear over the network) | trivially intercepted on the wire by anyone in the path |
+| Passwords stored in plaintext or reversible form, not hashed | a single database leak exposes every user's actual password |
+| No authentication on an endpoint that exposes sensitive data | anyone who finds the URL can read it |
 
-So an auth system that sends a plaintext password to a server is a **D** on security, which makes the entire application a **D**, regardless of how global, fast, or clean it is. The disqualifier table makes this automatic rather than a judgment call.
+#### Design caps (serious, but not catastrophic)
+
+These do not zero you out, but they cap how high security can climb. Each one is a real path to a data breach, just not an instant one.
+
+| If this is true | Caps at | The breach risk |
+|---|---|---|
+| The server receives and processes the raw password (the standard send-over-TLS-then-hash pattern) | **B** | a server compromise, a memory dump, or one stray log line captures live, usable credentials, which is one of the most common breach paths in practice |
+| Secrets committed into the repository | **C** | anyone with repo access, now or anywhere in its history, has your keys |
+| Known unpatched critical vulnerabilities (CVEs) in the stack | **C** | a working public exploit already exists |
+| No protection against the standard attack classes (injection, XSS, CSRF, broken access control) | **C** | the most common breach vectors are left open |
+
+So the pattern almost the whole internet uses, a password sent over TLS to a server that then hashes it, is **not** a D. It is the acceptable baseline, and it caps security at **B**, because the server momentarily holds a usable credential, and that is a genuine data-breach surface: anything that reads server memory or logs at the wrong moment walks away with live passwords. What earns a D is sending that password over an unencrypted connection, or storing it in readable form.
+
+To reach **AAA**, the password must never reach the server in usable form at all. That is the job of a password-authenticated key exchange (SRP, OPAQUE) or a quantum-resistant scheme, where the proof of knowledge happens without the secret ever crossing the wire in a form anyone can replay. Done right, a fully breached server still yields no credentials.
 
 #### What "compliance" actually means
 
@@ -144,13 +154,13 @@ Measure at the user, not at the load balancer. The point of this axis is to capt
 
 ## How to score
 
-1. Assign each of the seven axes a level from 0 (D) to 5 (AAA), using the [grade table](#the-grade-table). Latency comes from a measured p99 via the [thresholds](#latency-thresholds).
-2. The grade is the **minimum** of the seven levels.
+1. Assign each of the eight axes a level from 0 (D) to 5 (AAA), using the [grade table](#the-grade-table). Latency comes from a measured p99 via the [thresholds](#latency-thresholds).
+2. The grade is the **minimum** of the eight levels.
 3. Convert that level back to a letter: `5 -> AAA`, `4 -> AA`, `3 -> A`, `2 -> B`, `1 -> C`, `0 -> D`.
 4. Record the [binding axis or axes](#the-binding-axis), the ones sitting at that minimum.
 5. Attach the [stability modifier](#the-stability-modifier) from your guardrails.
 
-In plain terms: take the seven axis levels, find the lowest one, and that is your grade. The lowest of topology, availability, data, latency, program, dependencies, and security wins, and its letter is the grade.
+In plain terms: take the eight axis levels, find the lowest one, and that is your grade. The lowest of topology, availability, data, latency, program, client performance, dependencies, and security wins, and its letter is the grade.
 
 There is no averaging anywhere. A system that is AAA on six axes and C on one is a **C**.
 
