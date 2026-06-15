@@ -18,6 +18,7 @@
  */
 
 import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
+import { devEnvGet, devEnvGetSecure } from './env.js';
 import { ratelimitCheck } from './ratelimit.js';
 
 /** Limits identical to the edge's `set_header` / `respond_file` bounds. */
@@ -103,6 +104,32 @@ function readGuestString(ref: MemoryRef, ptr: number): string {
     const byteLen = m.readUInt32LE(ptr - 4);
     if (ptr + byteLen > m.length) return '';
     return m.toString('utf16le', ptr, ptr + byteLen);
+}
+
+/**
+ * Resolve one `Environment.get`/`getSecure` lookup against the dev env source
+ * and write it into the guest buffer, with the edge's return protocol: the value
+ * byte length (`0` = present-but-empty), `-1` if `outCap` is too small (the guest
+ * retries with a bigger buffer), `-2` if the key is absent.
+ */
+function envLookup(
+    ref: MemoryRef,
+    keyPtr: number,
+    keyLen: number,
+    outPtr: number,
+    outCap: number,
+    secure: boolean,
+): number {
+    const key = readBytes(ref, keyPtr, keyLen).toString('utf8');
+    const val = secure ? devEnvGetSecure(key) : devEnvGet(key);
+    if (val === null) return -2; // ABSENT
+    const bytes = Buffer.from(val, 'utf8');
+    if (bytes.length > outCap) return -1; // TOO_SMALL
+    const m = mem(ref);
+    if (outPtr < 0 || outPtr + bytes.length > m.length)
+        throw new Error('env_get write out of bounds');
+    bytes.copy(m, outPtr);
+    return bytes.length;
 }
 
 /**
@@ -199,6 +226,21 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 process.stdout.write(`  ✉ dev email_send -> ${to} (not actually sent)\n`);
                 return 0; // EmailStatus.Sent
             },
+
+            // `Environment.get` / `getSecure`: copy one tenant env value into the
+            // guest buffer. Returns the byte length (0 = present-but-empty), -1 if
+            // the buffer is too small (the guest retries bigger), -2 if absent.
+            // Disjoint buckets: `env_get` reads vars, `env_get_secure` reads
+            // secrets. Mirrors the edge's `env_get_import.rs`; the dev source is
+            // `.env` (+ process.env vars) and `.env.secrets` (see ./env.ts).
+            env_get: (keyPtr: number, keyLen: number, outPtr: number, outCap: number): number =>
+                envLookup(ref, keyPtr, keyLen, outPtr, outCap, false),
+            env_get_secure: (
+                keyPtr: number,
+                keyLen: number,
+                outPtr: number,
+                outCap: number,
+            ): number => envLookup(ref, keyPtr, keyLen, outPtr, outCap, true),
 
             thread_spawn: (_startArg: number): number => -1,
 

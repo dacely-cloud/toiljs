@@ -24,65 +24,72 @@ Everything here is an ambient **global** (no import), like `crypto` and
 
 ## Configure email
 
-Email is configured **per host on the edge** (it is a deployment capability, not
-app code), in that host's TOML config — `hosts/<host>.toml`:
+Email is a **framework-reserved namespace of the tenant's environment** — the
+same out-of-band [Environment](./environment.md) store that backs
+`Environment.get` / `getSecure`, but the `[email]` block is **host-only**: it is
+read and used in Rust (the off-core mailer) and is **never exposed to the
+`.wasm`**. The provider key never lives in the deployed module or in the
+inotify-watched `hosts/<host>.toml`.
 
-```toml
-[email]
-enabled = true
-from = "you@example.com"          # validated; single address, no CRLF
-provider = "resend"               # "resend" | "gmail" | "smtp"
-secret_ref = "resend_key"         # a FILENAME, never the secret itself
-max_per_min = 60                  # per-tenant send budget
-max_per_recipient_per_hour = 5    # anti-abuse cap per recipient
+On the edge today it lives in the tenant's env secrets file,
+`$TOIL_ENV_DIR/<host>.env.secrets` (default dir `/run/toil/env`), kept `0600` and
+**out of `hosts/`** so the config watcher never sees a credential (the dashboard /
+edge DB replaces this file later). Email config is a set of **reserved
+`TOIL_EMAIL_*` keys** — host-only, stripped from the guest buckets, so a tenant
+can never read them via `Environment.getSecure`:
+
+```bash
+# $TOIL_ENV_DIR/<host>.env.secrets   (mode 0600; NOT under hosts/, NOT in the .wasm)
+
+TOIL_EMAIL_ENABLED=true
+TOIL_EMAIL_FROM=you@example.com       # validated; single address, no CRLF
+TOIL_EMAIL_PROVIDER=resend            # resend | gmail | smtp
+TOIL_EMAIL_API_KEY=re_xxxxxxxxxxxx    # the provider credential
+TOIL_EMAIL_MAX_PER_MIN=60             # per-tenant send budget
+TOIL_EMAIL_MAX_PER_RECIPIENT_PER_HOUR=5   # anti-abuse cap per recipient
 ```
+
+The same file also carries the tenant's own secrets (and `<host>.env` their plain
+vars; see [Environment](./environment.md)); the `TOIL_EMAIL_*` keys are just the
+reserved namespace the framework consumes.
 
 When `enabled` is `false` (the default) the host has no email capability and
-`EmailService.send` returns `Disabled`. If `enabled` is `true` but the config is
-invalid or the secret can't be resolved, the **deploy fails** rather than
-shipping a host that can never send.
-
-### Secrets
-
-`secret_ref` is a **bare filename** (no path separators) under the secrets
-directory `$TOIL_SECRETS_DIR` (default `/run/toil/secrets`). The file holds the
-provider API key (Resend) or SMTP password. It is read once at load, zeroized in
-memory, and never written to the config, logs, or `/_admin`.
-
-```
-/run/toil/secrets/resend_key      # contents: re_xxxxxxxxxxxx…
-```
+`EmailService.send` returns `Disabled`. The env is loaded **lazily** (on the
+first send) and the `api_key` is materialized into a zeroizing secret in host
+memory — never written to logs or `/_admin`. A malformed `[email]` block is
+treated as "no email" (the host returns `Disabled`); validate config on the
+dashboard before deploying.
 
 ### Providers
 
-**Resend** (`provider = "resend"`) — a JSON API; `secret_ref` holds the API key.
+**Resend** (`provider = "resend"`) — a JSON API; `api_key` holds the API key.
 
-**Gmail** (`provider = "gmail"`) — SMTP with Gmail defaults: `smtp.gmail.com`,
-port `587` (STARTTLS), username = `from`. `secret_ref` holds a Gmail **App
-Password** (create one at <https://myaccount.google.com/apppasswords>; the
-account needs 2-Step Verification). No extra keys needed:
+**Gmail** (`TOIL_EMAIL_PROVIDER=gmail`) — SMTP with Gmail defaults:
+`smtp.gmail.com`, port `587` (STARTTLS), username = `from`. `TOIL_EMAIL_API_KEY`
+holds a Gmail **App Password** (create one at
+<https://myaccount.google.com/apppasswords>; the account needs 2-Step
+Verification). No extra keys needed:
 
-```toml
-[email]
-enabled = true
-from = "you@gmail.com"
-provider = "gmail"
-secret_ref = "gmail_app_password"
+```bash
+TOIL_EMAIL_ENABLED=true
+TOIL_EMAIL_FROM=you@gmail.com
+TOIL_EMAIL_PROVIDER=gmail
+TOIL_EMAIL_API_KEY=abcd efgh ijkl mnop
 ```
 
-**Generic SMTP** (`provider = "smtp"`) — any submission server (Outlook,
-SendGrid/Mailgun SMTP, your own). Requires `smtp_host`; port defaults to `587`
-(STARTTLS), or set `465` for implicit TLS. `smtp_user` defaults to `from`.
+**Generic SMTP** (`TOIL_EMAIL_PROVIDER=smtp`) — any submission server (Outlook,
+SendGrid/Mailgun SMTP, your own). Requires `TOIL_EMAIL_SMTP_HOST`; port defaults
+to `587` (STARTTLS), or set `465` for implicit TLS. `TOIL_EMAIL_SMTP_USER`
+defaults to `from`.
 
-```toml
-[email]
-enabled = true
-from = "noreply@example.com"
-provider = "smtp"
-secret_ref = "smtp_password"
-smtp_host = "smtp.example.com"
-smtp_port = 587
-smtp_user = "noreply@example.com"
+```bash
+TOIL_EMAIL_ENABLED=true
+TOIL_EMAIL_FROM=noreply@example.com
+TOIL_EMAIL_PROVIDER=smtp
+TOIL_EMAIL_API_KEY=the-smtp-password
+TOIL_EMAIL_SMTP_HOST=smtp.example.com
+TOIL_EMAIL_SMTP_PORT=587
+TOIL_EMAIL_SMTP_USER=noreply@example.com
 ```
 
 ### In dev
@@ -240,7 +247,7 @@ const ok: bool = TwoFactor.verify(challenge.token, 'alice@example.com', userEnte
   recipient that hasn't expired. Constant-time compare.
 - **`TwoFactor.setSecret(secret)`** — the HMAC secret for the tokens. Call once
   at startup in `main.ts`; it must be identical on every edge instance and out of
-  any client bundle. (This is separate from the provider `secret_ref`.)
+  any client bundle. (This is separate from the provider `api_key`.)
 
 **Limitation:** this gives integrity + expiry but **not single-use** — a valid
 code verifies repeatedly within its TTL, because there is no server state to burn

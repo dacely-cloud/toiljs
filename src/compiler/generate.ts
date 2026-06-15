@@ -117,6 +117,7 @@ export const TOIL_SERVER_ENV_DTS =
     `declare class EmailTemplate { constructor(subject: string, body: string, html?: string); render(vars: Map<string, string>): RenderedEmail; send(to: string, vars: Map<string, string>, purpose?: string): EmailStatus; }\n` +
     `declare enum RateLimit { FixedWindow, SlidingWindow, TokenBucket }\n` +
     `declare namespace RateLimitService { function guard(routeId: i32, strategy: i32, limit: i32, window: i32): import('toiljs/server/runtime/response').Response | null; function guardKeyed(routeId: i32, strategy: i32, limit: i32, window: i32, key: string): import('toiljs/server/runtime/response').Response | null; }\n` +
+    `declare namespace Environment { function get(key: string): string | null; function getSecure(key: string): string | null; }\n` +
     `declare class TwoFactorIssue { code: string; token: string; constructor(code: string, token: string); }\n` +
     `declare class TwoFactorChallenge { token: string; status: EmailStatus; constructor(token: string, status: EmailStatus); }\n` +
     `declare namespace TwoFactor { const DEFAULT_TTL_SECS: u64; const DEFAULT_DIGITS: i32; function setSecret(secret: Uint8Array): void; function issue(recipient: string, purpose: string, ttlSecs?: u64, digits?: i32): TwoFactorIssue; function send(recipient: string, purpose: string, ttlSecs?: u64, digits?: i32): TwoFactorChallenge; function verify(token: string, recipient: string, code: string): bool; }\n` +
