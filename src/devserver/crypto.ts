@@ -17,7 +17,7 @@
 
 import * as nodeCrypto from 'node:crypto';
 
-import { ml_dsa44 } from '@btc-vision/post-quantum/ml-dsa.js';
+import { ml_dsa44 } from '@dacely/noble-post-quantum/ml-dsa.js';
 
 import type { MemoryRef } from './host.js';
 
