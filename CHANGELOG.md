@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.42] - 2026-06-15
+
+### Other Changes
+
+- chore(example): single-wasm demo (drop test-fixture tenants) ([#159](https://github.com/dacely-cloud/toiljs/pull/159)) by @BlobMaster41
+- fix(dx): suppress AS235 + editor types (Time, decorators via toilscript 0.1.24) — v0.0.42 ([#160](https://github.com/dacely-cloud/toiljs/pull/160)) by @BlobMaster41
+
+
+
+
 ## [v0.0.41] - 2026-06-15
 
 ### Other Changes
