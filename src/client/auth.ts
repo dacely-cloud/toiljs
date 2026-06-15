@@ -12,7 +12,7 @@
  */
 
 import { argon2id, sha256 } from 'hash-wasm';
-import { ml_dsa44 } from '@btc-vision/post-quantum/ml-dsa.js';
+import { ml_dsa44 } from '@dacely/noble-post-quantum/ml-dsa.js';
 
 import { DataReader, DataWriter } from 'toiljs/io';
 
