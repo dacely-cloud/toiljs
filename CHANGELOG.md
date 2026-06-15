@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.43] - 2026-06-15
+
+### Other Changes
+
+- fix(dx): type getUser/RateLimitService/TwoFactor in the editor; hydration-safe example (v0.0.43) ([#161](https://github.com/dacely-cloud/toiljs/pull/161)) by @BlobMaster41
+
+
+
+
 ## [v0.0.42] - 2026-06-15
 
 ### Other Changes
