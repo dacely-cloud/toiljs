@@ -18,6 +18,7 @@
  */
 
 import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
+import { ratelimitCheck } from './ratelimit.js';
 
 /** Limits identical to the edge's `set_header` / `respond_file` bounds. */
 const MAX_TOTAL_HEADERS_BYTES = 64 * 1024;
@@ -159,6 +160,44 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                     throw new Error('client_ip write out of bounds');
                 bytes.copy(m, outPtr);
                 return bytes.length;
+            },
+
+            // `@ratelimit` decorator hook. Accounts one event for this request
+            // against the dev limiter, keyed on the explicit guest key when
+            // given (`keyLen > 0`), else the client IP. Returns the remaining
+            // budget (>= 0, allowed) or a negative `Retry-After` in seconds
+            // (denied). Mirrors the edge's `ratelimit_check_import.rs`.
+            ratelimit_check: (
+                routeId: number,
+                strategy: number,
+                limit: number,
+                window: number,
+                keyPtr: number,
+                keyLen: number,
+            ): number => {
+                const identity =
+                    keyLen > 0
+                        ? readBytes(ref, keyPtr, keyLen).toString('utf8')
+                        : state.clientIp || '0';
+                const d = ratelimitCheck(routeId, strategy, limit, window, identity, Date.now());
+                return d.allowed ? 1 : -Math.max(1, d.retryAfterSecs);
+            },
+
+            // `env::email_send`: the dev server has no email provider, so it
+            // parses the recipient for a log line and reports Sent (0), the same
+            // i32 contract the edge returns. The suspension is a host-side concern
+            // on the edge (call_async); the wasm just sees an i32 either way.
+            email_send: (reqPtr: number, reqLen: number): number => {
+                // Header: u16 to_len | u16 subj_len | u16 purpose_len | u32 body_len
+                // | u32 html_len (14 bytes), then payloads; `to` is first.
+                const raw = readBytes(ref, reqPtr, reqLen);
+                let to = '<unparsed>';
+                if (raw.length >= 14) {
+                    const toLen = raw.readUInt16LE(0);
+                    if (14 + toLen <= raw.length) to = raw.toString('utf8', 14, 14 + toLen);
+                }
+                process.stdout.write(`  ✉ dev email_send -> ${to} (not actually sent)\n`);
+                return 0; // EmailStatus.Sent
             },
 
             thread_spawn: (_startArg: number): number => -1,

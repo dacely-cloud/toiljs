@@ -126,6 +126,7 @@
         "eslint-plugin-react-hooks": "^7.1.1",
         "eslint-plugin-react-refresh": "^0.5.2",
         "hash-wasm": "^4.12.0",
+        "juice": "^11.0.0",
         "picocolors": "^1.1.1",
         "sharp": "^0.35.0",
         "toilscript": "^0.1.22",

@@ -53,6 +53,7 @@ interface HandleExports {
 /** Host functions the dev server provides under `env` (see `host.ts`). */
 const PROVIDED_IMPORTS = new Set([
     'abort', 'set_status', 'set_header', 'respond_file', 'thread_spawn', 'Date.now',
+    'client_ip', 'ratelimit_check', 'email_send',
     // Web Crypto host functions (see ./crypto.ts).
     'crypto.fill_random', 'crypto.random_uuid', 'crypto.take_result', 'crypto.digest',
     'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
