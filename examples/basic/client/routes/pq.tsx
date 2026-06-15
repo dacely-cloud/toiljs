@@ -28,6 +28,7 @@ function readCompanion(): Account | null {
             break;
         }
     }
+
     if (raw === null) return null;
     try {
         let b = raw.replace(/-/g, '+').replace(/_/g, '/');
@@ -118,6 +119,7 @@ export default function Pq(): React.JSX.Element {
                 setVerified('none');
                 return;
             }
+
             const r = new DataReader(new Uint8Array(await res.arrayBuffer()));
             setVerified({ username: r.readString(), admin: r.readBool(), score: r.readU64().toString() });
         } finally {

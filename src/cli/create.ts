@@ -295,6 +295,7 @@ declare const Cookies: typeof import('toiljs/server/runtime/http/cookies').Cooki
 type Cookies = import('toiljs/server/runtime/http/cookies').Cookies;
 declare const SecureCookies: typeof import('toiljs/server/runtime/http/securecookies').SecureCookies;
 type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;
+declare const Time: typeof import('toiljs/server/runtime/time').Time;
 // Email, rate-limit, 2FA, and auth globals (server/globals/*), hand-declared
 // because their AssemblyScript source can't be type-aliased from tsc.
 declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, TryLater, BadRecipient, ProviderError }
