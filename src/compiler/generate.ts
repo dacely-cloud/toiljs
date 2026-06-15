@@ -107,7 +107,18 @@ export const TOIL_SERVER_ENV_DTS =
     `declare const Cookies: typeof import('toiljs/server/runtime/http/cookies').Cookies;\n` +
     `type Cookies = import('toiljs/server/runtime/http/cookies').Cookies;\n` +
     `declare const SecureCookies: typeof import('toiljs/server/runtime/http/securecookies').SecureCookies;\n` +
-    `type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;\n`;
+    `type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;\n` +
+    `// Email, rate-limit, 2FA, and auth globals (server/globals/*), hand-declared\n` +
+    `// because their AssemblyScript source can't be type-aliased from tsc.\n` +
+    `declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, TryLater, BadRecipient, ProviderError }\n` +
+    `declare namespace EmailService { function send(to: string, subject: string, body: string, purpose?: string, html?: string): EmailStatus; }\n` +
+    `declare class RenderedEmail { subject: string; body: string; html: string; constructor(subject: string, body: string, html: string); }\n` +
+    `declare class EmailTemplate { constructor(subject: string, body: string, html?: string); render(vars: Map<string, string>): RenderedEmail; send(to: string, vars: Map<string, string>, purpose?: string): EmailStatus; }\n` +
+    `declare enum RateLimit { FixedWindow, SlidingWindow, TokenBucket }\n` +
+    `declare class TwoFactorIssue { code: string; token: string; constructor(code: string, token: string); }\n` +
+    `declare class TwoFactorChallenge { token: string; status: EmailStatus; constructor(token: string, status: EmailStatus); }\n` +
+    `declare namespace TwoFactor { function setSecret(secret: Uint8Array): void; function issue(recipient: string, purpose: string, ttlSecs?: u64, digits?: i32): TwoFactorIssue; function send(recipient: string, purpose: string, ttlSecs?: u64, digits?: i32): TwoFactorChallenge; function verify(token: string, recipient: string, code: string): bool; }\n` +
+    `declare namespace AuthService { const SESSION_COOKIE: string; const USER_COOKIE: string; const LOGIN_CONTEXT: string; const PUBLIC_KEY_LEN: i32; const SIGNATURE_LEN: i32; const DEFAULT_SESSION_TTL_SECS: u64; function setSecret(secret: Uint8Array): void; function hasSession(): bool; function getSessionBytes(): Uint8Array | null; function mintSession(userData: Uint8Array, ttlSecs?: u64): Cookie; function clearSession(): Cookie; function userCookie(userData: Uint8Array, ttlSecs?: u64): Cookie; function clearUserCookie(): Cookie; function buildLoginMessage(sub: string, aud: string, cid: Uint8Array, nonce: Uint8Array, iat: u64, exp: u64): Uint8Array; function verifyLogin(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): bool; }\n`;
 
 /**
  * Returns a `./`-prefixed, **extensionless** POSIX module specifier from `.toil` to `abs`, for use

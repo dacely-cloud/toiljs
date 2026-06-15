@@ -295,6 +295,17 @@ declare const Cookies: typeof import('toiljs/server/runtime/http/cookies').Cooki
 type Cookies = import('toiljs/server/runtime/http/cookies').Cookies;
 declare const SecureCookies: typeof import('toiljs/server/runtime/http/securecookies').SecureCookies;
 type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;
+// Email, rate-limit, 2FA, and auth globals (server/globals/*), hand-declared
+// because their AssemblyScript source can't be type-aliased from tsc.
+declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, TryLater, BadRecipient, ProviderError }
+declare namespace EmailService { function send(to: string, subject: string, body: string, purpose?: string, html?: string): EmailStatus; }
+declare class RenderedEmail { subject: string; body: string; html: string; constructor(subject: string, body: string, html: string); }
+declare class EmailTemplate { constructor(subject: string, body: string, html?: string); render(vars: Map<string, string>): RenderedEmail; send(to: string, vars: Map<string, string>, purpose?: string): EmailStatus; }
+declare enum RateLimit { FixedWindow, SlidingWindow, TokenBucket }
+declare class TwoFactorIssue { code: string; token: string; constructor(code: string, token: string); }
+declare class TwoFactorChallenge { token: string; status: EmailStatus; constructor(token: string, status: EmailStatus); }
+declare namespace TwoFactor { function setSecret(secret: Uint8Array): void; function issue(recipient: string, purpose: string, ttlSecs?: u64, digits?: i32): TwoFactorIssue; function send(recipient: string, purpose: string, ttlSecs?: u64, digits?: i32): TwoFactorChallenge; function verify(token: string, recipient: string, code: string): bool; }
+declare namespace AuthService { const SESSION_COOKIE: string; const USER_COOKIE: string; const LOGIN_CONTEXT: string; const PUBLIC_KEY_LEN: i32; const SIGNATURE_LEN: i32; const DEFAULT_SESSION_TTL_SECS: u64; function setSecret(secret: Uint8Array): void; function hasSession(): bool; function getSessionBytes(): Uint8Array | null; function mintSession(userData: Uint8Array, ttlSecs?: u64): Cookie; function clearSession(): Cookie; function userCookie(userData: Uint8Array, ttlSecs?: u64): Cookie; function clearUserCookie(): Cookie; function buildLoginMessage(sub: string, aud: string, cid: Uint8Array, nonce: Uint8Array, iat: u64, exp: u64): Uint8Array; function verifyLogin(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): bool; }
 `;
 
 /**
