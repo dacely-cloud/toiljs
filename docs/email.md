@@ -95,9 +95,35 @@ TOIL_EMAIL_SMTP_USER=noreply@example.com
 
 ### In dev
 
-`toiljs dev` has no real provider: `EmailService.send` logs `✉ dev email_send ->
-<recipient> (not actually sent)` and returns `Sent`, so your flow proceeds. The
-ABI is identical to the edge, so code that runs in dev runs on the edge.
+`toiljs dev` runs the **full email pipeline** in Node — recipient validation,
+dedup, and the per-minute / per-day / per-recipient caps all behave exactly like
+the edge — and **really sends** once you configure a provider. Configure it in
+`toil.config.ts` (non-secret) with the API key in `.env.secrets`:
+
+```ts
+// toil.config.ts
+import { defineConfig } from 'toiljs/compiler';
+export default defineConfig({
+    server: {
+        email: { provider: 'resend', from: 'you@example.com', maxPerMin: 60 },
+    },
+});
+```
+```bash
+# .env.secrets  (gitignored)
+TOIL_EMAIL_API_KEY=re_xxxxxxxxxxxx
+```
+
+`TOIL_EMAIL_*` env vars override the config file (so the same `.env.secrets` the
+edge uses works in dev too). Supports `resend` and `gmail`/`smtp` (SMTP via
+nodemailer). **Not configured?** `EmailService.send` stays a log-only mock and
+returns `Sent`, so a flow that sends email still works without setup.
+
+> Because the dev server runs the guest **synchronously**, the actual network
+> send is fire-and-forget: validation + caps return their exact status
+> immediately, but a `Sent` is optimistic and the real delivery outcome (or
+> `ProviderError`) is logged, not returned. The ABI is identical to the edge, so
+> code that runs in dev runs on the edge.
 
 ## Sending email
 

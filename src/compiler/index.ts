@@ -310,6 +310,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         port: cfg.port,
         wasmFile: serverWasmFile(cfg.root),
         vite: { host: '127.0.0.1', port: vitePort },
+        email: cfg.email ?? undefined,
     });
     server.httpServer?.once('close', () => {
         void front.close();
