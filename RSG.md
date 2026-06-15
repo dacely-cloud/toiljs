@@ -1,6 +1,6 @@
 # Resilience and Scale Grade (RSG)
 
-> One grade for an application across eight axes, where your grade is your weakest axis, never the average and never the best.
+> One grade for an application across nine axes, where your grade is your weakest axis, never the average and never the best.
 
 ![status](https://img.shields.io/badge/status-spec-2dd4bf)
 ![type](https://img.shields.io/badge/type-rubric-84cc16)
@@ -14,7 +14,7 @@ RSG is an internal rubric for grading how resilient, distributed, fast, lean, an
 
 - [The core rule](#the-core-rule)
 - [The grade table](#the-grade-table)
-- [The eight axes](#the-eight-axes)
+- [The nine axes](#the-nine-axes)
 - [Latency thresholds](#latency-thresholds)
 - [How to score](#how-to-score)
 - [The binding axis](#the-binding-axis)
@@ -37,14 +37,14 @@ This is the whole point of the system. The most common lie in this space is call
 
 ## The grade table
 
-| Grade | Topology + distribution | Availability | Data path | Delivered p99 | Program performance + architecture | Dependencies | Security | Client performance + reach |
-|---|---|---|---|---|---|---|---|---|
-| **AAA** | Active/active multi-region plus real edge compute, logic runs next to the user | 99.99%+, automated cross-region failover, no single point of failure | Globally distributed writes, sub-50ms reads almost everywhere | under 100ms | Edge-native, clean separation of requests, tasks, and compute, no blocking work on the hot path, near-optimal per request | Zero third party on the critical path, you own the stack | Zero trust, TLS everywhere, data encrypted at rest, passwords hashed never plaintext, pen-tested, audited compliance | Smooth on old and low-end devices, small bundle, no main-thread jank, linear-or-better hot paths, degrades gracefully |
-| **AA** | Primary region plus standby regions, geo read replicas, partial edge | 99.95 to 99.99%, automated regional failover | Cross-region reads, single-region writes | under 200ms | Good architecture, mostly clean separation, minor hot-path waste | Few trusted dependencies, none critical | WAF plus DDoS, encryption, compliance underway | Fast on mid-range and a few-years-old hardware, minor jank only on the weakest, good complexity at normal scale |
-| **A** | One region, multi-AZ, autoscaling stateless tier | 99.9%, survives an AZ failure | Single region, read replicas plus cache | under 500ms | Reasonable structure, some coupling, acceptable efficiency | Several third-party deps, managed | TLS, auth, secrets management, basic WAF | Smooth on current mainstream hardware, struggles on genuinely old devices, acceptable complexity at typical sizes |
-| **B** | Single region, serverless or one small group (Vercel-style) | ~99.5%, DB is effectively a single point of failure | One primary DB, latency equals distance to it | under 1s | Works but coupled, blocking work on the request path | Leans on third-party platforms and services | TLS plus auth, platform defaults | Needs fairly modern hardware to feel good, laggy on older devices, some quadratic paths that bite at larger data |
-| **C** | One server, one database | best effort, no real SLA | Single DB, no redundancy | 1 to 3s | Monolithic, tangled, no separation | Glued together from third-party pieces | Hand-rolled, minimal | Comfortable only on new hardware, janky elsewhere, quadratic-or-worse hot paths, heavy bundle |
-| **D** | Localhost, single process | none | Local | over 3s | Whatever compiles | Anything | None | Needs high-end hardware, unusable on anything old, pathological complexity, freezes on constrained devices |
+| Grade | Topology + distribution | Availability | Data path | Delivered p99 | Program performance + architecture | Dependencies | Security | Client performance + reach | Modern stack + compatibility |
+|---|---|---|---|---|---|---|---|---|---|
+| **AAA** | Active/active multi-region plus real edge compute, logic runs next to the user | 99.99%+, automated cross-region failover, no single point of failure | Globally distributed writes, sub-50ms reads almost everywhere | under 100ms | Edge-native, clean separation of requests, tasks, and compute, no blocking work on the hot path, near-optimal per request | Zero third party on the critical path, you own the stack | Zero trust, TLS everywhere, data encrypted at rest, passwords hashed never plaintext, pen-tested, audited compliance | Smooth on old and low-end devices, small bundle, no main-thread jank, linear-or-better hot paths, degrades gracefully | Latest protocols (HTTP/3, QUIC, WebTransport where they fit) with full graceful fallback, nothing breaks for older clients |
+| **AA** | Primary region plus standby regions, geo read replicas, partial edge | 99.95 to 99.99%, automated regional failover | Cross-region reads, single-region writes | under 200ms | Good architecture, mostly clean separation, minor hot-path waste | Few trusted dependencies, none critical | WAF plus DDoS, encryption, compliance underway | Fast on mid-range and a few-years-old hardware, minor jank only on the weakest, good complexity at normal scale | HTTP/2 baseline, HTTP/3 where available, modern standards, compatibility kept |
+| **A** | One region, multi-AZ, autoscaling stateless tier | 99.9%, survives an AZ failure | Single region, read replicas plus cache | under 500ms | Reasonable structure, some coupling, acceptable efficiency | Several third-party deps, managed | TLS, auth, secrets management, basic WAF | Smooth on current mainstream hardware, struggles on genuinely old devices, acceptable complexity at typical sizes | Current generation (HTTP/2, TLS 1.3), reasonable compatibility |
+| **B** | Single region, serverless or one small group (Vercel-style) | ~99.5%, DB is effectively a single point of failure | One primary DB, latency equals distance to it | under 1s | Works but coupled, blocking work on the request path | Leans on third-party platforms and services | TLS plus auth, platform defaults | Needs fairly modern hardware to feel good, laggy on older devices, some quadratic paths that bite at larger data | Functional but dated (HTTP/1.1), works everywhere, leaves performance on the table |
+| **C** | One server, one database | best effort, no real SLA | Single DB, no redundancy | 1 to 3s | Monolithic, tangled, no separation | Glued together from third-party pieces | Hand-rolled, minimal | Comfortable only on new hardware, janky elsewhere, quadratic-or-worse hot paths, heavy bundle | Legacy protocols and aging runtimes, real perf and security drag |
+| **D** | Localhost, single process | none | Local | over 3s | Whatever compiles | Anything | None | Needs high-end hardware, unusable on anything old, pathological complexity, freezes on constrained devices | Obsolete or end-of-life tech, deprecated protocols, unsupported runtimes |
 
 Each axis maps to a numeric level for scoring: `AAA = 5`, `AA = 4`, `A = 3`, `B = 2`, `C = 1`, `D = 0`.
 
@@ -52,7 +52,7 @@ Security has hard caps on top of these levels. Some failures, like no TLS or sto
 
 ---
 
-## The eight axes
+## The nine axes
 
 ### 1. Topology + distribution
 
@@ -153,6 +153,28 @@ The caps apply to work that actually scales with user input or data set size. A 
 
 Footprint counts too: bundle size, memory use, and main-thread blocking. A multi-megabyte JavaScript bundle that takes seconds to parse on a low-end device is a real failure here even if every algorithm inside it is linear.
 
+### 9. Modern stack + compatibility
+
+Whether you use the current generation of protocols, standards, and runtimes, and crucially whether you do it without locking out older clients. This axis has two halves, and you need both to score well. Modern alone is not enough, and compatible alone is not enough.
+
+The modern half: current transport and protocols where they earn their place. HTTP/3 and QUIC for lower-latency, head-of-line-blocking-free connections, WebTransport for low-latency bidirectional streams where the use case calls for it, modern TLS, current language runtimes and framework versions that still receive security patches. Sitting on HTTP/1.1 and an end-of-life runtime is leaving real performance and security on the table, and it grades low here.
+
+The compatibility half: adopting that modern tech must not break users on older browsers, older devices, or weaker networks. The right pattern is progressive enhancement with graceful fallback. HTTP/3 negotiates down to HTTP/2 or HTTP/1.1 for clients that cannot speak it. A modern API has a path for the older client. Nobody gets a blank screen because they are one version behind.
+
+#### Modern without compatibility is not AAA
+
+This is the key rule of the axis, and it mirrors how you framed it. Shipping bleeding-edge tech that only works on the newest browsers, with no fallback, is not a top grade. You bought modernity by spending reach, and reach is exactly what this axis protects. So:
+
+| Posture | Effect on this axis |
+|---|---|
+| Modern protocols and standards, with graceful fallback so older clients still work | **AAA** territory |
+| Modern, but older clients get a degraded-yet-working experience | strong, around AA |
+| Dated but universally compatible | mid, around B |
+| Modern but breaks anything not on the latest browser, no fallback | caps at **C**, reach was sacrificed |
+| Obsolete, end-of-life, or deprecated tech | **D** |
+
+Note how this differs from client performance and reach (axis 8). That axis is about how fast the code runs on weak hardware. This axis is about which protocols and runtimes you speak and whether an older client can connect and function at all. A site can run fast on old hardware yet still be stuck on a dated transport, or use the newest transport yet lock out anyone a version behind. Both are graded, separately.
+
 ---
 
 ## Latency thresholds
@@ -174,13 +196,13 @@ Measure at the user, not at the load balancer. The point of this axis is to capt
 
 ## How to score
 
-1. Assign each of the eight axes a level from 0 (D) to 5 (AAA), using the [grade table](#the-grade-table). Latency comes from a measured p99 via the [thresholds](#latency-thresholds).
-2. The grade is the **minimum** of the eight levels.
+1. Assign each of the nine axes a level from 0 (D) to 5 (AAA), using the [grade table](#the-grade-table). Latency comes from a measured p99 via the [thresholds](#latency-thresholds).
+2. The grade is the **minimum** of the nine levels.
 3. Convert that level back to a letter: `5 -> AAA`, `4 -> AA`, `3 -> A`, `2 -> B`, `1 -> C`, `0 -> D`.
 4. Record the [binding axis or axes](#the-binding-axis), the ones sitting at that minimum.
 5. Attach the [stability modifier](#the-stability-modifier) from your guardrails.
 
-In plain terms: take the eight axis levels, find the lowest one, and that is your grade. The lowest of topology, availability, data, latency, program, client performance, dependencies, and security wins, and its letter is the grade.
+In plain terms: take the nine axis levels, find the lowest one, and that is your grade. The lowest of topology, availability, data, latency, program, client performance, dependencies, security, and modern stack wins, and its letter is the grade.
 
 There is no averaging anywhere. A system that is AAA on six axes and C on one is a **C**.
 
@@ -238,6 +260,7 @@ Active/active multi-region, edge everywhere, distributed data, hardened security
 | Dependencies | AA |
 | Security | AAA |
 | Client performance + reach | AA |
+| Modern stack + compatibility | AAA |
 
 Minimum is **C**, set by latency. Result: **`RSG C, latency-bound, watch`**. Every dollar spent on global topology is wasted while a one-second response time drags the whole system to C.
 
@@ -255,6 +278,7 @@ A boring single-region web app on one host, tight code, 120ms p99, strong guardr
 | Dependencies | A |
 | Security | A |
 | Client performance + reach | A |
+| Modern stack + compatibility | A |
 
 Minimum is **B**, set by the single-region topology, availability, and data path together. Result: **`RSG B, topology-bound, availability-bound, data-bound, stable`**.
 
@@ -272,6 +296,7 @@ A polished single-page app, AAA backend, fast servers, great security, but the f
 | Dependencies | AA |
 | Security | AAA |
 | Client performance + reach | C |
+| Modern stack + compatibility | AA |
 
 Minimum is **C**, set by client performance, because the O(n²) hot path caps that axis at C on its own. Result: **`RSG C, client-performance-bound`**. The server latency measured AAA on a fast device and hid the problem entirely, which is exactly why this axis exists as its own column.
 
@@ -290,6 +315,8 @@ The boring fast app (B) outranks the global slow one (C). That is the entire rea
 **Why dependencies is so unforgiving.** Every third party on your critical path is a system you cannot inspect, cannot fix, and cannot fully secure. At the top tier, where the difference between AA and AAA is "everything works, always, and is fully owned," a critical-path dependency is a real cap, not a nitpick.
 
 **Why client performance is separate from latency.** Delivered latency is usually measured on a capable device, so it can read AAA while the app is unusable on old or low-end hardware. The two axes fail independently: a fast server with a bloated, quadratic client is fast for some users and broken for the rest. Grading the worst hardware that still matters, rather than the best, is the only way to catch this.
+
+**Why modern stack is paired with compatibility.** Modernity and reach pull against each other, and grading only one rewards the wrong behavior. Score modernity alone and you reward breaking older clients to chase the newest protocol. Score compatibility alone and you reward never upgrading. Requiring both, modern tech with graceful fallback, is the only posture that serves every user at once, so that is what the top grade demands.
 
 **Why guardrails are a tag and not an axis.** Grading intent is subjective and gameable. Grading results is objective. Bad code already loses points on latency and program performance, today, measurably. Guardrails only predict the future, so they belong in a predictive tag, not in the present-tense score.
 
