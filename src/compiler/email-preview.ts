@@ -122,46 +122,53 @@ export function previewShellHtml(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Email preview · toiljs</title>
 <style>
-  :root { color-scheme: dark; }
+  /* Matches the toiljs demo brand (examples/basic/client/styles/main.css). */
+  :root {
+    color-scheme: dark;
+    --bg: #080d11; --surface: #0e1520; --surface2: #131d2e; --border: #1b2330;
+    --text: #f5f6fa; --muted: #8b9ab4; --accent: #2563ff; --accent3: #22e3ab;
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: flex; font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0c0c11; color: #e7e9f0; }
-  #side { width: 240px; flex: 0 0 auto; border-right: 1px solid #23232e; display: flex; flex-direction: column; background: #101016; }
-  .brand { padding: 14px 16px; font-weight: 600; border-bottom: 1px solid #23232e; }
-  #list { list-style: none; margin: 0; padding: 6px; overflow: auto; flex: 1; }
-  #list li { padding: 8px 10px; border-radius: 8px; cursor: pointer; color: #c8cee0; }
-  #list li:hover { background: #181820; }
-  #list li.on { background: #1d1d6b33; color: #fff; }
-  #list li.muted { color: #6b7080; cursor: default; }
-  .hint { padding: 10px 16px; font-size: 12px; color: #6b7080; border-top: 1px solid #23232e; }
-  .hint code { color: #9aa1b8; }
+  body { margin: 0; height: 100vh; display: flex; font: 14px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  #side { width: 248px; flex: 0 0 auto; border-right: 1px solid var(--border); display: flex; flex-direction: column; background: var(--surface); }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 15px 16px; font-family: 'Montserrat', system-ui, sans-serif; font-weight: 800; font-size: 15px; letter-spacing: -0.01em; border-bottom: 1px solid var(--border); }
+  .brand .mark { width: 26px; height: 26px; flex: 0 0 auto; border-radius: 7px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; background: linear-gradient(135deg, var(--accent), #7c3aed 55%, var(--accent3)); }
+  #list { list-style: none; margin: 0; padding: 8px; overflow: auto; flex: 1; }
+  #list li { padding: 8px 11px; border-radius: 8px; cursor: pointer; color: var(--muted); transition: background 150ms, color 150ms; }
+  #list li:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+  #list li.on { background: rgba(37,99,255,0.14); color: #fff; box-shadow: inset 2px 0 0 var(--accent); }
+  #list li.muted, #list li.muted:hover { color: #5d6a82; cursor: default; background: none; }
+  .hint { padding: 12px 16px; font-size: 12px; color: #5d6a82; border-top: 1px solid var(--border); }
+  .hint code { color: var(--muted); }
   #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  .empty { margin: auto; color: #6b7080; }
+  .empty { margin: auto; color: #5d6a82; }
   #view { display: flex; flex-direction: column; height: 100%; }
-  .bar { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #23232e; }
-  .subj { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 8px; }
-  .subj .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #6b7080; }
-  #subject { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+  .subj { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 9px; }
+  .subj .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; color: #5d6a82; }
+  #subject { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-  .seg { display: flex; border: 1px solid #2c2c38; border-radius: 8px; overflow: hidden; }
-  .seg-btn { background: #15151c; border: 0; color: #8b90a4; font: inherit; padding: 6px 12px; cursor: pointer; }
-  .seg-btn.on { background: #2563ff; color: #fff; }
-  .btn { background: #15151c; border: 1px solid #2c2c38; color: #c8cee0; font: inherit; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
-  .btn:hover { color: #fff; border-color: #3a3a48; }
+  .seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg-btn { background: var(--surface); border: 0; color: var(--muted); font: inherit; padding: 6px 14px; cursor: pointer; transition: color 150ms; }
+  .seg-btn:hover { color: var(--text); }
+  .seg-btn.on { background: var(--accent); color: #fff; }
+  .btn { background: var(--surface); border: 1px solid var(--border); color: var(--text); font: inherit; padding: 6px 13px; border-radius: 8px; cursor: pointer; transition: border-color 150ms, background 150ms; }
+  .btn:hover { border-color: var(--accent); background: var(--surface2); }
   .body { display: flex; flex: 1; min-height: 0; }
-  .tokens { width: 240px; flex: 0 0 auto; border-right: 1px solid #23232e; padding: 12px; overflow: auto; }
-  .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-  .fname { font-size: 12px; color: #9aa1b8; }
-  .field input { background: #0c0c11; border: 1px solid #2c2c38; border-radius: 6px; color: #e7e9f0; font: inherit; padding: 6px 8px; }
-  .field input:focus { outline: none; border-color: #2563ff; }
-  .muted { color: #6b7080; font-size: 12px; }
-  .preview { flex: 1; min-width: 0; background: #f6f7f9; }
-  #frame { width: 100%; height: 100%; border: 0; background: #fff; }
-  #text { width: 100%; height: 100%; margin: 0; padding: 16px; overflow: auto; background: #0c0c11; color: #c8cee0; white-space: pre-wrap; }
+  .tokens { width: 248px; flex: 0 0 auto; border-right: 1px solid var(--border); padding: 14px; overflow: auto; }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 13px; }
+  .fname { font-size: 12px; color: var(--muted); }
+  .field input { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; color: var(--text); font: inherit; padding: 7px 9px; }
+  .field input:focus { outline: none; border-color: var(--accent); }
+  .muted { color: #5d6a82; font-size: 12px; }
+  .preview { flex: 1; min-width: 0; display: flex; background: var(--bg); padding: 18px; }
+  #frame { flex: 1; width: 100%; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); }
+  #text { flex: 1; width: 100%; margin: 0; padding: 18px; overflow: auto; background: var(--surface); color: var(--muted); white-space: pre-wrap; border: 1px solid var(--border); border-radius: 12px; font: 13px/1.6 'SFMono-Regular', Consolas, monospace; }
 </style>
 </head>
 <body>
 <aside id="side">
-  <div class="brand">✉ Emails</div>
+  <div class="brand"><span class="mark">✦</span>Emails</div>
   <ul id="list"></ul>
   <div class="hint">Author in <code>emails/*.tsx</code>; this updates live on save.</div>
 </aside>

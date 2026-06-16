@@ -228,6 +228,33 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
     });
 }
 
+/**
+ * Make `Ctrl+C` actually kill the dev server. Without this the process can hang
+ * on shutdown (the native uWebSockets listener / Vite's watcher don't always
+ * close promptly), so an old `toiljs dev` is left ORPHANED — still watching and
+ * rebuilding — and the next run races it (parallel double rebuilds), while the
+ * console is left with a hidden cursor. On SIGINT/SIGTERM we restore the cursor,
+ * close the servers, and force-exit after a short grace period no matter what.
+ */
+function installDevShutdown(close: () => Promise<void> | void): void {
+    let closing = false;
+    const shutdown = (): void => {
+        if (closing) return;
+        closing = true;
+        // Restore the cursor (anything that hid it leaves the terminal odd on exit).
+        process.stdout.write('\x1b[?25h');
+        process.stdout.write(pc.dim('\n  shutting down dev server…') + '\n');
+        // Force-exit even if a server hangs on close (the orphan-prevention).
+        const hard = setTimeout(() => process.exit(0), 1500);
+        hard.unref();
+        Promise.resolve()
+            .then(close)
+            .catch(() => {})
+            .finally(() => process.exit(0));
+    };
+    for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, shutdown);
+}
+
 /** The server wasm artifact path from the toilconfig `release` target (toilscript's output). */
 function serverWasmFile(root: string): string {
     let outFile = 'build/server/release.wasm';
@@ -311,6 +338,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         await server.listen();
         server.printUrls();
         printEmailsUrl(cfg, server.resolvedUrls?.local?.[0]);
+        installDevShutdown(() => server.close());
         return server;
     }
 
@@ -348,6 +376,10 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts
     // and the dev server hot-swaps the recompiled wasm module.
     watchServer(cfg, server.watcher);
+    installDevShutdown(async () => {
+        await front.close();
+        await server.close();
+    });
     return server;
 }
 

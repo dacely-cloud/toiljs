@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import pc from 'picocolors';
 import { createServer, type ViteDevServer } from 'vite';
 
 import type { ResolvedToilConfig } from './config.js';
@@ -371,9 +372,13 @@ export async function renderEmails(cfg: ResolvedToilConfig): Promise<void> {
     fs.mkdirSync(path.dirname(generatedPath), { recursive: true });
     fs.writeFileSync(generatedPath, next);
     process.stdout.write(
-        `  ✓ emails: generated ${String(rendered.length)} template${rendered.length === 1 ? '' : 's'} (${rendered
-            .map((r) => r.name)
-            .join(', ')})\n`,
+        pc.green('  ✓ ') +
+            pc.dim(
+                `emails: generated ${String(rendered.length)} template${rendered.length === 1 ? '' : 's'} (${rendered
+                    .map((r) => r.name)
+                    .join(', ')})`,
+            ) +
+            '\n',
     );
 }
 
