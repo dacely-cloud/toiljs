@@ -220,6 +220,14 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
         dirs.some((dir) => file === dir || file.startsWith(dir + path.sep));
     const isEmailSource = (file: string): boolean =>
         /\.(tsx|jsx)$/.test(file) && (file === emailsDir || file.startsWith(emailsDir + path.sep));
+    // A transient watch error must NOT crash the dev server: an unhandled 'error'
+    // on the chokidar watcher takes down the whole process. Windows throws EBUSY /
+    // EPERM when a file is momentarily locked (an editor save, a formatter, our own
+    // rebuild, a just-written file). Swallow it — the next change still fires.
+    watcher.on('error', (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stdout.write(pc.yellow('  ! ') + pc.dim(`file watcher: ${msg}`) + '\n');
+    });
     watcher.add([...dirs, emailsDir]);
     watcher.on('all', (_event, file) => {
         if (!isServerSource(file) && !isEmailSource(file)) return;
@@ -237,12 +245,22 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
  * close the servers, and force-exit after a short grace period no matter what.
  */
 function installDevShutdown(close: () => Promise<void> | void): void {
+    // Final, SYNCHRONOUS cursor + style restore — `exit` runs no matter how we go
+    // (signal, throw, normal), so the terminal can't be left without a cursor.
+    const restoreTerminal = (): void => {
+        try {
+            process.stdout.write('\x1b[0m\x1b[?25h');
+        } catch {
+            /* stream already closed */
+        }
+    };
+    process.on('exit', restoreTerminal);
+
     let closing = false;
     const shutdown = (): void => {
         if (closing) return;
         closing = true;
-        // Restore the cursor (anything that hid it leaves the terminal odd on exit).
-        process.stdout.write('\x1b[?25h');
+        restoreTerminal();
         process.stdout.write(pc.dim('\n  shutting down dev server…') + '\n');
         // Force-exit even if a server hangs on close (the orphan-prevention).
         const hard = setTimeout(() => process.exit(0), 1500);

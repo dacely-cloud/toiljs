@@ -3,10 +3,11 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import pc from 'picocolors';
 import react from '@vitejs/plugin-react';
 import { imagetools } from 'vite-imagetools';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import { mergeConfig, type InlineConfig, type PluginOption } from 'vite';
+import { createLogger, mergeConfig, type InlineConfig, type Logger, type PluginOption } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
 import { fontPreloadPlugin } from './fonts.js';
@@ -120,6 +121,24 @@ function manualChunks(id: string): string | undefined {
  * splitting and tuned build options, is applied here; `toiljs/client` is aliased to the
  * runtime, and the user's `client.vite` overrides deep-merge on top.
  */
+/**
+ * Vite's `(ssr)` environment label is dark blue — nearly invisible on a black
+ * terminal. Wrap the default logger to recolor `(ssr)` magenta (purple) and
+ * `(client)` cyan, so the dev reload logs are readable.
+ */
+function brandedLogger(): Logger {
+    const logger = createLogger();
+    const recolor = (msg: string): string =>
+        msg
+            .replace(/(?:\[[0-9;]*m)*\(ssr\)(?:\[[0-9;]*m)*/g, pc.magenta('(ssr)'))
+            .replace(/(?:\[[0-9;]*m)*\(client\)(?:\[[0-9;]*m)*/g, pc.cyan('(client)'));
+    const info = logger.info.bind(logger);
+    const warn = logger.warn.bind(logger);
+    logger.info = (msg, opts) => info(recolor(msg), opts);
+    logger.warn = (msg, opts) => warn(recolor(msg), opts);
+    return logger;
+}
+
 export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineConfig> {
     const frameworkRoot = path.resolve(path.dirname(cfg.runtimePath), '..', '..');
     const tailwind = await tailwindPlugin(cfg.root);
@@ -128,6 +147,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
         root: cfg.toilDir,
         base: cfg.base,
         configFile: false,
+        customLogger: brandedLogger(),
         plugins: [
             tailwind,
             // Build-time image resize/optimization. Every *imported* raster image is compressed to

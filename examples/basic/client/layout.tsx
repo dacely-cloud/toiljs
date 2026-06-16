@@ -13,7 +13,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
             <Toil.Head
                 titleTemplate="%s | ToilJS"
                 title="ToilJS"
-                meta={[{ name: 'description', content: 'The most performant React framework.' }]}
+                meta={[{ name: 'description', content: 'Planet-scale apps from a single repo.' }]}
             />
             <Header />
 

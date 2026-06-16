@@ -21,7 +21,7 @@ export interface OpenGraph {
 export interface Metadata {
     /** Document title. */
     readonly title?: string;
-    /** Template applied to the title (`%s` = the title), e.g. `'%s · toiljs'`. */
+    /** Template applied to the title (`%s` = the title), e.g. `'%s, toiljs'`. */
     readonly titleTemplate?: string;
     /** `<meta name="description">`. */
     readonly description?: string;

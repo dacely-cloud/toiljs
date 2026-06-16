@@ -25,7 +25,7 @@ export interface LinkTag {
 export interface HeadSpec {
     /** Document title. */
     readonly title?: string;
-    /** Template applied to a child's title, `%s` = the title (e.g. `'%s · toiljs'`). */
+    /** Template applied to a child's title, `%s` = the title (e.g. `'%s, toiljs'`). */
     readonly titleTemplate?: string;
     readonly meta?: readonly MetaTag[];
     readonly link?: readonly LinkTag[];

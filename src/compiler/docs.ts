@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 /** Shared body for the per-tool pointer files. */
-const POINTER_BODY = `# toiljs · AI assistant guide
+const POINTER_BODY = `# toiljs, AI assistant guide
 
 This is a **toiljs** project, a full-stack React framework (React + Vite client, file-based
 routing, and a toilscript→WebAssembly server).
@@ -183,7 +183,7 @@ export const TOIL_DOCS: Record<string, string> = {
         '',
         '    Toil.useHead({',
         '        title: "Blog",',
-        '        titleTemplate: "%s · MyApp",',
+        '        titleTemplate: "%s, MyApp",',
         '        meta: [{ name: "description", content: "..." }],',
         '    });',
     ]),

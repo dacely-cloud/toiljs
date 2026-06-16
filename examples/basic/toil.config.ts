@@ -10,7 +10,7 @@ export default defineConfig({
         seo: {
             url: 'https://toil.example',
             title: 'ToilJS',
-            description: 'The most performant React framework.',
+            description: 'Planet-scale apps from a single repo.',
             openGraph: { type: 'website', siteName: 'ToilJS' },
             jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'ToilJS' },
             robots: { ai: 'allow' },

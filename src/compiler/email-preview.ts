@@ -120,7 +120,7 @@ export function previewShellHtml(): string {
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Email preview · toiljs</title>
+<title>Email preview, toiljs</title>
 <style>
   /* Matches the toiljs demo brand (examples/basic/client/styles/main.css). */
   :root {
@@ -213,7 +213,9 @@ export function previewShellHtml(): string {
     subjectEl.textContent = fill(rendered.subject);
     if (format === 'html') {
       frame.hidden = false; textEl.hidden = true;
-      frame.srcdoc = fill(rendered.html);
+      // Wrap the email FRAGMENT in a minimal dark document so the iframe doesn't
+      // show the browser-default white body/margin around and below the email.
+      frame.srcdoc = '<!doctype html><meta charset="utf-8"><style>html,body{margin:0;padding:0;background:#080d11}</style>' + fill(rendered.html);
     } else {
       frame.hidden = true; textEl.hidden = false;
       textEl.textContent = fill(rendered.text);
