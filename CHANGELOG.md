@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.0.46] - 2026-06-16
+
+### Other Changes
+
+- ⬆️(deps-dev): Bump @microsoft/api-extractor from 7.58.8 to 7.58.9 in the dev-deps group ([#158](https://github.com/dacely-cloud/toiljs/pull/158)) by @dependabot[bot]
+- fix(dx): cover emails/ in scaffold tsconfig + prettier-ignore generated files ([#166](https://github.com/dacely-cloud/toiljs/pull/166)) by @BlobMaster41
+- feat(dev): email preview tool + client CSS reuse in emails ([#167](https://github.com/dacely-cloud/toiljs/pull/167)) by @BlobMaster41
+
+
+
+
 ## [v0.0.45] - 2026-06-16
 
 ### Other Changes
