@@ -114,7 +114,7 @@ function scaffold(
         '@types/react-dom': '^19.2.3',
         eslint: '^10.2.0',
         prettier: '^3.8.1',
-        toilscript: '^0.1.26',
+        toilscript: '^0.1.27',
         typescript: '^6.0.3',
     };
     for (const dep of requiredPackages(features).sort()) {
@@ -302,7 +302,6 @@ declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, Try
 declare namespace EmailService { function send(to: string, subject: string, body: string, purpose?: string, html?: string): EmailStatus; }
 declare class RenderedEmail { subject: string; body: string; html: string; constructor(subject: string, body: string, html: string); }
 declare class EmailTemplate { constructor(subject: string, body: string, html?: string); render(vars: Map<string, string>): RenderedEmail; send(to: string, vars: Map<string, string>, purpose?: string): EmailStatus; }
-declare enum RateLimit { FixedWindow, SlidingWindow, TokenBucket }
 declare namespace RateLimitService { function guard(routeId: i32, strategy: i32, limit: i32, window: i32): import('toiljs/server/runtime/response').Response | null; function guardKeyed(routeId: i32, strategy: i32, limit: i32, window: i32, key: string): import('toiljs/server/runtime/response').Response | null; }
 declare namespace Environment { function get(key: string): string | null; function getSecure(key: string): string | null; }
 declare class TwoFactorIssue { code: string; token: string; constructor(code: string, token: string); }
