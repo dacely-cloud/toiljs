@@ -154,6 +154,10 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             alias: {
                 'toiljs/client': cfg.runtimePath,
                 'toiljs/routes': path.join(cfg.toilDir, 'routes.ts'),
+                // `client/*` -> the project's client source dir, so anything (pages, and notably
+                // `emails/*.tsx`) can reuse existing client assets, e.g. `import 'client/styles/x.css'`.
+                // Vite's string alias matches only `client` or `client/...`, never `toiljs/client`.
+                client: cfg.clientAbsDir,
                 // `shared/*` is resolved by sharedResolverPlugin (above) so a missing generated
                 // shared/server.ts gives an actionable error instead of an opaque load failure.
                 ...polyfillShimAliases,

@@ -268,6 +268,23 @@ export interface ToilCommandOptions {
     readonly serverOnly?: boolean;
 }
 
+/** Prints the email-preview URL under the dev banner, when the project has an
+ *  `emails/` folder. `localUrl` is the resolved base (ends in `/`); skipped if
+ *  the server didn't report one. */
+function printEmailsUrl(cfg: ResolvedToilConfig, localUrl: string | undefined): void {
+    if (!localUrl || !fs.existsSync(path.join(cfg.root, 'emails'))) return;
+    process.stdout.write(
+        '  ' +
+            pc.green('✉') +
+            '  ' +
+            pc.bold('Emails') +
+            ':  ' +
+            pc.cyan(`${localUrl}__toil/emails`) +
+            pc.dim('  (preview)') +
+            '\n',
+    );
+}
+
 /**
  * Starts the dev server. Client-only projects get the plain Vite dev server on
  * the configured port, unchanged. Projects with a server target
@@ -293,6 +310,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         const server = await createServer(await createViteConfig(cfg));
         await server.listen();
         server.printUrls();
+        printEmailsUrl(cfg, server.resolvedUrls?.local?.[0]);
         return server;
     }
 
@@ -325,6 +343,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
             pc.dim('  (wasm server + vite)') +
             '\n',
     );
+    printEmailsUrl(cfg, `http://localhost:${String(front.port)}/`);
 
     // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts
     // and the dev server hot-swaps the recompiled wasm module.
