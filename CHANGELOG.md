@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.49] - 2026-06-16
+
+### Other Changes
+
+- fix(dev): harden Ctrl+C/watcher, recolor vite (ssr) log, graceful update, copy ([#170](https://github.com/dacely-cloud/toiljs/pull/170)) by @BlobMaster41
+
+
+
+
 ## [v0.0.48] - 2026-06-16
 
 ### Other Changes
