@@ -37,18 +37,20 @@ This is the whole point of the system. The most common lie in this space is call
 
 ## The grade table
 
-| Grade | Topology + distribution | Availability | Data path | Delivered p99 | Program performance + architecture | Dependencies | Security | Client performance + reach | Modern stack + compatibility |
-|---|---|---|---|---|---|---|---|---|---|
-| **AAA** | Active/active multi-region plus real edge compute, logic runs next to the user | 99.99%+, automated cross-region failover, no single point of failure | Globally distributed writes, sub-50ms reads almost everywhere | under 100ms | Edge-native, clean separation of requests, tasks, and compute, no blocking work on the hot path, near-optimal per request | Zero third party on the critical path, you own the stack | Zero trust, TLS everywhere, data encrypted at rest, passwords hashed never plaintext, pen-tested, audited compliance | Smooth on old and low-end devices, small bundle, no main-thread jank, linear-or-better hot paths, degrades gracefully | Latest protocols (HTTP/3, QUIC, WebTransport where they fit) with full graceful fallback, nothing breaks for older clients |
-| **AA** | Primary region plus standby regions, geo read replicas, partial edge | 99.95 to 99.99%, automated regional failover | Cross-region reads, single-region writes | under 200ms | Good architecture, mostly clean separation, minor hot-path waste | Few trusted dependencies, none critical | WAF plus DDoS, encryption, compliance underway | Fast on mid-range and a few-years-old hardware, minor jank only on the weakest, good complexity at normal scale | HTTP/2 baseline, HTTP/3 where available, modern standards, compatibility kept |
-| **A** | One region, multi-AZ, autoscaling stateless tier | 99.9%, survives an AZ failure | Single region, read replicas plus cache | under 500ms | Reasonable structure, some coupling, acceptable efficiency | Several third-party deps, managed | TLS, auth, secrets management, basic WAF | Smooth on current mainstream hardware, struggles on genuinely old devices, acceptable complexity at typical sizes | Current generation (HTTP/2, TLS 1.3), reasonable compatibility |
-| **B** | Single region, serverless or one small group (Vercel-style) | ~99.5%, DB is effectively a single point of failure | One primary DB, latency equals distance to it | under 1s | Works but coupled, blocking work on the request path | Leans on third-party platforms and services | TLS plus auth, platform defaults | Needs fairly modern hardware to feel good, laggy on older devices, some quadratic paths that bite at larger data | Functional but dated (HTTP/1.1), works everywhere, leaves performance on the table |
-| **C** | One server, one database | best effort, no real SLA | Single DB, no redundancy | 1 to 3s | Monolithic, tangled, no separation | Glued together from third-party pieces | Hand-rolled, minimal | Comfortable only on new hardware, janky elsewhere, quadratic-or-worse hot paths, heavy bundle | Legacy protocols and aging runtimes, real perf and security drag |
-| **D** | Localhost, single process | none | Local | over 3s | Whatever compiles | Anything | None | Needs high-end hardware, unusable on anything old, pathological complexity, freezes on constrained devices | Obsolete or end-of-life tech, deprecated protocols, unsupported runtimes |
+| Grade | Topology + distribution | Availability | Data path | Delivered p99 | Program performance + architecture | Dependencies | Security | Modern stack + compatibility |
+|---|---|---|---|---|---|---|---|---|
+| **AAA** | Active/active multi-region plus real edge compute, logic runs next to the user | 99.99%+, automated cross-region failover, no single point of failure | Globally distributed writes, sub-50ms reads almost everywhere | under 100ms | Edge-native, clean separation of requests, tasks, and compute, no blocking work on the hot path, near-optimal per request | Zero third party on the critical path, you own the stack | Zero trust, TLS everywhere, data encrypted at rest, passwords hashed never plaintext, pen-tested, audited compliance | Latest protocols (HTTP/3, QUIC, WebTransport where they fit) with full graceful fallback, nothing breaks for older clients |
+| **AA** | Primary region plus standby regions, geo read replicas, partial edge | 99.95 to 99.99%, automated regional failover | Cross-region reads, single-region writes | under 200ms | Good architecture, mostly clean separation, minor hot-path waste | Few trusted dependencies, none critical | WAF plus DDoS, encryption, compliance underway | HTTP/2 baseline, HTTP/3 where available, modern standards, compatibility kept |
+| **A** | One region, multi-AZ, autoscaling stateless tier | 99.9%, survives an AZ failure | Single region, read replicas plus cache | under 500ms | Reasonable structure, some coupling, acceptable efficiency | Several third-party deps, managed | TLS, auth, secrets management, basic WAF | Current generation (HTTP/2, TLS 1.3), reasonable compatibility |
+| **B** | Single region, serverless or one small group (Vercel-style) | ~99.5%, DB is effectively a single point of failure | One primary DB, latency equals distance to it | under 1s | Works but coupled, blocking work on the request path | Leans on third-party platforms and services | TLS plus auth, platform defaults | Functional but dated (HTTP/1.1), works everywhere, leaves performance on the table |
+| **C** | One server, one database | best effort, no real SLA | Single DB, no redundancy | 1 to 3s | Monolithic, tangled, no separation | Glued together from third-party pieces | Hand-rolled, minimal | Legacy protocols and aging runtimes, real perf and security drag |
+| **D** | Localhost, single process | none | Local | over 3s | Whatever compiles | Anything | None | Obsolete or end-of-life tech, deprecated protocols, unsupported runtimes |
 
 Each axis maps to a numeric level for scoring: `AAA = 5`, `AA = 4`, `A = 3`, `B = 2`, `C = 1`, `D = 0`.
 
 Security has hard caps on top of these levels. Some failures, like no TLS or storing passwords in readable form, disqualify a system outright, and others cap it below AAA, see [the security axis](#7-security).
+
+Client performance and reach has its own grade table, kept separate so this one stays readable. It is in the [client performance axis](#8-client-performance--reach) below.
 
 ---
 
@@ -138,6 +140,17 @@ This axis also interacts with dependencies: if you outsource a security-critical
 How well the thing you ship actually runs on the user's own hardware, including old and low-end devices, and how its cost grows as data grows. This is separate from delivered latency on purpose. Latency is measured at the user, but it is usually measured on a decent device on a decent connection, so it can look excellent while the app stutters on a five-year-old phone with a weak CPU and little memory. A fast server does not save a bloated client. This axis grades the experience of the person on the worst hardware that still matters to you, not the best.
 
 It climbs from "requires a high-end device and falls apart on anything old" up to "smooth on years-old low-end hardware, small footprint, no main-thread jank, and stays fast as data scales." A site that only feels good on a new flagship and lags hard on older devices is failing this axis no matter how clean the backend is.
+
+#### Grade levels
+
+| Grade | Client performance + reach |
+|---|---|
+| **AAA** | Smooth on old and low-end devices, small bundle, no main-thread jank, linear-or-better hot paths, degrades gracefully |
+| **AA** | Fast on mid-range and a few-years-old hardware, minor jank only on the weakest, good complexity at normal scale |
+| **A** | Smooth on current mainstream hardware, struggles on genuinely old devices, acceptable complexity at typical sizes |
+| **B** | Needs fairly modern hardware to feel good, laggy on older devices, some quadratic paths that bite at larger data |
+| **C** | Comfortable only on new hardware, janky elsewhere, quadratic-or-worse hot paths, heavy bundle |
+| **D** | Needs high-end hardware, unusable on anything old, pathological complexity, freezes on constrained devices |
 
 #### Algorithmic complexity is part of this
 
