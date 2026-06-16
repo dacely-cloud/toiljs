@@ -156,14 +156,14 @@ function scaffold(
             '    "compilerOptions": {\n' +
             '        "paths": { "shared/*": ["./shared/*"] }\n' +
             '    },\n' +
-            '    "include": ["client", "shared", "toil-env.d.ts", "toil-routes.d.ts"]\n' +
+            '    "include": ["client", "shared", "emails", "toil.config.ts", "toil-env.d.ts", "toil-routes.d.ts"]\n' +
             '}\n',
         'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
         // Generated files don't need formatting. (toilscript server decorators like @main /
         // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
         '.prettierignore':
-            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n',
+            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/toil-server-env.d.ts\n',
         '.gitignore':
             'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
         // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled version.

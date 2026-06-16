@@ -296,9 +296,24 @@ function applyRpcFix(root: string): RpcFixResult {
         // and synthesizing one would narrow what TypeScript sees.
         if (Array.isArray(tsconfig.include)) {
             const include = [...(tsconfig.include as unknown[])];
+            let changedInclude = false;
+            // `shared` (the @data/@remote RPC alias target) right after `client`.
             if (!include.includes('shared')) {
                 const at = include.indexOf('client');
                 include.splice(at >= 0 ? at + 1 : include.length, 0, 'shared');
+                changedInclude = true;
+            }
+            // `emails` (the React email-template pipeline) + `toil.config.ts`, so the
+            // typescript-eslint project service / editor cover them — otherwise
+            // `emails/*.tsx` (and a typed `toil.config.ts`) raise "not found by the
+            // project service". Harmless when absent (a non-matching glob).
+            for (const entry of ['emails', 'toil.config.ts']) {
+                if (!include.includes(entry)) {
+                    include.push(entry);
+                    changedInclude = true;
+                }
+            }
+            if (changedInclude) {
                 tsconfig.include = include;
                 touched = true;
             }
