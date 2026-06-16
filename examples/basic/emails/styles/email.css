@@ -1,0 +1,32 @@
+/* Styles for this email, kept next to it under emails/styles/. At build (and in
+   the /__toil/emails preview) these rules are inlined into element style="..."
+   so they survive email clients, which strip <style>/external CSS. You could
+   just as well reuse existing project styles with `import 'client/styles/...'`.
+   Keep rules simple and class-scoped, since only inline-able properties carry. */
+
+.email-card {
+    font-family: Arial, sans-serif;
+    background-color: #f6f7f9;
+}
+
+.email-title {
+    color: #111827;
+    margin: 0 0 12px;
+    font-size: 22px;
+}
+
+.email-text {
+    color: #4b5563;
+    font-size: 15px;
+    line-height: 22px;
+}
+
+.email-code {
+    color: #111827;
+}
+
+.email-fine {
+    color: #9ca3af;
+    font-size: 12px;
+    margin-top: 24px;
+}

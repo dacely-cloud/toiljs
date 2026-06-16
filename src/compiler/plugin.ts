@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { type Plugin, version as viteVersion } from 'vite';
 
 import { AiProvider, type DevtoolsAiConfig, type ResolvedToilConfig } from './config.js';
+import { emailsVersion, listEmails, previewShellHtml, renderEmailByName } from './email-preview.js';
 import { generate } from './generate.js';
 import { scanRoutes } from './routes.js';
 
@@ -58,7 +59,9 @@ async function aiComplete(ai: DevtoolsAiConfig, prompt: string): Promise<string>
 /** Reads a package's version resolved from `<fromDir>`, or 'unknown'. */
 function depVersion(fromDir: string, name: string): string {
     try {
-        const pkgPath = createRequire(path.join(fromDir, 'package.json')).resolve(`${name}/package.json`);
+        const pkgPath = createRequire(path.join(fromDir, 'package.json')).resolve(
+            `${name}/package.json`,
+        );
         const raw = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
         return raw.version ?? 'unknown';
     } catch {
@@ -69,7 +72,12 @@ function depVersion(fromDir: string, name: string): string {
 /** toiljs's own version (package.json two levels up from build/compiler). */
 function frameworkVersion(): string {
     try {
-        const p = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
+        const p = path.resolve(
+            path.dirname(fileURLToPath(import.meta.url)),
+            '..',
+            '..',
+            'package.json',
+        );
         const raw = JSON.parse(fs.readFileSync(p, 'utf8')) as { version?: string };
         return raw.version ?? '0.0.0';
     } catch {
@@ -231,7 +239,9 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                             const parsed = JSON.parse(body || '{}') as { prompt?: string };
                             // Cap the prompt actually forwarded upstream (independent of the raw-body cap).
                             const prompt =
-                                typeof parsed.prompt === 'string' ? parsed.prompt.slice(0, 16000) : '';
+                                typeof parsed.prompt === 'string'
+                                    ? parsed.prompt.slice(0, 16000)
+                                    : '';
                             const text = await aiComplete(ai, prompt);
                             res.setHeader('content-type', 'application/json');
                             res.end(JSON.stringify({ text }));
@@ -243,7 +253,11 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                             );
                             res.statusCode = 500;
                             res.setHeader('content-type', 'application/json');
-                            res.end(JSON.stringify({ error: 'AI request failed (see dev server logs).' }));
+                            res.end(
+                                JSON.stringify({
+                                    error: 'AI request failed (see dev server logs).',
+                                }),
+                            );
                         }
                     })();
                 });
@@ -289,6 +303,76 @@ export function toilPlugin(cfg: ResolvedToilConfig): Plugin {
                     res.statusCode = 400;
                     res.end();
                 }
+            });
+
+            // Email preview tool (dev only). `/__toil/emails` -> a standalone page that lists
+            // `emails/*.tsx`, renders the selected one through the live SSR server (so edits and
+            // imported `client/*` CSS show), and live-refreshes by polling `/version`.
+            // Sub-paths are registered before the page so connect's prefix match resolves them first.
+            server.middlewares.use('/__toil/emails/list', (req, res) => {
+                if (isCrossSiteRequest(req.headers)) {
+                    res.statusCode = 403;
+                    res.end();
+                    return;
+                }
+                res.setHeader('content-type', 'application/json');
+                res.end(JSON.stringify(listEmails(cfg)));
+            });
+            server.middlewares.use('/__toil/emails/render', (req, res) => {
+                if (isCrossSiteRequest(req.headers)) {
+                    res.statusCode = 403;
+                    res.end();
+                    return;
+                }
+                void (async () => {
+                    try {
+                        const name = new URL(req.url ?? '', 'http://localhost').searchParams.get(
+                            'name',
+                        );
+                        if (!name) {
+                            res.statusCode = 400;
+                            res.end();
+                            return;
+                        }
+                        const rendered = await renderEmailByName(server, cfg, name);
+                        if (!rendered) {
+                            res.statusCode = 404;
+                            res.end();
+                            return;
+                        }
+                        res.setHeader('content-type', 'application/json');
+                        res.end(JSON.stringify(rendered));
+                    } catch (e) {
+                        // Log the detail to the dev's terminal; the page shows a generic message.
+                        process.stderr.write(
+                            `toil: /__toil/emails/render failed: ${e instanceof Error ? e.message : String(e)}\n`,
+                        );
+                        res.statusCode = 500;
+                        res.end();
+                    }
+                })();
+            });
+            // A tiny mtime fingerprint of `emails/*` + client CSS the page polls (~1s) to detect
+            // edits. Polling (not SSE) because the wasm dev server proxies `/__toil/*` to Vite by
+            // buffering the whole response, so a long-lived stream would hang; a short poll works
+            // in every mode.
+            server.middlewares.use('/__toil/emails/version', (req, res) => {
+                if (isCrossSiteRequest(req.headers)) {
+                    res.statusCode = 403;
+                    res.end();
+                    return;
+                }
+                res.setHeader('content-type', 'text/plain; charset=utf-8');
+                res.end(emailsVersion(cfg));
+            });
+            server.middlewares.use('/__toil/emails', (req, res) => {
+                if (isCrossSiteRequest(req.headers)) {
+                    res.statusCode = 403;
+                    res.end();
+                    return;
+                }
+                res.setHeader('content-type', 'text/html; charset=utf-8');
+                res.end(previewShellHtml());
             });
 
             // Trailing slash so a sibling like `routes-extra/` doesn't match the `routes/` prefix.

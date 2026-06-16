@@ -21,7 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { createServer } from 'vite';
+import { createServer, type ViteDevServer } from 'vite';
 
 import type { ResolvedToilConfig } from './config.js';
 import { createViteConfig } from './vite.js';
@@ -38,7 +38,7 @@ interface EmailModule {
 }
 
 /** One email rendered to its baked, token-holed parts. */
-interface RenderedEmail {
+export interface RenderedEmail {
     name: string;
     subject: string;
     html: string;
@@ -132,13 +132,17 @@ async function renderModule(
     name: string,
     mod: EmailModule,
     render: (el: unknown) => string,
+    css = '',
 ): Promise<RenderedEmail | null> {
     if (typeof mod.default !== 'function') return null;
 
     const seen = new Set<string>();
     const component = mod.default as (props: unknown) => unknown;
     let html = render(component(tokenProps(seen)));
-    html = await inlineCss(html);
+    // CSS the component imported (e.g. `import 'client/styles/email.css'`) is
+    // prepended as a <style> block so it gets inlined into element style="" like
+    // an inline block would -- under SSR a bare CSS import otherwise has no effect.
+    html = await inlineCss(css ? `<style>${css}</style>${html}` : html);
 
     const subject = typeof mod.subject === 'string' ? mod.subject : name;
     const text = typeof mod.text === 'string' ? mod.text : htmlToText(html);
@@ -161,8 +165,71 @@ async function renderModule(
     return { name, subject, html, text, tokens, purpose };
 }
 
+const CSS_RE = /\.(css|scss|sass|less|styl|pcss|postcss)(\?|$)/;
+
+/**
+ * Collect the CSS an email module transitively imports, as one string. Under SSR
+ * a bare `import 'client/styles/email.css'` produces no output, so we walk the
+ * Vite module graph from the email module, collect its CSS deps, and re-import
+ * each with `?inline` (Vite then returns the processed CSS as the default export,
+ * Tailwind/PostCSS included). The caller hands the result to `renderModule`,
+ * which inlines it into the HTML. Best-effort: a CSS dep that can't be inlined is
+ * skipped (the component's inline `style={{}}` props still render).
+ */
+export async function collectModuleCss(server: ViteDevServer, moduleId: string): Promise<string> {
+    const seen = new Set<string>();
+    const cssIds = new Set<string>();
+    const visit = (id: string): void => {
+        if (seen.has(id)) return;
+        seen.add(id);
+        const mod = server.moduleGraph.getModuleById(id);
+        if (!mod) return;
+        for (const dep of mod.importedModules) {
+            const depId = dep.id ?? dep.url;
+            if (!depId) continue;
+            if (CSS_RE.test(depId)) cssIds.add(depId);
+            else visit(depId);
+        }
+    };
+    visit(moduleId);
+
+    let css = '';
+    for (const id of cssIds) {
+        const base = id.split('?')[0] ?? id;
+        try {
+            const mod = (await server.ssrLoadModule(`${base}?inline`)) as { default?: unknown };
+            if (typeof mod.default === 'string') css += mod.default + '\n';
+        } catch {
+            // skip a CSS dep we can't inline
+        }
+    }
+    return css;
+}
+
+/**
+ * Load one `emails/*.tsx` through `server` (SSR), collect any CSS it imports, and
+ * render it to its baked, token-holed parts. Shared by the build/codegen pass and
+ * the dev preview tool so both produce byte-identical output. Throws if the module
+ * fails to load; returns `null` if it has no default-exported component.
+ */
+export async function renderEmailFile(
+    server: ViteDevServer,
+    emailsDir: string,
+    file: string,
+    render: (el: unknown) => string,
+): Promise<RenderedEmail | null> {
+    const name = toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, ''));
+    const filePath = path.join(emailsDir, file);
+    const mod = (await server.ssrLoadModule(filePath)) as EmailModule;
+    const node =
+        server.moduleGraph.getModuleById(filePath) ??
+        (await server.moduleGraph.getModuleByUrl(filePath));
+    const css = node?.id ? await collectModuleCss(server, node.id) : '';
+    return renderModule(name, mod, render, css);
+}
+
 /** `welcome-email` / `welcome_email` -> `WelcomeEmail`. */
-function toPascal(base: string): string {
+export function toPascal(base: string): string {
     return base
         .split(/[-_\s.]+/)
         .filter(Boolean)
@@ -222,7 +289,9 @@ function renderModuleSource(rendered: RenderedEmail[]): string {
             .concat(params.map((p) => `${p.param}: string`))
             .concat(`purpose: string = ${asLit(e.purpose)}`)
             .join(', ');
-        out.push(`    /** Render and send this email to \`to\`. Returns the send's EmailStatus. */`);
+        out.push(
+            `    /** Render and send this email to \`to\`. Returns the send's EmailStatus. */`,
+        );
         out.push(`    export function send(${sig}): EmailStatus {`);
         out.push(`      const __v = new Map<string, string>();`);
         for (const p of params) out.push(`      __v.set(${asLit(p.token)}, ${p.param});`);
@@ -274,17 +343,18 @@ export async function renderEmails(cfg: ResolvedToilConfig): Promise<void> {
     const rendered: RenderedEmail[] = [];
     try {
         for (const file of files) {
-            const name = toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, ''));
-            let mod: EmailModule;
             try {
-                mod = (await server.ssrLoadModule(path.join(emailsDir, file))) as EmailModule;
+                const r = await renderEmailFile(
+                    server,
+                    emailsDir,
+                    file,
+                    renderToStaticMarkup as (el: unknown) => string,
+                );
+                if (r) rendered.push(r);
+                else warn(`skipped ${file} (no default-exported component)`);
             } catch (err) {
                 warn(`skipped ${file} (${err instanceof Error ? err.message : String(err)})`);
-                continue;
             }
-            const r = await renderModule(name, mod, renderToStaticMarkup as (el: unknown) => string);
-            if (r) rendered.push(r);
-            else warn(`skipped ${file} (no default-exported component)`);
         }
     } finally {
         await server.close();

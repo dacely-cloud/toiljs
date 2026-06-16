@@ -109,6 +109,7 @@ export default defineConfig({
     },
 });
 ```
+
 ```bash
 # .env.secrets  (gitignored)
 TOIL_EMAIL_API_KEY=re_xxxxxxxxxxxx
@@ -137,8 +138,8 @@ class Notify {
         const status = EmailService.send(
             'alice@example.com',
             'Welcome!',
-            'Thanks for signing up.',   // plain-text body
-            'welcome',                  // purpose tag (dedup / abuse keying)
+            'Thanks for signing up.', // plain-text body
+            'welcome', // purpose tag (dedup / abuse keying)
             '<h1>Thanks for signing up.</h1>', // optional HTML body
         );
         return status == EmailStatus.Sent
@@ -150,16 +151,16 @@ class Notify {
 
 `send(to, subject, body, purpose = 'tx', html = '')` returns an **`EmailStatus`**:
 
-| Status | Meaning | Retry? |
-| --- | --- | --- |
-| `Sent` | Accepted by the provider | — |
-| `Deduped` | An identical recent `(recipient, purpose)` was collapsed | treat as sent |
-| `Budget` | The host's per-minute budget is exhausted | yes, later |
-| `TryLater` | The mailer was saturated / a queue was full | yes, back off |
-| `RecipientCapped` | The per-recipient hourly cap was hit | no (this window) |
-| `BadRecipient` | The address failed validation (CRLF, multiple addresses) | no |
-| `Disabled` | This host has no `[email]` capability | no |
-| `ProviderError` | The provider rejected it, or transport failed after retries | no |
+| Status            | Meaning                                                     | Retry?           |
+| ----------------- | ----------------------------------------------------------- | ---------------- |
+| `Sent`            | Accepted by the provider                                    | —                |
+| `Deduped`         | An identical recent `(recipient, purpose)` was collapsed    | treat as sent    |
+| `Budget`          | The host's per-minute budget is exhausted                   | yes, later       |
+| `TryLater`        | The mailer was saturated / a queue was full                 | yes, back off    |
+| `RecipientCapped` | The per-recipient hourly cap was hit                        | no (this window) |
+| `BadRecipient`    | The address failed validation (CRLF, multiple addresses)    | no               |
+| `Disabled`        | This host has no `[email]` capability                       | no               |
+| `ProviderError`   | The provider rejected it, or transport failed after retries | no               |
 
 `purpose` is a short, non-PII tag (`"welcome"`, `"reset"`, …). The mailer folds
 it into the **dedup** key (identical `(host, recipient, purpose)` within ~30s is
@@ -175,8 +176,8 @@ when the same email is sent with different values:
 
 ```ts
 const welcome = new EmailTemplate(
-    'Welcome, {{name}}!',                                  // subject
-    'Hi {{name}}, your code is {{code}}.',                 // plain-text body
+    'Welcome, {{name}}!', // subject
+    'Hi {{name}}, your code is {{code}}.', // plain-text body
     '<h1>Welcome, {{name}}</h1><p>Code: <b>{{code}}</b></p>', // html (optional)
 );
 
@@ -208,12 +209,16 @@ export const subject = 'Welcome, {{name}}!';
 
 export default function Welcome({ name, code }: { name: string; code: string }) {
     return (
-        <table width="100%" style={{ fontFamily: 'Arial, sans-serif' }}>
+        <table
+            width="100%"
+            style={{ fontFamily: 'Arial, sans-serif' }}>
             <tbody>
                 <tr>
                     <td style={{ padding: '24px' }}>
                         <h1 style={{ color: '#111' }}>Welcome, {name}!</h1>
-                        <p>Your code is <b>{code}</b>.</p>
+                        <p>
+                            Your code is <b>{code}</b>.
+                        </p>
                     </td>
                 </tr>
             </tbody>
@@ -232,9 +237,12 @@ const status = Emails.Welcome.send('alice@example.com', '123456', 'Alice');
 
 Authoring notes:
 
-- **Use inline `style={{ ... }}`.** Email clients strip `<style>`/external CSS;
-  inline styles render everywhere. A CSS file imported into the component is
-  inlined for you at build (via `juice`).
+- **Styles must end up inline.** Email clients strip `<style>`/external CSS, so
+  write inline `style={{ ... }}`, or import a stylesheet and its rules are
+  inlined into element `style="…"` for you at build (a bare CSS import has no
+  effect on its own under SSR). Keep email-only styles next to the email, e.g.
+  `import './styles/email.css'`, or **reuse existing project CSS** with `import
+'client/styles/…'` (the `client/*` alias points at your client source).
 - **Optional exports:** `export const subject` (a token template; defaults to the
   email name), `export const text` (a plain-text alternative; otherwise derived
   from the HTML), `export const purpose`.
@@ -245,6 +253,14 @@ Authoring notes:
   approach.
 - The generated `server/_emails.ts` is regenerated on `build`/`dev` and should be
   gitignored.
+
+### Preview while you author
+
+While `toiljs dev` runs, open **`/__toil/emails`** (the dev banner prints the
+link). It lists every `emails/*.tsx`, renders the selected one exactly as the
+build does (imported `client/*` CSS inlined), lets you fill each `{{token}}` to
+see the result, toggle the HTML and plain-text parts, and open the file in your
+editor. It refreshes live as you edit the template or its CSS.
 
 ## Email verification codes (`TwoFactor`)
 
