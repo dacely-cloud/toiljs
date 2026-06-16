@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.45] - 2026-06-16
+
+### Other Changes
+
+- feat(dev): fully implement email in dev mode (+ reusable Node mailer) ([#165](https://github.com/dacely-cloud/toiljs/pull/165)) by @BlobMaster41
+
+
+
+
 ## [v0.0.43] - 2026-06-15
 
 ### Other Changes
