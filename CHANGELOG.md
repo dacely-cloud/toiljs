@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.51] - 2026-06-16
+
+### Other Changes
+
+- fix(dev): restore cooked terminal input mode on shutdown ([#172](https://github.com/dacely-cloud/toiljs/pull/172)) by @BlobMaster41
+
+
+
+
 ## [v0.0.50] - 2026-06-16
 
 ### Other Changes
