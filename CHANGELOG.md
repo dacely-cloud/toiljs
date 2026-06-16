@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.48] - 2026-06-16
+
+### Other Changes
+
+- chore(deps): bump toilscript to ^0.1.26 (TS2395 @data editor fix) ([#169](https://github.com/dacely-cloud/toiljs/pull/169)) by @BlobMaster41
+
+
+
+
 ## [v0.0.47] - 2026-06-16
 
 ### Other Changes
