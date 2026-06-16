@@ -402,8 +402,8 @@ export function checkWasmBuilt(exists: boolean): Check {
 
 // --- Typed RPC (@data / @remote / @service) -------------------------------------------------------
 
-/** Minimum toilscript: @rest/@route HTTP layer + RPC codegen + hardened decoders + correct @data editor decls (TS2395 fix). */
-export const RPC_TOILSCRIPT_MIN = '0.1.26';
+/** Minimum toilscript: @rest/@route + RPC codegen + hardened decoders + @data editor decls (TS2395 fix) + RateLimit-enum @ratelimit typing. */
+export const RPC_TOILSCRIPT_MIN = '0.1.27';
 
 /** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
 export interface RpcFacts {

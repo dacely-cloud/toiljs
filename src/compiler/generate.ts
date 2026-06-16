@@ -115,7 +115,8 @@ export const TOIL_SERVER_ENV_DTS =
     `declare namespace EmailService { function send(to: string, subject: string, body: string, purpose?: string, html?: string): EmailStatus; }\n` +
     `declare class RenderedEmail { subject: string; body: string; html: string; constructor(subject: string, body: string, html: string); }\n` +
     `declare class EmailTemplate { constructor(subject: string, body: string, html?: string); render(vars: Map<string, string>): RenderedEmail; send(to: string, vars: Map<string, string>, purpose?: string): EmailStatus; }\n` +
-    `declare enum RateLimit { FixedWindow, SlidingWindow, TokenBucket }\n` +
+    // `RateLimit` (the @ratelimit strategy enum) is declared by toilscript's std d.ts,
+    // which owns the @ratelimit decorator; declaring it here too would collide.
     `declare namespace RateLimitService { function guard(routeId: i32, strategy: i32, limit: i32, window: i32): import('toiljs/server/runtime/response').Response | null; function guardKeyed(routeId: i32, strategy: i32, limit: i32, window: i32, key: string): import('toiljs/server/runtime/response').Response | null; }\n` +
     `declare namespace Environment { function get(key: string): string | null; function getSecure(key: string): string | null; }\n` +
     `declare class TwoFactorIssue { code: string; token: string; constructor(code: string, token: string); }\n` +
