@@ -96,6 +96,28 @@ export function checkPackageManager(lockfiles: readonly string[]): Check {
     return { id: 'pm', label: 'Package manager', status: 'pass', detail: lockfiles.join(', ') };
 }
 
+/**
+ * Flags `npx toiljs ...` inside package.json scripts. Under `npm run`, `node_modules/.bin` is
+ * already on PATH, so the `npx` is redundant; worse, the extra `npx` process puts the console in
+ * raw / VT-input mode and does not restore it when the run is Ctrl+C'd, leaving the terminal
+ * echoing arrow keys as `^[[A` and mis-reading typed input (Windows cmd especially). The scaffold
+ * uses a bare `toiljs <cmd>`; this catches projects whose scripts wrap it in `npx`.
+ */
+export function checkDevScripts(scripts: Record<string, string>): Check {
+    const NPX_TOILJS = /(?:^|[\s&|;(])npx\s+toiljs\b/;
+    const offenders = Object.keys(scripts).filter((name) => NPX_TOILJS.test(scripts[name] ?? ''));
+    if (offenders.length === 0) {
+        return { id: 'scripts-npx', label: 'Scripts', status: 'pass' };
+    }
+    return {
+        id: 'scripts-npx',
+        label: 'Scripts',
+        status: 'warn',
+        detail: `${offenders.join(', ')} run via "npx toiljs"`,
+        fix: 'Drop npx: use "toiljs <cmd>" (npm run already puts node_modules/.bin on PATH). The npx layer can leave the terminal in raw mode after Ctrl+C, which garbles the shell.',
+    };
+}
+
 export function checkToiljsInstalled(version: string | null): Check {
     return version
         ? { id: 'toiljs', label: 'toiljs', status: 'pass', detail: version }

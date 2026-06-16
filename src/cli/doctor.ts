@@ -16,6 +16,7 @@ import {
     type Check,
     checkBasePath,
     checkConfigLoads,
+    checkDevScripts,
     checkDir,
     checkDuplicatePatterns,
     type CheckGroup,
@@ -670,6 +671,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                 checkRoutesPresent(routes.length),
                 checkDuplicatePatterns(mainPatterns),
                 checkRelativeAssets(assetIssues),
+                checkDevScripts(projectPkg ? stringRecord(projectPkg.scripts) : {}),
             ],
         },
         {

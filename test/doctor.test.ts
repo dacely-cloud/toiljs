@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
     checkBasePath,
+    checkDevScripts,
     checkDuplicatePatterns,
     type CheckGroup,
     checkMountSlots,
@@ -201,5 +202,26 @@ describe('summarize', () => {
             { title: 'B', checks: [{ id: '3', label: 'z', status: 'fail' }] },
         ];
         expect(summarize(groups)).toEqual({ pass: 1, warn: 1, fail: 1 });
+    });
+});
+
+describe('checkDevScripts', () => {
+    it('passes when no script wraps toiljs in npx', () => {
+        const c = checkDevScripts({ dev: 'toiljs dev', build: 'toiljs build' });
+        expect(c.status).toBe('pass');
+    });
+
+    it('warns and names the offending scripts using npx toiljs', () => {
+        const c = checkDevScripts({ dev: 'npx toiljs dev', build: 'toiljs build' });
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('dev');
+        expect(c.detail).not.toContain('build');
+        expect(c.fix).toMatch(/toiljs <cmd>/);
+    });
+
+    it('does not flag unrelated npx usage or substrings', () => {
+        expect(checkDevScripts({ x: 'npx create-toiljs my-app' }).status).toBe('pass');
+        expect(checkDevScripts({ x: 'echo npxtoiljs' }).status).toBe('pass');
+        expect(checkDevScripts({}).status).toBe('pass');
     });
 });
