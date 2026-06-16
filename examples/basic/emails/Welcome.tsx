@@ -84,7 +84,7 @@ export default function Welcome({ name, code }: { name: string; code: string }) 
                                 {/* Footer. */}
                                 <tr>
                                     <td className="email-footer">
-                                        toiljs — the most performant React framework
+                                        toiljs, one build, the whole planet
                                     </td>
                                 </tr>
                             </tbody>

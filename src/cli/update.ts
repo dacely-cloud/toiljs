@@ -140,9 +140,22 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
     await run('npx', ncuArgs(applyAll ? ['-u'] : ['-u', '--filter', selected.join(' ')]), root);
     s.stop('package.json updated');
 
-    s.start(`Installing with ${pm.name}`);
-    await run(pm.name, ['install'], root);
-    s.stop('Dependencies installed');
+    // Run the install with VISIBLE output (so a failure is diagnosable — npm
+    // prints the real error) and handle a non-zero exit gracefully, instead of
+    // leaving the spinner spinning forever on a failed install.
+    note(dim(`Running ${pm.name} install…`), 'Install');
+    try {
+        await run(pm.name, ['install'], root, { stdio: 'inherit' });
+    } catch {
+        outro(
+            danger(
+                `${pm.name} install failed — package.json was updated to the new versions, but the ` +
+                    `install did not finish. Fix the error printed above, then run \`${pm.name} install\`.`,
+            ),
+        );
+        process.exitCode = 1;
+        return;
+    }
 
     outro(
         success(`Updated ${String(selected.length)} package${selected.length === 1 ? '' : 's'}.`),

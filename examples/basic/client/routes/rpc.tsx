@@ -38,7 +38,7 @@ export default function RpcDemo() {
             <button onClick={onPing}>Server.ping(10)</button>{' '}
             <button onClick={onCount}>Server.stats.playerCount()</button>
             <p>{result}</p>
-            <Toil.Link href="/rest">See the REST demo</Toil.Link> · <Toil.Link href="/">Back home</Toil.Link>
+            <Toil.Link href="/rest">See the REST demo</Toil.Link>, <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
 }

@@ -186,8 +186,8 @@ export default function Pq(): React.JSX.Element {
 
             {proof && (
                 <p style={{ marginTop: 16, fontFamily: 'monospace', fontSize: '0.85rem', opacity: 0.8 }}>
-                    server nonce {proof.nonceHex}… · Argon2id {proof.deriveMs} ms · public key {proof.publicKeyHex}…
-                    (1312 B) · signature {proof.signatureLen} B
+                    server nonce {proof.nonceHex}…, Argon2id {proof.deriveMs} ms, public key {proof.publicKeyHex}…
+                    (1312 B), signature {proof.signatureLen} B
                 </p>
             )}
 

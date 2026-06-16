@@ -134,7 +134,6 @@ export function box(lines: readonly string[], paint: (s: string) => string = (s)
  * first full-stack framework for a globally distributed application delivery network.
  */
 const TAGLINES: ReadonlyArray<(a: (s: string) => string) => string> = [
-    (a) => `the most performant ${a('react')} framework`,
     (a) => `bringing ${a('hyper scale')} to anyone`,
     (a) => `the first full-stack ${a('application delivery network')}`,
     (a) => `your app, ${a('globally distributed')} by default`,

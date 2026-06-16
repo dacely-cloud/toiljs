@@ -49,7 +49,7 @@ export default function Search() {
                                 <strong>{r.page.metadata.title ?? r.page.path}</strong> <code>{r.page.path}</code>
                                 {r.page.metadata.description !== undefined && <div>{r.page.metadata.description}</div>}
                                 <small>
-                                    score {r.score.toFixed(1)} · matched {r.matches.join(', ')}
+                                    score {r.score.toFixed(1)}, matched {r.matches.join(', ')}
                                 </small>
                             </button>
                         </li>
