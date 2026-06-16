@@ -245,9 +245,21 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
  * close the servers, and force-exit after a short grace period no matter what.
  */
 function installDevShutdown(close: () => Promise<void> | void): void {
-    // Final, SYNCHRONOUS cursor + style restore — `exit` runs no matter how we go
-    // (signal, throw, normal), so the terminal can't be left without a cursor.
+    // Final, SYNCHRONOUS terminal restore — `exit` runs no matter how we go
+    // (signal, throw, normal), so the console can't be left in a broken state.
     const restoreTerminal = (): void => {
+        // Cooked input mode back. This is the important one on Windows: if anything
+        // in the dev stack (a dep that reads stdin, or libuv) left stdin in raw /
+        // VT-input mode, our force-exit below skips the automatic tty reset, and
+        // cmd is left echoing arrow keys as `^[[A` and mis-reading typed input.
+        // `setRawMode(false)` forces the console back to normal line editing.
+        try {
+            const stdin = process.stdin;
+            if (stdin.isTTY && typeof stdin.setRawMode === 'function') stdin.setRawMode(false);
+        } catch {
+            /* not a TTY / already torn down */
+        }
+        // Show the cursor and reset styles (a build spinner may have hidden it).
         try {
             process.stdout.write('\x1b[0m\x1b[?25h');
         } catch {
