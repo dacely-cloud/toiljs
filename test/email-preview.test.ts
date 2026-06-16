@@ -32,11 +32,11 @@ describe('email preview end-to-end (examples/basic)', () => {
             // tokens discovered from props
             expect(r.tokens).toEqual(['code', 'name']);
             // subject token template
-            expect(r.subject).toBe('Welcome, {{name}}!');
-            // .email-title { color: #111827 } from emails/styles/email.css inlined onto the <h1>
-            expect(r.html).toMatch(/<h1[^>]*style="[^"]*color:\s*#111827/i);
-            // .email-card backgroundColor inlined onto the <table>
-            expect(r.html).toMatch(/<table[^>]*style="[^"]*background-color:\s*#f6f7f9/i);
+            expect(r.subject).toBe('Welcome to toiljs, {{name}}');
+            // .email-title { color: #f5f6fa } from emails/styles/email.css inlined onto the <h1>
+            expect(r.html).toMatch(/<h1[^>]*style="[^"]*color:\s*#f5f6fa/i);
+            // .email-card { background-color: #0e1520 } inlined onto the card <table>
+            expect(r.html).toMatch(/<table[^>]*style="[^"]*background-color:\s*#0e1520/i);
 
             // The `client/*` reuse alias still resolves project CSS (the documented
             // `import 'client/styles/…'` path), independent of where the demo keeps its styles.

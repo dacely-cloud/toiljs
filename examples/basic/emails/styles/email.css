@@ -1,32 +1,109 @@
-/* Styles for this email, kept next to it under emails/styles/. At build (and in
-   the /__toil/emails preview) these rules are inlined into element style="..."
-   so they survive email clients, which strip <style>/external CSS. You could
-   just as well reuse existing project styles with `import 'client/styles/...'`.
-   Keep rules simple and class-scoped, since only inline-able properties carry. */
+/* Welcome-email styles, matching the toiljs demo's dark brand
+   (client/styles/main.css). At build (and in the /__toil/emails preview) these
+   rules are inlined into element style="..." so they survive email clients,
+   which strip <style>/external CSS. Every gradient also sets a solid
+   `background-color` first, so Outlook (no gradient support) degrades cleanly.
+   Palette: bg #080d11, surface #0e1520, border #1b2330, text #f5f6fa,
+   muted #8b9ab4, accent #2563ff / #7c3aed / #22e3ab. */
 
+/* Full-bleed page background (the area around the card). */
+.email-bg {
+    background-color: #080d11;
+    font-family: 'Montserrat', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* The centered card. */
 .email-card {
-    font-family: Arial, sans-serif;
-    background-color: #f6f7f9;
+    background-color: #0e1520;
+    border: 1px solid #1b2330;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+/* Gradient hairline across the top of the card (the demo's signature accent). */
+.email-bar {
+    height: 4px;
+    line-height: 4px;
+    font-size: 0;
+    background-color: #2563ff;
+    background: linear-gradient(100deg, #2563ff, #7c3aed 50%, #22e3ab);
+}
+
+/* Brand: a gradient rounded-square mark + the wordmark. */
+.email-mark {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    text-align: center;
+    vertical-align: middle;
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: 800;
+    background-color: #2563ff;
+    background: linear-gradient(135deg, #2563ff, #7c3aed 55%, #22e3ab);
+}
+
+.email-brand {
+    padding-left: 12px;
+    vertical-align: middle;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #f5f6fa;
 }
 
 .email-title {
-    color: #111827;
-    margin: 0 0 12px;
-    font-size: 22px;
+    margin: 0 0 10px;
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #f5f6fa;
 }
 
 .email-text {
-    color: #4b5563;
+    margin: 0;
     font-size: 15px;
-    line-height: 22px;
+    line-height: 24px;
+    color: #8b9ab4;
 }
 
+/* The verification code: monospace, teal, in an inset chip. */
 .email-code {
-    color: #111827;
+    display: inline-block;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: #22e3ab;
+    background-color: #0b1018;
+    border: 1px solid #1b2330;
+    border-radius: 10px;
+    padding: 14px 10px 14px 16px;
+}
+
+/* Primary CTA, the demo's `.btn-primary`. */
+.email-btn {
+    display: inline-block;
+    background-color: #2563ff;
+    color: #ffffff !important;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 12px 28px;
+    border-radius: 8px;
 }
 
 .email-fine {
-    color: #9ca3af;
+    margin: 0;
     font-size: 12px;
-    margin-top: 24px;
+    line-height: 18px;
+    color: #5d6a82;
+}
+
+.email-footer {
+    padding: 18px 32px;
+    border-top: 1px solid #1b2330;
+    text-align: center;
+    font-size: 12px;
+    color: #6b7a93;
 }
