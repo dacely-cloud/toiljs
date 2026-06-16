@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.50] - 2026-06-16
+
+### Other Changes
+
+- chore(deps): toilscript ^0.1.27 + drop duplicate RateLimit decl ([#171](https://github.com/dacely-cloud/toiljs/pull/171)) by @BlobMaster41
+
+
+
+
 ## [v0.0.49] - 2026-06-16
 
 ### Other Changes
