@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.47] - 2026-06-16
+
+### Other Changes
+
+- feat(email): brand Welcome email + preview; fix Ctrl+C orphan + log color ([#168](https://github.com/dacely-cloud/toiljs/pull/168)) by @BlobMaster41
+
+
+
+
 ## [v0.0.46] - 2026-06-16
 
 ### Other Changes
