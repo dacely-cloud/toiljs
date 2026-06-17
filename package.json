@@ -1,7 +1,7 @@
 {
     "name": "toiljs",
     "type": "module",
-    "version": "0.0.52",
+    "version": "0.0.53",
     "author": "Dacely",
     "description": "The modern React framework: a file-based React frontend and a ToilScript-compiled WebAssembly backend.",
     "repository": {
