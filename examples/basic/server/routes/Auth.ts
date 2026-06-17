@@ -4,7 +4,7 @@ import { DataReader, DataWriter } from 'data';
 import { encodeSessionUser } from './Session';
 
 /**
- * OPAQUE-style post-quantum auth, end-to-end and runnable under `toiljs dev`.
+ * Toil PQ-Auth: post-quantum password login, end-to-end and runnable under `toiljs dev`.
  *
  * The password never leaves the browser. The client blinds it through the
  * server-keyed OPRF (precomputation-resistant keyed salt), stretches the OPRF
@@ -105,7 +105,12 @@ function ensureConfigured(): void {
     // secret from the env store). Per-user OPRF keys derive from this + username.
     AuthService.setOprfSeed(crypto.sha256Text('toil-demo-oprf-seed-v1'));
     // Server static ML-KEM secret key (matches the client's pinned public key).
-    AuthService.setServerKemSecretKey(fromHex(SERVER_KEM_SK_HEX));
+    const sk = fromHex(SERVER_KEM_SK_HEX);
+    AuthService.setServerKemSecretKey(sk);
+    // The ML-KEM-768 public key (ek) is embedded in the decapsulation key at
+    // bytes [1152, 2336) (FIPS 203 dk layout); use it for the key id the login
+    // message binds. Identical to the public key the client pins.
+    AuthService.setServerKemPublicKey(sk.slice(1152, 2336));
     __configured = true;
 }
 
@@ -330,19 +335,24 @@ class Auth {
         if (ch == null) return fail();
         if (nowSecs() >= ch.exp) return fail();
 
-        // 2. Rebuild the v2 message from OUR stored values + the client's ct,
-        //    load the account key, verify the login signature.
+        // 2. Rebuild the message from OUR stored values + the client's ct (and
+        //    the bound params + server key id), load the account key, verify.
         const acct = getAccount(ch.username);
         if (acct == null) return fail();
-        const message = AuthService.buildLoginMessageV2(ch.username, AUD, cid, ch.nonce, ch.iat, ch.exp, ct);
+        const message = AuthService.buildLoginMessage(
+            ch.username, AUD, cid, ch.nonce, ch.iat, ch.exp,
+            ct, DEMO_MEM_KIB, DEMO_ITERS, DEMO_PAR, AuthService.serverKemKeyId(),
+        );
         if (!AuthService.verifyLogin(acct.publicKey, message, sig)) return fail();
 
-        // 3. Decapsulate the client's ciphertext (proves WE hold the KEM key) and
-        //    build the mutual-auth confirmation tag the client will verify.
+        // 3. Decapsulate (proves WE hold the KEM key), derive the session key K
+        //    bound to the transcript, and build the confirmation tag the client
+        //    verifies for mutual auth.
         const sharedSecret = AuthService.mlkemDecapsulate(ct);
         if (sharedSecret.length != AuthService.SHARED_SECRET_LEN) return fail();
         const transcriptHash = AuthService.sha256(message);
-        const confirm = AuthService.serverConfirmTag(sharedSecret, transcriptHash);
+        const sessionKey = AuthService.deriveSessionKey(sharedSecret, transcriptHash);
+        const confirm = AuthService.serverConfirmTag(sessionKey, transcriptHash);
 
         // 4. Success: mint the session and return {0, sessionToken, confirm}.
         const userData = encodeSessionUser(ch.username);

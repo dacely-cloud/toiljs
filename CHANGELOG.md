@@ -5,7 +5,7 @@
 ### Other Changes
 
 - feat(doctor): warn when a script wraps toiljs in npx ([#173](https://github.com/dacely-cloud/toiljs/pull/173)) by @BlobMaster41
-- feat(auth): OPAQUE-style PQ auth (OPRF keyed salt + ML-KEM mutual auth) ([#174](https://github.com/dacely-cloud/toiljs/pull/174)) by @BlobMaster41
+- feat(auth): Toil PQ-Auth — post-quantum password login (OPRF keyed salt + ML-KEM mutual auth) ([#174](https://github.com/dacely-cloud/toiljs/pull/174)) by @BlobMaster41
 
 
 

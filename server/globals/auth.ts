@@ -10,6 +10,7 @@
 // and the toiljs dev-server mock).
 
 import { DataWriter, DataReader } from 'data';
+import { HmacImportParams, HmacParams, ALG_SHA_256, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
 
 import {
     Server,
@@ -97,6 +98,34 @@ let __oprfSeed: Uint8Array = Uint8Array.wrap(
 // `AuthService.setServerKemSecretKey` (2400 bytes). Empty until set; mutual-auth
 // calls fail closed if unset.
 let __serverKemSk: Uint8Array = new Uint8Array(0);
+
+// Server static ML-KEM-768 PUBLIC (encapsulation) key, used only to compute the
+// key identity bound into the login transcript (`serverKemKeyId`). The client
+// pins the same key. Configured at startup via `setServerKemPublicKey`.
+let __serverKemPk: Uint8Array = new Uint8Array(0);
+
+// HMAC-SHA256(key, msg) via the ambient Web Crypto (same path SecureCookies
+// uses). The session-key derivation and the mutual-auth confirmation tag are
+// both keyed PRFs over the transcript; the client mirrors this with hash-wasm.
+function __hmacSha256(key: Uint8Array, msg: Uint8Array): Uint8Array {
+    const k = crypto.subtle.importKey(
+        'raw',
+        key,
+        new HmacImportParams(ALG_SHA_256),
+        false,
+        USAGE_SIGN | USAGE_VERIFY,
+    );
+    return crypto.subtle.sign(new HmacParams(), k, msg);
+}
+
+// `utf8(label) || transcriptHash` -- the HMAC message body for the derivations.
+function __labelled(label: string, transcriptHash: Uint8Array): Uint8Array {
+    const lb = Uint8Array.wrap(String.UTF8.encode(label));
+    const buf = new Uint8Array(lb.length + transcriptHash.length);
+    buf.set(lb, 0);
+    buf.set(transcriptHash, lb.length);
+    return buf;
+}
 
 // Whether the current request arrived over HTTPS. A TLS edge / proxy signals it
 // with `x-forwarded-proto: https`; absent (plain HTTP, including `toiljs dev`)
@@ -273,17 +302,23 @@ export namespace AuthService {
 
     /**
      * Build the canonical login message `M` the client signs and the server
-     * verifies, with a FIXED binary layout (no JSON). The server MUST call this
-     * with its OWN stored values, never with fields echoed by the client. Both
-     * ends use this exact field order via the byte-identical `DataWriter`:
+     * verifies. ONE fixed binary layout, no JSON and no version negotiation. The
+     * server MUST call this with its OWN stored values, never fields echoed by
+     * the client. Both ends produce byte-identical bytes via `DataWriter`:
      *
-     *   u8  version = 1
-     *   str sub      (username; u32-LE len + UTF-8)
-     *   str aud      (this service's audience; server-config constant)
-     *   bytes cid    (challenge id; u32-LE len + raw)
-     *   bytes nonce  (32 random bytes; u32-LE len + raw)
-     *   u64 iat      (issued-at, seconds, LE)
-     *   u64 exp      (expiry, seconds, LE)
+     *   u8    tag = 1          (format marker, not a compat switch)
+     *   str   sub              (username)
+     *   str   aud              (this service's audience; server-config constant)
+     *   bytes cid              (challenge id)
+     *   bytes nonce            (32 random bytes)
+     *   u64   iat
+     *   u64   exp
+     *   bytes ct               (ML-KEM ciphertext; binds the key encapsulation)
+     *   u32   memKiB           (Argon2id params, bound so a MITM cannot slip a
+     *   u32   iterations        downgrade past the signature)
+     *   u32   parallelism
+     *   bytes serverKemKeyId   (SHA-256 of the server KEM public key; binds the
+     *                           server identity the client encapsulated to)
      */
     export function buildLoginMessage(
         sub: string,
@@ -292,6 +327,11 @@ export namespace AuthService {
         nonce: Uint8Array,
         iat: u64,
         exp: u64,
+        ciphertext: Uint8Array,
+        memKiB: u32,
+        iterations: u32,
+        parallelism: u32,
+        serverKemKeyId: Uint8Array,
     ): Uint8Array {
         const w = new DataWriter();
         w.writeU8(1);
@@ -301,6 +341,11 @@ export namespace AuthService {
         w.writeBytes(nonce);
         w.writeU64(iat);
         w.writeU64(exp);
+        w.writeBytes(ciphertext);
+        w.writeU32(memKiB);
+        w.writeU32(iterations);
+        w.writeU32(parallelism);
+        w.writeBytes(serverKemKeyId);
         return w.toBytes();
     }
 
@@ -362,6 +407,16 @@ export namespace AuthService {
     }
 
     /**
+     * Configure the server static ML-KEM-768 PUBLIC key (1184 bytes), used to
+     * compute {@link serverKemKeyId}. Must be the key the client pins. (It is the
+     * `ek` embedded in the decapsulation key, so a tenant can pass
+     * `secretKey.slice(1152, 2336)` rather than store it twice.)
+     */
+    export function setServerKemPublicKey(publicKey: Uint8Array): void {
+        __serverKemPk = publicKey;
+    }
+
+    /**
      * OPRF server step: blind-evaluate the client's `blinded` element under the
      * per-user key derived from the master seed + `username`. Returns the 32-byte
      * evaluated element, or an empty array on any failure. The client unblinds +
@@ -408,53 +463,41 @@ export namespace AuthService {
         return crypto.subtle.digest('SHA-256', data);
     }
 
-    /**
-     * The canonical login message `M` (version 2), extending
-     * {@link buildLoginMessage} with the ML-KEM ciphertext so the signature
-     * binds the key-encapsulation. Byte-identical to the client's
-     * `buildLoginMessageV2`. Layout: the v1 fields, then `bytes ct`.
-     */
-    export function buildLoginMessageV2(
-        sub: string,
-        aud: string,
-        cid: Uint8Array,
-        nonce: Uint8Array,
-        iat: u64,
-        exp: u64,
-        ciphertext: Uint8Array,
-    ): Uint8Array {
-        const w = new DataWriter();
-        w.writeU8(2);
-        w.writeString(sub);
-        w.writeString(aud);
-        w.writeBytes(cid);
-        w.writeBytes(nonce);
-        w.writeU64(iat);
-        w.writeU64(exp);
-        w.writeBytes(ciphertext);
-        return w.toBytes();
+    /** `SHA-256(serverKemPublicKey)` -- the key identity bound into the login
+     *  message, so the signature commits to which server key the client
+     *  encapsulated to. The client computes the same hash over its pinned key. */
+    export function serverKemKeyId(): Uint8Array {
+        return sha256(__serverKemPk);
     }
 
-    /** Domain separator for the server's mutual-auth confirmation tag. */
+    /** Domain separators for the session-key derivation and confirmation tag. */
+    export const SESSION_KEY_LABEL: string = 'toil-session-key-v1';
     export const SERVER_CONFIRM_LABEL: string = 'toil-server-confirm-v1';
 
     /**
-     * The server's mutual-auth confirmation tag: `SHA-256(label || sharedSecret
-     * || transcriptHash)`. Only a server that correctly decapsulated (i.e. holds
-     * the KEM secret key) can produce it, so the client verifying it proves the
-     * server's identity. `transcriptHash` is `sha256(M)`.
+     * Derive the authenticated session key `K` from the ML-KEM shared secret,
+     * bound to the transcript: `K = HMAC-SHA256(sharedSecret, SESSION_KEY_LABEL ||
+     * transcriptHash)`. The shared secret is already a uniform 32-byte key, so it
+     * keys the HMAC directly (an HKDF-Expand step). Both ends derive the same `K`
+     * iff the KEM exchange and transcript match.
      *
-     * NOTE: a SHA-256 MAC keyed by the high-entropy shared secret is adequate
-     * here and keeps the client (insecure-context) simple; a hardened build
-     * should derive a session key with HKDF and bind it to the channel.
+     * NOTE: `K` is the handle for future channel binding. Binding the *session
+     * cookie* to the transport (so a stolen cookie is useless on another channel)
+     * needs the TLS exporter, which the wasm guest cannot see -- that is an
+     * edge/transport follow-up, not doable purely here.
      */
-    export function serverConfirmTag(sharedSecret: Uint8Array, transcriptHash: Uint8Array): Uint8Array {
-        const label = Uint8Array.wrap(String.UTF8.encode(SERVER_CONFIRM_LABEL));
-        const buf = new Uint8Array(label.length + sharedSecret.length + transcriptHash.length);
-        buf.set(label, 0);
-        buf.set(sharedSecret, label.length);
-        buf.set(transcriptHash, label.length + sharedSecret.length);
-        return crypto.subtle.digest('SHA-256', buf);
+    export function deriveSessionKey(sharedSecret: Uint8Array, transcriptHash: Uint8Array): Uint8Array {
+        return __hmacSha256(sharedSecret, __labelled(SESSION_KEY_LABEL, transcriptHash));
+    }
+
+    /**
+     * The server's mutual-auth confirmation tag: `HMAC-SHA256(K, SERVER_CONFIRM_LABEL
+     * || transcriptHash)`, where `K` is {@link deriveSessionKey}. Only a server
+     * that decapsulated correctly (i.e. holds the KEM secret key) derives the same
+     * `K`, so the client verifying this tag proves the server's identity.
+     */
+    export function serverConfirmTag(sessionKey: Uint8Array, transcriptHash: Uint8Array): Uint8Array {
+        return __hmacSha256(sessionKey, __labelled(SERVER_CONFIRM_LABEL, transcriptHash));
     }
 
     /** Registration proof-of-possession context (binds a signature to "register"

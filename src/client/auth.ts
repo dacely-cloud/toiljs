@@ -11,7 +11,7 @@
  * JSON, byte-identical to the server's `AuthService.buildLoginMessage`.
  */
 
-import { argon2id, sha256, createSHA256 } from 'hash-wasm';
+import { argon2id, createSHA256, createHMAC } from 'hash-wasm';
 import { ml_dsa44 } from '@dacely/noble-post-quantum/ml-dsa.js';
 import { ml_kem768 } from '@dacely/noble-post-quantum/ml-kem.js';
 import { ristretto255_oprf } from '@noble/curves/ed25519.js';
@@ -22,7 +22,9 @@ import { DataReader, DataWriter } from 'toiljs/io';
 export const LOGIN_CONTEXT = 'qauth:login:v1';
 /** Registration proof-of-possession context (binds a sig to "register"). */
 export const REGISTER_CONTEXT = 'qauth:register:v1';
-/** Domain separator for the server's mutual-auth confirmation tag. */
+/** Domain separators for the session-key derivation and the confirmation tag.
+ *  Byte-identical to the server. */
+export const SESSION_KEY_LABEL = 'toil-session-key-v1';
 export const SERVER_CONFIRM_LABEL = 'toil-server-confirm-v1';
 
 /** ML-KEM-768 sizes (FIPS 203). */
@@ -98,6 +100,16 @@ async function sha256Bytes(data: Uint8Array): Promise<Uint8Array> {
     return h.digest('binary') as unknown as Uint8Array;
 }
 
+/** HMAC-SHA256(key, msg) -> 32 raw bytes, via hash-wasm (pure WASM, works in an
+ *  insecure context). Mirrors the server's `AuthService` HMAC for the session-key
+ *  derivation and the mutual-auth confirmation tag. */
+async function hmacSha256(key: Uint8Array, msg: Uint8Array): Promise<Uint8Array> {
+    const h = await createHMAC(createSHA256(), key);
+    h.init();
+    h.update(msg);
+    return h.digest('binary') as unknown as Uint8Array;
+}
+
 function concatBytes(...parts: Uint8Array[]): Uint8Array {
     let n = 0;
     for (const p of parts) n += p.length;
@@ -118,8 +130,11 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
     return diff === 0;
 }
 
-/** The canonical login message `M`, fixed binary layout (see the server's
- *  `AuthService.buildLoginMessage`). Both ends MUST produce identical bytes. */
+/** The canonical login message `M` -- ONE fixed binary layout, byte-identical to
+ *  the server's `AuthService.buildLoginMessage`. Binds the ML-KEM ciphertext (so
+ *  the signature commits to the key encapsulation), the Argon2id params (so a
+ *  MITM cannot slip a downgrade past the signature), and the server KEM key id
+ *  (so it commits to which server key was encapsulated to). */
 export function buildLoginMessage(
     sub: string,
     aud: string,
@@ -127,6 +142,11 @@ export function buildLoginMessage(
     nonce: Uint8Array,
     iat: bigint,
     exp: bigint,
+    ciphertext: Uint8Array,
+    memKiB: number,
+    iterations: number,
+    parallelism: number,
+    serverKemKeyId: Uint8Array,
 ): Uint8Array {
     return new DataWriter()
         .writeU8(1)
@@ -136,30 +156,11 @@ export function buildLoginMessage(
         .writeBytes(nonce)
         .writeU64(iat)
         .writeU64(exp)
-        .toBytes();
-}
-
-/** Login message `M` v2: the v1 fields plus the ML-KEM ciphertext, so the
- *  ML-DSA signature binds the key encapsulation. Byte-identical to the server's
- *  `AuthService.buildLoginMessageV2`. */
-export function buildLoginMessageV2(
-    sub: string,
-    aud: string,
-    cid: Uint8Array,
-    nonce: Uint8Array,
-    iat: bigint,
-    exp: bigint,
-    ciphertext: Uint8Array,
-): Uint8Array {
-    return new DataWriter()
-        .writeU8(2)
-        .writeString(sub)
-        .writeString(aud)
-        .writeBytes(cid)
-        .writeBytes(nonce)
-        .writeU64(iat)
-        .writeU64(exp)
         .writeBytes(ciphertext)
+        .writeU32(memKiB)
+        .writeU32(iterations)
+        .writeU32(parallelism)
+        .writeBytes(serverKemKeyId)
         .toBytes();
 }
 
@@ -199,7 +200,7 @@ export interface AuthOptions {
 }
 
 /**
- * Register a new account (OPAQUE-style). The password never leaves the browser:
+ * Register a new account. The password never leaves the browser:
  * it is blinded and run through the server-keyed OPRF, the OPRF output is
  * stretched with Argon2id into an ML-DSA-44 keypair, and ONLY the public key
  * (plus a proof-of-possession signature) is submitted. Throws on failure.
@@ -253,7 +254,7 @@ export async function register(username: string, password: string, opts: AuthOpt
 }
 
 /**
- * Log in (OPAQUE-style, with ML-KEM mutual auth). Steps:
+ * Log in (challenge-response with ML-KEM mutual auth). Steps:
  *   1. Blind the password; `login/start` returns the challenge + the OPRF
  *      evaluation (a fully-formed response even for unknown users -> no oracle).
  *   2. Finalize the OPRF -> keyed salt -> seed -> ML-DSA keypair.
@@ -292,9 +293,14 @@ export async function login(username: string, password: string, opts: AuthOption
     const oprfOutput = oprf.finalize(pw, blind, evaluated);
     const seed = await deriveSeed(oprfOutput, kdf);
 
-    // 3. Encapsulate to the pinned server KEM key, build + sign the v2 message.
+    // 3. Encapsulate to the pinned server KEM key; build + sign the message,
+    //    which binds the ciphertext, the KDF params, and the server key id.
     const { cipherText, sharedSecret } = ml_kem768.encapsulate(SERVER_KEM_PUBLIC_KEY);
-    const message = buildLoginMessageV2(username, aud, cid, nonce, iat, exp, cipherText);
+    const serverKemKeyId = await sha256Bytes(SERVER_KEM_PUBLIC_KEY);
+    const message = buildLoginMessage(
+        username, aud, cid, nonce, iat, exp,
+        cipherText, kdf.memKiB, kdf.iterations, kdf.parallelism, serverKemKeyId,
+    );
     let signature: Uint8Array;
     try {
         const kp = ml_dsa44.keygen(seed);
@@ -321,135 +327,18 @@ export async function login(username: string, password: string, opts: AuthOption
     const session = res.readBytes();
     const serverConfirm = res.readBytes();
 
-    // 5. Mutual auth: only a server that decapsulated correctly can produce
-    //    SHA-256(label || sharedSecret || sha256(M)). Verify before trusting.
+    // 5. Mutual auth: derive the session key K = HMAC(sharedSecret, label || H(M)),
+    //    then check the server's tag = HMAC(K, label || H(M)). Only a server that
+    //    decapsulated correctly derives the same K, so a valid tag proves its
+    //    identity. Verify before returning the session.
     const transcriptHash = await sha256Bytes(message);
-    const expected = await sha256Bytes(
-        concatBytes(utf8(SERVER_CONFIRM_LABEL), sharedSecret, transcriptHash),
-    );
+    const sessionKey = await hmacSha256(sharedSecret, concatBytes(utf8(SESSION_KEY_LABEL), transcriptHash));
     wipe(sharedSecret);
+    const expected = await hmacSha256(sessionKey, concatBytes(utf8(SERVER_CONFIRM_LABEL), transcriptHash));
     if (!bytesEqual(expected, serverConfirm)) throw new Error('auth: server authentication failed');
 
     return session; // session token
 }
 
-/** Lowercase hex of `bytes`. */
-function toHex(bytes: Uint8Array): string {
-    let s = '';
-    for (const b of bytes) s += b.toString(16).padStart(2, '0');
-    return s;
-}
-
-/** The signed identity proof produced by {@link proveIdentity}. */
-export interface IdentityProof {
-    /** The wire envelope to POST to `/pq/verify`: `str(sub) str(token)
-     *  bytes(publicKey) bytes(signature)`, where `token` is the edge's
-     *  HMAC-signed challenge. The server re-opens the token, rebuilds the login
-     *  message from the values inside it, and `AuthService.verifyLogin`s it. */
-    readonly envelope: Uint8Array;
-    /** First bytes of the 1312-byte ML-DSA-44 public key, for display. */
-    readonly publicKeyHex: string;
-    /** First bytes of the SERVER-issued nonce that was signed, for display. */
-    readonly nonceHex: string;
-    /** Signature length (always 2420 for ML-DSA-44), for display. */
-    readonly signatureLen: number;
-    /** Argon2id wall-clock spent deriving the keypair, ms (for display). */
-    readonly deriveMs: number;
-}
-
-/** Deterministic 16-byte Argon2id salt for the demo, so the same
- *  username + password always maps to the same identity (keypair).
- *  Uses hash-wasm's SHA-256 (pure WebAssembly), not `crypto.subtle`, so it
- *  works in an insecure context (plain HTTP), where `crypto.subtle` is
- *  undefined. */
-async function demoSalt(username: string): Promise<Uint8Array> {
-    const hex = await sha256('pq-demo|' + username);
-    const out = new Uint8Array(16);
-    for (let i = 0; i < 16; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
-    return out;
-}
-
-/**
- * DEMO helper: run the full post-quantum challenge-response in the browser.
- * Fetches a SERVER-issued challenge (`GET {baseUrl}/challenge`), stretches the
- * password with Argon2id into an ML-DSA-44 keypair, signs the login message
- * built from the SERVER's nonce/cid/iat/exp, and returns the wire envelope the
- * edge verifies (`AuthService.verifyLogin`). The secret key and seed are wiped
- * before returning; only the public key + signature leave the tab.
- *
- * The nonce is server-chosen and tamper-proof (the challenge token is
- * HMAC-signed by the edge), so a client cannot pre-sign or substitute its own.
- * It is still NOT the full production login -- there is no single-use consume, so
- * within the challenge TTL a captured proof could be replayed; that needs an
- * atomic store (see {@link login} and server/routes/Auth.ts). Demo-light
- * Argon2id params (16 MiB / 2 passes) keep it responsive in a tab; a real
- * deployment uses >= 256 MiB.
- */
-export async function proveIdentity(
-    username: string,
-    password: string,
-    opts: { baseUrl?: string } = {},
-): Promise<IdentityProof> {
-    const baseUrl = opts.baseUrl ?? '/pq';
-
-    // 1. Server-issued challenge: aud, cid, nonce, iat, exp, and the signed token.
-    const cres = await fetch(baseUrl + '/challenge', { credentials: 'same-origin' });
-    if (!cres.ok) throw new Error('pq: challenge request failed');
-    const cr = new DataReader(new Uint8Array(await cres.arrayBuffer()));
-    const aud = cr.readString();
-    const cid = cr.readBytes();
-    const nonce = cr.readBytes();
-    const iat = cr.readU64();
-    const exp = cr.readU64();
-    const token = cr.readString();
-
-    // 2. Derive the keypair and sign the message built from the SERVER's values.
-    const salt = await demoSalt(username);
-    const t0 = Date.now();
-    const seed = await argon2id({
-        password: new TextEncoder().encode(password.normalize('NFKC')),
-        salt,
-        iterations: 2,
-        parallelism: 1,
-        memorySize: 16 * 1024, // 16 MiB: demo-light, responsive in a tab
-        hashLength: SEED_LEN,
-        outputType: 'binary',
-    });
-    const deriveMs = Date.now() - t0;
-
-    const message = buildLoginMessage(username, aud, cid, nonce, iat, exp);
-    let publicKey: Uint8Array;
-    let signature: Uint8Array;
-    try {
-        const kp = ml_dsa44.keygen(seed);
-        publicKey = kp.publicKey;
-        try {
-            signature = ml_dsa44.sign(message, kp.secretKey, {
-                context: new TextEncoder().encode(LOGIN_CONTEXT),
-            });
-        } finally {
-            wipe(kp.secretKey);
-        }
-    } finally {
-        wipe(seed);
-    }
-
-    // 3. Envelope: sub + the server's token + the public key + the signature.
-    const envelope = new DataWriter()
-        .writeString(username)
-        .writeString(token)
-        .writeBytes(publicKey)
-        .writeBytes(signature)
-        .toBytes();
-
-    return {
-        envelope,
-        publicKeyHex: toHex(publicKey.slice(0, 16)),
-        nonceHex: toHex(nonce.slice(0, 16)),
-        signatureLen: signature.length,
-        deriveMs,
-    };
-}
-
 /** The client auth surface, grouped for `Auth.register` / `Auth.login` use. */
-export const Auth = { register, login, proveIdentity, buildLoginMessage, LOGIN_CONTEXT } as const;
+export const Auth = { register, login, buildLoginMessage, LOGIN_CONTEXT } as const;

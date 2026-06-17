@@ -260,7 +260,7 @@ export function buildCryptoImports(
         },
 
         // RFC 9497 OPRF (mode 0x00, ristretto255-SHA512) server evaluation for
-        // the OPAQUE-style keyed salt. Mirrors the edge host
+        // the keyed-salt OPRF. Mirrors the edge host
         // (`voprf_evaluate_import.rs` / the `voprf` crate): derive the per-user
         // key from (seed, info=username) and blind-evaluate the client's blinded
         // element, writing the 32-byte evaluated element to `outPtr`. Backed by

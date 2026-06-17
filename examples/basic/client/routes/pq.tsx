@@ -1,4 +1,4 @@
-// Post-quantum auth demo, full OPAQUE-style chain (the password never leaves the
+// Post-quantum auth demo, the full toil PQ-Auth chain (the password never leaves the
 // tab). REGISTER: the browser blinds the password through the server-keyed OPRF,
 // stretches the OPRF output with Argon2id into an ML-DSA-44 keypair, and submits
 // only the public key + a proof-of-possession. LOG IN: a challenge-response that
@@ -49,7 +49,7 @@ interface VerifiedUser {
 export const metadata: Toil.Metadata = {
     title: 'Post-quantum auth',
     description:
-        'OPAQUE-style: an OPRF keyed salt + ML-DSA-44 (FIPS 204) auth + ML-KEM-768 (FIPS 203) mutual auth. The password never leaves the browser.',
+        'A server-keyed-salt OPRF + ML-DSA-44 (FIPS 204) auth + ML-KEM-768 (FIPS 203) mutual auth. The password never leaves the browser.',
 };
 
 type Note = { kind: 'ok' | 'err'; text: string } | null;
@@ -127,7 +127,7 @@ export default function Pq(): React.JSX.Element {
 
     return (
         <main style={{ maxWidth: 680 }}>
-            <h1>Post-quantum login (OPAQUE-style)</h1>
+            <h1>Post-quantum login</h1>
             <p>
                 <strong>Register</strong> blinds the password through the server-keyed <strong>OPRF</strong> (so a
                 breached server can&apos;t precompute a password dictionary), stretches the result with{' '}

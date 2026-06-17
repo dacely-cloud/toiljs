@@ -1,10 +1,10 @@
 # Auth: production TODO and toildb migration
 
-Tracking doc for finishing the OPAQUE-style PQ auth system (shipped experimental in
+Tracking doc for finishing the Toil PQ-Auth system (shipped experimental in
 **v0.0.52**). The cryptographic core is in place; what is left is the deployment
 substrate, protocol hardening, and account lifecycle.
 
-> This system is a **hybrid, experimental** augmented PAKE and is **NOT a framework
+> This system is a **hybrid, experimental** password-authenticated login and is **NOT a framework
 > default until externally reviewed** (see Tier 2.8). It is opt-in: a tenant must wire
 > it. The OPRF layer is classical ristretto255 (the one non-PQ piece); auth (ML-DSA-44)
 > and key agreement (ML-KEM-768) are post-quantum.
@@ -74,21 +74,19 @@ in-prod `mldsa_verify` import). Do before trusting in prod.
 
 ## Tier 2 — protocol hardening
 
-### 2.6 A properly bound session key
-Today the mutual-auth tag is `SHA-256(label || ss || transcriptHash)` and the session is
-the existing HMAC bearer cookie -- **not bound to the KEM shared secret**. Derive
-`K = HKDF(ss, transcript)` (guest has HKDF via `crypto.derive_bits`; client builds it from
-hash-wasm `createHMAC`) and make the confirm tag `HMAC(K, transcript)`. NOTE: fully
-binding the *session* to the channel (so a stolen cookie is useless on another channel)
-needs the TLS exporter, which the wasm guest cannot see -- that part is an edge/transport
-concern, not doable purely in the guest.
+### 2.6 A properly bound session key — DONE (on main, unreleased)
+The session key is now `K = HMAC-SHA256(sharedSecret, SESSION_KEY_LABEL || H(M))` and the
+mutual-auth tag is `HMAC-SHA256(K, SERVER_CONFIRM_LABEL || H(M))` (`AuthService.deriveSessionKey`
++ `serverConfirmTag`; client mirrors it with hash-wasm `createHMAC`). REMAINING: binding the
+*session cookie* to the transport (so a stolen cookie is useless on another channel) needs
+the TLS exporter, which the wasm guest cannot see — an edge/transport follow-up, not doable
+purely in the guest.
 
-### 2.7 Bind more into the signed transcript
-`M` binds the ML-KEM ciphertext but not the **server KEM public-key identity** or the
-**KDF params**. Add `sha256(serverKemPublicKey)` + (mem, iters, par) to `M` (bump to v3 on
-client `buildLoginMessageV2` + `AuthService.buildLoginMessageV2` + the example). Closes
-key-substitution and param-downgrade confusion. The server must be configured with its KEM
-**public** key (or a precomputed keyId), not only the secret key.
+### 2.7 Bind the KDF params + server key into the transcript — DONE (on main, unreleased)
+The single `buildLoginMessage` now binds the ML-KEM ciphertext, the Argon2id params
+(mem/iters/par), and `serverKemKeyId = SHA-256(serverKemPublicKey)`. Closes
+key-substitution and param-downgrade confusion. (There is ONE login message format, no
+versioned variants.)
 
 ### 2.8 External cryptographic review (the gate)
 Hand-rolled KEM + signature + OPRF composition with no security proof. Transcript binding
@@ -136,7 +134,7 @@ credential fingerprint** (collision-resistant, re-derivable, good for dedup). BU
   dedup / "is this the same key"). Revisit only if password rotation is ruled out.
 
 ### D2. OPRF mode vs VOPRF/DLEQ
-Plain OPRF mode by design (server auth comes from the ML-KEM layer, OPAQUE-faithful). Add
+Plain OPRF mode by design (server auth comes from the ML-KEM layer). Add
 DLEQ only if the client must verify OPRF-key consistency. Likely unnecessary.
 
 ### D3. Multi-device / WebAuthn-style per-device keys
