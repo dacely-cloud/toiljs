@@ -1,18 +1,14 @@
-// Post-quantum identity demo, challenge-response. The browser fetches a
-// SERVER-issued challenge (a fresh nonce the edge HMAC-signs into a token),
-// derives an ML-DSA-44 keypair from a password (Argon2id, all client-side, the
-// password never leaves), signs the message built from the server's nonce, and
-// POSTs the public key + signature + token to the edge, which re-opens the token
-// (rejecting a forged/expired one) and verifies via `crypto.mldsa_verify`
-// (server/routes/PqDemo.ts). The secret key is wiped right after signing.
-//
-// The nonce is server-chosen and tamper-proof, so a client cannot pre-sign or
-// swap in its own. It still isn't the full production login (no single-use
-// consume -> within the TTL a captured proof could be replayed; that needs a
-// store) -- see Auth.login / server/routes/Auth.ts and docs/auth.md.
+// Post-quantum auth demo, full OPAQUE-style chain (the password never leaves the
+// tab). REGISTER: the browser blinds the password through the server-keyed OPRF,
+// stretches the OPRF output with Argon2id into an ML-DSA-44 keypair, and submits
+// only the public key + a proof-of-possession. LOG IN: a challenge-response that
+// also runs an ML-KEM-768 encapsulation; the server proves its own identity with
+// a confirmation tag the client verifies (mutual auth). On success the edge mints
+// the signed `__Host-toil_sess` session. See server/routes/Auth.ts +
+// server/globals/auth.ts (the AuthService global) and toiljs/client (Auth.*).
 import { useCallback, useState } from 'react';
 
-import { Auth, type IdentityProof } from 'toiljs/client';
+import { Auth } from 'toiljs/client';
 import { Account } from 'shared/server';
 
 import { useBrowserValue } from '../lib/useBrowserValue';
@@ -53,66 +49,54 @@ interface VerifiedUser {
 export const metadata: Toil.Metadata = {
     title: 'Post-quantum auth',
     description:
-        'ML-DSA-44 (FIPS 204) end-to-end: the browser derives a keypair from a password (Argon2id) and signs; the edge verifies via crypto.mldsa_verify. No secret ever leaves the client.',
+        'OPAQUE-style: an OPRF keyed salt + ML-DSA-44 (FIPS 204) auth + ML-KEM-768 (FIPS 203) mutual auth. The password never leaves the browser.',
 };
 
-type Result = { ok: boolean; status: number; text: string } | { error: string };
-
-async function postVerify(envelope: Uint8Array): Promise<Result> {
-    try {
-        const res = await fetch('/pq/verify', {
-            method: 'POST',
-            headers: { 'content-type': 'application/octet-stream' },
-            body: envelope as BodyInit,
-        });
-        return { ok: res.ok, status: res.status, text: (await res.text()).trim() };
-    } catch (e) {
-        return { error: e instanceof Error ? e.message : String(e) };
-    }
-}
-
-/** Flip one byte of the signature (last field) so the proof must fail. */
-function tamper(envelope: Uint8Array): Uint8Array {
-    const out = envelope.slice();
-    if (out.length > 0) out[out.length - 1] ^= 0x01;
-    return out;
-}
+type Note = { kind: 'ok' | 'err'; text: string } | null;
 
 export default function Pq(): React.JSX.Element {
     const [username, setUsername] = useState('ada');
     const [password, setPassword] = useState('correct horse battery staple');
     const [busy, setBusy] = useState(false);
-    const [proof, setProof] = useState<IdentityProof | null>(null);
-    const [result, setResult] = useState<Result | null>(null);
+    const [note, setNote] = useState<Note>(null);
     const [verified, setVerified] = useState<VerifiedUser | null | 'none'>(null);
 
     // Hydration-safe: null on the server and first paint, the live companion
     // cookie after mount; `refreshCompanion()` re-reads after a PQ login.
     const [companion, refreshCompanion] = useBrowserValue(readCompanion, null);
 
-    const prove = useCallback(
-        async (doTamper: boolean) => {
-            setBusy(true);
-            setResult(null);
-            setVerified(null);
-            try {
-                const p = await Auth.proveIdentity(username, password);
-                setProof(p);
-                // A real (untampered) proof logs in: /pq/verify mints the session.
-                const r = await postVerify(doTamper ? tamper(p.envelope) : p.envelope);
-                setResult(r);
-                refreshCompanion();
-            } catch (e) {
-                setResult({ error: e instanceof Error ? e.message : String(e) });
-            } finally {
-                setBusy(false);
-            }
-        },
-        [username, password, refreshCompanion],
-    );
+    const doRegister = useCallback(async () => {
+        setBusy(true);
+        setNote(null);
+        setVerified(null);
+        try {
+            await Auth.register(username, password);
+            setNote({ kind: 'ok', text: 'registered — the server stored only your public key + PoP. Now log in.' });
+        } catch (e) {
+            setNote({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+        } finally {
+            setBusy(false);
+        }
+    }, [username, password]);
 
-    /** Hit the @auth-guarded /session/me to prove the PQ login established a
-     *  real session the server re-verifies. */
+    const doLogin = useCallback(async () => {
+        setBusy(true);
+        setNote(null);
+        setVerified(null);
+        try {
+            // Resolves only if the server's mutual-auth confirmation tag verified.
+            await Auth.login(username, password);
+            setNote({ kind: 'ok', text: 'logged in — mutual auth verified (server proved it holds the KEM key).' });
+            refreshCompanion();
+        } catch (e) {
+            setNote({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
+        } finally {
+            setBusy(false);
+        }
+    }, [username, password, refreshCompanion]);
+
+    /** Hit the @auth-guarded /session/me to prove the login established a real
+     *  session the server re-verifies. */
     const checkSession = useCallback(async () => {
         setBusy(true);
         try {
@@ -135,7 +119,7 @@ export default function Pq(): React.JSX.Element {
             await fetch('/session/logout', { method: 'POST', credentials: 'same-origin' });
             refreshCompanion();
             setVerified(null);
-            setResult(null);
+            setNote(null);
         } finally {
             setBusy(false);
         }
@@ -143,13 +127,15 @@ export default function Pq(): React.JSX.Element {
 
     return (
         <main style={{ maxWidth: 680 }}>
-            <h1>Post-quantum login</h1>
+            <h1>Post-quantum login (OPAQUE-style)</h1>
             <p>
-                The edge issues a fresh, HMAC-signed <strong>challenge</strong> (a server-chosen nonce). The browser
-                stretches the password with <strong>Argon2id</strong>, expands it into an <strong>ML-DSA-44</strong>{' '}
-                (FIPS 204) keypair, and signs the message built from <em>that</em> nonce. Only the public key,
-                signature, and the server's token are sent back; the edge re-opens the token and verifies with the{' '}
-                <code>crypto.mldsa_verify</code> host import. The password and secret key never leave this tab.
+                <strong>Register</strong> blinds the password through the server-keyed <strong>OPRF</strong> (so a
+                breached server can&apos;t precompute a password dictionary), stretches the result with{' '}
+                <strong>Argon2id</strong> into an <strong>ML-DSA-44</strong> keypair, and sends only the public key plus
+                a proof-of-possession. <strong>Log in</strong> signs a server challenge and runs an{' '}
+                <strong>ML-KEM-768</strong> key encapsulation; the edge decapsulates and returns a confirmation tag the
+                browser verifies, so the <em>server</em> is authenticated too. The password and secret key never leave
+                this tab.
             </p>
 
             <div style={{ display: 'grid', gap: 8, maxWidth: 420 }}>
@@ -166,50 +152,30 @@ export default function Pq(): React.JSX.Element {
                     />
                 </label>
                 <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => prove(false)} disabled={busy}>
-                        {busy ? 'Deriving + signing…' : 'Log in'}
+                    <button onClick={doRegister} disabled={busy}>
+                        {busy ? 'Working…' : 'Register'}
                     </button>
-                    <button onClick={() => prove(true)} disabled={busy} title="Flip a signature byte: must fail">
-                        Tamper, then verify
+                    <button onClick={doLogin} disabled={busy}>
+                        {busy ? 'Working…' : 'Log in'}
                     </button>
                 </div>
                 <p style={{ fontSize: '0.8rem', opacity: 0.7, margin: 0 }}>
-                    Demo: pre-filled <code>ada</code> / <code>correct horse battery staple</code> &mdash; but any
-                    username + password works. The keypair is derived from the <strong>username AND password</strong>:
-                    Argon2id is salted with the username (<code>sha256(&quot;pq-demo|&quot; + username)</code>), so two
-                    people with the same password get different identities. Same username+password always maps to the
-                    same keypair (no signup). What a real app adds (and this stateless demo can&apos;t, without a
-                    store): binding a username to a <em>registered</em> key, so here the username is self-asserted
-                    &mdash; <code>server/routes/Auth.ts</code>.
+                    Demo: pre-filled <code>ada</code> / <code>correct horse battery staple</code>. Register once, then
+                    log in. A wrong password fails at login (the derived key won&apos;t match the stored one). Storage is
+                    the DEV-only in-process KV (<code>src/devserver/kv.ts</code>); a real deployment wires an atomic
+                    store — <code>server/routes/Auth.ts</code>.
                 </p>
             </div>
 
-            {proof && (
-                <p style={{ marginTop: 16, fontFamily: 'monospace', fontSize: '0.85rem', opacity: 0.8 }}>
-                    server nonce {proof.nonceHex}…, Argon2id {proof.deriveMs} ms, public key {proof.publicKeyHex}…
-                    (1312 B), signature {proof.signatureLen} B
-                </p>
-            )}
-
-            {result && (
-                <p
-                    style={{
-                        marginTop: 8,
-                        fontWeight: 600,
-                        color: 'error' in result ? '#c0392b' : result.ok ? '#1e8449' : '#c0392b',
-                    }}
-                >
-                    {'error' in result
-                        ? `error: ${result.error}`
-                        : `POST /pq/verify -> ${result.status}: ${result.text}`}
+            {note && (
+                <p style={{ marginTop: 8, fontWeight: 600, color: note.kind === 'ok' ? '#1e8449' : '#c0392b' }}>
+                    {note.text}
                 </p>
             )}
 
             {companion && (
                 <section style={{ marginTop: 20, borderTop: '1px solid #8884', paddingTop: 16 }}>
-                    <h2 style={{ fontSize: '1.05rem' }}>
-                        Signed in &mdash; the post-quantum proof minted a session
-                    </h2>
+                    <h2 style={{ fontSize: '1.05rem' }}>Signed in &mdash; the post-quantum login minted a session</h2>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                         <div style={{ border: '1px solid #2563ff55', borderRadius: 8, padding: '0.6rem 0.9rem' }}>
                             <strong>getUser(), client</strong>
@@ -248,12 +214,9 @@ export default function Pq(): React.JSX.Element {
             )}
 
             <p style={{ marginTop: 24, opacity: 0.7, fontSize: '0.9rem' }}>
-                This is the full login: the password derives an ML-DSA-44 keypair client-side, the edge verifies the
-                signature, and on success it mints the signed <code>__Host-toil_sess</code> session, so every{' '}
-                <code>@auth</code> route (like <code>/session/me</code>) and <code>getUser()</code> now recognise you.
-                The challenge is server-issued and tamper-proof but stateless, so it has no single-use consume yet
-                (within the TTL a captured proof could be replayed; the atomic-consume shape is in{' '}
-                <code>server/routes/Auth.ts</code>). Plain sessions are on the{' '}
+                This is the full augmented-PAKE chain: OPRF keyed salt + ML-DSA client auth + ML-KEM mutual auth, with an
+                atomic single-use challenge consume. The OPRF layer is classical ristretto255 (the one non-PQ piece);
+                auth and key agreement are post-quantum. Plain sessions are on the{' '}
                 <Toil.Link href="/auth">Auth</Toil.Link> page.
             </p>
             <p>

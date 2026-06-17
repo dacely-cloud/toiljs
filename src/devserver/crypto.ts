@@ -18,6 +18,8 @@
 import * as nodeCrypto from 'node:crypto';
 
 import { ml_dsa44 } from '@dacely/noble-post-quantum/ml-dsa.js';
+import { ml_kem768 } from '@dacely/noble-post-quantum/ml-kem.js';
+import { ristretto255_oprf } from '@noble/curves/ed25519.js';
 
 import type { MemoryRef } from './host.js';
 
@@ -232,6 +234,58 @@ export function buildCryptoImports(
                 return ml_dsa44.verify(sig, msg, pk, { context: ctx }) ? 1 : 0;
             } catch {
                 return -1;
+            }
+        },
+
+        // ML-KEM-768 (FIPS 203) decapsulation for the mutual-auth + session-key
+        // layer. Mirrors the edge host (`mlkem_decapsulate_import.rs` / fips203):
+        // recover the 32-byte shared secret from the client's ciphertext using
+        // the server's static secret key, write it to `outPtr`, return 0 / neg.
+        // Backed by the same noble lib the client encapsulates with (dev == prod).
+        'crypto.mlkem_decapsulate': (
+            ctPtr: number, ctLen: number,
+            skPtr: number, skLen: number,
+            outPtr: number,
+        ): number => {
+            if (ctLen !== 1088 || skLen !== 2400) return -4;
+            try {
+                const ct = new Uint8Array(readBytes(ref, ctPtr, ctLen));
+                const sk = new Uint8Array(readBytes(ref, skPtr, skLen));
+                const ss = ml_kem768.decapsulate(ct, sk); // 32 bytes; implicit rejection on bad ct
+                writeBytes(ref, outPtr, Buffer.from(ss));
+                return 0;
+            } catch {
+                return -5;
+            }
+        },
+
+        // RFC 9497 OPRF (mode 0x00, ristretto255-SHA512) server evaluation for
+        // the OPAQUE-style keyed salt. Mirrors the edge host
+        // (`voprf_evaluate_import.rs` / the `voprf` crate): derive the per-user
+        // key from (seed, info=username) and blind-evaluate the client's blinded
+        // element, writing the 32-byte evaluated element to `outPtr`. Backed by
+        // `@noble/curves` ristretto255_oprf, which matches the edge byte-for-byte
+        // (both RFC 9497), so dev == prod.
+        'crypto.voprf_evaluate': (
+            seedPtr: number, seedLen: number,
+            infoPtr: number, infoLen: number,
+            blindedPtr: number, blindedLen: number,
+            outPtr: number,
+        ): number => {
+            // seedLen MUST be exactly 32 (RFC 9497 Ns; noble deriveKeyPair rejects
+            // other lengths) -- matching the edge so dev and prod never diverge.
+            if (blindedLen !== 32 || seedLen !== 32 || infoLen > 512) return -4;
+            try {
+                const seed = new Uint8Array(readBytes(ref, seedPtr, seedLen));
+                const info = new Uint8Array(readBytes(ref, infoPtr, infoLen));
+                const blinded = new Uint8Array(readBytes(ref, blindedPtr, blindedLen));
+                const oprf = ristretto255_oprf.oprf;
+                const kp = oprf.deriveKeyPair(seed, info);
+                const evaluated = oprf.blindEvaluate(kp.secretKey, blinded); // 32-byte element
+                writeBytes(ref, outPtr, Buffer.from(evaluated));
+                return 0;
+            } catch {
+                return -5;
             }
         },
     };

@@ -18,6 +18,7 @@
  */
 
 import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
+import { buildKvImports } from './kv.js';
 import { EmailStatus, getEmailService } from './email/index.js';
 import { parseEmailBlob } from './email/wire.js';
 import { devEnvGet, devEnvGetSecure } from './env.js';
@@ -268,6 +269,11 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
             // Web Crypto host functions (`env.crypto.*`), backed by Node's
             // `crypto`. The dev server skips metering, so these charge nothing.
             ...buildCryptoImports(ref, state.crypto),
+
+            // DEV-ONLY persistent KV (`env.kv.*`). REMOVE LATER — scaffolding so
+            // the auth example's register/login chain spans requests under
+            // `toiljs dev`; not present on the production edge (see ./kv.ts).
+            ...buildKvImports(ref),
         },
     };
 }
