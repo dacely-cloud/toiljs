@@ -147,7 +147,7 @@
     "devDependencies": {
         "@babel/core": "^7.29.7",
         "@babel/preset-env": "^7.29.7",
-        "@babel/preset-typescript": "^7.29.7",
+        "@babel/preset-typescript": "^8.0.1",
         "@btc-vision/as-covers-assembly": "^0.4.5",
         "@btc-vision/as-covers-transform": "^0.4.5",
         "@btc-vision/as-pect-assembly": "^8.3.0",
