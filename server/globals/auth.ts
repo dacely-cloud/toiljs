@@ -70,39 +70,90 @@ declare function __toilVoprfEvaluate(
     outPtr: usize,
 ): i32;
 
-// HMAC key for signing session cookies. The SAME secret must be configured on
-// every edge instance (a sealed cookie minted by one is opened by another) and
-// must NEVER reach the client. There is no host-config secret mechanism yet, so
-// the tenant supplies one at startup via `AuthService.setSecret(...)` (a
-// build-time constant is consistent across instances). The default below is a
-// well-known DEV placeholder: a deployment that does not call `setSecret` gets a
-// loud, insecure-but-functional session so local dev works out of the box.
-// TODO(secret): replace with a per-deployment host-config secret.
-let __sessionSecret: Uint8Array = Uint8Array.wrap(
-    String.UTF8.encode('toil-dev-insecure-session-secret-CHANGE-ME'),
-);
+// Secret configuration is AUTOMATIC. Every secret below resolves on first use
+// from, in order: (1) an explicit `set*()` override, (2) the tenant's env store
+// (`Environment.getSecure`, backed by `.env.secrets` / the dashboard) under the
+// key named below, then (3) a well-known, clearly-insecure DEV fallback so local
+// dev and the examples run with zero config. The resolved value is cached in the
+// module global. Because every request runs in a FRESH wasm instance that reads
+// the SAME env value the SAME way, there is no per-route / per-instance secret to
+// keep in sync by hand: a cookie minted by one route can never fail to verify in
+// another for want of a `setSecret` call. A real deployment sets the env values
+// (and pins its own server KEM public key in the client); the DEV fallbacks are
+// never a place to put a real secret.
 
-// OPRF master seed (RFC 9497 DeriveKeyPair input). Per-user OPRF keys are
-// derived from this + the username, so it is a server secret of the same
-// sensitivity as a password-hash pepper: a leak enables an offline dictionary
-// attack (but precomputation stays impossible until it leaks). Configured at
-// startup via `AuthService.setOprfSeed`; the DEV default below is well-known.
-// 32 bytes (RFC 9497 Ns for ristretto255); `setOprfSeed` MUST also pass 32.
-let __oprfSeed: Uint8Array = Uint8Array.wrap(
-    String.UTF8.encode('toil-dev-oprf-seedXXCHANGE-ME-32'),
-);
+/** Env-store keys the framework reads automatically (tenant-set secrets). */
+const ENV_SESSION_SECRET: string = 'AUTH_SESSION_SECRET';
+const ENV_OPRF_SEED: string = 'AUTH_OPRF_SEED';
+const ENV_KEM_SK: string = 'AUTH_KEM_SK';
 
-// Server static ML-KEM-768 secret (decapsulation) key. The matching public key
-// is PINNED in the client; only the holder of this key can decapsulate, so a
-// correct shared secret authenticates the server. Configured at startup via
-// `AuthService.setServerKemSecretKey` (2400 bytes). Empty until set; mutual-auth
-// calls fail closed if unset.
-let __serverKemSk: Uint8Array = new Uint8Array(0);
+/** Well-known DEV fallbacks (insecure; overridden by env or `set*()`). */
+const DEV_SESSION_SECRET: string = 'toil-dev-insecure-session-secret-CHANGE-ME';
+const DEV_OPRF_SEED_SRC: string = 'toil-dev-oprf-seed-v1';
+// A well-known DEV ML-KEM-768 decapsulation key (hex). Its public half (the `ek`
+// at bytes [1152, 2336) of the dk) is PINNED in the client (`src/client/auth.ts`,
+// `SERVER_KEM_PUBLIC_KEY`), so the PQ-auth example runs with zero config. A real
+// deployment sets `AUTH_KEM_SK` and pins its own public key; never treat this as
+// secret. Tree-shaken away unless a server actually calls the ML-KEM path.
+const DEV_KEM_SK_HEX: string = '3156a8eb11c62bdb4af9fc57bef470f880ae340373bcc61662748a9742a639b9ad6bc55a77a82e0caa99ede237b4783ce70ab08ecc5802a9478c4ca3de67acd7a2147db43fdba408e9765443f37e9e90cc09f836d53879b890126bd6c33d55a6d97636a28ba10e18ac919aa9d37c2e4d07b6c930a5cb3238c8338fbb1abe7dac124c93462ebc5ae81cb132947993a74f9602610eab68b7fc9407b58e958aca054443246240c484c650962408168632c303cfc738d3b918ee04a37c2436b6f7300b8c6e7bd528bc5c229673c3a1bc4ae4265772f654ed8377b285626c67a4ef715a5a04a56804c3fae93ca5e3219cd68649622ee0d77bcb664a68e377260a3a38c2739b81c3c9ec510b66acde5041f3b52922a17019dc9afaec71c3e3c3102686ceb019da138b22463ad7f452640526d1d8b21c9111ca844149d1391c937b84287f1a228342c06ccb87c31cb14227e175007c5c4497c11e8647377234a84ab2640aa8ee7acb54954f99155cf7d768446b104ac149f59ca1d0029401570db9341c93db0041d52fbbd62726a75f9ab177e4ea5176e675d28a1f9852c28b38074c91cec8064b6ba116db8b59c0434fbd1b207cd921fbf29b06740b53c7304b17b253652ad469b2cb10bf7ed3bcc5b1b6168c2d30a889f67a01ae79455100ac582ba2f764a4a4b134b9115d7c548032d55d4916ce25c0ce7c42160e446298fb10f747302e781a70b2b7962b0b54f3c0e3a4677e99cc02e41e66b0861d02d072b94ce3f8a04fd20d2ec220cea3737922808f00080186421e60b7d1076e5ca40099d54da33033021349e31bb65e12aa259b37bc975582aa6441ab2fabdc9cee0aab0c11c7e3489b93bab26e13bf399ab8a37949baba3c2f8a94fd97a9a551c96d582b5c1ba97b4547701656ee02567dd6a8362c1043c5874760c7d1133292f05c9d3689beccb903d4bd65f09e3e3255d0229daf9050ebaa107e51371fc9248393239575466a9c45b4a239e1b29b07d9701cf1bb488a95a004a98fcb1f6d548cc8554a3eb25a5fc90892618e5d33b04938567e748ab9ba79b0d39d611864b2140666c1791e79c5c0943a03038f7306551db3b271b08dec32443ae14674e16d6c42956ef36499348e7424bbc4883c37675a4f8bb28cd68f30b532ba80104e7214b9a4886045a152d161821a006ae03ae3742e36f63d997c858b850119e1004f4022a04a9533749d993641763a83dce5256f3826ae9b0584c72d69c77d6784444737a0192789e0d63a2f2808ce88b07c33383e588f68b13b892ac6998c9f2db14ba3e10eee4b9717761efc298e026974231a143b89009a724a7121292bb9292662b87502beadb9cbea3cc89de1997b376575f466b6693e18eb70630ba1823cae5f03698ae662190207156ca8d1a4a3cb926d20c92b524180c0804f057491c292024641bf9b21b52214bf2a2b42d16596e22935317bc712e64f64c143b257ca6f663223a1a2b6537b55746a2a739b2adbbfa004354a1555cc8b8215aa06413b27b7fa8c860386c13876b8d55b743860a13c0005dc4ac5e003cd3431c7a29edcc73c50b991e56a12423ac1f2842ed2999b7b31b6e01aaa83c01af658bae959b2cb256f1e7bba29d765e8083182891302569b3712a856e564fdd484b0706b0c68568d5ab7edc742cf74459d64595455a60f267973aa55e43c5be61925a3822eafcca445e36dc4655636e31e6fc9bec338b253f94290008ef7f40dbddb49c15c690f6755a23a1b3c85cfd5207e71a607086a6fc6d74a05080f43276901a19cafdb8de7771d58ea07f0f1056b905127b22223d08e75173199f13ab13c5dcd3b51ac784f84e520484a262b845a897c41cf27324ab6ba545c78c9ccab361051e0bba53498af26240fa0d566d1572684f4b42e253e6d052c848650915063c35641e1121ef8d9cfd17b667b351103c56d195007c9376d0c08aa268396814490eab4c364175a94533267a1933862cc4c33bcf0a13d1fa2b9d6c5082eeca1480672f2526cbe013beff14dc908a386e0b633c8761023cbed760deac6709bc328d865ac82e12307b673d96711dbb27a4d939230d25b53d594169a318be0200fa33550e9418e2a3b30e9719edc09d5fc4306f1abfd021eab14637a8a72c5931d25dc9b56db0e6ab677522b10f25307dbb804a6774ce05b87b0976a4b227bfe6caf20a79e64004fbd27b1eea018b3ab8ffa629f2dc87f19278f95168e94e44660a3370c537795678eb2f056260609769740583b51b291862927a1938737c6a37f40b78f00671cccbcb88ac3427b37915ed58782998f84051647707d48995472baad3f64a7cca54e1c0734db08751c614a34f28b84f2c1b5a6817355ab61957c486b7acffbc092bc8a7b46387f33b53ed372f7168d31a71cd008539928b0cdf91e835aa97f6a2be6d327b87a6ae478701d75a59a25179cb14997bb2552853014724170a1c49b82c2bcebc3279024e1fa44c53c7afdc43f0bd22116490f3b74c90e7296be58b9a91168f2fa0c3d378a3bcac959f357825c9976a8c9ee944f29b45e96d7345d9b478431a20cf1c5d3a3227c717fd204619777636c0cb140db5c50d2a3302334461030bee34e4eb1a6f02b733f9ccda4290fa168bc039568373241542728d00030d1f251e83737cb215adbdc1de75978675a0cd0d75b12748abdda7a9852629c63697d145af2c69854b06e03f37c4b064e4c9a4c03f2ad4d081e70180e9547247921918118086b62b4f7727f46b24e3e79ba3f28209f32b5102035bf935856232f83642268c0292ec6bf8e9462382163d30a20b4bcb7b4439310ec9d0a148193907fc07697342967cf1a16c6b3c71558951fa915400736cf699262b54b723abb2ecc27b74b68ee494287595ef818388adb49e883c67bfa5c226c0eef037a0851a29d34675912c1ea1068310b6dfcd017c809c8fbfc2c3ae78dfef07299960eeefba182662a90fa422c1790f356a2ea909012b15623a9b9e450a282cb530589a68368b3583159d9010ac3e52cc974753c342e58279516339dfb691df94b13a223ad97eb6a09c21dafe6304a3642d6d2067b5238497661fe88ad1227ca3557be2a576b6e17c5a7f997ea07929e76407e376aba74c44cd8504804776f39bbb8327624188a63501e83b404d9438cade0b11dc3ac61856447fb072b91761c228878f01b2eb6b4b21ba664c2c75882431603b25a449ffeb8410b910558581777562aa9b2181fd9c04713ad9326462d3e842121c4997f9aa932417c67851625816de66e0d65637434629f39d157cc40cbafccc4429c35caeda482299013baf565d0f38b8f2886b9641ae6bea5b2bfccd9e6f3000d1a2734414e5b6875828f9ca9b6c3d0ddeaf704111e2b38';
 
-// Server static ML-KEM-768 PUBLIC (encapsulation) key, used only to compute the
-// key identity bound into the login transcript (`serverKemKeyId`). The client
-// pins the same key. Configured at startup via `setServerKemPublicKey`.
-let __serverKemPk: Uint8Array = new Uint8Array(0);
+// Resolved-and-cached per instance; `null` = not yet resolved and not overridden.
+let __sessionSecret: Uint8Array | null = null;
+let __oprfSeed: Uint8Array | null = null;
+let __serverKemSk: Uint8Array | null = null;
+let __serverKemPk: Uint8Array | null = null;
+
+function __hexNibble(c: i32): i32 {
+    if (c >= 48 && c <= 57) return c - 48; // 0-9
+    if (c >= 97 && c <= 102) return c - 87; // a-f
+    if (c >= 65 && c <= 70) return c - 55; // A-F
+    return 0;
+}
+function __fromHex(s: string): Uint8Array {
+    const out = new Uint8Array(s.length >> 1);
+    for (let i = 0; i < out.length; i++) {
+        out[i] = <u8>((__hexNibble(s.charCodeAt(i * 2)) << 4) | __hexNibble(s.charCodeAt(i * 2 + 1)));
+    }
+    return out;
+}
+
+/** The session HMAC secret (UTF-8 of the env value or the DEV fallback). */
+function __resolveSessionSecret(): Uint8Array {
+    let s = __sessionSecret;
+    if (s != null) return s;
+    const v = Environment.getSecure(ENV_SESSION_SECRET);
+    s = Uint8Array.wrap(String.UTF8.encode(v != null ? v : DEV_SESSION_SECRET));
+    __sessionSecret = s;
+    return s;
+}
+/** The OPRF master seed, hashed to 32 bytes (RFC 9497 Ns) so any env value works. */
+function __resolveOprfSeed(): Uint8Array {
+    let s = __oprfSeed;
+    if (s != null) return s;
+    const v = Environment.getSecure(ENV_OPRF_SEED);
+    s = crypto.sha256Text(v != null ? v : DEV_OPRF_SEED_SRC);
+    __oprfSeed = s;
+    return s;
+}
+/** The server static ML-KEM-768 secret (decapsulation) key (2400 bytes). */
+function __resolveServerKemSk(): Uint8Array {
+    let s = __serverKemSk;
+    if (s != null) return s;
+    const v = Environment.getSecure(ENV_KEM_SK);
+    s = __fromHex(v != null ? v : DEV_KEM_SK_HEX);
+    __serverKemSk = s;
+    return s;
+}
+/** The server static ML-KEM-768 PUBLIC key (the `ek` embedded in the dk at bytes
+ *  [1152, 2336), FIPS 203 layout), used for the key id bound into the login
+ *  transcript. The client pins the same key. */
+function __resolveServerKemPk(): Uint8Array {
+    let s = __serverKemPk;
+    if (s != null) return s;
+    s = __resolveServerKemSk().slice(1152, 2336);
+    __serverKemPk = s;
+    return s;
+}
 
 // HMAC-SHA256(key, msg) via the ambient Web Crypto (same path SecureCookies
 // uses). The session-key derivation and the mutual-auth confirmation tag are
@@ -165,9 +216,10 @@ export namespace AuthService {
     export const DEFAULT_SESSION_TTL_SECS: u64 = 86400; // 24h
 
     /**
-     * Configure the server secret used to sign session cookies. Call once at
-     * startup from the tenant's `main.ts`. Must be identical on every edge
-     * instance and kept out of any client bundle.
+     * Override the session-signing secret programmatically. OPTIONAL: by default
+     * AuthService reads `AUTH_SESSION_SECRET` from the env store (with a DEV
+     * fallback), so most apps never call this. An override takes precedence over
+     * the env value for the current request; keep it out of any client bundle.
      */
     export function setSecret(secret: Uint8Array): void {
         __sessionSecret = secret;
@@ -183,7 +235,7 @@ export namespace AuthService {
         const req = Server.currentRequest;
         if (req == null) return null;
 
-        const sealed = SecureCookies.signed(__sessionSecret).open(
+        const sealed = SecureCookies.signed(__resolveSessionSecret()).open(
             req.cookies(),
             sessionCookieName(__reqIsSecure()),
         );
@@ -246,7 +298,7 @@ export namespace AuthService {
             .sameSite(SameSite.Lax)
             .maxAge(<i64>ttlSecs);
         cookie = secure ? cookie.asHostPrefixed() : cookie.path('/');
-        return SecureCookies.signed(__sessionSecret).seal(cookie);
+        return SecureCookies.signed(__resolveSessionSecret()).seal(cookie);
     }
 
     /** A `Set-Cookie` that immediately clears the session (logout). */
@@ -384,28 +436,30 @@ export namespace AuthService {
     export const OPRF_SEED_LEN: i32 = 32;
 
     /**
-     * Configure the OPRF master seed (32 bytes). Per-user OPRF keys are derived
-     * from this + the username. Call once at startup from `main.ts`; identical
-     * on every instance, kept out of any client bundle.
+     * Override the OPRF master seed (32 bytes) programmatically. OPTIONAL: by
+     * default AuthService reads `AUTH_OPRF_SEED` from the env store (hashed to 32
+     * bytes, with a DEV fallback). Per-user OPRF keys derive from this + the
+     * username; keep it out of any client bundle.
      */
     export function setOprfSeed(seed: Uint8Array): void {
         __oprfSeed = seed;
     }
 
     /**
-     * Configure the server static ML-KEM-768 secret (decapsulation) key (2400
-     * bytes). The matching public key is pinned in the client. Call once at
-     * startup; identical on every instance, never in a client bundle.
+     * Override the server static ML-KEM-768 secret (decapsulation) key (2400
+     * bytes) programmatically. OPTIONAL: by default AuthService reads `AUTH_KEM_SK`
+     * (hex) from the env store, with a DEV fallback whose public half is pinned in
+     * the client. Never put this in a client bundle.
      */
     export function setServerKemSecretKey(secretKey: Uint8Array): void {
         __serverKemSk = secretKey;
     }
 
     /**
-     * Configure the server static ML-KEM-768 PUBLIC key (1184 bytes), used to
-     * compute {@link serverKemKeyId}. Must be the key the client pins. (It is the
-     * `ek` embedded in the decapsulation key, so a tenant can pass
-     * `secretKey.slice(1152, 2336)` rather than store it twice.)
+     * Override the server static ML-KEM-768 PUBLIC key (1184 bytes), used to
+     * compute {@link serverKemKeyId}. OPTIONAL: by default it is derived from the
+     * secret key (the `ek` embedded at bytes [1152, 2336) of the dk), so setting
+     * the secret key is enough. Must be the key the client pins.
      */
     export function setServerKemPublicKey(publicKey: Uint8Array): void {
         __serverKemPk = publicKey;
@@ -421,9 +475,10 @@ export namespace AuthService {
         if (blinded.length != OPRF_ELEMENT_LEN) return new Uint8Array(0);
         const info = Uint8Array.wrap(String.UTF8.encode(username));
         const out = new Uint8Array(OPRF_ELEMENT_LEN);
+        const seed = __resolveOprfSeed();
         const rc = __toilVoprfEvaluate(
-            __oprfSeed.dataStart,
-            __oprfSeed.length,
+            seed.dataStart,
+            seed.length,
             info.dataStart,
             info.length,
             blinded.dataStart,
@@ -439,15 +494,16 @@ export namespace AuthService {
      * Only the genuine server can produce this, so it underpins mutual auth.
      */
     export function mlkemDecapsulate(ciphertext: Uint8Array): Uint8Array {
-        if (__serverKemSk.length != KEM_SECRET_KEY_LEN || ciphertext.length != KEM_CIPHERTEXT_LEN) {
+        const sk = __resolveServerKemSk();
+        if (sk.length != KEM_SECRET_KEY_LEN || ciphertext.length != KEM_CIPHERTEXT_LEN) {
             return new Uint8Array(0);
         }
         const out = new Uint8Array(SHARED_SECRET_LEN);
         const rc = __toilMlkemDecapsulate(
             ciphertext.dataStart,
             ciphertext.length,
-            __serverKemSk.dataStart,
-            __serverKemSk.length,
+            sk.dataStart,
+            sk.length,
             out.dataStart,
         );
         return rc == 0 ? out : new Uint8Array(0);
@@ -462,7 +518,7 @@ export namespace AuthService {
      *  message, so the signature commits to which server key the client
      *  encapsulated to. The client computes the same hash over its pinned key. */
     export function serverKemKeyId(): Uint8Array {
-        return sha256(__serverKemPk);
+        return sha256(__resolveServerKemPk());
     }
 
     /** Domain separators for the session-key derivation and confirmation tag. */
