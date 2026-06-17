@@ -10,7 +10,7 @@
 // and the toiljs dev-server mock).
 
 import { DataWriter, DataReader } from 'data';
-import { HmacImportParams, HmacParams, ALG_SHA_256, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
+import { HmacImportParams, HmacParams, ALG_SHA_256, FMT_RAW, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
 
 import {
     Server,
@@ -160,7 +160,7 @@ function __resolveServerKemPk(): Uint8Array {
 // both keyed PRFs over the transcript; the client mirrors this with hash-wasm.
 function __hmacSha256(key: Uint8Array, msg: Uint8Array): Uint8Array {
     const k = crypto.subtle.importKey(
-        'raw',
+        FMT_RAW,
         key,
         new HmacImportParams(ALG_SHA_256),
         false,
@@ -511,7 +511,7 @@ export namespace AuthService {
 
     /** SHA-256 over `data` (ambient Web Crypto), for transcript/confirm hashing. */
     export function sha256(data: Uint8Array): Uint8Array {
-        return crypto.subtle.digest('SHA-256', data);
+        return crypto.subtle.digest(ALG_SHA_256, data);
     }
 
     /** `SHA-256(serverKemPublicKey)` -- the key identity bound into the login

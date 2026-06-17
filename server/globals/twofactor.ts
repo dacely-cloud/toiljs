@@ -24,6 +24,7 @@ import {
     HmacImportParams,
     HmacParams,
     ALG_SHA_256,
+    FMT_RAW,
     USAGE_SIGN,
     USAGE_VERIFY,
 } from 'crypto';
@@ -45,7 +46,7 @@ const TWOFA_VERSION: u8 = 1;
 
 function importHmac(key: Uint8Array): CryptoKey {
     return crypto.subtle.importKey(
-        'raw',
+        FMT_RAW,
         key,
         new HmacImportParams(ALG_SHA_256),
         false,

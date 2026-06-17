@@ -1,5 +1,6 @@
 import { Response, RouteContext } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
+import { Record } from 'toildb';
 
 import { encodeSessionUser } from './Session';
 
@@ -15,11 +16,11 @@ import { encodeSessionUser } from './Session';
  * auth). See `server/globals/auth.ts` (the `AuthService` global) and the client
  * half in `toiljs/client` (`Auth.register` / `Auth.login`).
  *
- * STORAGE: backed by the DEV-ONLY `kv.*` host imports (see
- * `src/devserver/kv.ts`) so the register -> login chain spans requests under
- * `toiljs dev`. REMOVE LATER: this is a stand-in; once toildb is implemented,
- * the Accounts/Challenges stores move onto it and this goes away. `kv.*` is not
- * on the production edge.
+ * STORAGE: backed by ToilDB (`@database AuthDb`). Accounts are a `record`
+ * collection keyed by username; login challenges are a `record` consumed exactly
+ * once with `getDelete` (atomic fetch-and-delete). The dev server emulates these
+ * `env.data.*` host imports in process (so register -> login spans requests under
+ * `toiljs dev`); the production edge backs the SAME API with ScyllaDB.
  *
  * Wire: every body/response is binary (`DataWriter`/`DataReader`), never JSON.
  */
@@ -35,19 +36,6 @@ const DEMO_PAR: u32 = 1;
 
 const CHALLENGE_TTL_SECS: u64 = 120;
 const SESSION_TTL_SECS: u64 = 3600;
-
-function utf8(s: string): Uint8Array {
-    return Uint8Array.wrap(String.UTF8.encode(s));
-}
-
-function toHex(b: Uint8Array): string {
-    let s = '';
-    for (let i = 0; i < b.length; i++) {
-        const v = b[i];
-        s += (v < 16 ? '0' : '') + (<u32>v).toString(16);
-    }
-    return s;
-}
 
 function randomBytes(n: i32): Uint8Array {
     const b = new Uint8Array(n);
@@ -77,43 +65,27 @@ function deriveSalt(username: string): Uint8Array {
 }
 
 
-// @ts-ignore: decorator
-@external('env', 'kv.put')
-declare function __kvPut(keyPtr: usize, keyLen: i32, valPtr: usize, valLen: i32): void;
-// @ts-ignore: decorator
-@external('env', 'kv.get')
-declare function __kvGet(keyPtr: usize, keyLen: i32, outPtr: usize, outCap: i32): i32;
-// @ts-ignore: decorator
-@external('env', 'kv.getdel')
-declare function __kvGetDel(keyPtr: usize, keyLen: i32, outPtr: usize, outCap: i32): i32;
+// ToilDB collections (the `kv.*` dev placeholder is gone). The key + value are
+// `@data` types: the binary codec is generated, the host marshals it, and the
+// challenge is consumed exactly once with `getDelete`.
 
-const KV_CAP: i32 = 8192; // bounds account (~1.5 KiB) + challenge (~100 B) records
-
-function kvPut(key: Uint8Array, val: Uint8Array): void {
-    __kvPut(key.dataStart, key.length, val.dataStart, val.length);
-}
-function kvGet(key: Uint8Array): Uint8Array | null {
-    const out = new Uint8Array(KV_CAP);
-    const n = __kvGet(key.dataStart, key.length, out.dataStart, KV_CAP);
-    if (n < 0) return null;
-    return out.slice(0, n);
-}
-/** Atomic fetch-and-delete: consumes a login challenge exactly once. */
-function kvGetDel(key: Uint8Array): Uint8Array | null {
-    const out = new Uint8Array(KV_CAP);
-    const n = __kvGetDel(key.dataStart, key.length, out.dataStart, KV_CAP);
-    if (n < 0) return null;
-    return out.slice(0, n);
+@data
+class Username {
+    name: string = '';
+    constructor(name: string = '') {
+        this.name = name;
+    }
 }
 
-function acctKey(username: string): Uint8Array {
-    return utf8('acct:' + username);
-}
-function chalKey(cid: Uint8Array): Uint8Array {
-    return utf8('chal:' + toHex(cid));
+@data
+class ChallengeId {
+    cid: Uint8Array = new Uint8Array(0);
+    constructor(cid: Uint8Array = new Uint8Array(0)) {
+        this.cid = cid;
+    }
 }
 
-
+@data
 class Account {
     username: string = '';
     salt: Uint8Array = new Uint8Array(0);
@@ -123,30 +95,7 @@ class Account {
     parallelism: u32 = 0;
 }
 
-function putAccount(a: Account): void {
-    const w = new DataWriter();
-    w.writeString(a.username);
-    w.writeBytes(a.salt);
-    w.writeBytes(a.publicKey);
-    w.writeU32(a.memKiB);
-    w.writeU32(a.iterations);
-    w.writeU32(a.parallelism);
-    kvPut(acctKey(a.username), w.toBytes());
-}
-function getAccount(username: string): Account | null {
-    const raw = kvGet(acctKey(username));
-    if (raw == null) return null;
-    const r = new DataReader(raw);
-    const a = new Account();
-    a.username = r.readString();
-    a.salt = r.readBytes();
-    a.publicKey = r.readBytes();
-    a.memKiB = r.readU32();
-    a.iterations = r.readU32();
-    a.parallelism = r.readU32();
-    return r.ok ? a : null;
-}
-
+@data
 class Challenge {
     cid: Uint8Array = new Uint8Array(0);
     username: string = '';
@@ -155,26 +104,10 @@ class Challenge {
     exp: u64 = 0;
 }
 
-function putChallenge(c: Challenge): void {
-    const w = new DataWriter();
-    w.writeBytes(c.cid);
-    w.writeString(c.username);
-    w.writeBytes(c.nonce);
-    w.writeU64(c.iat);
-    w.writeU64(c.exp);
-    kvPut(chalKey(c.cid), w.toBytes());
-}
-function consumeChallenge(cid: Uint8Array): Challenge | null {
-    const raw = kvGetDel(chalKey(cid));
-    if (raw == null) return null;
-    const r = new DataReader(raw);
-    const c = new Challenge();
-    c.cid = r.readBytes();
-    c.username = r.readString();
-    c.nonce = r.readBytes();
-    c.iat = r.readU64();
-    c.exp = r.readU64();
-    return r.ok ? c : null;
+@database
+class AuthDb {
+    @collection accounts!: Record<Account, Username>;
+    @collection challenges!: Record<Challenge, ChallengeId>;
 }
 
 @rest('auth')
@@ -214,7 +147,7 @@ class Auth {
         if (pk.length != AuthService.PUBLIC_KEY_LEN) return fail();
         // Already registered: a distinguishable status (not the generic 401) so the
         // client can say "username taken, log in instead" rather than a blank error.
-        if (getAccount(username) != null) {
+        if (AuthDb.accounts.exists(new Username(username))) {
             return Response.bytes(new DataWriter().writeU8(1).toBytes());
         }
 
@@ -230,7 +163,10 @@ class Auth {
         a.memKiB = DEMO_MEM_KIB;
         a.iterations = DEMO_ITERS;
         a.parallelism = DEMO_PAR;
-        putAccount(a);
+        // create-if-absent: a racing duplicate registration loses here, not above.
+        if (!AuthDb.accounts.create(new Username(username), a)) {
+            return Response.bytes(new DataWriter().writeU8(1).toBytes());
+        }
         return Response.bytes(new DataWriter().writeU8(0).toBytes());
     }
 
@@ -249,7 +185,7 @@ class Auth {
         const evaluated = AuthService.oprfEvaluate(username, blinded);
         if (evaluated.length != AuthService.OPRF_ELEMENT_LEN) return fail();
 
-        const acct = getAccount(username);
+        const known = AuthDb.accounts.exists(new Username(username));
         const cid = randomBytes(16);
         const nonce = randomBytes(32);
         const iat = nowSecs();
@@ -257,14 +193,14 @@ class Auth {
 
         // Persist only for a real account; the response is identical either way,
         // and login/finish for an unknown user fails generically at consume.
-        if (acct != null) {
+        if (known) {
             const c = new Challenge();
             c.cid = cid;
             c.username = username;
             c.nonce = nonce;
             c.iat = iat;
             c.exp = exp;
-            putChallenge(c);
+            AuthDb.challenges.create(new ChallengeId(cid), c);
         }
 
         const w = new DataWriter();
@@ -292,13 +228,13 @@ class Auth {
         if (!r.ok) return fail();
 
         // 1. CONSUME FIRST: atomic fetch-and-delete. Unknown/used/expired => fail.
-        const ch = consumeChallenge(cid);
+        const ch = AuthDb.challenges.getDelete(new ChallengeId(cid));
         if (ch == null) return fail();
         if (nowSecs() >= ch.exp) return fail();
 
         // 2. Rebuild the message from OUR stored values + the client's ct (and
         //    the bound params + server key id), load the account key, verify.
-        const acct = getAccount(ch.username);
+        const acct = AuthDb.accounts.get(new Username(ch.username));
         if (acct == null) return fail();
         const message = AuthService.buildLoginMessage(
             ch.username, AUD, cid, ch.nonce, ch.iat, ch.exp,
