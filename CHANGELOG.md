@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.52] - 2026-06-17
+
+### Other Changes
+
+- feat(doctor): warn when a script wraps toiljs in npx ([#173](https://github.com/dacely-cloud/toiljs/pull/173)) by @BlobMaster41
+- feat(auth): OPAQUE-style PQ auth (OPRF keyed salt + ML-KEM mutual auth) ([#174](https://github.com/dacely-cloud/toiljs/pull/174)) by @BlobMaster41
+
+
+
+
 ## [v0.0.51] - 2026-06-16
 
 ### Other Changes
