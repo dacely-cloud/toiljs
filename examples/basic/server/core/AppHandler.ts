@@ -228,10 +228,13 @@ export class AppHandler extends ToilHandler {
         return null;
     }
 
-    // Demo signing/encryption key: 32 bytes, valid for AES-256-GCM and HMAC. A real
-    // app loads a long random secret from config; never hard-code one.
+    // Demo signing/encryption key, valid for AES-256-GCM and HMAC. Read from the
+    // env store (`Environment.getSecure`, backed by `.env.secrets`), hashed to 32
+    // bytes so any value works; falls back to a DEV default so the demo runs with
+    // zero config. A real app sets DEMO_COOKIE_KEY in `.env.secrets`.
     private demoKey(): Uint8Array {
-        return Uint8Array.wrap(String.UTF8.encode('0123456789abcdef0123456789abcdef'));
+        const k = Environment.getSecure('DEMO_COOKIE_KEY');
+        return crypto.sha256Text(k != null ? k : '0123456789abcdef0123456789abcdef');
     }
 
     /** The `Set-Cookie` string `clearCookie(name)` emits, for display. */
