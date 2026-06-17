@@ -58,7 +58,10 @@ const PROVIDED_IMPORTS = new Set([
     'crypto.fill_random', 'crypto.random_uuid', 'crypto.take_result', 'crypto.digest',
     'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
     'crypto.sign', 'crypto.verify', 'crypto.derive_bits',
-    'crypto.mldsa_verify',
+    'crypto.mldsa_verify', 'crypto.mlkem_decapsulate', 'crypto.voprf_evaluate',
+    // DEV-ONLY persistent KV (see ./kv.ts). REMOVE once the example is backed by
+    // a real external store; never ship as a production storage path.
+    'kv.put', 'kv.get', 'kv.getdel',
 ]);
 
 export class WasmServerModule {
