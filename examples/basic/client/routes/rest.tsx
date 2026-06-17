@@ -6,11 +6,19 @@
 // `Response` to inspect (status, `.json()`, ...). Needs the server running to respond.
 import { useState } from 'react';
 
-import { NewPlayer, ScoreDelta } from 'shared/server';
+import { NewMessage, NewPlayer, ScoreDelta } from 'shared/server';
 
 export default function RestDemo() {
     const [log, setLog] = useState<string[]>([]);
     const note = (line: string) => setLog((prev) => [line, ...prev].slice(0, 8));
+
+    // The guestbook is backed by ToilDB (an `events` stream + a `counter`), so unlike
+    // the players below its data PERSISTS across requests. Sign a few times, reload the
+    // page, and the total is still there.
+    const [book, setBook] = useState<{ total: bigint; entries: { author: string; message: string }[] }>({
+        total: 0n,
+        entries: [],
+    });
 
     // POST /players  ->  typed Promise<Player>, body is a @data class. The server returns the
     // new player, but it is NOT saved (server memory resets per request); this is a preview.
@@ -67,6 +75,31 @@ export default function RestDemo() {
         }
     };
 
+    // POST /guestbook  ->  typed Promise<GuestbookView>. This one is PERSISTED in ToilDB
+    // (events + counter), so the total keeps climbing across requests and reloads.
+    const signers = ['Ada', 'Linus', 'Grace', 'Ken'];
+    const onSign = async () => {
+        try {
+            const author = signers[Math.floor(Math.random() * signers.length)];
+            const v = await Server.REST.guestbook.sign({ body: new NewMessage(author, 'was here') });
+            setBook(v);
+            note(`${author} signed -> ${v.total} signatures (persisted in ToilDB)`);
+        } catch (err) {
+            note(parseError(err));
+        }
+    };
+
+    // GET /guestbook  ->  the running total + the newest entries.
+    const onBook = async () => {
+        try {
+            const v = await Server.REST.guestbook.list();
+            setBook(v);
+            note(`guestbook: ${v.total} signatures`);
+        } catch (err) {
+            note(parseError(err));
+        }
+    };
+
     return (
         <main>
             <h1>REST</h1>
@@ -83,6 +116,24 @@ export default function RestDemo() {
                     <li key={i}>{line}</li>
                 ))}
             </ul>
+
+            <h2>Guestbook (persisted via ToilDB)</h2>
+            <p>
+                The same <code>Server.REST.*</code> client, but the route stores each signature in a ToilDB{' '}
+                <code>events</code> stream and a <code>counter</code>. So unlike the players above, these{' '}
+                <strong>persist</strong> across requests and page reloads - locally under <code>toil dev</code> and on
+                ScyllaDB at the edge, with the same code.
+            </p>
+            <button onClick={onSign}>sign the guestbook</button>{' '}
+            <button onClick={onBook}>refresh ({String(book.total)} signatures)</button>
+            <ul>
+                {book.entries.map((e, i) => (
+                    <li key={i}>
+                        <strong>{e.author}</strong>: {e.message}
+                    </li>
+                ))}
+            </ul>
+
             <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );

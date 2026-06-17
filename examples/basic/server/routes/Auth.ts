@@ -86,7 +86,7 @@ class ChallengeId {
 }
 
 @data
-class Account {
+class AuthAccount {
     username: string = '';
     salt: Uint8Array = new Uint8Array(0);
     publicKey: Uint8Array = new Uint8Array(0);
@@ -106,7 +106,7 @@ class Challenge {
 
 @database
 class AuthDb {
-    @collection accounts!: Record<Account, Username>;
+    @collection accounts!: Record<AuthAccount, Username>;
     @collection challenges!: Record<Challenge, ChallengeId>;
 }
 
@@ -156,7 +156,7 @@ class Auth {
         const regMsg = AuthService.buildRegisterMessage(username, pk);
         if (!AuthService.verifyRegister(pk, regMsg, proof)) return fail();
 
-        const a = new Account();
+        const a = new AuthAccount();
         a.username = username;
         a.salt = deriveSalt(username);
         a.publicKey = pk;
