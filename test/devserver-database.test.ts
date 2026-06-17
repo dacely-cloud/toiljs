@@ -129,6 +129,73 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.unique_lookup'](h, kPtr, kLen)).toBe(-2); // gone
     });
 
+    it('get_many: framed multi-get preserves order with present/absent', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/users');
+        const [k1, l1] = put(buf, 32, 'u1');
+        const [vA, lA] = put(buf, 48, 'AA');
+        imports['data.create'](h, k1, l1, vA, lA, 0);
+        const [k2, l2] = put(buf, 64, 'u2');
+        const [vB, lB] = put(buf, 80, 'BB');
+        imports['data.create'](h, k2, l2, vB, lB, 0);
+
+        // keys blob at 128: count=3, then "u1","u3","u2" (u3 absent).
+        let o = 128;
+        o = buf.writeUInt32LE(3, o);
+        for (const k of ['u1', 'u3', 'u2']) {
+            o = buf.writeUInt32LE(2, o);
+            o += buf.write(k, o, 'latin1');
+        }
+        const n = imports['data.get_many'](h, 128, o - 128);
+        expect(n).toBeGreaterThan(0);
+        expect(imports['data.take_result'](256, 256)).toBe(n);
+
+        let p = 256;
+        const count = buf.readUInt32LE(p);
+        p += 4;
+        expect(count).toBe(3);
+        const got: (string | null)[] = [];
+        for (let i = 0; i < count; i++) {
+            const present = buf.readUInt8(p);
+            p += 1;
+            if (present === 0) {
+                got.push(null);
+                continue;
+            }
+            const len = buf.readUInt32LE(p);
+            p += 4;
+            got.push(buf.toString('utf8', p, p + len));
+            p += len;
+        }
+        expect(got).toEqual(['AA', null, 'BB']);
+
+        expect(imports['data.get_many'](999, 128, o - 128)).toBe(-1001); // invalid handle
+    });
+
+    it('view: publish overwrites and get reads the latest (or absent)', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/pages');
+        const [kPtr, kLen] = put(buf, 32, 'home');
+
+        // absent before any publish
+        expect(imports['data.view_get'](h, kPtr, kLen)).toBe(-2);
+
+        const [v1Ptr, v1Len] = put(buf, 48, '<v1>');
+        expect(imports['data.view_publish'](h, kPtr, kLen, v1Ptr, v1Len, 0)).toBe(0);
+        expect(imports['data.view_get'](h, kPtr, kLen)).toBe(4);
+        expect(imports['data.take_result'](64, 64)).toBe(4);
+        expect(buf.toString('utf8', 64, 68)).toBe('<v1>');
+
+        // republish overwrites (latest wins)
+        const [v2Ptr, v2Len] = put(buf, 80, '<page2>');
+        expect(imports['data.view_publish'](h, kPtr, kLen, v2Ptr, v2Len, 0)).toBe(0);
+        expect(imports['data.view_get'](h, kPtr, kLen)).toBe(7);
+        imports['data.take_result'](128, 64);
+        expect(buf.toString('utf8', 128, 135)).toBe('<page2>');
+
+        expect(imports['data.view_get'](999, kPtr, kLen)).toBe(-1001); // invalid handle
+    });
+
     it('counter: add accumulates (saturating i64) and get reads the sum', () => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, 'App/likes');

@@ -61,9 +61,10 @@ const PROVIDED_IMPORTS = new Set([
     'crypto.mldsa_verify', 'crypto.mlkem_decapsulate', 'crypto.voprf_evaluate',
     // ToilDB data API (see ./database.ts). Backed by ScyllaDB on the production
     // edge; backs the auth example's accounts + login challenges in dev.
-    'data.resolve_collection', 'data.get', 'data.exists', 'data.create',
+    'data.resolve_collection', 'data.get', 'data.get_many', 'data.exists', 'data.create',
     'data.patch', 'data.delete', 'data.get_delete',
     'data.unique_lookup', 'data.unique_claim', 'data.unique_release',
+    'data.view_get', 'data.view_publish',
     'data.counter_get', 'data.counter_add', 'data.append', 'data.latest',
     'data.take_result',
 ]);

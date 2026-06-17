@@ -19,6 +19,8 @@ import type { MemoryRef } from './host.js';
 
 /** Process-lifetime store: `"collection\0keyLatin1"` -> value. Shared across dispatches. */
 const STORE = new Map<string, Buffer>();
+/** View family: `"collection\0key"` -> the latest published view blob. */
+const VIEWS = new Map<string, Buffer>();
 /** Counter family: `"collection\0key"` -> saturating i64 sum of deltas. */
 const COUNTERS = new Map<string, bigint>();
 /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
@@ -97,6 +99,40 @@ export function buildDatabaseImports(
             if (v === undefined) return ABSENT;
             db.lastResult = v;
             return v.length;
+        },
+
+        // Bounded multi-get. Keys blob: u32 count + per key (u32 len + bytes).
+        // Result (stashed): u32 count + per item u8 present (+ u32 len + bytes),
+        // in request order. Mirrors the edge `op_get_many` framing byte-for-byte.
+        'data.get_many': (handle: number, keysPtr: number, keysLen: number): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            if (keysLen > MAX_VALUE) throw new Error('data: keys blob too large');
+            const blob = readCopy(ref, keysPtr, keysLen);
+            let off = 0;
+            const count = blob.readUInt32LE(off);
+            off += 4;
+            if (count > 1024) return PRODUCT_ERR; // anti-OOM cap, mirrors the edge
+            const header = Buffer.alloc(4);
+            header.writeUInt32LE(count, 0);
+            const parts: Buffer[] = [header];
+            for (let i = 0; i < count; i++) {
+                const len = blob.readUInt32LE(off);
+                off += 4;
+                const key = blob.subarray(off, off + len);
+                off += len;
+                const v = STORE.get(storeKey(coll, key));
+                if (v === undefined) {
+                    parts.push(Buffer.from([0]));
+                } else {
+                    const h = Buffer.alloc(5);
+                    h.writeUInt8(1, 0);
+                    h.writeUInt32LE(v.length, 1);
+                    parts.push(h, v);
+                }
+            }
+            db.lastResult = Buffer.concat(parts);
+            return db.lastResult.length;
         },
 
         'data.exists': (handle: number, keyPtr: number, keyLen: number): number => {
@@ -223,6 +259,33 @@ export function buildDatabaseImports(
             return 0;
         },
 
+        // --- view family (get / publish) ---
+
+        'data.view_get': (handle: number, keyPtr: number, keyLen: number): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const v = VIEWS.get(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            if (v === undefined) return ABSENT;
+            db.lastResult = v;
+            return v.length;
+        },
+
+        // Publish overwrites (the host assigns the version; dev keeps the latest).
+        'data.view_publish': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            valPtr: number,
+            valLen: number,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/view too large');
+            VIEWS.set(storeKey(coll, readCopy(ref, keyPtr, keyLen)), readCopy(ref, valPtr, valLen));
+            return 0;
+        },
+
         // --- counter family (get / add) ---
 
         // Stash the i64 sum as 8 LE bytes; the guest pulls + loads it. A counter
@@ -313,6 +376,7 @@ export function buildDatabaseImports(
 /** Test-only: clear the stores between unit tests. */
 export function __resetDbForTests(): void {
     STORE.clear();
+    VIEWS.clear();
     COUNTERS.clear();
     EVENTS.clear();
 }
