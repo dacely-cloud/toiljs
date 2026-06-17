@@ -239,7 +239,8 @@ class Auth {
     }
 
     /** POST /auth/register/finish  body: str(username) bytes(pk) bytes(regProof)
-     *  resp: u8(status). Verifies proof-of-possession before storing the key. */
+     *  resp: u8(status) -- 0 = ok, 1 = username already registered. Verifies
+     *  proof-of-possession before storing the key. */
     @post('/register/finish')
     public registerFinish(ctx: RouteContext): Response {
         ensureConfigured();
@@ -249,7 +250,11 @@ class Auth {
         const proof = r.readBytes();
         if (!r.ok) return fail();
         if (pk.length != AuthService.PUBLIC_KEY_LEN) return fail();
-        if (getAccount(username) != null) return fail(); // already registered
+        // Already registered: a distinguishable status (not the generic 401) so the
+        // client can say "username taken, log in instead" rather than a blank error.
+        if (getAccount(username) != null) {
+            return Response.bytes(new DataWriter().writeU8(1).toBytes());
+        }
 
         // Proof-of-possession: the client signed buildRegisterMessage with the
         // matching secret key, so we confirm it actually holds it.

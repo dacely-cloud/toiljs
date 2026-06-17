@@ -106,6 +106,19 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
         },
         60_000,
     );
+
+    it(
+        'rejects a duplicate registration with a clear (not generic) message',
+        async () => {
+            await Auth.register('dupe', 'correct horse battery staple');
+            // Second registration of the same username must say so explicitly,
+            // not return the generic "request failed".
+            await expect(Auth.register('dupe', 'correct horse battery staple')).rejects.toThrow(
+                /already registered/,
+            );
+        },
+        60_000,
+    );
 });
 
 // Lower-level wire checks that don't need the heavy Argon2id derivation.

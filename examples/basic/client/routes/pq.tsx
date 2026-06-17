@@ -71,7 +71,10 @@ export default function Pq(): React.JSX.Element {
         setVerified(null);
         try {
             await Auth.register(username, password);
-            setNote({ kind: 'ok', text: 'registered — the server stored only your public key + PoP. Now log in.' });
+            setNote({
+                kind: 'ok',
+                text: 'registered: the server stored only your public key and a proof-of-possession. Now log in to run the ML-KEM-768 mutual-auth step.',
+            });
         } catch (e) {
             setNote({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
         } finally {
@@ -86,7 +89,10 @@ export default function Pq(): React.JSX.Element {
         try {
             // Resolves only if the server's mutual-auth confirmation tag verified.
             await Auth.login(username, password);
-            setNote({ kind: 'ok', text: 'logged in — mutual auth verified (server proved it holds the KEM key).' });
+            setNote({
+                kind: 'ok',
+                text: 'logged in: ML-KEM-768 mutual auth verified (the server proved it holds the KEM secret key).',
+            });
             refreshCompanion();
         } catch (e) {
             setNote({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -163,7 +169,7 @@ export default function Pq(): React.JSX.Element {
                     Demo: pre-filled <code>ada</code> / <code>correct horse battery staple</code>. Register once, then
                     log in. A wrong password fails at login (the derived key won&apos;t match the stored one). Storage is
                     the DEV-only in-process KV (<code>src/devserver/kv.ts</code>); a real deployment wires an atomic
-                    store — <code>server/routes/Auth.ts</code>.
+                    store, <code>server/routes/Auth.ts</code>.
                 </p>
             </div>
 

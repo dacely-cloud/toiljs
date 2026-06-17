@@ -249,7 +249,9 @@ export async function register(username: string, password: string, opts: AuthOpt
         '/register/finish',
         new DataWriter().writeString(username).writeBytes(publicKey).writeBytes(regProof).toBytes(),
     );
-    if (finish.readU8() !== 0) throw new Error('auth: registration rejected');
+    const finishStatus = finish.readU8();
+    if (finishStatus === 1) throw new Error('auth: username already registered (log in instead)');
+    if (finishStatus !== 0) throw new Error('auth: registration rejected');
 }
 
 /**
