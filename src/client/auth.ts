@@ -171,7 +171,6 @@ export function buildRegisterMessage(username: string, publicKey: Uint8Array): U
     return new DataWriter().writeU8(1).writeString(username).writeBytes(publicKey).toBytes();
 }
 
-// ---- wire codecs (the example `Auth` @rest controller mirrors these) -------
 
 function decodeKdf(r: DataReader): KdfParams {
     return {

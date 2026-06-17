@@ -373,11 +373,6 @@ export namespace AuthService {
         return result == 1;
     }
 
-    // ===================================================================
-    // Augmented-PAKE layer: OPRF keyed salt + ML-KEM mutual auth.
-    // (See server/globals/auth.ts header and the example `Auth` controller.)
-    // ===================================================================
-
     /** ML-KEM-768 (FIPS 203) sizes. */
     export const KEM_CIPHERTEXT_LEN: i32 = 1088;
     export const KEM_SECRET_KEY_LEN: i32 = 2400;

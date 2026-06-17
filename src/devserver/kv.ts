@@ -1,21 +1,18 @@
 /**
  * DEV-ONLY persistent key-value store host imports (`env::kv.*`).
  *
- * ============================ REMOVE KV LATER ============================
- * This exists ONLY so the post-quantum auth example can run the full
- * register -> login chain end-to-end under `toiljs dev`. A tenant's wasm linear
- * memory is wiped after every request, so account records and login challenges
- * cannot live in the guest across the two round trips; they need an external
- * store. This module is a single-process `Map` standing in for that store.
+ * REMOVE LATER. This exists ONLY so the post-quantum auth example can run the
+ * full register -> login chain end-to-end under `toiljs dev`. A tenant's wasm
+ * linear memory is wiped after every request, so account records and login
+ * challenges cannot live in the guest across the two round trips; they need an
+ * external store. This module is a single-process `Map` standing in for that.
  *
  * It is intentionally NOT registered on the production Rust edge
  * (`toil-backend` `HOST_IMPORTS`), so a module using `kv.*` will not instantiate
- * there. REPLACE THIS once toildb is implemented: move the example's account +
- * challenge stores onto toildb (which provides the atomic fetch-and-delete the
- * challenge consume needs) and delete this whole module. DO NOT ship this `Map`
- * as a production storage path: it is single-instance, unbounded, and lost on
- * restart.
- * ========================================================================
+ * there. Once toildb is implemented, move the example's account + challenge
+ * stores onto toildb (which provides the atomic fetch-and-delete the challenge
+ * consume needs) and delete this whole module. DO NOT ship this `Map` as a
+ * production storage path: it is single-instance, unbounded, and lost on restart.
  *
  * Wire ABI (mirrors the crypto imports' caller-allocated-buffer convention):
  *   kv.put(keyPtr, keyLen, valPtr, valLen)            -> void
