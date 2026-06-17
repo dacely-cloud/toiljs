@@ -106,14 +106,19 @@ function deriveSalt(username: string): Uint8Array {
 
 
 let __configured = false;
+/** Lazily configure the auth-route crypto material (OPRF seed + server ML-KEM
+ *  key) on first use; only the register/login handlers below read these.
+ *
+ *  The session HMAC secret is deliberately NOT set here. The session is verified
+ *  by the `@auth` gate in `routes/Session` (a DIFFERENT route -> a different fresh
+ *  wasm instance per request), so it must be configured for EVERY request, not
+ *  just auth ones. That happens once, before routing, in `core/AppHandler`. */
 function ensureConfigured(): void {
     if (__configured) return;
-    // All three secrets come from the env store (`.env.secrets`), with DEV
-    // fallbacks so the example runs with zero config. Set the real values in
-    // `.env.secrets` (see `.env.secrets.example`) for any non-throwaway use.
+    // Both secrets come from the env store (`.env.secrets`), with DEV fallbacks
+    // so the example runs with zero config. Set the real values in `.env.secrets`
+    // (see `.env.secrets.example`) for any non-throwaway use.
 
-    // Session HMAC secret.
-    AuthService.setSecret(utf8(envSecretOr('AUTH_SESSION_SECRET', 'toil-demo-insecure-session-secret-change-me')));
     // OPRF master seed: hashed to a 32-byte (RFC 9497 Ns) seed so any env value
     // works. Per-user OPRF keys derive from this + the username.
     AuthService.setOprfSeed(crypto.sha256Text(envSecretOr('AUTH_OPRF_SEED', 'toil-demo-oprf-seed-v1')));

@@ -7,6 +7,24 @@ import { Method, Request, Response, Rest, ToilHandler } from 'toiljs/server/runt
  */
 export class AppHandler extends ToilHandler {
     public handle(req: Request): Response {
+        // Session signing secret: set on EVERY request, BEFORE routing. The signed
+        // session cookie is minted in one route (auth login / session dev-login) but
+        // verified by the `@auth` gate in another, and each request runs in a FRESH
+        // wasm instance -- so a secret configured inside a single handler is absent on
+        // the instance that verifies `/session/me`, and the HMAC check fails (401).
+        // Setting it here, at the one entry point every request passes through, makes
+        // mint and verify always agree. Read from the env store with a clearly-insecure
+        // DEV fallback so the demo runs with zero config; set AUTH_SESSION_SECRET in
+        // `.env.secrets` for any non-throwaway use.
+        const sessionSecret = Environment.getSecure('AUTH_SESSION_SECRET');
+        AuthService.setSecret(
+            Uint8Array.wrap(
+                String.UTF8.encode(
+                    sessionSecret != null ? sessionSecret : 'toil-demo-insecure-session-secret-change-me',
+                ),
+            ),
+        );
+
         // Rest.dispatch returns the first matching route's Response, or null if nothing
         // matched - then we fall through to our own logic. REST composes; it never takes
         // over handle().

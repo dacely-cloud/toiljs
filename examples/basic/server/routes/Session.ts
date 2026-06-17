@@ -16,8 +16,11 @@ import { DataReader, DataWriter } from 'data';
  * this `/session/dev-login` mints one for a caller-named demo user so the flow is
  * runnable without the external account store the login example stubs out.
  *
- * The server secret defaults to a well-known DEV placeholder; a real deployment
- * calls `AuthService.setSecret(...)` once at startup (see server/main.ts).
+ * The session secret is configured once per request, BEFORE routing, in
+ * `core/AppHandler` (every request runs in a fresh wasm instance, so the secret
+ * must be set on each one, and the mint side and this `@auth` verify side are
+ * different routes). It reads `AUTH_SESSION_SECRET` from the env store with a
+ * clearly-insecure DEV fallback; a real deployment sets it in `.env.secrets`.
  */
 
 // @user: the authenticated-user shape. Exactly one per program.

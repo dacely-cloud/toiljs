@@ -40,20 +40,32 @@ function loadModule(): WasmServerModule {
 /** Route the client's `fetch(path, {body})` into the dev wasm dispatcher. */
 function installFetchShim(m: WasmServerModule): () => void {
     const original = globalThis.fetch;
+    const jar = new Map<string, string>();
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = typeof input === 'string' ? input : input.toString();
         const pathname = new URL(url, 'http://localhost').pathname;
         const bodyBytes =
             init?.body == null ? new Uint8Array(0) : new Uint8Array(init.body as ArrayBuffer);
+        const headers: [string, string][] = [
+            ['host', 'localhost:3000'],
+            ['content-type', 'application/octet-stream'],
+        ];
+        if (jar.size > 0)
+            headers.push(['cookie', [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ')]);
         const r = m.dispatch({
             method: (init?.method ?? 'GET') as 'GET' | 'POST',
             path: pathname,
-            headers: [
-                ['host', 'localhost:3000'],
-                ['content-type', 'application/octet-stream'],
-            ],
+            headers,
             body: bodyBytes,
         });
+        // Fold any Set-Cookie (`name=value; Path=/; ...`) into the jar so the next
+        // request replays it, exactly like a browser.
+        for (const [name, value] of r.headers) {
+            if (name.toLowerCase() !== 'set-cookie') continue;
+            const pair = value.split(';', 1)[0];
+            const eq = pair.indexOf('=');
+            if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
+        }
         const ab = r.body.buffer.slice(r.body.byteOffset, r.body.byteOffset + r.body.byteLength);
         return {
             ok: r.status >= 200 && r.status < 300,
@@ -86,6 +98,26 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
             // verified against the client's own shared secret.
             const session = await Auth.login('ada', 'correct horse battery staple');
             expect(session.length).toBeGreaterThan(0);
+
+            // Regression guard: the freshly minted session cookie (captured by the
+            // shim jar) must be ACCEPTED by the `@auth`-gated `/session/me`, which
+            // runs in a separate fresh wasm instance from `login/finish`. The bug
+            // was that login configured a different HMAC secret than the verify
+            // path used, so the MAC failed and `/session/me` returned 401.
+            const meRes = await fetch('/session/me');
+            expect(meRes.status).toBe(200);
+            const me = new DataReader(new Uint8Array(await meRes.arrayBuffer()));
+            expect(me.readString()).toBe('ada');
+            expect(me.readBool()).toBe(false); // 'ada' is not 'root' -> not admin
+        },
+        60_000,
+    );
+
+    it(
+        'rejects /session/me with no session cookie (the @auth gate holds)',
+        async () => {
+            const meRes = await fetch('/session/me');
+            expect(meRes.status).toBe(401);
         },
         60_000,
     );
