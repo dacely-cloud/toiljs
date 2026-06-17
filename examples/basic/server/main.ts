@@ -9,6 +9,7 @@ import { AppHandler } from './core/AppHandler';
 import './routes/Auth';
 import './routes/Players';
 import './routes/Leaderboard';
+import './routes/Guestbook';
 import './routes/Session';
 import './routes/EnvDemo';
 import './services/Stats';
