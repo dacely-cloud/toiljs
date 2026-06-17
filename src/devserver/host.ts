@@ -18,7 +18,7 @@
  */
 
 import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
-import { buildKvImports } from './kv.js';
+import { buildDatabaseImports, freshDbState, type DbDevState } from './database.js';
 import { EmailStatus, getEmailService } from './email/index.js';
 import { parseEmailBlob } from './email/wire.js';
 import { devEnvGet, devEnvGetSecure } from './env.js';
@@ -59,6 +59,8 @@ export interface DispatchState {
     clientIp: string;
     /** Per-dispatch Web Crypto keystore + result scratch (mirrors the edge). */
     crypto: CryptoState;
+    /** Per-dispatch ToilDB state: resolved collection handles + result stash. */
+    db: DbDevState;
 }
 
 /** A fresh, zeroed per-dispatch state (the edge resets the same way before each request). */
@@ -70,6 +72,7 @@ export function freshDispatchState(): DispatchState {
         sendfile: null,
         clientIp: '',
         crypto: freshCryptoState(),
+        db: freshDbState(),
     };
 }
 
@@ -270,10 +273,11 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
             // `crypto`. The dev server skips metering, so these charge nothing.
             ...buildCryptoImports(ref, state.crypto),
 
-            // DEV-ONLY persistent KV (`env.kv.*`). REMOVE LATER — scaffolding so
-            // the auth example's register/login chain spans requests under
-            // `toiljs dev`; not present on the production edge (see ./kv.ts).
-            ...buildKvImports(ref),
+            // `env::data.*`: the ToilDB data API, emulated in process (see
+            // ./database.ts). Backs the auth example's accounts + login
+            // challenges so register/login spans requests under `toiljs dev`;
+            // the production edge backs the SAME imports with ScyllaDB.
+            ...buildDatabaseImports(ref, state.db),
         },
     };
 }

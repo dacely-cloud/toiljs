@@ -59,9 +59,13 @@ const PROVIDED_IMPORTS = new Set([
     'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
     'crypto.sign', 'crypto.verify', 'crypto.derive_bits',
     'crypto.mldsa_verify', 'crypto.mlkem_decapsulate', 'crypto.voprf_evaluate',
-    // DEV-ONLY persistent KV (see ./kv.ts). REMOVE once the example is backed by
-    // a real external store; never ship as a production storage path.
-    'kv.put', 'kv.get', 'kv.getdel',
+    // ToilDB data API (see ./database.ts). Backed by ScyllaDB on the production
+    // edge; backs the auth example's accounts + login challenges in dev.
+    'data.resolve_collection', 'data.get', 'data.exists', 'data.create',
+    'data.patch', 'data.delete', 'data.get_delete',
+    'data.unique_lookup', 'data.unique_claim', 'data.unique_release',
+    'data.counter_get', 'data.counter_add', 'data.append', 'data.latest',
+    'data.take_result',
 ]);
 
 export class WasmServerModule {

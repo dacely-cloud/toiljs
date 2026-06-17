@@ -30,6 +30,7 @@ import {
     HmacParams,
     ALG_AES_GCM,
     ALG_SHA_256,
+    FMT_RAW,
     USAGE_SIGN,
     USAGE_VERIFY,
     USAGE_ENCRYPT,
@@ -104,7 +105,7 @@ export class SecureCookies {
 
     private importHmac(key: Uint8Array): CryptoKey {
         return crypto.subtle.importKey(
-            'raw',
+            FMT_RAW,
             key,
             new HmacImportParams(ALG_SHA_256),
             false,
@@ -114,7 +115,7 @@ export class SecureCookies {
 
     private importAes(key: Uint8Array): CryptoKey {
         return crypto.subtle.importKey(
-            'raw',
+            FMT_RAW,
             key,
             new AesKeyParams(),
             false,

@@ -3,9 +3,9 @@
  * — OPRF blind/finalize, Argon2id, ML-DSA keygen/sign, ML-KEM encapsulate,
  * mutual-auth confirm) against the toilscript-compiled example server wasm
  * (`examples/basic` Auth route + the AuthService global), through the dev-server
- * host imports (OPRF + ML-KEM mocks + the dev KV). A `fetch` shim routes the
- * client's requests into `WasmServerModule.dispatch`, and the in-process dev KV
- * persists across dispatches so register -> login spans "requests".
+ * host imports (OPRF + ML-KEM mocks + the ToilDB emulator). A `fetch` shim routes
+ * the client's requests into `WasmServerModule.dispatch`, and the in-process
+ * ToilDB store persists across dispatches so register -> login spans "requests".
  *
  * This is the full chain interop gate: if the noble client and the
  * voprf/fips203-equivalent dev mocks + the AS AuthService disagree on a single
@@ -20,7 +20,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { ristretto255_oprf } from '@noble/curves/ed25519.js';
 
 import { WasmServerModule } from '../src/devserver/index.js';
-import { __resetKvForTests } from '../src/devserver/kv.js';
+import { __resetDbForTests } from '../src/devserver/database.js';
 import { Auth } from '../src/client/auth.js';
 import { DataReader, DataWriter } from '../src/io/codec.js';
 
@@ -84,7 +84,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     let mod: WasmServerModule;
 
     beforeEach(() => {
-        __resetKvForTests();
+        __resetDbForTests();
         mod = loadModule();
         restoreFetch = installFetchShim(mod);
     });
@@ -155,7 +155,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
 
 // Lower-level wire checks that don't need the heavy Argon2id derivation.
 describe.skipIf(!haveWasm)('post-quantum auth wire-level (anti-enumeration, replay)', () => {
-    beforeEach(() => __resetKvForTests());
+    beforeEach(() => __resetDbForTests());
 
     const oprf = ristretto255_oprf.oprf;
     const loginStart = (m: WasmServerModule, username: string) => {

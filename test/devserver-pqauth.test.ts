@@ -1,17 +1,16 @@
 /**
  * Dev-server post-quantum auth host mocks: the ML-KEM-768 decapsulation and the
  * RFC 9497 OPRF evaluation must be byte-identical to the production Rust edge
- * (`toil-backend` fips203 / `voprf` crate), and the dev-only KV must behave like
- * an atomic fetch-and-delete store. The OPRF mock is asserted against the same
- * RFC 9497 Appendix A.1.1 vector the edge test uses — if both match the RFC,
- * the noble client interops with both servers.
+ * (`toil-backend` fips203 / `voprf` crate). The OPRF mock is asserted against the
+ * same RFC 9497 Appendix A.1.1 vector the edge test uses — if both match the RFC,
+ * the noble client interops with both servers. (Account/challenge persistence is
+ * ToilDB now, exercised end-to-end in `pqauth-e2e.test.ts`.)
  */
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { ml_kem768 } from '@dacely/noble-post-quantum/ml-kem.js';
 
 import { buildCryptoImports, freshCryptoState } from '../src/devserver/crypto.js';
-import { buildKvImports, __resetKvForTests } from '../src/devserver/kv.js';
 
 type Ref = { memory: WebAssembly.Memory | null };
 
@@ -90,64 +89,5 @@ describe('crypto.voprf_evaluate dev mock (RFC 9497 A.1.1, ristretto255-SHA512)',
         const ref = freshMem();
         const evaluate = buildCryptoImports(ref, freshCryptoState())['crypto.voprf_evaluate'];
         expect(evaluate(0, 32, 256, 8, 512, 31, 1024)).toBe(-4);
-    });
-});
-
-describe('dev kv store', () => {
-    beforeEach(() => __resetKvForTests());
-
-    it('put then get round-trips a value', () => {
-        const ref = freshMem();
-        const kv = buildKvImports(ref);
-        const key = Buffer.from('acct:alice', 'latin1');
-        const val = Buffer.from([1, 2, 3, 4, 5]);
-        put(ref, 0, key);
-        put(ref, 64, val);
-        kv['kv.put'](0, key.length, 64, val.length);
-
-        const outPtr = 256;
-        const n = kv['kv.get'](0, key.length, outPtr, 1024) as number;
-        expect(n).toBe(val.length);
-        expect(b2h(buf(ref).subarray(outPtr, outPtr + n))).toBe(b2h(val));
-    });
-
-    it('get returns -1 for an absent key, -2 when the buffer is too small', () => {
-        const ref = freshMem();
-        const kv = buildKvImports(ref);
-        const key = Buffer.from('chal:missing', 'latin1');
-        put(ref, 0, key);
-        expect(kv['kv.get'](0, key.length, 256, 1024)).toBe(-1);
-
-        const val = Buffer.alloc(100, 7);
-        put(ref, 64, val);
-        kv['kv.put'](0, key.length, 64, val.length);
-        expect(kv['kv.get'](0, key.length, 256, 10)).toBe(-2); // too small, no write
-    });
-
-    it('getdel returns the value once then deletes it (atomic consume)', () => {
-        const ref = freshMem();
-        const kv = buildKvImports(ref);
-        const key = Buffer.from('chal:cid', 'latin1');
-        const val = Buffer.from([9, 8, 7]);
-        put(ref, 0, key);
-        put(ref, 64, val);
-        kv['kv.put'](0, key.length, 64, val.length);
-
-        expect(kv['kv.getdel'](0, key.length, 256, 1024)).toBe(val.length);
-        // Second consume finds nothing — the replay-prevention property.
-        expect(kv['kv.getdel'](0, key.length, 256, 1024)).toBe(-1);
-    });
-
-    it('getdel does NOT delete on a -2 probe', () => {
-        const ref = freshMem();
-        const kv = buildKvImports(ref);
-        const key = Buffer.from('chal:probe', 'latin1');
-        const val = Buffer.alloc(50, 3);
-        put(ref, 0, key);
-        put(ref, 64, val);
-        kv['kv.put'](0, key.length, 64, val.length);
-
-        expect(kv['kv.getdel'](0, key.length, 256, 10)).toBe(-2); // probe, too small
-        expect(kv['kv.getdel'](0, key.length, 256, 1024)).toBe(val.length); // still there
     });
 });
