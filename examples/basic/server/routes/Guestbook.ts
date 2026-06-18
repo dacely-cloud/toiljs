@@ -1,5 +1,3 @@
-import { Counter, Events } from 'toildb';
-
 import { GuestEntry } from '../models/GuestEntry';
 import { GuestbookView } from '../models/GuestbookView';
 import { NewMessage } from '../models/NewMessage';
@@ -28,7 +26,7 @@ class GuestKey {
 
 @database
 class GuestbookDb {
-    @collection entries!: Events<GuestEntry, GuestKey>;
+    @collection entries!: Events<GuestKey, GuestEntry>;
     @collection totals!: Counter<GuestKey>;
 }
 

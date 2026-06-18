@@ -1,6 +1,5 @@
 import { Response, RouteContext } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
-import { Record } from 'toildb';
 
 import { encodeSessionUser } from './Session';
 
@@ -105,8 +104,8 @@ class Challenge {
 
 @database
 class AuthDb {
-    @collection accounts!: Record<AuthAccount, Username>;
-    @collection challenges!: Record<Challenge, ChallengeId>;
+    @collection accounts!: Documents<Username, AuthAccount>;
+    @collection challenges!: Documents<ChallengeId, Challenge>;
 }
 
 @rest('auth')
