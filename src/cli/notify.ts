@@ -13,12 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { detectPackageManager } from './update.js';
 import { accent, bold, box, dim, version as cliVersion, warn } from './ui.js';
-import {
-    findOutdated,
-    isCacheFresh,
-    type OutdatedRow,
-    parseCheckCache,
-} from './version-check.js';
+import { findOutdated, isCacheFresh, type OutdatedRow, parseCheckCache } from './version-check.js';
 
 const REGISTRY_URL = 'https://registry.npmjs.org/toiljs/latest';
 const FETCH_TIMEOUT_MS = 2000;

@@ -17,8 +17,8 @@
  * `WebAssembly.Instance`, so offering the full surface costs nothing.
  */
 
-import { buildCryptoImports, freshCryptoState, type CryptoState } from './crypto.js';
-import { buildDatabaseImports, freshDbState, type DbDevState } from './database.js';
+import { buildCryptoImports, type CryptoState, freshCryptoState } from './crypto.js';
+import { buildDatabaseImports, type DbDevState, freshDbState } from './database.js';
 import { EmailStatus, getEmailService } from './email/index.js';
 import { parseEmailBlob } from './email/wire.js';
 import { devEnvGet, devEnvGetSecure } from './env.js';
@@ -158,7 +158,12 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 state.status = code >= 100 && code <= 599 ? code : 500;
             },
 
-            set_header: (namePtr: number, nameLen: number, valPtr: number, valLen: number): void => {
+            set_header: (
+                namePtr: number,
+                nameLen: number,
+                valPtr: number,
+                valLen: number,
+            ): void => {
                 if (nameLen > MAX_HEADER_NAME_LEN)
                     throw new Error(`header name too long: ${String(nameLen)} bytes`);
                 if (valLen > MAX_HEADER_VALUE_LEN)
@@ -228,7 +233,9 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 const svc = getEmailService();
                 if (svc === null) {
                     const to = parseEmailBlob(raw)?.to ?? '<unparsed>';
-                    process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
+                    process.stdout.write(
+                        `  ✉ dev email_send -> ${to} (no email config; not sent)\n`,
+                    );
                     return EmailStatus.Sent;
                 }
                 const { status, parsed } = svc.prepare(raw);
@@ -243,7 +250,9 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                         process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (${label})\n`);
                     })
                     .catch((e: unknown) => {
-                        process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`);
+                        process.stdout.write(
+                            `  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`,
+                        );
                     });
                 return EmailStatus.Sent; // optimistic; sync wasm can't await the send
             },

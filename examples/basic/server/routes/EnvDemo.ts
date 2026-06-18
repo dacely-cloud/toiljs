@@ -34,9 +34,15 @@ class EnvDemo {
         const apiKeySet = Environment.getSecure('DEMO_API_KEY') != null;
 
         const body =
-            'PUBLIC_GREETING=' + greeting + '\n' +
-            'REGION=' + region + '\n' +
-            'DEMO_API_KEY set=' + (apiKeySet ? 'yes' : 'no') + '\n';
+            'PUBLIC_GREETING=' +
+            greeting +
+            '\n' +
+            'REGION=' +
+            region +
+            '\n' +
+            'DEMO_API_KEY set=' +
+            (apiKeySet ? 'yes' : 'no') +
+            '\n';
         return Response.text(body, 200);
     }
 }

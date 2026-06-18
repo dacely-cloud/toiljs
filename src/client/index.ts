@@ -10,7 +10,13 @@
 
 export { mount } from './routing/mount.js';
 export { Router } from './routing/Router.js';
-export { Auth, register as authRegister, login as authLogin, buildLoginMessage, LOGIN_CONTEXT } from './auth.js';
+export {
+    Auth,
+    register as authRegister,
+    login as authLogin,
+    buildLoginMessage,
+    LOGIN_CONTEXT,
+} from './auth.js';
 export type { KdfParams, AuthOptions } from './auth.js';
 export { Link } from './navigation/Link.js';
 export type { LinkProps } from './navigation/Link.js';
@@ -36,7 +42,12 @@ export {
     useNavigationPending,
 } from './routing/hooks.js';
 export type { RouterInstance } from './routing/hooks.js';
-export { useLoaderData, revalidate, invalidateLoaderData, LoaderDataContext } from './routing/loader.js';
+export {
+    useLoaderData,
+    revalidate,
+    invalidateLoaderData,
+    LoaderDataContext,
+} from './routing/loader.js';
 export type {
     LoaderArgs,
     LoaderFunction,

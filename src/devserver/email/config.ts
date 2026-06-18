@@ -94,7 +94,10 @@ export function resolveEmailConfig(
     } else if (providerId === 'gmail' || providerId === 'smtp') {
         provider = 'smtp';
         const isGmail = providerId === 'gmail';
-        const host = envOf(reserved, 'SMTP_HOST') ?? c.smtp?.host?.trim() ?? (isGmail ? 'smtp.gmail.com' : '');
+        const host =
+            envOf(reserved, 'SMTP_HOST') ??
+            c.smtp?.host?.trim() ??
+            (isGmail ? 'smtp.gmail.com' : '');
         if (!host) {
             return { config: null, warning: 'provider `smtp` requires TOIL_EMAIL_SMTP_HOST' };
         }
@@ -102,7 +105,10 @@ export function resolveEmailConfig(
         const user = envOf(reserved, 'SMTP_USER') ?? c.smtp?.user?.trim() ?? from;
         smtp = { host, port, user };
     } else {
-        return { config: null, warning: `unknown email provider "${providerId}" (resend|gmail|smtp)` };
+        return {
+            config: null,
+            warning: `unknown email provider "${providerId}" (resend|gmail|smtp)`,
+        };
     }
 
     return {

@@ -37,11 +37,10 @@ export default function CryptoDemo() {
         <main>
             <h1>Web Crypto</h1>
             <p>
-                <code>crypto</code> is a global in the server (no import), synchronous, the same
-                SubtleCrypto-style API as the browser, running in the server wasm via metered host
-                functions. These buttons call the server&apos;s <code>/api/hash</code> and{' '}
-                <code>/api/uuid</code> routes (see <code>server/HelloHandler.ts</code>). Needs the
-                server running to respond.
+                <code>crypto</code> is a global in the server (no import), synchronous, the same SubtleCrypto-style API
+                as the browser, running in the server wasm via metered host functions. These buttons call the
+                server&apos;s <code>/api/hash</code> and <code>/api/uuid</code> routes (see{' '}
+                <code>server/HelloHandler.ts</code>). Needs the server running to respond.
             </p>
             <button onClick={onHash}>SHA-256</button> <button onClick={onUuid}>random UUID</button>
             <ul style={{ marginTop: 16, listStyle: 'none', padding: 0 }}>

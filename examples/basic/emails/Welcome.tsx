@@ -22,8 +22,7 @@ export default function Welcome({ name, code }: { name: string; code: string }) 
                             cellPadding={0}
                             cellSpacing={0}
                             className="email-card"
-                            style={{ width: '100%', maxWidth: '480px' }}
-                        >
+                            style={{ width: '100%', maxWidth: '480px' }}>
                             <tbody>
                                 {/* Signature gradient hairline. */}
                                 <tr>
@@ -83,9 +82,7 @@ export default function Welcome({ name, code }: { name: string; code: string }) 
 
                                 {/* Footer. */}
                                 <tr>
-                                    <td className="email-footer">
-                                        toiljs, one build, the whole planet
-                                    </td>
+                                    <td className="email-footer">toiljs, one build, the whole planet</td>
                                 </tr>
                             </tbody>
                         </table>

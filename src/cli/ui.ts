@@ -118,9 +118,7 @@ function visibleWidth(s: string): number {
 export function box(lines: readonly string[], paint: (s: string) => string = (s) => s): string {
     const width = lines.reduce((w, l) => Math.max(w, visibleWidth(l)), 0);
     const side = paint('│');
-    const body = lines.map(
-        (l) => `  ${side}  ${l}${' '.repeat(width - visibleWidth(l))}  ${side}`,
-    );
+    const body = lines.map((l) => `  ${side}  ${l}${' '.repeat(width - visibleWidth(l))}  ${side}`);
     return [
         '  ' + paint(`╭${'─'.repeat(width + 4)}╮`),
         ...body,
@@ -167,3 +165,5 @@ export function banner(): void {
     const ver = `${dim('  v')}${brand(version())}`;
     process.stdout.write('\n' + lines.join('\n') + '\n\n  ' + tagline() + '   ' + ver + '\n\n');
 }
+
+

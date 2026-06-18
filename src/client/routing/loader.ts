@@ -10,10 +10,10 @@
  * a number keeps data fresh for that many seconds; `false` caches until manual invalidation.
  * `revalidate()` / `router.refresh()` bust the cache to force a refetch.
  */
-import { createContext, useContext, type ComponentType } from 'react';
+import { type ComponentType, createContext, useContext } from 'react';
 
 import type { HeadSpec } from '../head/head.js';
-import { resolveMetadata, type GenerateMetadata, type Metadata } from '../head/metadata.js';
+import { type GenerateMetadata, type Metadata, resolveMetadata } from '../head/metadata.js';
 import { navigationEpoch, refresh as rerender } from '../navigation/navigation.js';
 import type { RouteDef } from '../types.js';
 import type { RouteParams } from './match.js';

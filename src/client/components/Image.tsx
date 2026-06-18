@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ComponentPropsWithRef, type ReactNode } from 'react';
+import { type ComponentPropsWithRef, type CSSProperties, type ReactNode, useState } from 'react';
 
 /**
  * Props for {@link Image}: every standard `<img>` attribute, plus toil's layout/loading controls.

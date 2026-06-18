@@ -19,7 +19,7 @@ interface HelloData {
 
 export const loader = ({ params }: { params: Record<string, string> }): HelloData => ({
     name: params.name ?? 'world',
-    items: ['alpha', 'beta', 'gamma'],
+    items: ['alpha', 'beta', 'gamma']
 });
 
 export default function Hello(): React.JSX.Element {

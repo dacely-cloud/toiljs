@@ -25,9 +25,24 @@ import type { MemoryRef } from './host.js';
 
 // --- ABI id tables (must match the std + Rust backend) ----------------------
 const ALG = {
-    SHA1: 1, SHA256: 2, SHA384: 3, SHA512: 4, SHA3_256: 5, SHA3_384: 6, SHA3_512: 7,
-    AES_GCM: 10, AES_CBC: 11, AES_CTR: 12, AES_KW: 13, HMAC: 20,
-    ECDSA: 32, ED25519: 33, ECDH: 50, X25519: 51, HKDF: 52, PBKDF2: 53,
+    SHA1: 1,
+    SHA256: 2,
+    SHA384: 3,
+    SHA512: 4,
+    SHA3_256: 5,
+    SHA3_384: 6,
+    SHA3_512: 7,
+    AES_GCM: 10,
+    AES_CBC: 11,
+    AES_CTR: 12,
+    AES_KW: 13,
+    HMAC: 20,
+    ECDSA: 32,
+    ED25519: 33,
+    ECDH: 50,
+    X25519: 51,
+    HKDF: 52,
+    PBKDF2: 53,
 } as const;
 const FMT = { RAW: 0, PKCS8: 1, SPKI: 2, JWK: 3 } as const;
 
@@ -77,7 +92,9 @@ function readBytes(ref: MemoryRef, ptr: number, len: number): Buffer {
 function writeBytes(ref: MemoryRef, ptr: number, bytes: Buffer | Uint8Array): void {
     const m = memBuf(ref);
     if (ptr < 0 || ptr + bytes.length > m.length)
-        throw new Error(`crypto write out of bounds: ptr=${String(ptr)} len=${String(bytes.length)}`);
+        throw new Error(
+            `crypto write out of bounds: ptr=${String(ptr)} len=${String(bytes.length)}`,
+        );
     m.set(bytes, ptr);
 }
 
@@ -85,25 +102,21 @@ function writeBytes(ref: MemoryRef, ptr: number, bytes: Buffer | Uint8Array): vo
 class ParamReader {
     private pos = 0;
     constructor(private readonly buf: Buffer) {}
-    /** Bounds-check before a read so a malformed buffer throws a controlled
-     *  error (trap-equivalent, caught by the dispatcher) rather than a raw
-     *  Node RangeError. */
-    private need(n: number): void {
-        if (n < 0 || this.pos + n > this.buf.length)
-            throw new Error('crypto: malformed params buffer (truncated)');
-    }
+
     readI32(): number {
         this.need(4);
         const v = this.buf.readInt32LE(this.pos);
         this.pos += 4;
         return v;
     }
+
     readU32(): number {
         this.need(4);
         const v = this.buf.readUInt32LE(this.pos);
         this.pos += 4;
         return v;
     }
+
     readBlob(): Buffer {
         const n = this.readU32();
         this.need(n);
@@ -111,18 +124,34 @@ class ParamReader {
         this.pos += n;
         return s;
     }
+
+    /** Bounds-check before a read so a malformed buffer throws a controlled
+     *  error (trap-equivalent, caught by the dispatcher) rather than a raw
+     *  Node RangeError. */
+    private need(n: number): void {
+        if (n < 0 || this.pos + n > this.buf.length)
+            throw new Error('crypto: malformed params buffer (truncated)');
+    }
 }
 
 function hashName(id: number): string {
     switch (id) {
-        case ALG.SHA1: return 'sha1';
-        case ALG.SHA256: return 'sha256';
-        case ALG.SHA384: return 'sha384';
-        case ALG.SHA512: return 'sha512';
-        case ALG.SHA3_256: return 'sha3-256';
-        case ALG.SHA3_384: return 'sha3-384';
-        case ALG.SHA3_512: return 'sha3-512';
-        default: throw new Error(`crypto: bad hash id ${String(id)}`);
+        case ALG.SHA1:
+            return 'sha1';
+        case ALG.SHA256:
+            return 'sha256';
+        case ALG.SHA384:
+            return 'sha384';
+        case ALG.SHA512:
+            return 'sha512';
+        case ALG.SHA3_256:
+            return 'sha3-256';
+        case ALG.SHA3_384:
+            return 'sha3-384';
+        case ALG.SHA3_512:
+            return 'sha3-512';
+        default:
+            throw new Error(`crypto: bad hash id ${String(id)}`);
     }
 }
 
@@ -151,8 +180,7 @@ export function buildCryptoImports(
 
         'crypto.take_result': (outPtr: number, outLen: number): number => {
             const r = cs.lastResult;
-            if (!r || r.length !== outLen)
-                throw new Error('crypto.take_result: length mismatch');
+            if (!r || r.length !== outLen) throw new Error('crypto.take_result: length mismatch');
             writeBytes(ref, outPtr, r);
             cs.lastResult = null;
             return r.length;
@@ -191,9 +219,15 @@ export function buildCryptoImports(
                 if (e.raw && format === FMT.RAW) return stash(cs, e.raw);
                 if (e.keyObject) {
                     if (format === FMT.PKCS8 && e.isPrivate)
-                        return stash(cs, e.keyObject.export({ format: 'der', type: 'pkcs8' }) as Buffer);
+                        return stash(
+                            cs,
+                            e.keyObject.export({ format: 'der', type: 'pkcs8' }) as Buffer,
+                        );
                     if (format === FMT.SPKI && !e.isPrivate)
-                        return stash(cs, e.keyObject.export({ format: 'der', type: 'spki' }) as Buffer);
+                        return stash(
+                            cs,
+                            e.keyObject.export({ format: 'der', type: 'spki' }) as Buffer,
+                        );
                 }
                 return ERR_UNSUPPORTED;
             } catch {
@@ -210,7 +244,13 @@ export function buildCryptoImports(
             signOp(cs, ref, h, pp, pl, dp, dl),
 
         'crypto.verify': (
-            h: number, pp: number, pl: number, sp: number, sl: number, dp: number, dl: number,
+            h: number,
+            pp: number,
+            pl: number,
+            sp: number,
+            sl: number,
+            dp: number,
+            dl: number,
         ): number => verifyOp(cs, ref, h, pp, pl, sp, sl, dp, dl),
 
         'crypto.derive_bits': (h: number, pp: number, pl: number, lengthBits: number): number =>
@@ -220,10 +260,14 @@ export function buildCryptoImports(
         // host (`mldsa_verify_import.rs`): same size asserts, 1/0/neg result.
         // Backed by the same noble lib the client signs with, so dev == prod.
         'crypto.mldsa_verify': (
-            pkPtr: number, pkLen: number,
-            msgPtr: number, msgLen: number,
-            sigPtr: number, sigLen: number,
-            ctxPtr: number, ctxLen: number,
+            pkPtr: number,
+            pkLen: number,
+            msgPtr: number,
+            msgLen: number,
+            sigPtr: number,
+            sigLen: number,
+            ctxPtr: number,
+            ctxLen: number,
         ): number => {
             if (pkLen !== 1312 || sigLen !== 2420 || ctxLen > 255) return -4;
             try {
@@ -243,8 +287,10 @@ export function buildCryptoImports(
         // the server's static secret key, write it to `outPtr`, return 0 / neg.
         // Backed by the same noble lib the client encapsulates with (dev == prod).
         'crypto.mlkem_decapsulate': (
-            ctPtr: number, ctLen: number,
-            skPtr: number, skLen: number,
+            ctPtr: number,
+            ctLen: number,
+            skPtr: number,
+            skLen: number,
             outPtr: number,
         ): number => {
             if (ctLen !== 1088 || skLen !== 2400) return -4;
@@ -267,9 +313,12 @@ export function buildCryptoImports(
         // `@noble/curves` ristretto255_oprf, which matches the edge byte-for-byte
         // (both RFC 9497), so dev == prod.
         'crypto.voprf_evaluate': (
-            seedPtr: number, seedLen: number,
-            infoPtr: number, infoLen: number,
-            blindedPtr: number, blindedLen: number,
+            seedPtr: number,
+            seedLen: number,
+            infoPtr: number,
+            infoLen: number,
+            blindedPtr: number,
+            blindedLen: number,
             outPtr: number,
         ): number => {
             // seedLen MUST be exactly 32 (RFC 9497 Ns; noble deriveKeyPair rejects
@@ -309,8 +358,13 @@ function importKey(
     try {
         // Symmetric / MAC / KDF: raw bytes.
         if (
-            alg === ALG.AES_GCM || alg === ALG.AES_CBC || alg === ALG.AES_CTR ||
-            alg === ALG.AES_KW || alg === ALG.HMAC || alg === ALG.PBKDF2 || alg === ALG.HKDF
+            alg === ALG.AES_GCM ||
+            alg === ALG.AES_CBC ||
+            alg === ALG.AES_CTR ||
+            alg === ALG.AES_KW ||
+            alg === ALG.HMAC ||
+            alg === ALG.PBKDF2 ||
+            alg === ALG.HKDF
         ) {
             if (format !== FMT.RAW) return ERR_UNSUPPORTED;
             return newEntry({ raw: key, keyObject: null, alg, hash, isPrivate: false });
@@ -339,8 +393,14 @@ function aesAlgName(keyLen: number, mode: 'gcm' | 'cbc' | 'ctr'): string {
 }
 
 function aesOp(
-    cs: CryptoState, ref: MemoryRef, encrypt: boolean,
-    handle: number, pp: number, pl: number, dp: number, dl: number,
+    cs: CryptoState,
+    ref: MemoryRef,
+    encrypt: boolean,
+    handle: number,
+    pp: number,
+    pl: number,
+    dp: number,
+    dl: number,
 ): number {
     const e = cs.keys.get(handle);
     if (!e || !e.raw) throw new Error('crypto: invalid AES key handle');
@@ -356,7 +416,9 @@ function aesOp(
             if (tagBits !== 0 && tagBits !== 128) return ERR_INVALID_PARAMS;
             if (encrypt) {
                 const c = nodeCrypto.createCipheriv(
-                    aesAlgName(e.raw.length, 'gcm'), e.raw, iv,
+                    aesAlgName(e.raw.length, 'gcm'),
+                    e.raw,
+                    iv,
                 ) as nodeCrypto.CipherGCM;
                 if (aad.length) c.setAAD(aad);
                 const ct = Buffer.concat([c.update(data), c.final()]);
@@ -366,7 +428,9 @@ function aesOp(
             // never authenticate.
             if (data.length < 16) return ERR_OPERATION_FAILED;
             const d = nodeCrypto.createDecipheriv(
-                aesAlgName(e.raw.length, 'gcm'), e.raw, iv,
+                aesAlgName(e.raw.length, 'gcm'),
+                e.raw,
+                iv,
             ) as nodeCrypto.DecipherGCM;
             if (aad.length) d.setAAD(aad);
             const tag = data.subarray(data.length - 16);
@@ -395,8 +459,13 @@ function aesOp(
 }
 
 function signOp(
-    cs: CryptoState, ref: MemoryRef,
-    handle: number, pp: number, pl: number, dp: number, dl: number,
+    cs: CryptoState,
+    ref: MemoryRef,
+    handle: number,
+    pp: number,
+    pl: number,
+    dp: number,
+    dl: number,
 ): number {
     const e = cs.keys.get(handle);
     if (!e) throw new Error('crypto.sign: invalid handle');
@@ -426,8 +495,15 @@ function signOp(
 }
 
 function verifyOp(
-    cs: CryptoState, ref: MemoryRef,
-    handle: number, pp: number, pl: number, sp: number, sl: number, dp: number, dl: number,
+    cs: CryptoState,
+    ref: MemoryRef,
+    handle: number,
+    pp: number,
+    pl: number,
+    sp: number,
+    sl: number,
+    dp: number,
+    dl: number,
 ): number {
     const e = cs.keys.get(handle);
     if (!e) throw new Error('crypto.verify: invalid handle');
@@ -442,10 +518,15 @@ function verifyOp(
             return mac.length === sig.length && nodeCrypto.timingSafeEqual(mac, sig) ? 1 : 0;
         }
         if (e.alg === ALG.ECDSA && e.keyObject) {
-            const ok = nodeCrypto.verify(hashName(hash), data, {
-                key: e.keyObject,
-                dsaEncoding: 'ieee-p1363',
-            }, sig);
+            const ok = nodeCrypto.verify(
+                hashName(hash),
+                data,
+                {
+                    key: e.keyObject,
+                    dsaEncoding: 'ieee-p1363',
+                },
+                sig,
+            );
             return ok ? 1 : 0;
         }
         if (e.alg === ALG.ED25519 && e.keyObject) {
@@ -458,8 +539,12 @@ function verifyOp(
 }
 
 function deriveBitsOp(
-    cs: CryptoState, ref: MemoryRef,
-    handle: number, pp: number, pl: number, lengthBits: number,
+    cs: CryptoState,
+    ref: MemoryRef,
+    handle: number,
+    pp: number,
+    pl: number,
+    lengthBits: number,
 ): number {
     if (lengthBits < 0 || lengthBits % 8 !== 0) return ERR_INVALID_PARAMS;
     const outLen = lengthBits / 8;
@@ -473,7 +558,10 @@ function deriveBitsOp(
         if (alg === ALG.PBKDF2 && e.raw) {
             const iterations = pr.readU32();
             const salt = pr.readBlob();
-            return stash(cs, nodeCrypto.pbkdf2Sync(e.raw, salt, iterations, outLen, hashName(hash)));
+            return stash(
+                cs,
+                nodeCrypto.pbkdf2Sync(e.raw, salt, iterations, outLen, hashName(hash)),
+            );
         }
         if (alg === ALG.HKDF && e.raw) {
             const salt = pr.readBlob();
@@ -484,7 +572,8 @@ function deriveBitsOp(
         if ((alg === ALG.ECDH || alg === ALG.X25519) && e.keyObject) {
             const peerHandle = pr.readI32();
             const peer = cs.keys.get(peerHandle);
-            if (!peer || !peer.keyObject) throw new Error('crypto.derive_bits: invalid peer handle');
+            if (!peer || !peer.keyObject)
+                throw new Error('crypto.derive_bits: invalid peer handle');
             const shared = nodeCrypto.diffieHellman({
                 privateKey: e.keyObject,
                 publicKey: peer.keyObject,

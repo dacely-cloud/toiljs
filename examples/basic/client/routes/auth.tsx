@@ -56,7 +56,7 @@ function readCompanion(): Account | null {
 export const metadata: Toil.Metadata = {
     title: 'Auth',
     description:
-        'Sessions and the @user / @auth surface: a dev login mints a signed session cookie, the guarded /session/me returns the verified user, and getUser() reads the readable companion.',
+        'Sessions and the @user / @auth surface: a dev login mints a signed session cookie, the guarded /session/me returns the verified user, and getUser() reads the readable companion.'
 };
 
 /** Encode a bare string the way the server reads it (`DataReader.readString`). */
@@ -84,7 +84,11 @@ export default function Auth(): React.JSX.Element {
     const devLogin = useCallback(async () => {
         setBusy(true);
         try {
-            const res = await fetch('/session/dev-login', { method: 'POST', credentials: 'same-origin', body: encodeString(username) as BodyInit });
+            const res = await fetch('/session/dev-login', {
+                method: 'POST',
+                credentials: 'same-origin',
+                body: encodeString(username) as BodyInit
+            });
             setLog(`POST /session/dev-login -> ${res.status} ${(await res.text()).trim()}`);
             refreshCompanion();
             setVerified(null);
@@ -127,10 +131,10 @@ export default function Auth(): React.JSX.Element {
         <main style={{ maxWidth: 640, margin: '0 auto', padding: '2rem 1rem', lineHeight: 1.5 }}>
             <h1>Auth and sessions</h1>
             <p>
-                A dev login mints an HMAC-signed <code>__Host-toil_sess</code> session cookie plus a
-                readable <code>__Secure-toil_user</code> companion. The guarded <code>/session/me</code>{' '}
-                route ( <code>@auth</code> ) re-verifies the signed session; <code>getUser()</code> reads
-                only the companion (display-only, untrusted). Needs the server running.
+                A dev login mints an HMAC-signed <code>__Host-toil_sess</code> session cookie plus a readable{' '}
+                <code>__Secure-toil_user</code> companion. The guarded <code>/session/me</code> route ({' '}
+                <code>@auth</code> ) re-verifies the signed session; <code>getUser()</code> reads only the companion
+                (display-only, untrusted). Needs the server running.
             </p>
 
             <section style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -162,9 +166,13 @@ export default function Auth(): React.JSX.Element {
                     {companion ? (
                         <pre>
                             {JSON.stringify(
-                                { username: companion.username, admin: companion.admin, score: String(companion.score) },
+                                {
+                                    username: companion.username,
+                                    admin: companion.admin,
+                                    score: String(companion.score)
+                                },
                                 null,
-                                2,
+                                2
                             )}
                         </pre>
                     ) : (
@@ -194,8 +202,8 @@ export default function Auth(): React.JSX.Element {
             ) : null}
 
             <p style={{ marginTop: '1.5rem', fontSize: '0.85em', opacity: 0.7 }}>
-                The full post-quantum register/login (ML-DSA-44, password-derived) needs an account
-                store and is stubbed in <code>server/routes/Auth.ts</code>. See <code>docs/auth.md</code>.
+                The full post-quantum register/login (ML-DSA-44, password-derived) needs an account store and is stubbed
+                in <code>server/routes/Auth.ts</code>. See <code>docs/auth.md</code>.
             </p>
         </main>
     );

@@ -39,7 +39,11 @@ function parseValue(rest: string): string {
  * Parse dotenv text into `plain` (non-reserved) and `reserved` (`TOIL_*`):
  * `KEY=value`, `#` comments, optional `export`, optional surrounding quotes.
  */
-function parseDotenv(text: string, plain: Map<string, string>, reserved: Map<string, string>): void {
+function parseDotenv(
+    text: string,
+    plain: Map<string, string>,
+    reserved: Map<string, string>,
+): void {
     for (const raw of text.split('\n')) {
         let line = raw.trim();
         if (line.length === 0 || line.startsWith('#')) continue;
@@ -53,7 +57,11 @@ function parseDotenv(text: string, plain: Map<string, string>, reserved: Map<str
     }
 }
 
-function readFileInto(file: string, plain: Map<string, string>, reserved: Map<string, string>): void {
+function readFileInto(
+    file: string,
+    plain: Map<string, string>,
+    reserved: Map<string, string>,
+): void {
     try {
         parseDotenv(fs.readFileSync(file, 'utf8'), plain, reserved);
     } catch {

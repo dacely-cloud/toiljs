@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 
 // A template wraps a segment like a layout, but RE-MOUNTS on every navigation within it (a layout
 // persists). This counter increments each time the template mounts, so navigating between the two

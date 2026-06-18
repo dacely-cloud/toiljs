@@ -17,7 +17,7 @@ export default function RestDemo() {
     // page, and the total is still there.
     const [book, setBook] = useState<{ total: bigint; entries: { author: string; message: string }[] }>({
         total: 0n,
-        entries: [],
+        entries: []
     });
 
     // POST /players  ->  typed Promise<Player>, body is a @data class. The server returns the
@@ -116,7 +116,6 @@ export default function RestDemo() {
                     <li key={i}>{line}</li>
                 ))}
             </ul>
-
             <h2>Guestbook (persisted via ToilDB)</h2>
             <p>
                 The same <code>Server.REST.*</code> client, but the route stores each signature in a ToilDB{' '}
@@ -133,7 +132,6 @@ export default function RestDemo() {
                     </li>
                 ))}
             </ul>
-
             <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );

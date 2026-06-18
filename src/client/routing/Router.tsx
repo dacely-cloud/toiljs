@@ -1,4 +1,4 @@
-import { createElement, Suspense, useLayoutEffect, type ReactNode } from 'react';
+import { createElement, type ReactNode, Suspense, useLayoutEffect } from 'react';
 
 import { ErrorBoundary } from './error-boundary.js';
 import { useLocation } from './hooks.js';
@@ -9,7 +9,7 @@ import {
     resolveLayout,
     resolveNotFound,
 } from './lazy.js';
-import { loaderKey, LoaderDataContext, readRouteData } from './loader.js';
+import { LoaderDataContext, loaderKey, readRouteData } from './loader.js';
 import { matchRoute, type RouteParams } from './match.js';
 import { useRouteHead } from '../head/head.js';
 import { ParamsContext } from './params-context.js';

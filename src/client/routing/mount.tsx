@@ -1,11 +1,7 @@
 import { createRoot, hydrateRoot } from 'react-dom/client';
 
 import { DevToolbar } from '../dev/devtools.js';
-import {
-    DevErrorBoundary,
-    DevErrorOverlay,
-    initDevErrorOverlay,
-} from '../dev/error-overlay.js';
+import { DevErrorBoundary, DevErrorOverlay, initDevErrorOverlay } from '../dev/error-overlay.js';
 import { initNavigation } from '../navigation/navigation.js';
 import { startPrefetcher } from '../navigation/prefetch.js';
 import { hydrateLoaderData } from './loader.js';
@@ -73,7 +69,10 @@ export function mount(
             <>
                 <DevErrorBoundary>{app}</DevErrorBoundary>
                 <DevErrorOverlay />
-                <DevToolbar routes={routes} slots={slots} />
+                <DevToolbar
+                    routes={routes}
+                    slots={slots}
+                />
             </>,
         );
     } else if (isSsrDocument()) {

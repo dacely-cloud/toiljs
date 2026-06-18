@@ -3,14 +3,14 @@
 // surface plus HMAC signing and AES-256-GCM encryption, running in the server wasm.
 // These controls call the `/api/cookies/*` routes in `server/core/AppHandler.ts`.
 // Needs the server running to respond.
-import { useState, type CSSProperties } from 'react';
+import { type CSSProperties, useState } from 'react';
 
 import { useBrowserValue } from '../lib/useBrowserValue';
 
 export const metadata: Toil.Metadata = {
     title: 'Cookies',
     description:
-        'Server-side cookies as a global: the Cookie builder, parsing, HMAC signing, and AES-256-GCM encryption, running in the server wasm.',
+        'Server-side cookies as a global: the Cookie builder, parsing, HMAC signing, and AES-256-GCM encryption, running in the server wasm.'
 };
 
 interface SetResp {
@@ -39,7 +39,7 @@ const card: CSSProperties = {
     borderRadius: 8,
     padding: '12px 16px',
     margin: '12px 0',
-    background: '#0c1218',
+    background: '#0c1218'
 };
 const label: CSSProperties = { opacity: 0.7, fontSize: '0.8rem', marginTop: 6 };
 
@@ -94,22 +94,18 @@ export default function CookiesDemo() {
             readJs();
         });
     const doSeal = (): Promise<void> =>
-        guard(async () =>
-            setSeal(await getJSON<SealResp>('/api/cookies/seal?v=' + encodeURIComponent(sealInput))),
-        );
+        guard(async () => setSeal(await getJSON<SealResp>('/api/cookies/seal?v=' + encodeURIComponent(sealInput))));
 
     return (
         <main style={{ maxWidth: 760 }}>
             <h1>Cookies</h1>
             <p>
-                <code>Cookie</code>, <code>Cookies</code>, and <code>SecureCookies</code> are globals in
-                the server (no import), exactly like <code>crypto</code>: the full RFC 6265bis surface
-                plus HMAC signing and AES-256-GCM encryption, running in the server wasm. See{' '}
-                <code>server/core/AppHandler.ts</code>. Needs the server running (<code>toiljs dev</code>).
+                <code>Cookie</code>, <code>Cookies</code>, and <code>SecureCookies</code> are globals in the server (no
+                import), exactly like <code>crypto</code>: the full RFC 6265bis surface plus HMAC signing and
+                AES-256-GCM encryption, running in the server wasm. See <code>server/core/AppHandler.ts</code>. Needs
+                the server running (<code>toiljs dev</code>).
             </p>
-
             {err ? <p style={{ color: '#ff6b6b', ...mono }}>{err}</p> : null}
-
             <h2>1. Everything you can do</h2>
             <p>Every attribute and cookie type, with the exact `Set-Cookie` string it serializes to.</p>
             <button onClick={showGallery}>Show the gallery</button>
@@ -123,12 +119,11 @@ export default function CookiesDemo() {
                     ))}
                 </div>
             ) : null}
-
             <h2>2. Set cookies</h2>
             <p>
                 Stores three real cookies: a plain <code>visits</code> counter, an HMAC-signed{' '}
-                <code>__Host-session</code>, and an AES-GCM-encrypted <code>secret</code>. The last two
-                are <code>HttpOnly</code>, so JavaScript cannot read them, only the server can.
+                <code>__Host-session</code>, and an AES-GCM-encrypted <code>secret</code>. The last two are{' '}
+                <code>HttpOnly</code>, so JavaScript cannot read them, only the server can.
             </p>
             <button onClick={doSet}>Set cookies</button>
             {setResp ? (
@@ -141,12 +136,11 @@ export default function CookiesDemo() {
                     ))}
                 </div>
             ) : null}
-
             <h2>3. What JS sees vs what the server sees</h2>
             <p>
-                <code>document.cookie</code> only exposes non-<code>HttpOnly</code> cookies, so the
-                signed session and encrypted secret are hidden from it. The server parses all of them
-                and verifies/decrypts the protected ones.
+                <code>document.cookie</code> only exposes non-<code>HttpOnly</code> cookies, so the signed session and
+                encrypted secret are hidden from it. The server parses all of them and verifies/decrypts the protected
+                ones.
             </p>
             <button onClick={readJs}>Read document.cookie</button>{' '}
             <button onClick={doInspect}>Ask the server (/inspect)</button>
@@ -163,7 +157,6 @@ export default function CookiesDemo() {
                     <div style={mono}>secret (AES-GCM-decrypted): {inspect.secret ?? 'null (missing or tampered)'}</div>
                 </div>
             ) : null}
-
             <h2>4. Clear</h2>
             <button onClick={doClear}>Clear the demo cookies</button>
             {cleared ? (
@@ -175,12 +168,11 @@ export default function CookiesDemo() {
                     ))}
                 </div>
             ) : null}
-
             <h2>5. Sign &amp; encrypt a value</h2>
             <p>
                 <code>SecureCookies.signed(key)</code> (HMAC-SHA256, readable but tamper-proof) and{' '}
-                <code>SecureCookies.encrypted(key)</code> (AES-256-GCM, confidential). Both bind the
-                value to the cookie name, and a tampered signature fails to verify.
+                <code>SecureCookies.encrypted(key)</code> (AES-256-GCM, confidential). Both bind the value to the cookie
+                name, and a tampered signature fails to verify.
             </p>
             <input
                 value={sealInput}
@@ -198,7 +190,6 @@ export default function CookiesDemo() {
                     <div style={mono}>tampered signature verifies? {String(seal.tamperVerifies)}</div>
                 </div>
             ) : null}
-
             <p style={{ marginTop: 24 }}>
                 <Toil.Link href="/features">Back to features</Toil.Link>
             </p>

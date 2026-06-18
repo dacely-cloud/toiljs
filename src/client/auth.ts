@@ -11,7 +11,7 @@
  * JSON, byte-identical to the server's `AuthService.buildLoginMessage`.
  */
 
-import { argon2id, createSHA256, createHMAC } from 'hash-wasm';
+import { argon2id, createHMAC, createSHA256 } from 'hash-wasm';
 import { ml_dsa44 } from '@dacely/noble-post-quantum/ml-dsa.js';
 import { ml_kem768 } from '@dacely/noble-post-quantum/ml-kem.js';
 import { ristretto255_oprf } from '@noble/curves/ed25519.js';
@@ -45,7 +45,9 @@ function fromHex(hex: string): Uint8Array {
  * decapsulate, so a valid confirmation tag authenticates the server. This is
  * the demo dev key; a real deployment pins its own (and rotates it).
  */
-export const SERVER_KEM_PUBLIC_KEY = fromHex('29d765e8083182891302569b3712a856e564fdd484b0706b0c68568d5ab7edc742cf74459d64595455a60f267973aa55e43c5be61925a3822eafcca445e36dc4655636e31e6fc9bec338b253f94290008ef7f40dbddb49c15c690f6755a23a1b3c85cfd5207e71a607086a6fc6d74a05080f43276901a19cafdb8de7771d58ea07f0f1056b905127b22223d08e75173199f13ab13c5dcd3b51ac784f84e520484a262b845a897c41cf27324ab6ba545c78c9ccab361051e0bba53498af26240fa0d566d1572684f4b42e253e6d052c848650915063c35641e1121ef8d9cfd17b667b351103c56d195007c9376d0c08aa268396814490eab4c364175a94533267a1933862cc4c33bcf0a13d1fa2b9d6c5082eeca1480672f2526cbe013beff14dc908a386e0b633c8761023cbed760deac6709bc328d865ac82e12307b673d96711dbb27a4d939230d25b53d594169a318be0200fa33550e9418e2a3b30e9719edc09d5fc4306f1abfd021eab14637a8a72c5931d25dc9b56db0e6ab677522b10f25307dbb804a6774ce05b87b0976a4b227bfe6caf20a79e64004fbd27b1eea018b3ab8ffa629f2dc87f19278f95168e94e44660a3370c537795678eb2f056260609769740583b51b291862927a1938737c6a37f40b78f00671cccbcb88ac3427b37915ed58782998f84051647707d48995472baad3f64a7cca54e1c0734db08751c614a34f28b84f2c1b5a6817355ab61957c486b7acffbc092bc8a7b46387f33b53ed372f7168d31a71cd008539928b0cdf91e835aa97f6a2be6d327b87a6ae478701d75a59a25179cb14997bb2552853014724170a1c49b82c2bcebc3279024e1fa44c53c7afdc43f0bd22116490f3b74c90e7296be58b9a91168f2fa0c3d378a3bcac959f357825c9976a8c9ee944f29b45e96d7345d9b478431a20cf1c5d3a3227c717fd204619777636c0cb140db5c50d2a3302334461030bee34e4eb1a6f02b733f9ccda4290fa168bc039568373241542728d00030d1f251e83737cb215adbdc1de75978675a0cd0d75b12748abdda7a9852629c63697d145af2c69854b06e03f37c4b064e4c9a4c03f2ad4d081e70180e9547247921918118086b62b4f7727f46b24e3e79ba3f28209f32b5102035bf935856232f83642268c0292ec6bf8e9462382163d30a20b4bcb7b4439310ec9d0a148193907fc07697342967cf1a16c6b3c71558951fa915400736cf699262b54b723abb2ecc27b74b68ee494287595ef818388adb49e883c67bfa5c226c0eef037a0851a29d34675912c1ea1068310b6dfcd017c809c8fbfc2c3ae78dfef07299960eeefba182662a90fa422c1790f356a2ea909012b15623a9b9e450a282cb530589a68368b3583159d9010ac3e52cc974753c342e58279516339dfb691df94b13a223ad97eb6a09c21dafe6304a3642d6d2067b5238497661fe88ad1227ca3557be2a576b6e17c5a7f997ea07929e76407e376aba74c44cd8504804776f39bbb8327624188a63501e83b404d9438cade0b11dc3ac61856447fb072b91761c228878f01b2eb6b4b21ba664c2c75882431603b25a449ffeb8410b910558581777562aa9b2181fd9c04713ad9326462d3e842121c4997f9aa932417c67851625816de66e0d65637434629f39');
+export const SERVER_KEM_PUBLIC_KEY = fromHex(
+    '29d765e8083182891302569b3712a856e564fdd484b0706b0c68568d5ab7edc742cf74459d64595455a60f267973aa55e43c5be61925a3822eafcca445e36dc4655636e31e6fc9bec338b253f94290008ef7f40dbddb49c15c690f6755a23a1b3c85cfd5207e71a607086a6fc6d74a05080f43276901a19cafdb8de7771d58ea07f0f1056b905127b22223d08e75173199f13ab13c5dcd3b51ac784f84e520484a262b845a897c41cf27324ab6ba545c78c9ccab361051e0bba53498af26240fa0d566d1572684f4b42e253e6d052c848650915063c35641e1121ef8d9cfd17b667b351103c56d195007c9376d0c08aa268396814490eab4c364175a94533267a1933862cc4c33bcf0a13d1fa2b9d6c5082eeca1480672f2526cbe013beff14dc908a386e0b633c8761023cbed760deac6709bc328d865ac82e12307b673d96711dbb27a4d939230d25b53d594169a318be0200fa33550e9418e2a3b30e9719edc09d5fc4306f1abfd021eab14637a8a72c5931d25dc9b56db0e6ab677522b10f25307dbb804a6774ce05b87b0976a4b227bfe6caf20a79e64004fbd27b1eea018b3ab8ffa629f2dc87f19278f95168e94e44660a3370c537795678eb2f056260609769740583b51b291862927a1938737c6a37f40b78f00671cccbcb88ac3427b37915ed58782998f84051647707d48995472baad3f64a7cca54e1c0734db08751c614a34f28b84f2c1b5a6817355ab61957c486b7acffbc092bc8a7b46387f33b53ed372f7168d31a71cd008539928b0cdf91e835aa97f6a2be6d327b87a6ae478701d75a59a25179cb14997bb2552853014724170a1c49b82c2bcebc3279024e1fa44c53c7afdc43f0bd22116490f3b74c90e7296be58b9a91168f2fa0c3d378a3bcac959f357825c9976a8c9ee944f29b45e96d7345d9b478431a20cf1c5d3a3227c717fd204619777636c0cb140db5c50d2a3302334461030bee34e4eb1a6f02b733f9ccda4290fa168bc039568373241542728d00030d1f251e83737cb215adbdc1de75978675a0cd0d75b12748abdda7a9852629c63697d145af2c69854b06e03f37c4b064e4c9a4c03f2ad4d081e70180e9547247921918118086b62b4f7727f46b24e3e79ba3f28209f32b5102035bf935856232f83642268c0292ec6bf8e9462382163d30a20b4bcb7b4439310ec9d0a148193907fc07697342967cf1a16c6b3c71558951fa915400736cf699262b54b723abb2ecc27b74b68ee494287595ef818388adb49e883c67bfa5c226c0eef037a0851a29d34675912c1ea1068310b6dfcd017c809c8fbfc2c3ae78dfef07299960eeefba182662a90fa422c1790f356a2ea909012b15623a9b9e450a282cb530589a68368b3583159d9010ac3e52cc974753c342e58279516339dfb691df94b13a223ad97eb6a09c21dafe6304a3642d6d2067b5238497661fe88ad1227ca3557be2a576b6e17c5a7f997ea07929e76407e376aba74c44cd8504804776f39bbb8327624188a63501e83b404d9438cade0b11dc3ac61856447fb072b91761c228878f01b2eb6b4b21ba664c2c75882431603b25a449ffeb8410b910558581777562aa9b2181fd9c04713ad9326462d3e842121c4997f9aa932417c67851625816de66e0d65637434629f39',
+);
 
 export const PUBLIC_KEY_LEN = 1312;
 export const SECRET_KEY_LEN = 2560;
@@ -171,7 +173,6 @@ export function buildRegisterMessage(username: string, publicKey: Uint8Array): U
     return new DataWriter().writeU8(1).writeString(username).writeBytes(publicKey).toBytes();
 }
 
-
 function decodeKdf(r: DataReader): KdfParams {
     return {
         memKiB: r.readU32(),
@@ -180,7 +181,6 @@ function decodeKdf(r: DataReader): KdfParams {
         salt: r.readBytes(),
     };
 }
-
 
 async function postBinary(baseUrl: string, path: string, body: Uint8Array): Promise<DataReader> {
     const res = await fetch(baseUrl + path, {
@@ -204,7 +204,11 @@ export interface AuthOptions {
  * stretched with Argon2id into an ML-DSA-44 keypair, and ONLY the public key
  * (plus a proof-of-possession signature) is submitted. Throws on failure.
  */
-export async function register(username: string, password: string, opts: AuthOptions = {}): Promise<void> {
+export async function register(
+    username: string,
+    password: string,
+    opts: AuthOptions = {},
+): Promise<void> {
     const baseUrl = opts.baseUrl ?? '/auth';
     const oprf = ristretto255_oprf.oprf;
     const pw = utf8(password.normalize('NFKC'));
@@ -268,7 +272,11 @@ export async function register(username: string, password: string, opts: AuthOpt
  * The secret key, seed, and shared secret are wiped as soon as they are used.
  * Returns the opaque session token. Throws (one generic message) on any failure.
  */
-export async function login(username: string, password: string, opts: AuthOptions = {}): Promise<Uint8Array> {
+export async function login(
+    username: string,
+    password: string,
+    opts: AuthOptions = {},
+): Promise<Uint8Array> {
     const baseUrl = opts.baseUrl ?? '/auth';
     const oprf = ristretto255_oprf.oprf;
     const pw = utf8(password.normalize('NFKC'));
@@ -299,8 +307,17 @@ export async function login(username: string, password: string, opts: AuthOption
     const { cipherText, sharedSecret } = ml_kem768.encapsulate(SERVER_KEM_PUBLIC_KEY);
     const serverKemKeyId = await sha256Bytes(SERVER_KEM_PUBLIC_KEY);
     const message = buildLoginMessage(
-        username, aud, cid, nonce, iat, exp,
-        cipherText, kdf.memKiB, kdf.iterations, kdf.parallelism, serverKemKeyId,
+        username,
+        aud,
+        cid,
+        nonce,
+        iat,
+        exp,
+        cipherText,
+        kdf.memKiB,
+        kdf.iterations,
+        kdf.parallelism,
+        serverKemKeyId,
     );
     let signature: Uint8Array;
     try {
@@ -333,9 +350,15 @@ export async function login(username: string, password: string, opts: AuthOption
     //    decapsulated correctly derives the same K, so a valid tag proves its
     //    identity. Verify before returning the session.
     const transcriptHash = await sha256Bytes(message);
-    const sessionKey = await hmacSha256(sharedSecret, concatBytes(utf8(SESSION_KEY_LABEL), transcriptHash));
+    const sessionKey = await hmacSha256(
+        sharedSecret,
+        concatBytes(utf8(SESSION_KEY_LABEL), transcriptHash),
+    );
     wipe(sharedSecret);
-    const expected = await hmacSha256(sessionKey, concatBytes(utf8(SERVER_CONFIRM_LABEL), transcriptHash));
+    const expected = await hmacSha256(
+        sessionKey,
+        concatBytes(utf8(SERVER_CONFIRM_LABEL), transcriptHash),
+    );
     if (!bytesEqual(expected, serverConfirm)) throw new Error('auth: server authentication failed');
 
     return session; // session token

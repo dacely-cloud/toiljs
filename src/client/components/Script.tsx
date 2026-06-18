@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 
 /**
  * When a {@link Script} is injected, relative to the app becoming interactive:

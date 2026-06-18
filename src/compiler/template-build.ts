@@ -19,12 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {
-    createElement,
-    type ComponentType,
-    type Context,
-    type ReactNode,
-} from 'react';
+import { type ComponentType, type Context, createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { createServer } from 'vite';
 
@@ -36,8 +31,8 @@ import {
     assignSlotIds,
     coherenceHash,
     encodeSlots,
-    extractFromHtml,
     type Extracted,
+    extractFromHtml,
 } from './template.js';
 import { createViteConfig } from './vite.js';
 

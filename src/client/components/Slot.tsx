@@ -1,4 +1,4 @@
-import { useContext, type ReactNode } from 'react';
+import { type ReactNode, useContext } from 'react';
 
 import { SlotContext } from '../routing/slot-context.js';
 

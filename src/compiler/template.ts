@@ -249,10 +249,7 @@ export function reactEscapeHtml(s: string): string {
  * any tooling that needs to materialise a full page from a template + values).
  * `values` maps a byte offset to the bytes inserted there (offsets may repeat
  * is not allowed; pass them in `slots` order). */
-export function spliceTemplate(
-    tmpl: Buffer,
-    inserts: { offset: number; value: Buffer }[],
-): Buffer {
+export function spliceTemplate(tmpl: Buffer, inserts: { offset: number; value: Buffer }[]): Buffer {
     const parts: Buffer[] = [];
     let prev = 0;
     for (const ins of inserts) {

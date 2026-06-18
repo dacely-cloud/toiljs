@@ -104,7 +104,7 @@ export class AppHandler extends ToilHandler {
                     .partitioned()
                     .priority('Medium')
                     .extension('CustomFlag')
-                    .serialize(),
+                    .serialize()
             );
 
             let json = '{';
@@ -127,10 +127,10 @@ export class AppHandler extends ToilHandler {
 
             const visits = Cookie.create('visits', next).path('/').sameSite(SameSite.Lax).maxAge(86400);
             const session = SecureCookies.signed(this.demoKey()).seal(
-                Cookie.create('session', 'user-42').httpOnly().sameSite(SameSite.Strict).asHostPrefixed(),
+                Cookie.create('session', 'user-42').httpOnly().sameSite(SameSite.Strict).asHostPrefixed()
             );
             const secret = SecureCookies.encrypted(this.demoKey()).seal(
-                Cookie.create('secret', 'top-secret-value').httpOnly().path('/'),
+                Cookie.create('secret', 'top-secret-value').httpOnly().path('/')
             );
 
             const json =
@@ -189,10 +189,7 @@ export class AppHandler extends ToilHandler {
                 '","' +
                 this.esc(this.clearString('secret')) +
                 '"]}';
-            return Response.json(json)
-                .clearCookie('visits')
-                .clearCookie('__Host-session')
-                .clearCookie('secret');
+            return Response.json(json).clearCookie('visits').clearCookie('__Host-session').clearCookie('secret');
         }
 
         // SEAL: sign and encrypt a value (from `?v=`), then recover both and show

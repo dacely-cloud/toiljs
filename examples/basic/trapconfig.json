@@ -1,7 +1,5 @@
 {
-    "entries": [
-        "server/trap-main.ts"
-    ],
+    "entries": ["server/trap-main.ts"],
     "targets": {
         "release": {
             "outFile": "build/server/trap.wasm",

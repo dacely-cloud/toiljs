@@ -13,7 +13,7 @@ import path from 'node:path';
 import type { ViteDevServer } from 'vite';
 
 import type { ResolvedToilConfig } from './config.js';
-import { renderEmailFile, toPascal, type RenderedEmail } from './emails.js';
+import { type RenderedEmail, renderEmailFile, toPascal } from './emails.js';
 
 /** One discoverable email: its generated `Emails.<name>` and its absolute file. */
 export interface EmailListItem {

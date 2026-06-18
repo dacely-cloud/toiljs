@@ -81,8 +81,13 @@ export function buildDatabaseImports(
     db: DbDevState,
 ): Record<string, (...args: number[]) => number> {
     return {
-        'data.resolve_collection': (namePtr: number, nameLen: number, outHandlePtr: number): number => {
-            if (nameLen < 0 || nameLen > MAX_NAME) throw new Error('data: collection name too long');
+        'data.resolve_collection': (
+            namePtr: number,
+            nameLen: number,
+            outHandlePtr: number,
+        ): number => {
+            if (nameLen < 0 || nameLen > MAX_NAME)
+                throw new Error('data: collection name too long');
             const name = readCopy(ref, namePtr, nameLen).toString('utf8');
             const handle = db.handles.length;
             db.handles.push(name);
@@ -153,7 +158,8 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+            if (keyLen > MAX_KEY || valLen > MAX_VALUE)
+                throw new Error('data: key/value too large');
             const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
             if (STORE.has(sk)) return PRODUCT_ERR; // AlreadyExists
             STORE.set(sk, readCopy(ref, valPtr, valLen));
@@ -170,7 +176,8 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            if (keyLen > MAX_KEY || patchLen > MAX_VALUE) throw new Error('data: key/patch too large');
+            if (keyLen > MAX_KEY || patchLen > MAX_VALUE)
+                throw new Error('data: key/patch too large');
             const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
             if (!STORE.has(sk)) return PRODUCT_ERR; // NotFound
             const v = readCopy(ref, patchPtr, patchLen);
@@ -230,7 +237,8 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+            if (keyLen > MAX_KEY || valLen > MAX_VALUE)
+                throw new Error('data: key/value too large');
             const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
             const owner = readCopy(ref, valPtr, valLen);
             const existing = STORE.get(sk);
@@ -287,7 +295,8 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            if (setLen > MAX_KEY || memberLen > MAX_VALUE) throw new Error('data: set/member too large');
+            if (setLen > MAX_KEY || memberLen > MAX_VALUE)
+                throw new Error('data: set/member too large');
             const sk = storeKey(coll, readCopy(ref, setPtr, setLen));
             const member = readCopy(ref, memberPtr, memberLen);
             let set = MEMBERS.get(sk);
@@ -310,13 +319,19 @@ export function buildDatabaseImports(
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
             const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
-            if (set !== undefined) set.delete(readCopy(ref, memberPtr, memberLen).toString('latin1'));
+            if (set !== undefined)
+                set.delete(readCopy(ref, memberPtr, memberLen).toString('latin1'));
             return 0;
         },
 
         // Frame the members (sorted by bytes, matching the edge BTreeMap) as
         // `u32 count` + per member `u32 len + bytes`; stash + return the length.
-        'data.membership_list': (handle: number, setPtr: number, setLen: number, limit: number): number => {
+        'data.membership_list': (
+            handle: number,
+            setPtr: number,
+            setLen: number,
+            limit: number,
+        ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
             const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));

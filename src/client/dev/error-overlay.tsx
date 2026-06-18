@@ -4,7 +4,13 @@
  * plus `window` `error` / `unhandledrejection` events. Shows the message, stack, and (for render
  * errors) the React component stack, with Dismiss / Reload. Inert in production builds.
  */
-import { Component, type CSSProperties, type ErrorInfo, type ReactNode, useSyncExternalStore, } from 'react';
+import {
+    Component,
+    type CSSProperties,
+    type ErrorInfo,
+    type ReactNode,
+    useSyncExternalStore,
+} from 'react';
 
 /** A captured dev error. */
 export interface DevError {

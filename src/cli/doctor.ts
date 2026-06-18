@@ -10,7 +10,12 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadConfig, type ResolvedToilConfig, scanRoutes, TOIL_SERVER_ENV_DTS } from 'toiljs/compiler';
+import {
+    loadConfig,
+    type ResolvedToilConfig,
+    scanRoutes,
+    TOIL_SERVER_ENV_DTS,
+} from 'toiljs/compiler';
 
 import {
     type Check,
@@ -41,8 +46,8 @@ import {
     findRelativeAssets,
     hasFailures,
     type RestFacts,
-    type RpcFacts,
     RPC_TOILSCRIPT_MIN,
+    type RpcFacts,
     satisfiesMin,
     type SourceFile,
     summarize,
@@ -353,7 +358,9 @@ function applyRpcFix(root: string): RpcFixResult {
     const serverToilconfig = readJsonObject(path.join(root, 'toilconfig.json'));
     if (serverToilconfig !== null) {
         const entries = Array.isArray(serverToilconfig.entries)
-            ? (serverToilconfig.entries as unknown[]).filter((e): e is string => typeof e === 'string')
+            ? (serverToilconfig.entries as unknown[]).filter(
+                  (e): e is string => typeof e === 'string',
+              )
             : [];
         const dirs = new Set<string>();
         for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));

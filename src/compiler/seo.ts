@@ -407,9 +407,7 @@ export function llmsTxt(
             const title = escapeMarkdownInline(page.title);
             const url = escapeMarkdownUrl(page.url);
             const desc =
-                page.description !== undefined
-                    ? `: ${escapeMarkdownInline(page.description)}`
-                    : '';
+                page.description !== undefined ? `: ${escapeMarkdownInline(page.description)}` : '';
             out.push(`- [${title}](${url})${desc}`);
         }
     }

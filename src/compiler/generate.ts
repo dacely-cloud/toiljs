@@ -4,7 +4,7 @@ import path from 'node:path';
 import { type ResolvedToilConfig } from './config.js';
 import { writeDocs } from './docs.js';
 import { buildPageIndex, pagesModuleSource } from './pages.js';
-import { scanRoutes, type ScannedRoute } from './routes.js';
+import { type ScannedRoute, scanRoutes } from './routes.js';
 import { llmsTxt, robotsTxt, sitemapXml } from './seo.js';
 
 /**

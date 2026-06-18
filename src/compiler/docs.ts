@@ -346,7 +346,7 @@ export const TOIL_DOCS: Record<string, string> = {
         '  an `<Island>`. A route that cannot render this way is skipped at build (with a warning) and',
         '  simply falls back to normal client rendering.',
         '- Hole values are HTML-escaped exactly as React escapes them, so hydration is byte-for-byte',
-        '  clean. Keep a repeat row\'s structure the same across items (only the leaf hole values vary).',
+        "  clean. Keep a repeat row's structure the same across items (only the leaf hole values vary).",
         '- Build output for an SSR route lands in `build/client/_ssr/` (the template + its manifest)',
         '  alongside the generated `Slot` module; routes without `ssr = true` are unaffected.',
     ]),

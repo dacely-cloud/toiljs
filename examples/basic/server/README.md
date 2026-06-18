@@ -2,14 +2,14 @@
 
 Your ToilScript backend, compiled to a single WebAssembly module. One folder per concern:
 
-| Folder | What lives here |
-| --- | --- |
-| `main.ts` | The entry point: wires the handler and imports the surface modules. |
-| `core/` | The request handler and shared app logic (state, helpers). |
-| `models/` | `@data` classes, the typed wire model shared by HTTP and RPC. One type per file. |
-| `routes/` | `@rest` controllers (HTTP). One controller per file, named after its class. |
-| `services/` | `@service` classes and free `@remote` functions (typed RPC). |
-| `scheduled/` | Reserved for scheduled tasks (see its README). |
+| Folder       | What lives here                                                                  |
+|--------------|----------------------------------------------------------------------------------|
+| `main.ts`    | The entry point: wires the handler and imports the surface modules.              |
+| `core/`      | The request handler and shared app logic (state, helpers).                       |
+| `models/`    | `@data` classes, the typed wire model shared by HTTP and RPC. One type per file. |
+| `routes/`    | `@rest` controllers (HTTP). One controller per file, named after its class.      |
+| `services/`  | `@service` classes and free `@remote` functions (typed RPC).                     |
+| `scheduled/` | Reserved for scheduled tasks (see its README).                                   |
 
 Conventions:
 

@@ -1,7 +1,5 @@
 {
-    "entries": [
-        "server/main.ts"
-    ],
+    "entries": ["server/main.ts"],
     "targets": {
         "release": {
             "outFile": "build/server/release.wasm",
@@ -28,8 +26,6 @@
         "initialMemory": 4,
         "debug": false,
         "trapMode": "allow",
-        "lib": [
-            "node_modules/toiljs/server/globals"
-        ]
+        "lib": ["node_modules/toiljs/server/globals"]
     }
 }

@@ -4,7 +4,7 @@
  * data); the compiler-driven loader resolves it to a {@link HeadSpec} that the router applies as the
  * route's baseline head (component-level `useHead`/`<Head>` still compose on top and can override).
  */
-import { useHead, type HeadSpec, type LinkTag, type MetaTag } from './head.js';
+import { type HeadSpec, type LinkTag, type MetaTag, useHead } from './head.js';
 import type { RouteParams } from '../routing/match.js';
 
 /** OpenGraph fields, expanded to `og:*` meta tags. */

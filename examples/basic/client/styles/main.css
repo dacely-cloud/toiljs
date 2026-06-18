@@ -23,10 +23,9 @@ body {
     min-height: 100vh;
     background: var(--bg);
     color: var(--text);
-    font-family:
-        system-ui,
-        -apple-system,
-        sans-serif;
+    font-family: system-ui,
+    -apple-system,
+    sans-serif;
     line-height: 1.6;
 }
 
@@ -34,6 +33,7 @@ a {
     color: var(--accent);
     text-decoration: none;
 }
+
 a:hover {
     color: var(--accent3);
 }
@@ -99,6 +99,7 @@ a:hover {
 .nav-links a {
     color: var(--muted);
 }
+
 .nav-links a:hover {
     color: var(--text);
 }
@@ -117,9 +118,8 @@ a:hover {
     border-radius: 6px;
     font-size: 0.9rem;
     color: var(--muted) !important;
-    transition:
-        color 150ms,
-        background 150ms;
+    transition: color 150ms,
+    background 150ms;
 }
 
 .nav-center-link:hover {
@@ -182,10 +182,9 @@ a:hover {
     transform: scale(1.1);
     filter: blur(18px) saturate(1.4);
     opacity: 0.65;
-    transition:
-        opacity 300ms,
-        filter 300ms,
-        transform 300ms;
+    transition: opacity 300ms,
+    filter 300ms,
+    transform 300ms;
 }
 
 .hero-logo:hover .hero-logo-glow {
@@ -248,9 +247,8 @@ a:hover {
     border-radius: 999px;
     font-size: 0.88rem;
     color: var(--muted);
-    transition:
-        border-color 200ms,
-        color 200ms;
+    transition: border-color 200ms,
+    color 200ms;
 }
 
 .feature-badge svg {
@@ -289,10 +287,9 @@ a:hover {
     font-weight: 600;
     font-family: inherit;
     cursor: pointer;
-    transition:
-        filter 200ms,
-        background 200ms,
-        border-color 200ms;
+    transition: filter 200ms,
+    background 200ms,
+    border-color 200ms;
     text-decoration: none !important;
 }
 
@@ -422,10 +419,9 @@ code {
     display: flex;
     flex-direction: column;
     gap: 0.6rem;
-    transition:
-        border-color 200ms,
-        transform 200ms,
-        box-shadow 200ms;
+    transition: border-color 200ms,
+    transform 200ms,
+    box-shadow 200ms;
 }
 
 .gs-card {
@@ -436,6 +432,7 @@ code {
 .gs-card--accent1 {
     border-top: 2px solid var(--accent);
 }
+
 .gs-card--accent1:hover {
     box-shadow: 0 8px 32px rgba(37, 99, 255, 0.15);
 }
@@ -443,6 +440,7 @@ code {
 .gs-card--accent2 {
     border-top: 2px solid var(--accent2);
 }
+
 .gs-card--accent2:hover {
     box-shadow: 0 8px 32px rgba(124, 58, 237, 0.15);
 }
@@ -450,6 +448,7 @@ code {
 .gs-card--accent3 {
     border-top: 2px solid var(--accent3);
 }
+
 .gs-card--accent3:hover {
     box-shadow: 0 8px 32px rgba(34, 227, 171, 0.12);
 }
@@ -457,6 +456,7 @@ code {
 .gs-card--accent4 {
     border-top: 2px solid #f59e0b;
 }
+
 .gs-card--accent4:hover {
     box-shadow: 0 8px 32px rgba(245, 158, 11, 0.12);
 }
@@ -464,6 +464,7 @@ code {
 .gs-card--flat {
     border-top: 2px solid var(--accent);
 }
+
 .gs-card--flat:hover {
     border-color: var(--accent);
     box-shadow: 0 8px 32px rgba(37, 99, 255, 0.12);
@@ -485,10 +486,12 @@ code {
     background: rgba(124, 58, 237, 0.1);
     color: var(--accent2);
 }
+
 .gs-card--accent3 .gs-card-icon {
     background: rgba(34, 227, 171, 0.1);
     color: var(--accent3);
 }
+
 .gs-card--accent4 .gs-card-icon {
     background: rgba(245, 158, 11, 0.1);
     color: #f59e0b;

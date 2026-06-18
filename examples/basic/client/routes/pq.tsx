@@ -49,7 +49,7 @@ interface VerifiedUser {
 export const metadata: Toil.Metadata = {
     title: 'Post-quantum auth',
     description:
-        'A server-keyed-salt OPRF + ML-DSA-44 (FIPS 204) auth + ML-KEM-768 (FIPS 203) mutual auth. The password never leaves the browser.',
+        'A server-keyed-salt OPRF + ML-DSA-44 (FIPS 204) auth + ML-KEM-768 (FIPS 203) mutual auth. The password never leaves the browser.'
 };
 
 type Note = { kind: 'ok' | 'err'; text: string } | null;
@@ -73,7 +73,7 @@ export default function Pq(): React.JSX.Element {
             await Auth.register(username, password);
             setNote({
                 kind: 'ok',
-                text: 'registered: the server stored only your public key and a proof-of-possession. Now log in to run the ML-KEM-768 mutual-auth step.',
+                text: 'registered: the server stored only your public key and a proof-of-possession. Now log in to run the ML-KEM-768 mutual-auth step.'
             });
         } catch (e) {
             setNote({ kind: 'err', text: e instanceof Error ? e.message : String(e) });
@@ -91,7 +91,7 @@ export default function Pq(): React.JSX.Element {
             await Auth.login(username, password);
             setNote({
                 kind: 'ok',
-                text: 'logged in: ML-KEM-768 mutual auth verified (the server proved it holds the KEM secret key).',
+                text: 'logged in: ML-KEM-768 mutual auth verified (the server proved it holds the KEM secret key).'
             });
             refreshCompanion();
         } catch (e) {
@@ -151,11 +151,7 @@ export default function Pq(): React.JSX.Element {
                 </label>
                 <label>
                     Password
-                    <input
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        style={{ width: '100%' }}
-                    />
+                    <input value={password} onChange={(e) => setPassword(e.target.value)} style={{ width: '100%' }} />
                 </label>
                 <div style={{ display: 'flex', gap: 8 }}>
                     <button onClick={doRegister} disabled={busy}>
@@ -167,8 +163,8 @@ export default function Pq(): React.JSX.Element {
                 </div>
                 <p style={{ fontSize: '0.8rem', opacity: 0.7, margin: 0 }}>
                     Demo: pre-filled <code>ada</code> / <code>correct horse battery staple</code>. Register once, then
-                    log in. A wrong password fails at login (the derived key won&apos;t match the stored one). Storage is
-                    the DEV-only in-process KV (<code>src/devserver/kv.ts</code>); a real deployment wires an atomic
+                    log in. A wrong password fails at login (the derived key won&apos;t match the stored one). Storage
+                    is the DEV-only in-process KV (<code>src/devserver/kv.ts</code>); a real deployment wires an atomic
                     store, <code>server/routes/Auth.ts</code>.
                 </p>
             </div>
@@ -188,9 +184,13 @@ export default function Pq(): React.JSX.Element {
                             <div style={{ fontSize: '0.8em', opacity: 0.7 }}>readable companion, untrusted</div>
                             <pre>
                                 {JSON.stringify(
-                                    { username: companion.username, admin: companion.admin, score: String(companion.score) },
+                                    {
+                                        username: companion.username,
+                                        admin: companion.admin,
+                                        score: String(companion.score)
+                                    },
                                     null,
-                                    2,
+                                    2
                                 )}
                             </pre>
                         </div>
@@ -220,8 +220,8 @@ export default function Pq(): React.JSX.Element {
             )}
 
             <p style={{ marginTop: 24, opacity: 0.7, fontSize: '0.9rem' }}>
-                This is the full augmented-PAKE chain: OPRF keyed salt + ML-DSA client auth + ML-KEM mutual auth, with an
-                atomic single-use challenge consume. The OPRF layer is classical ristretto255 (the one non-PQ piece);
+                This is the full augmented-PAKE chain: OPRF keyed salt + ML-DSA client auth + ML-KEM mutual auth, with
+                an atomic single-use challenge consume. The OPRF layer is classical ristretto255 (the one non-PQ piece);
                 auth and key agreement are post-quantum. Plain sessions are on the{' '}
                 <Toil.Link href="/auth">Auth</Toil.Link> page.
             </p>

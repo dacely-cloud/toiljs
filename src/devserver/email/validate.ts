@@ -17,10 +17,7 @@ export function validRecipient(s: string): boolean {
     if (parts.length !== 2) return false; // not exactly one '@'
     const [local, domain] = parts;
     return (
-        local.length > 0 &&
-        domain.includes('.') &&
-        !domain.startsWith('.') &&
-        !domain.endsWith('.')
+        local.length > 0 && domain.includes('.') && !domain.startsWith('.') && !domain.endsWith('.')
     );
 }
 

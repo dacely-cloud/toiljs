@@ -1,4 +1,4 @@
-import { routes, layout, notFound, globalError, slots } from 'toiljs/routes';
+import { globalError, layout, notFound, routes, slots } from 'toiljs/routes';
 
 import './styles/main.css';
 

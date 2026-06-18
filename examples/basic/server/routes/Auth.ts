@@ -64,7 +64,6 @@ function deriveSalt(username: string): Uint8Array {
     return crypto.sha256Text('toil-demo-salt-v1:' + username).slice(0, 16);
 }
 
-
 // ToilDB collections (the `kv.*` dev placeholder is gone). The key + value are
 // `@data` types: the binary codec is generated, the host marshals it, and the
 // challenge is consumed exactly once with `getDelete`.
@@ -237,8 +236,17 @@ class Auth {
         const acct = AuthDb.accounts.get(new Username(ch.username));
         if (acct == null) return fail();
         const message = AuthService.buildLoginMessage(
-            ch.username, AUD, cid, ch.nonce, ch.iat, ch.exp,
-            ct, DEMO_MEM_KIB, DEMO_ITERS, DEMO_PAR, AuthService.serverKemKeyId(),
+            ch.username,
+            AUD,
+            cid,
+            ch.nonce,
+            ch.iat,
+            ch.exp,
+            ct,
+            DEMO_MEM_KIB,
+            DEMO_ITERS,
+            DEMO_PAR,
+            AuthService.serverKemKeyId()
         );
         if (!AuthService.verifyLogin(acct.publicKey, message, sig)) return fail();
 

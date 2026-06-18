@@ -11,11 +11,11 @@
  */
 import { loadEnvFiles } from '../dotenv.js';
 import { EmailCaps } from './caps.js';
-import { resolveEmailConfig, type ResolvedEmailConfig } from './config.js';
-import { sendVia, type OutboundMessage } from './providers.js';
+import { type ResolvedEmailConfig, resolveEmailConfig } from './config.js';
+import { type OutboundMessage, sendVia } from './providers.js';
 import { EmailStatus } from './status.js';
 import { validRecipient } from './validate.js';
-import { parseEmailBlob, type ParsedEmail } from './wire.js';
+import { type ParsedEmail, parseEmailBlob } from './wire.js';
 
 import type { EmailBackendConfig } from 'toiljs/shared';
 

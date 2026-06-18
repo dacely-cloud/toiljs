@@ -1,4 +1,4 @@
-import { Component, Suspense, type ComponentType, type ReactNode } from 'react';
+import { Component, type ComponentType, type ReactNode, Suspense } from 'react';
 
 import type { RouteErrorProps } from '../types.js';
 

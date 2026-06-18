@@ -69,15 +69,15 @@ export function encodeRequestEnvelope(req: EnvelopeRequest): Buffer {
     if (path.length > U16_MAX) throw new Error(`path too long: ${String(path.length)} bytes`);
     if (req.headers.length > U16_MAX)
         throw new Error(`too many headers: ${String(req.headers.length)}`);
-    if (req.body.length > U32_MAX) throw new Error(`body too long: ${String(req.body.length)} bytes`);
+    if (req.body.length > U32_MAX)
+        throw new Error(`body too long: ${String(req.body.length)} bytes`);
 
     const headers: { name: Buffer; value: Buffer }[] = [];
     let headersSize = 0;
     for (const [name, value] of req.headers) {
         const n = Buffer.from(name, 'utf8');
         const v = Buffer.from(value, 'utf8');
-        if (n.length > U16_MAX || v.length > U16_MAX)
-            throw new Error(`header too long: ${name}`);
+        if (n.length > U16_MAX || v.length > U16_MAX) throw new Error(`header too long: ${name}`);
         headers.push({ name: n, value: v });
         headersSize += 4 + n.length + v.length;
     }

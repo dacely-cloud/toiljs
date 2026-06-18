@@ -6,12 +6,7 @@
  * websocket through Node's built-in `WebSocket` client, both loopback-only.
  */
 
-import {
-    type Request,
-    type Response,
-    type Server,
-    type Websocket,
-} from '@dacely/hyper-express';
+import { type Request, type Response, type Server, type Websocket } from '@dacely/hyper-express';
 
 /** Where the internal Vite dev server listens (always loopback). */
 export interface ViteTarget {
@@ -151,7 +146,10 @@ export function wireWebsocketProxy(app: Server, target: ViteTarget): void {
                 else pending.push(m);
             });
             ws.on('close', () => {
-                if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) {
+                if (
+                    upstream.readyState === WebSocket.OPEN ||
+                    upstream.readyState === WebSocket.CONNECTING
+                ) {
                     upstream.close();
                 }
             });

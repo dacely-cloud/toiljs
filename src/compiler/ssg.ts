@@ -16,7 +16,7 @@ import { createServer } from 'vite';
 import { type ResolvedToilConfig } from './config.js';
 import { extractStaticMetadata, loadTypeScript } from './prerender.js';
 import { scanRoutes } from './routes.js';
-import { injectSeoHtml, joinUrl, llmsTxt, routeSeo, sitemapXml, type LlmsPage } from './seo.js';
+import { injectSeoHtml, joinUrl, type LlmsPage, llmsTxt, routeSeo, sitemapXml } from './seo.js';
 import { createViteConfig } from './vite.js';
 
 /** Reads a string field off a metadata record, or undefined. */
@@ -91,7 +91,9 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
             try {
                 mod = (await server.ssrLoadModule(route.file)) as RouteModule;
             } catch (err) {
-                warn(`skipped ${route.pattern} (${err instanceof Error ? err.message : String(err)})`);
+                warn(
+                    `skipped ${route.pattern} (${err instanceof Error ? err.message : String(err)})`,
+                );
                 continue;
             }
             if (typeof mod.generateStaticParams !== 'function') continue;
@@ -116,12 +118,16 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
                             typeof mod.loader === 'function'
                                 ? await mod.loader({ params, searchParams })
                                 : undefined;
-                        metadata = asMetadata(await mod.generateMetadata({ params, searchParams, data }));
+                        metadata = asMetadata(
+                            await mod.generateMetadata({ params, searchParams, data }),
+                        );
                     } else if (mod.metadata) {
                         metadata = asMetadata(mod.metadata);
                     }
                 } catch (err) {
-                    warn(`metadata failed for ${url} (${err instanceof Error ? err.message : String(err)})`);
+                    warn(
+                        `metadata failed for ${url} (${err instanceof Error ? err.message : String(err)})`,
+                    );
                 }
                 const html = injectSeoHtml(shell, routeSeo(cfg.seo, metadata, url));
                 fs.mkdirSync(path.dirname(target), { recursive: true });

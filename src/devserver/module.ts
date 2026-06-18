@@ -16,8 +16,8 @@ import fs from 'node:fs';
 import {
     decodeResponseEnvelope,
     encodeRequestEnvelope,
-    unpackHandleResult,
     type EnvelopeRequest,
+    unpackHandleResult,
 } from './envelope.js';
 import { buildHostImports, freshDispatchState, type MemoryRef } from './host.js';
 
@@ -52,21 +52,55 @@ interface HandleExports {
 
 /** Host functions the dev server provides under `env` (see `host.ts`). */
 const PROVIDED_IMPORTS = new Set([
-    'abort', 'set_status', 'set_header', 'respond_file', 'thread_spawn', 'Date.now',
-    'client_ip', 'ratelimit_check', 'email_send', 'env_get', 'env_get_secure',
+    'abort',
+    'set_status',
+    'set_header',
+    'respond_file',
+    'thread_spawn',
+    'Date.now',
+    'client_ip',
+    'ratelimit_check',
+    'email_send',
+    'env_get',
+    'env_get_secure',
     // Web Crypto host functions (see ./crypto.ts).
-    'crypto.fill_random', 'crypto.random_uuid', 'crypto.take_result', 'crypto.digest',
-    'crypto.import_key', 'crypto.export_key', 'crypto.encrypt', 'crypto.decrypt',
-    'crypto.sign', 'crypto.verify', 'crypto.derive_bits',
-    'crypto.mldsa_verify', 'crypto.mlkem_decapsulate', 'crypto.voprf_evaluate',
+    'crypto.fill_random',
+    'crypto.random_uuid',
+    'crypto.take_result',
+    'crypto.digest',
+    'crypto.import_key',
+    'crypto.export_key',
+    'crypto.encrypt',
+    'crypto.decrypt',
+    'crypto.sign',
+    'crypto.verify',
+    'crypto.derive_bits',
+    'crypto.mldsa_verify',
+    'crypto.mlkem_decapsulate',
+    'crypto.voprf_evaluate',
     // ToilDB data API (see ./database.ts). Backed by ScyllaDB on the production
     // edge; backs the auth example's accounts + login challenges in dev.
-    'data.resolve_collection', 'data.get', 'data.get_many', 'data.exists', 'data.create',
-    'data.patch', 'data.delete', 'data.get_delete',
-    'data.unique_lookup', 'data.unique_claim', 'data.unique_release',
-    'data.view_get', 'data.view_publish',
-    'data.membership_contains', 'data.membership_add', 'data.membership_remove', 'data.membership_list',
-    'data.counter_get', 'data.counter_add', 'data.append', 'data.latest',
+    'data.resolve_collection',
+    'data.get',
+    'data.get_many',
+    'data.exists',
+    'data.create',
+    'data.patch',
+    'data.delete',
+    'data.get_delete',
+    'data.unique_lookup',
+    'data.unique_claim',
+    'data.unique_release',
+    'data.view_get',
+    'data.view_publish',
+    'data.membership_contains',
+    'data.membership_add',
+    'data.membership_remove',
+    'data.membership_list',
+    'data.counter_get',
+    'data.counter_add',
+    'data.append',
+    'data.latest',
     'data.take_result',
 ]);
 
@@ -204,7 +238,10 @@ export class WasmServerModule {
     /** Fail instantiation up front, with names, when the guest needs imports we do not provide. */
     private assertImportSurface(module: WebAssembly.Module): void {
         const missing = WebAssembly.Module.imports(module)
-            .filter((i) => i.kind === 'function' && (i.module !== 'env' || !PROVIDED_IMPORTS.has(i.name)))
+            .filter(
+                (i) =>
+                    i.kind === 'function' && (i.module !== 'env' || !PROVIDED_IMPORTS.has(i.name)),
+            )
             .map((i) => `${i.module}.${i.name}`);
         if (missing.length > 0)
             throw new Error(

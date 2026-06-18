@@ -10,10 +10,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {
-    Server,
     type MiddlewareNext,
     type Request,
     type Response,
+    Server,
     type Websocket,
 } from '@dacely/hyper-express';
 
@@ -172,7 +172,9 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
     // default upgrade handler (hyper-express links it to the companion ws route). Same-origin and
     // non-browser clients pass; others get 403.
     app.upgrade(wsPath, (request: Request, response: Response) => {
-        if (!isWsOriginAllowed(request.headers.origin, request.headers.host, options.allowedOrigins)) {
+        if (
+            !isWsOriginAllowed(request.headers.origin, request.headers.host, options.allowedOrigins)
+        ) {
             response.status(403).send();
             return;
         }

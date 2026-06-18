@@ -29,7 +29,11 @@ export function parseCheckCache(raw: string): CheckCache | null {
 }
 
 /** True when the cached answer is still trustworthy (also stale if the clock went backwards). */
-export function isCacheFresh(cache: CheckCache, now: number, ttlMs: number = CHECK_TTL_MS): boolean {
+export function isCacheFresh(
+    cache: CheckCache,
+    now: number,
+    ttlMs: number = CHECK_TTL_MS,
+): boolean {
     return cache.checkedAt <= now && now - cache.checkedAt < ttlMs;
 }
 

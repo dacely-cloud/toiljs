@@ -1,6 +1,6 @@
-import { useRef, type ReactNode, type SyntheticEvent } from 'react';
+import { type ReactNode, type SyntheticEvent, useRef } from 'react';
 
-import { useAction, type ActionState, type RevalidateTarget } from '../routing/action.js';
+import { type ActionState, type RevalidateTarget, useAction } from '../routing/action.js';
 
 /** Props for {@link Form}. */
 export interface FormProps {

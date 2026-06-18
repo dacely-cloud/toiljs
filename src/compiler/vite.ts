@@ -7,7 +7,7 @@ import pc from 'picocolors';
 import react from '@vitejs/plugin-react';
 import { imagetools } from 'vite-imagetools';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
-import { createLogger, mergeConfig, type InlineConfig, type Logger, type PluginOption } from 'vite';
+import { createLogger, type InlineConfig, type Logger, mergeConfig, type PluginOption } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
 import { fontPreloadPlugin } from './fonts.js';

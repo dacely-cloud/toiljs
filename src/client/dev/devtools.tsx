@@ -7,7 +7,7 @@
  * It stays decoupled from the Router (it computes the current match itself via `matchRoute`) so it
  * renders even when the app tree has crashed.
  */
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { type ReactNode, useEffect, useState, useSyncExternalStore } from 'react';
 
 import { type DevError, getErrorLog, subscribeErrors } from './error-overlay.js';
 import {
@@ -21,10 +21,10 @@ import {
 import {
     clearLoaderData,
     inspectLoaderCache,
+    type LoaderCacheSnapshot,
     loaderKey,
     revalidate,
     subscribeLoaderCache,
-    type LoaderCacheSnapshot,
 } from '../routing/loader.js';
 import { matchRoute } from '../routing/match.js';
 import { getPages } from '../search/search.js';
@@ -52,10 +52,22 @@ function ToilLogo({ size = 16 }: { size?: number }): ReactNode {
                     x2="467.12"
                     y2="467.12"
                     gradientUnits="userSpaceOnUse">
-                    <stop offset="0" stopColor="#6990ff" />
-                    <stop offset=".28" stopColor="#521be0" />
-                    <stop offset=".66" stopColor="#6900f4" />
-                    <stop offset="1" stopColor="#7f00f6" />
+                    <stop
+                        offset="0"
+                        stopColor="#6990ff"
+                    />
+                    <stop
+                        offset=".28"
+                        stopColor="#521be0"
+                    />
+                    <stop
+                        offset=".66"
+                        stopColor="#6900f4"
+                    />
+                    <stop
+                        offset="1"
+                        stopColor="#7f00f6"
+                    />
                 </linearGradient>
                 <linearGradient
                     id="toilDtB"
@@ -64,12 +76,28 @@ function ToilLogo({ size = 16 }: { size?: number }): ReactNode {
                     x2="149.99"
                     y2="0"
                     gradientUnits="userSpaceOnUse">
-                    <stop offset=".15" stopColor="#6990ff" stopOpacity=".6" />
-                    <stop offset=".55" stopColor="#531ae1" />
+                    <stop
+                        offset=".15"
+                        stopColor="#6990ff"
+                        stopOpacity=".6"
+                    />
+                    <stop
+                        offset=".55"
+                        stopColor="#531ae1"
+                    />
                 </linearGradient>
             </defs>
-            <rect width="500" height="500" rx="130" ry="130" fill="url(#toilDtA)" />
-            <path d="M299.98,0L0,355.49v-225.49C0,58.2,58.2,0,130,0h169.98Z" fill="url(#toilDtB)" />
+            <rect
+                width="500"
+                height="500"
+                rx="130"
+                ry="130"
+                fill="url(#toilDtA)"
+            />
+            <path
+                d="M299.98,0L0,355.49v-225.49C0,58.2,58.2,0,130,0h169.98Z"
+                fill="url(#toilDtB)"
+            />
             <path
                 d="M106.17,111.11h285.24c9.9,0,16.7,9.96,13.09,19.18l-17.98,45.96c-2.11,5.39-7.31,8.94-13.09,8.94h-74.65c-7.76,0-14.06,6.29-14.06,14.06v214.94c0,7.76-6.29,14.06-14.06,14.06h-45.96c-7.76,0-14.06-6.29-14.06-14.06v-217.25c0-7.76-6.29-14.06-14.06-14.06h-73.66c-5.82,0-11.04-3.59-13.12-9.02l-16.76-43.64c-3.54-9.21,3.26-19.1,13.12-19.1Z"
                 fill="#fff"
@@ -194,7 +222,10 @@ function safeJson(value: unknown): string {
 }
 
 /** Reads the current document head's meta + link tags (live). */
-function readHead(): { metas: { name: string; content: string }[]; links: { rel: string; href: string }[] } {
+function readHead(): {
+    metas: { name: string; content: string }[];
+    links: { rel: string; href: string }[];
+} {
     const metas: { name: string; content: string }[] = [];
     const links: { rel: string; href: string }[] = [];
     if (typeof document === 'undefined') return { metas, links };
@@ -346,7 +377,9 @@ function RouteTab({
             <Row k="slots">{activeSlots.length ? activeSlots.join(', ') : 'none'}</Row>
             <Row k="navigating">{pending ? 'yes' : 'no'}</Row>
 
-            <p className="toil-dt-sec" style={{ marginTop: 12 }}>
+            <p
+                className="toil-dt-sec"
+                style={{ marginTop: 12 }}>
                 Routes ({routes.length})
             </p>
             {routes.map((r) => {
@@ -474,7 +507,9 @@ function HeadTab(): ReactNode {
         <div className="toil-dt-body">
             <Row k="title">{title || '(none)'}</Row>
 
-            <p className="toil-dt-sec" style={{ marginTop: 10 }}>
+            <p
+                className="toil-dt-sec"
+                style={{ marginTop: 10 }}>
                 OpenGraph preview
             </p>
             <div className="toil-dt-og">
@@ -491,23 +526,41 @@ function HeadTab(): ReactNode {
                 </div>
             </div>
 
-            <p className="toil-dt-sec" style={{ marginTop: 10 }}>
+            <p
+                className="toil-dt-sec"
+                style={{ marginTop: 10 }}>
                 SEO checklist
             </p>
-            <Check ok={Boolean(title)} label="Has a title" />
-            <Check ok={meta('description') !== undefined} label="Has a meta description" />
-            <Check ok={og.image !== undefined} label="Has an og:image" />
-            <Check ok={links.some((l) => l.rel === 'canonical')} label="Has a canonical link" />
+            <Check
+                ok={Boolean(title)}
+                label="Has a title"
+            />
+            <Check
+                ok={meta('description') !== undefined}
+                label="Has a meta description"
+            />
+            <Check
+                ok={og.image !== undefined}
+                label="Has an og:image"
+            />
+            <Check
+                ok={links.some((l) => l.rel === 'canonical')}
+                label="Has a canonical link"
+            />
             <Check
                 ok={pages.length === 0 || described === pages.length}
                 label={`Pages with a description: ${String(described)}/${String(pages.length)}`}
             />
 
-            <p className="toil-dt-sec" style={{ marginTop: 10 }}>
+            <p
+                className="toil-dt-sec"
+                style={{ marginTop: 10 }}>
                 Meta ({metas.length})
             </p>
             {metas.map((m, i) => (
-                <Row k={m.name} key={`${m.name}:${String(i)}`}>
+                <Row
+                    k={m.name}
+                    key={`${m.name}:${String(i)}`}>
                     {m.content}
                 </Row>
             ))}
@@ -546,7 +599,8 @@ function BuildTab({ info }: { info: DevInfo | null }): ReactNode {
 
 function ErrorsTab(): ReactNode {
     const errors = useErrors();
-    if (errors.length === 0) return <p className="toil-dt-empty toil-dt-body">No errors captured.</p>;
+    if (errors.length === 0)
+        return <p className="toil-dt-empty toil-dt-body">No errors captured.</p>;
     return (
         <div className="toil-dt-body">
             {[...errors].reverse().map((e, i) => (
@@ -974,45 +1028,58 @@ export function DevToolbar({
 
     return (
         <>
-        <div className={`toil-dt ${p.side}`}>
-            <div className="toil-dt-panel">
-                <div className="toil-dt-head">
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <ToilLogo size={14} />
-                        <span className="toil-dt-logo">toiljs</span> devtools
-                        <span className={`toil-dt-dot ${dotClass}`} />
-                    </span>
-                    <button
-                        className="toil-dt-x"
-                        onClick={() => {
-                            setPrefs({ open: false });
-                        }}>
-                        ✕
-                    </button>
-                </div>
-                <div className="toil-dt-tabs">
-                    {TABS.map((t) => (
+            <div className={`toil-dt ${p.side}`}>
+                <div className="toil-dt-panel">
+                    <div className="toil-dt-head">
+                        <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <ToilLogo size={14} />
+                            <span className="toil-dt-logo">toiljs</span> devtools
+                            <span className={`toil-dt-dot ${dotClass}`} />
+                        </span>
                         <button
-                            key={t.id}
-                            className={`toil-dt-tab ${p.tab === t.id ? 'active' : ''}`}
+                            className="toil-dt-x"
                             onClick={() => {
-                                setPrefs({ tab: t.id });
+                                setPrefs({ open: false });
                             }}>
-                            {t.label}
-                            {t.id === 'errors' && errors.length > 0 ? ` (${String(errors.length)})` : ''}
+                            ✕
                         </button>
-                    ))}
+                    </div>
+                    <div className="toil-dt-tabs">
+                        {TABS.map((t) => (
+                            <button
+                                key={t.id}
+                                className={`toil-dt-tab ${p.tab === t.id ? 'active' : ''}`}
+                                onClick={() => {
+                                    setPrefs({ tab: t.id });
+                                }}>
+                                {t.label}
+                                {t.id === 'errors' && errors.length > 0
+                                    ? ` (${String(errors.length)})`
+                                    : ''}
+                            </button>
+                        ))}
+                    </div>
+                    {p.tab === 'route' && (
+                        <RouteTab
+                            routes={routes}
+                            slots={slots}
+                            info={info}
+                        />
+                    )}
+                    {p.tab === 'data' && <DataTab />}
+                    {p.tab === 'head' && <HeadTab />}
+                    {p.tab === 'build' && <BuildTab info={info} />}
+                    {p.tab === 'errors' && <ErrorsTab />}
+                    {p.tab === 'ai' && (
+                        <AiTab
+                            info={info}
+                            routes={routes}
+                        />
+                    )}
+                    {p.tab === 'prefs' && <PrefsTab />}
                 </div>
-                {p.tab === 'route' && <RouteTab routes={routes} slots={slots} info={info} />}
-                {p.tab === 'data' && <DataTab />}
-                {p.tab === 'head' && <HeadTab />}
-                {p.tab === 'build' && <BuildTab info={info} />}
-                {p.tab === 'errors' && <ErrorsTab />}
-                {p.tab === 'ai' && <AiTab info={info} routes={routes} />}
-                {p.tab === 'prefs' && <PrefsTab />}
             </div>
-        </div>
-        {pal}
+            {pal}
         </>
     );
 }

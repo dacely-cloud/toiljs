@@ -22,18 +22,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { Server, type Request, type Response } from '@dacely/hyper-express';
+import { type Request, type Response, Server } from '@dacely/hyper-express';
 import pc from 'picocolors';
 
 import type { EmailBackendConfig } from 'toiljs/shared';
 
 import { applyCacheRule, lookupCache } from './cache.js';
 import { initEmailService } from './email/index.js';
-import { METHOD_CODES, type EnvelopeRequest } from './envelope.js';
+import { type EnvelopeRequest, METHOD_CODES } from './envelope.js';
 import { WasmServerModule } from './module.js';
-import { proxyToVite, wireWebsocketProxy, type ViteTarget } from './proxy.js';
+import { proxyToVite, type ViteTarget, wireWebsocketProxy } from './proxy.js';
 
-export { METHOD_CODES, encodeRequestEnvelope, decodeResponseEnvelope, unpackHandleResult } from './envelope.js';
+export {
+    METHOD_CODES,
+    encodeRequestEnvelope,
+    decodeResponseEnvelope,
+    unpackHandleResult,
+} from './envelope.js';
 export type { EnvelopeRequest, EnvelopeResponse } from './envelope.js';
 export { WasmServerModule, WasmAbortError, UNHANDLED_HEADER } from './module.js';
 export type { WasmDispatchResult } from './module.js';
@@ -161,7 +166,10 @@ function sendWasmResponse(
         if (!hasContentType) {
             // The edge defaults file bodies to application/octet-stream; in dev we
             // guess from the extension so a guest-served asset renders in the browser.
-            response.header('content-type', MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream');
+            response.header(
+                'content-type',
+                MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
+            );
         }
         response.sendFile(file);
         return;
@@ -267,7 +275,8 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
                 // A trap (ToilScript abort, OOB, malformed envelope) is isolated to
                 // this request, exactly like the edge poisoning one instance.
                 process.stdout.write(
-                    pc.red(`  ✗ ${request.method} ${request.path} server error: ${String(e)}`) + '\n',
+                    pc.red(`  ✗ ${request.method} ${request.path} server error: ${String(e)}`) +
+                        '\n',
                 );
                 response.status(500).send('internal error\n');
                 return;
