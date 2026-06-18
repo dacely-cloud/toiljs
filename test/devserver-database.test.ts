@@ -172,6 +172,44 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.get_many'](999, 128, o - 128)).toBe(-1001); // invalid handle
     });
 
+    it('membership: add/contains/remove + sorted framed list', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/rooms');
+        const [sPtr, sLen] = put(buf, 32, 'room1');
+
+        const [aPtr, aLen] = put(buf, 48, 'alice');
+        const [bPtr, bLen] = put(buf, 64, 'bob');
+        expect(imports['data.membership_contains'](h, sPtr, sLen, aPtr, aLen)).toBe(0); // absent
+        expect(imports['data.membership_add'](h, sPtr, sLen, aPtr, aLen, 0)).toBe(0);
+        expect(imports['data.membership_add'](h, sPtr, sLen, bPtr, bLen, 0)).toBe(0);
+        expect(imports['data.membership_add'](h, sPtr, sLen, aPtr, aLen, 0)).toBe(0); // idempotent
+        expect(imports['data.membership_contains'](h, sPtr, sLen, aPtr, aLen)).toBe(1);
+
+        // list -> framed u32 count + per member (u32 len + bytes), sorted (alice, bob).
+        const total = imports['data.membership_list'](h, sPtr, sLen, 10);
+        expect(imports['data.take_result'](128, 128)).toBe(total);
+        let off = 128;
+        const count = buf.readUInt32LE(off);
+        off += 4;
+        expect(count).toBe(2);
+        const out: string[] = [];
+        for (let i = 0; i < count; i++) {
+            const len = buf.readUInt32LE(off);
+            off += 4;
+            out.push(buf.toString('utf8', off, off + len));
+            off += len;
+        }
+        expect(out).toEqual(['alice', 'bob']);
+
+        // remove is idempotent; the member is gone.
+        expect(imports['data.membership_remove'](h, sPtr, sLen, aPtr, aLen, 0)).toBe(0);
+        expect(imports['data.membership_remove'](h, sPtr, sLen, aPtr, aLen, 0)).toBe(0);
+        expect(imports['data.membership_contains'](h, sPtr, sLen, aPtr, aLen)).toBe(0);
+        expect(imports['data.membership_contains'](h, sPtr, sLen, bPtr, bLen)).toBe(1);
+
+        expect(imports['data.membership_add'](999, sPtr, sLen, aPtr, aLen, 0)).toBe(-1001); // bad handle
+    });
+
     it('view: publish overwrites and get reads the latest (or absent)', () => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, 'App/pages');

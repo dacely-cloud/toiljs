@@ -65,6 +65,7 @@ const PROVIDED_IMPORTS = new Set([
     'data.patch', 'data.delete', 'data.get_delete',
     'data.unique_lookup', 'data.unique_claim', 'data.unique_release',
     'data.view_get', 'data.view_publish',
+    'data.membership_contains', 'data.membership_add', 'data.membership_remove', 'data.membership_list',
     'data.counter_get', 'data.counter_add', 'data.append', 'data.latest',
     'data.take_result',
 ]);
