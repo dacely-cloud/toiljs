@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.56] - 2026-06-18
+
+### Other Changes
+
+- feat(toildb): membership family dev emulator ([#181](https://github.com/dacely-cloud/toiljs/pull/181)) by @BlobMaster41
+- feat(toildb): capacity family dev emulator ([#182](https://github.com/dacely-cloud/toiljs/pull/182)) by @BlobMaster41
+
+
+
+
 ## [v0.0.54] - 2026-06-17
 
 - No changes
