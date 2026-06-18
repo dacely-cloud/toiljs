@@ -27,6 +27,37 @@ const MEMBERS = new Map<string, Map<string, Buffer>>();
 const COUNTERS = new Map<string, bigint>();
 /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
 const EVENTS = new Map<string, Buffer[]>();
+/** Capacity family: `"collection\0key"` -> an escrow ledger (total/holds/confirmed). */
+const CAPACITY = new Map<string, CapLedger>();
+
+/** A finite-resource escrow: a ceiling, in-flight holds, and confirmed consumes. */
+interface CapLedger {
+    total: bigint;
+    confirmed: bigint;
+    holds: Map<bigint, { amount: bigint; expiresMs: number }>;
+    nextId: bigint;
+}
+
+function capLedger(sk: string): CapLedger {
+    let l = CAPACITY.get(sk);
+    if (l === undefined) {
+        l = { total: 0n, confirmed: 0n, holds: new Map(), nextId: 1n };
+        CAPACITY.set(sk, l);
+    }
+    return l;
+}
+
+/** Drop holds whose TTL has elapsed (self-heal, mirrors the edge's now-based prune). */
+function capPrune(l: CapLedger, nowMs: number): void {
+    for (const [id, h] of l.holds) if (h.expiresMs <= nowMs) l.holds.delete(id);
+}
+
+/** Units currently held (un-expired, unconfirmed). */
+function capHeld(l: CapLedger): bigint {
+    let sum = 0n;
+    for (const h of l.holds.values()) sum += h.amount;
+    return sum;
+}
 
 const MAX_NAME = 512;
 const MAX_KEY = 4096;
@@ -449,6 +480,100 @@ export function buildDatabaseImports(
             return out.length;
         },
 
+        // --- capacity family (escrow: set_total / available / reserve / confirm / cancel) ---
+
+        // Set the ceiling (restock / reduce). Job/derive only (kind-gated upstream).
+        // A ceiling is never negative.
+        'data.capacity_set_total': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            total: number | bigint,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const t = BigInt(total);
+            l.total = satI64(t < 0n ? 0n : t);
+            return 0;
+        },
+
+        // Stash the i64 available (total - confirmed - active holds, floored at 0).
+        'data.capacity_available': (handle: number, keyPtr: number, keyLen: number): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            capPrune(l, Date.now());
+            const avail = l.total - l.confirmed - capHeld(l);
+            const out = Buffer.alloc(8);
+            out.writeBigInt64LE(avail < 0n ? 0n : avail);
+            db.lastResult = out;
+            return out.length;
+        },
+
+        // Hold `amount` for `ttlMs`: stash the u64 reservation id (8 bytes) on
+        // success, or return ABSENT (-2) when there is not enough available (the
+        // guest maps that to reservation 0 = no oversell). `now` is the HOST clock.
+        'data.capacity_reserve': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            amount: number | bigint,
+            ttlMs: number | bigint,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const want = BigInt(amount);
+            if (want <= 0n) return ABSENT;
+            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const now = Date.now();
+            capPrune(l, now);
+            if (l.total - l.confirmed - capHeld(l) < want) return ABSENT; // never oversell
+            const id = l.nextId++;
+            l.holds.set(id, { amount: want, expiresMs: now + Math.max(0, Number(ttlMs)) });
+            const out = Buffer.alloc(8);
+            out.writeBigUInt64LE(id);
+            db.lastResult = out;
+            return out.length;
+        },
+
+        // Finalize a hold into a permanent consume. 1 if the id was a live hold,
+        // 0 if it was unknown / expired / already settled.
+        'data.capacity_confirm': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            reservationId: number | bigint,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            capPrune(l, Date.now());
+            const h = l.holds.get(BigInt(reservationId));
+            if (h === undefined) return 0;
+            l.holds.delete(BigInt(reservationId));
+            l.confirmed = satI64(l.confirmed + h.amount);
+            return 1;
+        },
+
+        // Release a hold back to available (a confirmed sale cannot be cancelled).
+        'data.capacity_cancel': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            reservationId: number | bigint,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            capPrune(l, Date.now());
+            return l.holds.delete(BigInt(reservationId)) ? 1 : 0;
+        },
+
         // Drain the last stashed variable-length result into the caller buffer.
         'data.take_result': (outPtr: number, outCap: number): number => {
             const v = db.lastResult;
@@ -471,4 +596,5 @@ export function __resetDbForTests(): void {
     MEMBERS.clear();
     COUNTERS.clear();
     EVENTS.clear();
+    CAPACITY.clear();
 }

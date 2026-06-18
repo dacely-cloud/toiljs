@@ -302,3 +302,63 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.get'](posts, kPtr, kLen)).toBe(-2);
     });
 });
+
+type Imports = Record<string, (...args: number[]) => number>;
+
+describe('toildb dev emulator (capacity family)', () => {
+    // Pull the last stashed i64 available into the buffer and read it.
+    function avail(imports: Imports, buf: Buffer, h: number, kPtr: number, kLen: number): bigint {
+        expect(imports['data.capacity_available'](h, kPtr, kLen)).toBe(8);
+        expect(imports['data.take_result'](512, 16)).toBe(8);
+        return buf.readBigInt64LE(512);
+    }
+
+    it('set_total / reserve / confirm / cancel keep the ledger consistent', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/seats');
+        const [kPtr, kLen] = put(buf, 32, 'showA');
+
+        // an empty ledger reads 0 available, never absent.
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(0n);
+
+        // restock to 10.
+        expect(imports['data.capacity_set_total'](h, kPtr, kLen, 10, 0)).toBe(0);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(10n);
+
+        // reserve 3 -> a u64 id (> 0) is stashed, available drops to 7.
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 3, 60000, 0)).toBe(8);
+        expect(imports['data.take_result'](512, 16)).toBe(8);
+        const id = buf.readBigUInt64LE(512);
+        expect(id > 0n).toBe(true);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(7n);
+
+        // cancel returns the hold -> back to 10; a double-cancel is a no-op.
+        expect(imports['data.capacity_cancel'](h, kPtr, kLen, Number(id), 0)).toBe(1);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(10n);
+        expect(imports['data.capacity_cancel'](h, kPtr, kLen, Number(id), 0)).toBe(0);
+
+        // reserve 4 then confirm -> a permanent consume; available holds at 6.
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 4, 60000, 0)).toBe(8);
+        imports['data.take_result'](512, 16);
+        const id2 = Number(buf.readBigUInt64LE(512));
+        expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(1);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(6n);
+        // a confirmed hold cannot be cancelled nor re-confirmed.
+        expect(imports['data.capacity_cancel'](h, kPtr, kLen, id2, 0)).toBe(0);
+        expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(0);
+    });
+
+    it('never oversells (a reserve beyond available is refused)', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/tickets');
+        const [kPtr, kLen] = put(buf, 32, 'vip');
+        imports['data.capacity_set_total'](h, kPtr, kLen, 5, 0);
+
+        // a hold for all 5 succeeds; a further hold for 1 is refused (-2 -> guest 0).
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 5, 60000, 0)).toBe(8);
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 1, 60000, 0)).toBe(-2);
+        // a non-positive amount is refused, and an invalid handle is rejected.
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 0, 60000, 0)).toBe(-2);
+        expect(imports['data.capacity_available'](999, kPtr, kLen)).toBe(-1001);
+    });
+});
