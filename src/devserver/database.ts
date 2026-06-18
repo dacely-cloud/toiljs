@@ -21,6 +21,8 @@ import type { MemoryRef } from './host.js';
 const STORE = new Map<string, Buffer>();
 /** View family: `"collection\0key"` -> the latest published view blob. */
 const VIEWS = new Map<string, Buffer>();
+/** Membership family: `"collection\0setKey"` -> (memberLatin1 -> member bytes). */
+const MEMBERS = new Map<string, Map<string, Buffer>>();
 /** Counter family: `"collection\0key"` -> saturating i64 sum of deltas. */
 const COUNTERS = new Map<string, bigint>();
 /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
@@ -259,6 +261,80 @@ export function buildDatabaseImports(
             return 0;
         },
 
+        // --- membership family (contains / add / remove / list) ---
+
+        'data.membership_contains': (
+            handle: number,
+            setPtr: number,
+            setLen: number,
+            memberPtr: number,
+            memberLen: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
+            if (set === undefined) return 0;
+            return set.has(readCopy(ref, memberPtr, memberLen).toString('latin1')) ? 1 : 0;
+        },
+
+        'data.membership_add': (
+            handle: number,
+            setPtr: number,
+            setLen: number,
+            memberPtr: number,
+            memberLen: number,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            if (setLen > MAX_KEY || memberLen > MAX_VALUE) throw new Error('data: set/member too large');
+            const sk = storeKey(coll, readCopy(ref, setPtr, setLen));
+            const member = readCopy(ref, memberPtr, memberLen);
+            let set = MEMBERS.get(sk);
+            if (set === undefined) {
+                set = new Map();
+                MEMBERS.set(sk, set);
+            }
+            set.set(member.toString('latin1'), member);
+            return 0;
+        },
+
+        'data.membership_remove': (
+            handle: number,
+            setPtr: number,
+            setLen: number,
+            memberPtr: number,
+            memberLen: number,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
+            if (set !== undefined) set.delete(readCopy(ref, memberPtr, memberLen).toString('latin1'));
+            return 0;
+        },
+
+        // Frame the members (sorted by bytes, matching the edge BTreeMap) as
+        // `u32 count` + per member `u32 len + bytes`; stash + return the length.
+        'data.membership_list': (handle: number, setPtr: number, setLen: number, limit: number): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
+            const n = Math.max(0, Math.min(limit, 0xffff));
+            const members =
+                set === undefined ? [] : Array.from(set.values()).sort(Buffer.compare).slice(0, n);
+            const header = Buffer.alloc(4);
+            header.writeUInt32LE(members.length, 0);
+            const parts: Buffer[] = [header];
+            for (const m of members) {
+                const h = Buffer.alloc(4);
+                h.writeUInt32LE(m.length, 0);
+                parts.push(h, m);
+            }
+            db.lastResult = Buffer.concat(parts);
+            return db.lastResult.length;
+        },
+
         // --- view family (get / publish) ---
 
         'data.view_get': (handle: number, keyPtr: number, keyLen: number): number => {
@@ -377,6 +453,7 @@ export function buildDatabaseImports(
 export function __resetDbForTests(): void {
     STORE.clear();
     VIEWS.clear();
+    MEMBERS.clear();
     COUNTERS.clear();
     EVENTS.clear();
 }
