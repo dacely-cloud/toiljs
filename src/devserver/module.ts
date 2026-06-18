@@ -101,6 +101,11 @@ const PROVIDED_IMPORTS = new Set([
     'data.counter_add',
     'data.append',
     'data.latest',
+    'data.capacity_set_total',
+    'data.capacity_available',
+    'data.capacity_reserve',
+    'data.capacity_confirm',
+    'data.capacity_cancel',
     'data.take_result',
 ]);
 
