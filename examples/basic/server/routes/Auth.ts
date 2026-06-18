@@ -63,10 +63,6 @@ function deriveSalt(username: string): Uint8Array {
     return crypto.sha256Text('toil-demo-salt-v1:' + username).slice(0, 16);
 }
 
-// ToilDB collections (the `kv.*` dev placeholder is gone). The key + value are
-// `@data` types: the binary codec is generated, the host marshals it, and the
-// challenge is consumed exactly once with `getDelete`.
-
 @data
 class Username {
     name: string = '';
