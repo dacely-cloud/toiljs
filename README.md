@@ -74,22 +74,80 @@ npm run dev
 
 Drop a `.tsx` file in `client/routes/` and it is a route: typed, code-split, prefetched, with its data loaded before render. Your `server/` is written in **ToilScript** (TypeScript syntax) and compiles to a single WebAssembly module. You configured nothing.
 
-<div align="center">
+```mermaid
+flowchart TB
+    classDef today fill:#0e1520,stroke:#2563ff,stroke-width:2px,color:#cfe0ff;
+    classDef soon fill:#160f1f,stroke:#7c3aed,stroke-width:2px,color:#ead7ff,stroke-dasharray:6 4;
+    classDef gen fill:#0c1a14,stroke:#10b981,stroke-width:2px,color:#c8f5e2;
 
-```
-                          your app
-       ┌──────────────────────┬──────────────────────┐
-       │       client/        │       server/        │
-       │     React + TSX      │   ToilScript (.ts)   │
-       │  static SPA bundle   │   ──▶  WebAssembly   │
-       └──────────┬───────────┴──────────┬───────────┘
-                  │                      │
-                  ▼                      ▼
-          CDN / static host       WASM edge runtime
-                  └───── typed RPC ──────┘
-```
+    %% ============ WHAT YOU WRITE ============
+    subgraph APP["your app, one repo"]
+        direction LR
+        subgraph CLIENT["client/ &nbsp; React + TSX"]
+            direction TB
+            CROUTES["routes/ &nbsp; file-based<br/>dynamic, catch-all, groups<br/>layout, template, loading, error<br/>parallel @slots, intercepting"]
+            CPARTS["components, styles, public<br/>loader + useAction data<br/>Link / navigate, prefetch<br/>useChannel realtime<br/>Head / OG / JSON-LD"]
+        end
+        subgraph SERVER["server/ &nbsp; ToilScript .ts"]
+            direction TB
+            SREST["@rest controllers<br/>@get / @post handlers<br/>Request to Response"]
+            SRPC["@service / @remote<br/>typed RPC methods"]
+            SDATA["@data models<br/>@database + @collection<br/>Events, Counter, Set, owned"]
+        end
+        SHARED["shared/ &nbsp; cross-target types"]
+    end
 
-</div>
+    %% ============ BUILD, toiljs CLI ============
+    subgraph BUILD["toiljs CLI &nbsp; create / dev / build / start / configure / doctor / update"]
+        direction LR
+        VITE["Vite<br/>HMR + ahead-of-time build"]
+        TSC["toilscript compiler"]
+        TOOLKIT["toolkit: TypeScript, ESLint, Prettier, git<br/>Tailwind / Sass / Less / Stylus optional<br/>dev toolbar: routes, loader cache, head/OG, errors<br/>AI tab to Claude / ChatGPT, Cmd-K palette<br/>dev host emulator: ToilDB, crypto, cache, env, email"]
+    end
+
+    %% ============ BUILD ARTIFACTS ============
+    STATIC["static client bundle<br/>prerendered HTML per route<br/>sitemap.xml, robots.txt, llms.txt<br/>search index, OG / Twitter / canonical<br/>webp images, preloaded fonts, code-split chunks"]
+    GENCLI["shared/server.ts &nbsp; AUTO-GENERATED<br/>@data binary codec<br/>typed Server.* RPC + Server.REST.* client"]
+    WASM["one .wasm module<br/>self-contained, instant start"]
+
+    %% ============ RUN ============
+    subgraph EDGE["where it runs"]
+        direction LR
+        CDN["CDN / static host<br/>instant nav, viewport prefetch<br/>LRU loader cache<br/>WS channels today, WebTransport soon"]
+        RT["WASM edge runtime<br/>ToilHandler: Request to handler to Response<br/>REST dispatch, render-free SSR<br/>binary IO, realtime channels<br/>isolated per-tenant at line rate"]
+    end
+
+    %% ============ HOST APIs ============
+    HOST["host APIs the server calls<br/>Web Crypto / SubtleCrypto, cache<br/>env / secrets, cookies + secure cookies<br/>time, abort / revert"]
+
+    %% ============ ROADMAP ============
+    DB["ToilDB &nbsp; edge-replicated typed data<br/>owned, events, counter, set, unique, escrow, snapshot<br/>local reads fast, CRDT writes merge, durable + blob store"]
+    CLOUD["Dacely Cloud &nbsp; control plane<br/>push app: client to edge, .wasm to runtime, data replicated"]
+
+    %% ---- edges ----
+    CLIENT --> VITE
+    SERVER --> TSC
+    SHARED -.-> VITE
+    SHARED -.-> TSC
+
+    VITE --> STATIC
+    TSC --> WASM
+    TSC --> GENCLI
+    GENCLI -.->|"types the client"| CLIENT
+
+    STATIC -->|deploys| CDN
+    WASM -->|deploys| RT
+    CDN <-->|"typed RPC / REST &nbsp; Server.*"| RT
+    RT --> HOST
+    HOST -.-> DB
+    RT -.->|"region-replicated"| DB
+    CLOUD -. orchestrates .-> EDGE
+    CLOUD -. orchestrates .-> DB
+
+    class CROUTES,CPARTS,SREST,SRPC,SDATA,SHARED,VITE,TSC,TOOLKIT,STATIC,WASM,CDN today;
+    class GENCLI gen;
+    class RT,DB,CLOUD soon;
+```
 
 The client is fully static (host it anywhere). The server is a portable compiled module. The two are separated by design and joined by a typed contract, so the frontend ships to any CDN while the backend runs wherever it is deployed. That split is what makes the delivery network global: static files replicate everywhere for free, and one small module is trivial to run in many places at once.
 
