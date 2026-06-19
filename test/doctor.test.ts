@@ -15,6 +15,7 @@ import {
     checkRootElement,
     checkRpcWiring,
     checkSeoUrl,
+    checkServerTsPlugin,
     checkStyling,
     findRelativeAssets,
     satisfiesMin,
@@ -186,6 +187,18 @@ describe('checkPrettierPlugin', () => {
     it('warns (not fails) when missing, pointing at --fix', () => {
         const c = checkPrettierPlugin(false);
         expect(c.status).toBe('warn');
+        expect(c.fix).toContain('--fix');
+    });
+});
+
+describe('checkServerTsPlugin', () => {
+    it('passes when the toilscript LS plugin is wired', () => {
+        expect(checkServerTsPlugin(true).status).toBe('pass');
+    });
+    it('warns (not fails) when missing, naming the TS2339 false positive and --fix', () => {
+        const c = checkServerTsPlugin(false);
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('TS2339');
         expect(c.fix).toContain('--fix');
     });
 });

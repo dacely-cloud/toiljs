@@ -503,6 +503,24 @@ export function checkRestDispatch(f: RestFacts): Check {
     };
 }
 
+/**
+ * Whether the server's tsconfig wires the toilscript language-service plugin. The compiler turns
+ * each `@collection` field into a STATIC handle (`GuestbookDb.totals`) and injects the `@data`
+ * codec / `@user` members, none of which stock TypeScript can see, so without the plugin the editor
+ * false-flags them as TS2339. The plugin (editor-only; never runs under `tsc`) clears them.
+ */
+export function checkServerTsPlugin(present: boolean): Check {
+    return present
+        ? { id: 'server-ts-plugin', label: 'toilscript editor plugin', status: 'pass' }
+        : {
+              id: 'server-ts-plugin',
+              label: 'toilscript editor plugin',
+              status: 'warn',
+              detail: 'server tsconfig is missing the toilscript LS plugin, so the editor wrongly flags @database static collections (e.g. GuestbookDb.totals) and @data members as TS2339',
+              fix: 'Run `toiljs doctor --fix` to add { "plugins": [{ "name": "toilscript/std/ts-plugin.cjs" }] } to your server tsconfig, then pick the workspace TypeScript version and restart the TS server.',
+          };
+}
+
 // --- Security -------------------------------------------------------------------------------------
 
 /** Whether the project uses the auth primitive, and whether its session secret is configured. */
