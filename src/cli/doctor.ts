@@ -39,6 +39,7 @@ import {
     checkRpcWiring,
     checkSeoUrl,
     checkServerEntry,
+    checkServerTsPlugin,
     type CheckStatus,
     checkStyling,
     checkToilconfig,
@@ -254,6 +255,38 @@ function gatherAuthFacts(root: string, toilconfig: Record<string, unknown> | nul
         }
     }
     return { usesAuth, sessionSecretSet: secretDefined(root, 'AUTH_SESSION_SECRET') };
+}
+
+/** The toilscript language-service plugin id wired into a server tsconfig. */
+const TS_PLUGIN_NAME = 'toilscript/std/ts-plugin.cjs';
+
+/**
+ * The server's tsconfig.json (the one beside a toilconfig entry, conventionally
+ * `server/tsconfig.json`), or null if none exists. That is the project the editor uses for server
+ * files, so it is where the toilscript LS plugin must live.
+ */
+function serverTsconfigPath(root: string, toilconfig: Record<string, unknown> | null): string | null {
+    const dirs = new Set<string>();
+    const entries = Array.isArray(toilconfig?.entries)
+        ? (toilconfig.entries as unknown[]).filter((e): e is string => typeof e === 'string')
+        : [];
+    for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
+    if (dirs.size === 0) dirs.add(path.join(root, 'server'));
+    for (const dir of dirs) {
+        const p = path.join(dir, 'tsconfig.json');
+        if (fs.existsSync(p)) return p;
+    }
+    return null;
+}
+
+/** Whether a parsed tsconfig's `compilerOptions.plugins` references the toilscript LS plugin. */
+function tsconfigHasToilPlugin(tsconfig: Record<string, unknown> | null): boolean {
+    const plugins = asRecord(tsconfig?.compilerOptions)?.plugins;
+    if (!Array.isArray(plugins)) return false;
+    return plugins.some((p) => {
+        const name = asRecord(p)?.name;
+        return typeof name === 'string' && name.includes('ts-plugin');
+    });
 }
 
 interface RpcFixResult {
@@ -496,6 +529,64 @@ function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): Rp
     return { changed, skipped };
 }
 
+/**
+ * Wires the editor side of the toilscript server: adds the LS plugin to the server tsconfig (so the
+ * editor stops false-flagging `@database` static collections / `@data` members), and points VS Code
+ * at the workspace TypeScript (so it actually loads that plugin). Idempotent; only writes real
+ * changes, and skips (with a note) configs it can't safely edit (a tsconfig with comments).
+ */
+function applyServerEditorFix(root: string, toilconfig: Record<string, unknown> | null): RpcFixResult {
+    const changed: string[] = [];
+    const skipped: string[] = [];
+
+    // 1. The LS plugin in the server tsconfig.
+    const tsPath = serverTsconfigPath(root, toilconfig);
+    if (tsPath === null) {
+        skipped.push('server/tsconfig.json (not found; add the toilscript ts-plugin by hand)');
+    } else {
+        const rel = path.relative(root, tsPath);
+        const raw = readFile(tsPath);
+        const parsed = raw !== null ? readJsonObject(tsPath) : null;
+        if (parsed === null) {
+            skipped.push(`${rel} (JSON with comments; add the "${TS_PLUGIN_NAME}" plugin by hand)`);
+        } else if (!tsconfigHasToilPlugin(parsed)) {
+            const co = asRecord(parsed.compilerOptions) ?? {};
+            const existingPlugins: unknown[] = Array.isArray(co.plugins)
+                ? (co.plugins as unknown[])
+                : [];
+            co.plugins = [...existingPlugins, { name: TS_PLUGIN_NAME }];
+            parsed.compilerOptions = co;
+            writeFile(tsPath, JSON.stringify(parsed, null, 4) + '\n');
+            changed.push(rel);
+        }
+    }
+
+    // 2. Make VS Code use the workspace TypeScript, so it loads the plugin above.
+    const vsPath = path.join(root, '.vscode', 'settings.json');
+    const vsRaw = readFile(vsPath);
+    const vs = vsRaw !== null ? readJsonObject(vsPath) : {};
+    if (vs === null) {
+        skipped.push('.vscode/settings.json (unparseable; set typescript.tsdk by hand)');
+    } else {
+        let touched = false;
+        if (vs['typescript.tsdk'] !== 'node_modules/typescript/lib') {
+            vs['typescript.tsdk'] = 'node_modules/typescript/lib';
+            touched = true;
+        }
+        if (vs['typescript.enablePromptUseWorkspaceTsdk'] !== true) {
+            vs['typescript.enablePromptUseWorkspaceTsdk'] = true;
+            touched = true;
+        }
+        if (touched) {
+            fs.mkdirSync(path.dirname(vsPath), { recursive: true });
+            writeFile(vsPath, JSON.stringify(vs, null, 4) + '\n');
+            changed.push('.vscode/settings.json');
+        }
+    }
+
+    return { changed, skipped };
+}
+
 /** Reads the framework's own package.json (engines + peerDependencies) for the requirements. */
 function frameworkMeta(): { node: string; peers: Record<string, string> } {
     const pkgPath = path.resolve(
@@ -656,9 +747,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
     const peerChecks = Object.keys(meta.peers).map(peerName);
 
-    // Server tooling (RPC wiring + the prettier plugin): optionally fix in place, then re-read.
+    // Server tooling (RPC wiring + the prettier plugin + the editor LS plugin): optionally fix in
+    // place, then re-read.
     const rpcFix = serverPresent && opts.fix ? applyRpcFix(root) : null;
     const prettierFix = serverPresent && opts.fix ? applyPrettierFix(root, projectPkg) : null;
+    const editorFix = serverPresent && opts.fix ? applyServerEditorFix(root, toilconfig) : null;
     const rpcFacts = gatherRpcFacts(root);
     const restFacts = gatherRestFacts(root, toilconfig);
     const authFacts = gatherAuthFacts(root, toilconfig);
@@ -666,11 +759,25 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
         root,
         readJsonObject(path.join(root, 'package.json')),
     );
+    // Only assess the LS plugin when a server tsconfig exists and parses; an absent or
+    // commented one is left to the user rather than warned on.
+    const serverTsPath = serverPresent ? serverTsconfigPath(root, toilconfig) : null;
+    const serverTsParsed = serverTsPath ? readJsonObject(serverTsPath) : null;
+    const serverTsPluginPresent =
+        serverTsPath === null || serverTsParsed === null ? true : tsconfigHasToilPlugin(serverTsParsed);
     const serverFix =
-        rpcFix || prettierFix
+        rpcFix || prettierFix || editorFix
             ? {
-                  changed: [...(rpcFix?.changed ?? []), ...(prettierFix?.changed ?? [])],
-                  skipped: [...(rpcFix?.skipped ?? []), ...(prettierFix?.skipped ?? [])],
+                  changed: [
+                      ...(rpcFix?.changed ?? []),
+                      ...(prettierFix?.changed ?? []),
+                      ...(editorFix?.changed ?? []),
+                  ],
+                  skipped: [
+                      ...(rpcFix?.skipped ?? []),
+                      ...(prettierFix?.skipped ?? []),
+                      ...(editorFix?.skipped ?? []),
+                  ],
               }
             : null;
 
@@ -732,6 +839,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                       checkRpcWiring(rpcFacts),
                       checkRestDispatch(restFacts),
                       checkPrettierPlugin(prettierPresent),
+                      checkServerTsPlugin(serverTsPluginPresent),
                   ]
                 : [checkToilconfig(false)],
         },
@@ -762,14 +870,14 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
 function renderRpcFix(result: RpcFixResult): void {
     const out: string[] = [];
     if (result.changed.length > 0) {
-        out.push('  ' + success('fixed RPC wiring') + dim(`  ${result.changed.join(', ')}`));
+        out.push('  ' + success('fixed server wiring') + dim(`  ${result.changed.join(', ')}`));
         if (result.changed.includes('package.json')) {
             out.push(
                 '  ' + dim('run your installer (npm/pnpm/yarn) if the toilscript version changed.'),
             );
         }
     } else {
-        out.push('  ' + dim('RPC wiring already in place, nothing to fix.'));
+        out.push('  ' + dim('server wiring already in place, nothing to fix.'));
     }
     for (const item of result.skipped) out.push('  ' + warn('skipped') + dim(`  ${item}`));
     process.stdout.write(out.join('\n') + '\n\n');
