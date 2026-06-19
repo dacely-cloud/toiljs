@@ -18,7 +18,9 @@ import {
 } from 'toiljs/compiler';
 
 import {
+    type AuthFacts,
     type Check,
+    checkAuthSecrets,
     checkBasePath,
     checkConfigLoads,
     checkDevScripts,
@@ -229,6 +231,29 @@ function gatherRestFacts(root: string, toilconfig: Record<string, unknown> | nul
         if (hasControllers && dispatched) break;
     }
     return { hasControllers, dispatched };
+}
+
+/** Whether `.env.secrets` assigns `key` a non-empty value (a bare `KEY=` counts as unset). */
+function secretDefined(root: string, key: string): boolean {
+    const raw = readFile(path.join(root, '.env.secrets'));
+    if (raw === null) return false;
+    return new RegExp(`^\\s*(?:export\\s+)?${key}\\s*=\\s*\\S`, 'm').test(raw);
+}
+
+/**
+ * Whether the server uses the auth primitive (so a missing session secret matters) and whether
+ * `AUTH_SESSION_SECRET` is set locally. `getSecure` reads ONLY the `.env.secrets` bucket, so that
+ * is the source we check; on a deploy target the secret lives on the dashboard instead.
+ */
+function gatherAuthFacts(root: string, toilconfig: Record<string, unknown> | null): AuthFacts {
+    let usesAuth = false;
+    for (const src of serverSources(root, toilconfig)) {
+        if (/\bAuthService\b/.test(src) || /@user\b/.test(src) || /@auth\b/.test(src)) {
+            usesAuth = true;
+            break;
+        }
+    }
+    return { usesAuth, sessionSecretSet: secretDefined(root, 'AUTH_SESSION_SECRET') };
 }
 
 interface RpcFixResult {
@@ -636,6 +661,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const prettierFix = serverPresent && opts.fix ? applyPrettierFix(root, projectPkg) : null;
     const rpcFacts = gatherRpcFacts(root);
     const restFacts = gatherRestFacts(root, toilconfig);
+    const authFacts = gatherAuthFacts(root, toilconfig);
     const prettierPresent = prettierPluginPresent(
         root,
         readJsonObject(path.join(root, 'package.json')),
@@ -710,6 +736,11 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                 : [checkToilconfig(false)],
         },
     ];
+
+    // Security checks only apply to a server (no server, no sessions to forge).
+    if (serverPresent) {
+        groups.push({ title: 'Security', checks: [checkAuthSecrets(authFacts)] });
+    }
 
     const summary = summarize(groups);
     if (opts.json) {

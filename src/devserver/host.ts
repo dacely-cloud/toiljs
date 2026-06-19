@@ -113,6 +113,34 @@ function readGuestString(ref: MemoryRef, ptr: number): string {
 }
 
 /**
+ * Framework auth secrets that, when unset, SILENTLY fall back to a published,
+ * well-known dev default inside the guest (see `server/globals/auth.ts`). Reading
+ * one that is absent means the wasm is about to sign sessions / derive keys under
+ * a value anyone can read off npm, so we surface it. Harmless for local dev; a
+ * deployed node MUST set these out of band (`.env.secrets` / the dashboard).
+ */
+const INSECURE_DEFAULT_SECRETS: Record<string, string> = {
+    AUTH_SESSION_SECRET:
+        'session cookies will be signed with a PUBLISHED key, so anyone can forge one and skip login',
+    AUTH_OPRF_SEED: 'the password OPRF seed will be the published dev value',
+    AUTH_KEM_SK: 'the server ML-KEM secret key will be the published dev value',
+};
+
+/** Warned-once set, keyed by secret name, so a hot path cannot spam the log. */
+const warnedInsecureSecrets = new Set<string>();
+
+/** Warn (once per process) that an absent framework secret falls back to a public default. */
+function warnInsecureSecretFallback(key: string): void {
+    if (warnedInsecureSecrets.has(key)) return;
+    warnedInsecureSecrets.add(key);
+    process.stdout.write(
+        `  ⚠ ${key} is not set: ${INSECURE_DEFAULT_SECRETS[key]}. ` +
+            `Fine for local dev, but a deployed node MUST set it in .env.secrets (or on your deploy target). ` +
+            `Generate one: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"\n`,
+    );
+}
+
+/**
  * Resolve one `Environment.get`/`getSecure` lookup against the dev env source
  * and write it into the guest buffer, with the edge's return protocol: the value
  * byte length (`0` = present-but-empty), `-1` if `outCap` is too small (the guest
@@ -128,7 +156,10 @@ function envLookup(
 ): number {
     const key = readBytes(ref, keyPtr, keyLen).toString('utf8');
     const val = secure ? devEnvGetSecure(key) : devEnvGet(key);
-    if (val === null) return -2; // ABSENT
+    if (val === null) {
+        if (secure && key in INSECURE_DEFAULT_SECRETS) warnInsecureSecretFallback(key);
+        return -2; // ABSENT
+    }
     const bytes = Buffer.from(val, 'utf8');
     if (bytes.length > outCap) return -1; // TOO_SMALL
     const m = mem(ref);
