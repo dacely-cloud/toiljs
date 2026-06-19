@@ -503,6 +503,36 @@ export function checkRestDispatch(f: RestFacts): Check {
     };
 }
 
+// --- Security -------------------------------------------------------------------------------------
+
+/** Whether the project uses the auth primitive, and whether its session secret is configured. */
+export interface AuthFacts {
+    /** A server source references the auth primitive (`AuthService` / `@user` / `@auth`). */
+    readonly usesAuth: boolean;
+    /** `AUTH_SESSION_SECRET` is assigned a non-empty value in the local secrets source. */
+    readonly sessionSecretSet: boolean;
+}
+
+/**
+ * Flags the silent insecure default behind the auth primitive. When a project uses sessions but
+ * never sets `AUTH_SESSION_SECRET`, the server falls back to a PUBLISHED dev key (see
+ * `server/globals/auth.ts`), so anyone can forge a session cookie and skip login. doctor can only
+ * see the local secrets source, so it WARNS (the real secret may live on the deploy target) rather
+ * than failing CI on a false positive.
+ */
+export function checkAuthSecrets(f: AuthFacts): Check {
+    if (!f.usesAuth || f.sessionSecretSet) {
+        return { id: 'auth-secrets', label: 'Session secret', status: 'pass' };
+    }
+    return {
+        id: 'auth-secrets',
+        label: 'Session secret',
+        status: 'warn',
+        detail: 'auth is used but AUTH_SESSION_SECRET is unset: sessions fall back to a PUBLISHED key, so anyone can forge a session cookie and skip login',
+        fix: 'Set AUTH_SESSION_SECRET to a long random value in .env.secrets (local) and on your deploy target (also AUTH_OPRF_SEED / AUTH_KEM_SK if you use password login). Generate one: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))".',
+    };
+}
+
 // --- Summary --------------------------------------------------------------------------------------
 
 export function summarize(groups: readonly CheckGroup[]): DoctorSummary {

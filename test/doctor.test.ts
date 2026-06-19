@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    checkAuthSecrets,
     checkBasePath,
     checkDevScripts,
     checkDuplicatePatterns,
@@ -186,6 +187,22 @@ describe('checkPrettierPlugin', () => {
         const c = checkPrettierPlugin(false);
         expect(c.status).toBe('warn');
         expect(c.fix).toContain('--fix');
+    });
+});
+
+describe('checkAuthSecrets', () => {
+    it('passes when auth is not used', () => {
+        expect(checkAuthSecrets({ usesAuth: false, sessionSecretSet: false }).status).toBe('pass');
+    });
+    it('passes when auth is used and the session secret is set', () => {
+        expect(checkAuthSecrets({ usesAuth: true, sessionSecretSet: true }).status).toBe('pass');
+    });
+    it('warns about session forgery when auth is used but the secret is unset', () => {
+        const c = checkAuthSecrets({ usesAuth: true, sessionSecretSet: false });
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('AUTH_SESSION_SECRET');
+        expect(c.detail).toContain('forge');
+        expect(c.fix).toContain('.env.secrets');
     });
 });
 
