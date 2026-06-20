@@ -17,3 +17,6 @@ examples/basic/*
 # ...but never the example's generated/build output.
 examples/basic/server/shared
 examples/basic/build
+
+# Dev-only override stub (overrides do not apply to consumers anyway)
+stubs

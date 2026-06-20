@@ -1,0 +1,7 @@
+{
+    "name": "elliptic",
+    "version": "6.6.1",
+    "description": "No-op stand-in injected via toiljs package.json overrides; keeps the advisory-flagged, unpatched `elliptic` (GHSA-848j-6mx2-7j84) out of the tree. The node crypto polyfill that pulls it (crypto-browserify) is never bundled by toiljs (client polyfills only Buffer/global/process).",
+    "main": "index.js",
+    "license": "MIT"
+}
