@@ -107,6 +107,8 @@ const PROVIDED_IMPORTS = new Set([
     'data.capacity_confirm',
     'data.capacity_cancel',
     'data.take_result',
+    'data.result_schema_version',
+    'data.write_allowed',
 ]);
 
 export class WasmServerModule {
