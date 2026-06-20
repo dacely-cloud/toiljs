@@ -144,6 +144,9 @@
         "react-dom": ">=18.0.0",
         "typescript": ">=6.0.0"
     },
+    "overrides": {
+        "elliptic": "file:./stubs/elliptic"
+    },
     "devDependencies": {
         "@babel/core": "^8.0.1",
         "@babel/preset-env": "^8.0.2",
