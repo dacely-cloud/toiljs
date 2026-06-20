@@ -27,35 +27,45 @@ const MEMBERS = new Map<string, Map<string, Buffer>>();
 const COUNTERS = new Map<string, bigint>();
 /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
 const EVENTS = new Map<string, Buffer[]>();
-/** Capacity family: `"collection\0key"` -> an escrow ledger (total/holds/confirmed). */
+/** Capacity family: `"collection\0key"` -> an escrow ledger (ceiling + reservations). */
 const CAPACITY = new Map<string, CapLedger>();
 
-/** A finite-resource escrow: a ceiling, in-flight holds, and confirmed consumes. */
+/** A finite-resource escrow: a ceiling + a set of reservations, each held (in
+ *  flight, TTL'd) or confirmed (a permanent consume). Both count against available;
+ *  a confirmed reservation never expires. Mirrors `toildb::capacity::Escrow`. */
+interface Reservation {
+    amount: bigint;
+    expiresMs: number;
+    confirmed: boolean;
+}
 interface CapLedger {
     total: bigint;
-    confirmed: bigint;
-    holds: Map<bigint, { amount: bigint; expiresMs: number }>;
+    reservations: Map<bigint, Reservation>;
     nextId: bigint;
 }
+
+/** Edge caps (toildb::capacity::escrow): bound the reservation count + the hold TTL. */
+const MAX_RESERVATIONS = 4096;
+const MAX_RESERVATION_TTL_MS = 86_400_000; // 24h
 
 function capLedger(sk: string): CapLedger {
     let l = CAPACITY.get(sk);
     if (l === undefined) {
-        l = { total: 0n, confirmed: 0n, holds: new Map(), nextId: 1n };
+        l = { total: 0n, reservations: new Map(), nextId: 1n };
         CAPACITY.set(sk, l);
     }
     return l;
 }
 
-/** Drop holds whose TTL has elapsed (self-heal, mirrors the edge's now-based prune). */
+/** Drop UN-confirmed reservations whose TTL elapsed (a confirmed sale never expires). */
 function capPrune(l: CapLedger, nowMs: number): void {
-    for (const [id, h] of l.holds) if (h.expiresMs <= nowMs) l.holds.delete(id);
+    for (const [id, r] of l.reservations) if (!r.confirmed && r.expiresMs <= nowMs) l.reservations.delete(id);
 }
 
-/** Units currently held (un-expired, unconfirmed). */
-function capHeld(l: CapLedger): bigint {
+/** Units reserved against the ceiling: held (un-expired) + confirmed (call capPrune first). */
+function capReserved(l: CapLedger): bigint {
     let sum = 0n;
-    for (const h of l.holds.values()) sum += h.amount;
+    for (const r of l.reservations.values()) sum += r.amount;
     return sum;
 }
 
@@ -70,11 +80,15 @@ function satI64(v: bigint): bigint {
     return v < I64_MIN ? I64_MIN : v > I64_MAX ? I64_MAX : v;
 }
 
-// Return codes, mirroring `toildb::observe::diagnostics`.
-const ABSENT = -2;
+// Return codes, mirroring the edge ABI (`toildb::observe::diagnostics`): a typed
+// error is `-(1000 + TDLnnn)`; a plain absence is ABSENT (-2), not a typed error.
+const ABSENT = -2; // NotFound / absent
 const TOO_SMALL = -1;
-const INVALID_HANDLE = -1001; // -(1000 + TDL001)
-const PRODUCT_ERR = -1000; // AlreadyExists / NotFound / Conflict (TDL000)
+const INVALID_HANDLE = -1001; // TDL001
+const ALREADY_EXISTS = -1003; // TDL003 (create on an existing key)
+const CONFLICT = -1004; // TDL004 (e.g. unique release by a non-owner)
+const CODEC_ERR = -1006; // TDL006 (e.g. a non-positive reserve amount)
+const TOO_MANY_KEYS = -1020; // TDL020 (get_many over the per-call cap)
 
 /** Per-request data state: resolved handles + the last variable-length result. */
 export interface DbDevState {
@@ -97,6 +111,14 @@ function readCopy(ref: MemoryRef, ptr: number, len: number): Buffer {
     if (ptr < 0 || len < 0 || ptr + len > m.length)
         throw new Error(`data read out of bounds: ptr=${String(ptr)} len=${String(len)}`);
     return Buffer.from(m.subarray(ptr, ptr + len));
+}
+
+/** Read + length-cap a KEY. The edge traps a key over MAX_KEY on EVERY op (via
+ *  `bound` in prepare_key); enforce it uniformly here so a dev read of an over-cap
+ *  key fails the same way instead of silently succeeding. */
+function readKey(ref: MemoryRef, ptr: number, len: number): Buffer {
+    if (len > MAX_KEY) throw new Error('data: key too long');
+    return readCopy(ref, ptr, len);
 }
 
 function storeKey(collection: string, key: Buffer): string {
@@ -133,7 +155,7 @@ export function buildDatabaseImports(
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
             if (keyLen > MAX_KEY) throw new Error('data: key too long');
-            const v = STORE.get(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const v = STORE.get(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             if (v === undefined) return ABSENT;
             db.lastResult = v;
             return v.length;
@@ -150,7 +172,7 @@ export function buildDatabaseImports(
             let off = 0;
             const count = blob.readUInt32LE(off);
             off += 4;
-            if (count > 1024) return PRODUCT_ERR; // anti-OOM cap, mirrors the edge
+            if (count > 1024) return TOO_MANY_KEYS; // anti-OOM cap, mirrors the edge
             const header = Buffer.alloc(4);
             header.writeUInt32LE(count, 0);
             const parts: Buffer[] = [header];
@@ -176,7 +198,7 @@ export function buildDatabaseImports(
         'data.exists': (handle: number, keyPtr: number, keyLen: number): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            return STORE.has(storeKey(coll, readCopy(ref, keyPtr, keyLen))) ? 1 : 0;
+            return STORE.has(storeKey(coll, readKey(ref, keyPtr, keyLen))) ? 1 : 0;
         },
 
         'data.create': (
@@ -191,8 +213,8 @@ export function buildDatabaseImports(
             if (coll === null) return INVALID_HANDLE;
             if (keyLen > MAX_KEY || valLen > MAX_VALUE)
                 throw new Error('data: key/value too large');
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
-            if (STORE.has(sk)) return PRODUCT_ERR; // AlreadyExists
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+            if (STORE.has(sk)) return ALREADY_EXISTS;
             STORE.set(sk, readCopy(ref, valPtr, valLen));
             return 0;
         },
@@ -209,8 +231,8 @@ export function buildDatabaseImports(
             if (coll === null) return INVALID_HANDLE;
             if (keyLen > MAX_KEY || patchLen > MAX_VALUE)
                 throw new Error('data: key/patch too large');
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
-            if (!STORE.has(sk)) return PRODUCT_ERR; // NotFound
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+            if (!STORE.has(sk)) return ABSENT; // NotFound -> ABSENT on the edge
             const v = readCopy(ref, patchPtr, patchLen);
             STORE.set(sk, v);
             db.lastResult = v; // patch returns the stored record
@@ -225,7 +247,7 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            STORE.delete(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            STORE.delete(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             return 0;
         },
 
@@ -238,7 +260,7 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
             const v = STORE.get(sk);
             if (v === undefined) return ABSENT;
             STORE.delete(sk);
@@ -251,7 +273,7 @@ export function buildDatabaseImports(
         'data.unique_lookup': (handle: number, keyPtr: number, keyLen: number): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const v = STORE.get(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const v = STORE.get(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             if (v === undefined) return ABSENT;
             db.lastResult = v;
             return v.length;
@@ -270,7 +292,7 @@ export function buildDatabaseImports(
             if (coll === null) return INVALID_HANDLE;
             if (keyLen > MAX_KEY || valLen > MAX_VALUE)
                 throw new Error('data: key/value too large');
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
             const owner = readCopy(ref, valPtr, valLen);
             const existing = STORE.get(sk);
             if (existing === undefined) {
@@ -292,10 +314,10 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
             const existing = STORE.get(sk);
             if (existing === undefined) return 0; // idempotent
-            if (!existing.equals(readCopy(ref, valPtr, valLen))) return PRODUCT_ERR; // not the owner
+            if (!existing.equals(readCopy(ref, valPtr, valLen))) return CONFLICT; // not the owner
             STORE.delete(sk);
             return 0;
         },
@@ -311,7 +333,7 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
+            const set = MEMBERS.get(storeKey(coll, readKey(ref, setPtr, setLen)));
             if (set === undefined) return 0;
             return set.has(readCopy(ref, memberPtr, memberLen).toString('latin1')) ? 1 : 0;
         },
@@ -328,7 +350,7 @@ export function buildDatabaseImports(
             if (coll === null) return INVALID_HANDLE;
             if (setLen > MAX_KEY || memberLen > MAX_VALUE)
                 throw new Error('data: set/member too large');
-            const sk = storeKey(coll, readCopy(ref, setPtr, setLen));
+            const sk = storeKey(coll, readKey(ref, setPtr, setLen));
             const member = readCopy(ref, memberPtr, memberLen);
             let set = MEMBERS.get(sk);
             if (set === undefined) {
@@ -349,7 +371,7 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
+            const set = MEMBERS.get(storeKey(coll, readKey(ref, setPtr, setLen)));
             if (set !== undefined)
                 set.delete(readCopy(ref, memberPtr, memberLen).toString('latin1'));
             return 0;
@@ -365,7 +387,7 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const set = MEMBERS.get(storeKey(coll, readCopy(ref, setPtr, setLen)));
+            const set = MEMBERS.get(storeKey(coll, readKey(ref, setPtr, setLen)));
             const n = Math.max(0, Math.min(limit, 0xffff));
             const members =
                 set === undefined ? [] : Array.from(set.values()).sort(Buffer.compare).slice(0, n);
@@ -386,7 +408,7 @@ export function buildDatabaseImports(
         'data.view_get': (handle: number, keyPtr: number, keyLen: number): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const v = VIEWS.get(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const v = VIEWS.get(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             if (v === undefined) return ABSENT;
             db.lastResult = v;
             return v.length;
@@ -404,7 +426,7 @@ export function buildDatabaseImports(
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
             if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/view too large');
-            VIEWS.set(storeKey(coll, readCopy(ref, keyPtr, keyLen)), readCopy(ref, valPtr, valLen));
+            VIEWS.set(storeKey(coll, readKey(ref, keyPtr, keyLen)), readCopy(ref, valPtr, valLen));
             return 0;
         },
 
@@ -415,7 +437,7 @@ export function buildDatabaseImports(
         'data.counter_get': (handle: number, keyPtr: number, keyLen: number): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const sum = COUNTERS.get(storeKey(coll, readCopy(ref, keyPtr, keyLen))) ?? 0n;
+            const sum = COUNTERS.get(storeKey(coll, readKey(ref, keyPtr, keyLen))) ?? 0n;
             const out = Buffer.alloc(8);
             out.writeBigInt64LE(sum);
             db.lastResult = out;
@@ -433,7 +455,7 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
             COUNTERS.set(sk, satI64((COUNTERS.get(sk) ?? 0n) + BigInt(delta)));
             return 0;
         },
@@ -451,7 +473,7 @@ export function buildDatabaseImports(
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
             if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
-            const sk = storeKey(coll, readCopy(ref, keyPtr, keyLen));
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
             const log = EVENTS.get(sk);
             const ev = readCopy(ref, evPtr, evLen);
             if (log === undefined) EVENTS.set(sk, [ev]);
@@ -465,7 +487,7 @@ export function buildDatabaseImports(
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const log = EVENTS.get(storeKey(coll, readCopy(ref, keyPtr, keyLen))) ?? [];
+            const log = EVENTS.get(storeKey(coll, readKey(ref, keyPtr, keyLen))) ?? [];
             const n = Math.max(0, Math.min(limit, 0xffff));
             const newest = log.slice(Math.max(0, log.length - n)).reverse();
             let size = 4;
@@ -493,19 +515,19 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const l = capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             const t = BigInt(total);
             l.total = satI64(t < 0n ? 0n : t);
             return 0;
         },
 
-        // Stash the i64 available (total - confirmed - active holds, floored at 0).
+        // Stash the i64 available (total - reserved [held + confirmed], floored at 0).
         'data.capacity_available': (handle: number, keyPtr: number, keyLen: number): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const l = capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             capPrune(l, Date.now());
-            const avail = l.total - l.confirmed - capHeld(l);
+            const avail = l.total - capReserved(l);
             const out = Buffer.alloc(8);
             out.writeBigInt64LE(avail < 0n ? 0n : avail);
             db.lastResult = out;
@@ -513,8 +535,10 @@ export function buildDatabaseImports(
         },
 
         // Hold `amount` for `ttlMs`: stash the u64 reservation id (8 bytes) on
-        // success, or return ABSENT (-2) when there is not enough available (the
-        // guest maps that to reservation 0 = no oversell). `now` is the HOST clock.
+        // success. A non-positive amount is a typed error (CODEC_ERR), matching the
+        // edge's BadAmount; insufficient available OR too many live reservations is
+        // ABSENT (-2) (the guest maps that to reservation 0 = no oversell). The TTL
+        // is clamped to the edge's 24h ceiling. `now` is the HOST clock.
         'data.capacity_reserve': (
             handle: number,
             keyPtr: number,
@@ -526,21 +550,24 @@ export function buildDatabaseImports(
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
             const want = BigInt(amount);
-            if (want <= 0n) return ABSENT;
-            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            if (want <= 0n) return CODEC_ERR; // BadAmount (edge: -1006)
+            const l = capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             const now = Date.now();
             capPrune(l, now);
-            if (l.total - l.confirmed - capHeld(l) < want) return ABSENT; // never oversell
+            if (l.total - capReserved(l) < want || l.reservations.size >= MAX_RESERVATIONS)
+                return ABSENT; // never oversell; bound the reservation count
+            const ttl = Math.min(Math.max(0, Number(ttlMs)), MAX_RESERVATION_TTL_MS);
             const id = l.nextId++;
-            l.holds.set(id, { amount: want, expiresMs: now + Math.max(0, Number(ttlMs)) });
+            l.reservations.set(id, { amount: want, expiresMs: now + ttl, confirmed: false });
             const out = Buffer.alloc(8);
             out.writeBigUInt64LE(id);
             db.lastResult = out;
             return out.length;
         },
 
-        // Finalize a hold into a permanent consume. 1 if the id was a live hold,
-        // 0 if it was unknown / expired / already settled.
+        // Finalize a reservation into a permanent consume. IDEMPOTENT: the
+        // reservation is flagged confirmed (and kept), so a retry of a settled id
+        // still returns 1; 0 only when the id is unknown / expired-and-pruned.
         'data.capacity_confirm': (
             handle: number,
             keyPtr: number,
@@ -550,16 +577,16 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const l = capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             capPrune(l, Date.now());
-            const h = l.holds.get(BigInt(reservationId));
-            if (h === undefined) return 0;
-            l.holds.delete(BigInt(reservationId));
-            l.confirmed = satI64(l.confirmed + h.amount);
+            const r = l.reservations.get(BigInt(reservationId));
+            if (r === undefined) return 0;
+            r.confirmed = true;
             return 1;
         },
 
-        // Release a hold back to available (a confirmed sale cannot be cancelled).
+        // Release a HELD reservation back to available. A confirmed sale cannot be
+        // cancelled (returns 0), nor an unknown id.
         'data.capacity_cancel': (
             handle: number,
             keyPtr: number,
@@ -569,9 +596,13 @@ export function buildDatabaseImports(
         ): number => {
             const coll = collOf(db, handle);
             if (coll === null) return INVALID_HANDLE;
-            const l = capLedger(storeKey(coll, readCopy(ref, keyPtr, keyLen)));
+            const l = capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
             capPrune(l, Date.now());
-            return l.holds.delete(BigInt(reservationId)) ? 1 : 0;
+            const id = BigInt(reservationId);
+            const r = l.reservations.get(id);
+            if (r === undefined || r.confirmed) return 0;
+            l.reservations.delete(id);
+            return 1;
         },
 
         // Drain the last stashed variable-length result into the caller buffer.

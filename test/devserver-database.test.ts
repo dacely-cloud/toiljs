@@ -37,7 +37,7 @@ describe('toildb dev emulator (record family)', () => {
         const [vPtr, vLen] = put(buf, 48, 'hello');
 
         expect(imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0)).toBe(0);
-        expect(imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0)).toBe(-1000); // AlreadyExists
+        expect(imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0)).toBe(-1003); // AlreadyExists
         expect(imports['data.exists'](h, kPtr, kLen)).toBe(1);
 
         expect(imports['data.get'](h, kPtr, kLen)).toBe(5);
@@ -64,7 +64,7 @@ describe('toildb dev emulator (record family)', () => {
         const h = resolve(imports, buf, 'App/users');
         const [kPtr, kLen] = put(buf, 32, 'ghost');
         const [pPtr, pLen] = put(buf, 48, 'x');
-        expect(imports['data.patch'](h, kPtr, kLen, pPtr, pLen, 0)).toBe(-1000);
+        expect(imports['data.patch'](h, kPtr, kLen, pPtr, pLen, 0)).toBe(-2); // NotFound -> ABSENT
     });
 
     it('consume-once get_delete deletes exactly once', () => {
@@ -124,7 +124,7 @@ describe('toildb dev emulator (record family)', () => {
         const [u2Ptr, u2Len] = put(buf, 64, 'user_2');
         imports['data.unique_claim'](h, kPtr, kLen, u1Ptr, u1Len, 0);
 
-        expect(imports['data.unique_release'](h, kPtr, kLen, u2Ptr, u2Len, 0)).toBe(-1000); // not owner
+        expect(imports['data.unique_release'](h, kPtr, kLen, u2Ptr, u2Len, 0)).toBe(-1004); // not owner
         expect(imports['data.unique_release'](h, kPtr, kLen, u1Ptr, u1Len, 0)).toBe(0); // owner releases
         expect(imports['data.unique_lookup'](h, kPtr, kLen)).toBe(-2); // gone
     });
@@ -343,9 +343,9 @@ describe('toildb dev emulator (capacity family)', () => {
         const id2 = Number(buf.readBigUInt64LE(512));
         expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(1);
         expect(avail(imports, buf, h, kPtr, kLen)).toBe(6n);
-        // a confirmed hold cannot be cancelled nor re-confirmed.
+        // a confirmed sale cannot be cancelled (0); re-confirm is idempotent (1).
         expect(imports['data.capacity_cancel'](h, kPtr, kLen, id2, 0)).toBe(0);
-        expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(0);
+        expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(1);
     });
 
     it('never oversells (a reserve beyond available is refused)', () => {
@@ -357,8 +357,8 @@ describe('toildb dev emulator (capacity family)', () => {
         // a hold for all 5 succeeds; a further hold for 1 is refused (-2 -> guest 0).
         expect(imports['data.capacity_reserve'](h, kPtr, kLen, 5, 60000, 0)).toBe(8);
         expect(imports['data.capacity_reserve'](h, kPtr, kLen, 1, 60000, 0)).toBe(-2);
-        // a non-positive amount is refused, and an invalid handle is rejected.
-        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 0, 60000, 0)).toBe(-2);
+        // a non-positive amount is a typed error (BadAmount), invalid handle rejected.
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 0, 60000, 0)).toBe(-1006);
         expect(imports['data.capacity_available'](999, kPtr, kLen)).toBe(-1001);
     });
 });
