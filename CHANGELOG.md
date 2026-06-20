@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.58] - 2026-06-20
+
+### Other Changes
+
+- chore(release): 0.0.58 ([#193](https://github.com/dacely-cloud/toiljs/pull/193)) by @BlobMaster41
+
+
+
+
 ## [v0.0.56] - 2026-06-18
 
 ### Other Changes
