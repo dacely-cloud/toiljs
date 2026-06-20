@@ -26,8 +26,8 @@ class GuestKey {
 
 @database
 class GuestbookDb {
-    @collection static entries!: Events<GuestKey, GuestEntry>;
-    @collection static totals!: Counter<GuestKey>;
+    @collection static entries: Events<GuestKey, GuestEntry>;
+    @collection static totals: Counter<GuestKey>;
 }
 
 /** The current total + the 10 newest entries. */
