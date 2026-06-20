@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.59] - 2026-06-20
+
+### Other Changes
+
+- fix(deps): 0 npm-audit vulnerabilities ([#194](https://github.com/dacely-cloud/toiljs/pull/194)) by @BlobMaster41
+- chore(release): 0.0.59 ([#195](https://github.com/dacely-cloud/toiljs/pull/195)) by @BlobMaster41
+
+
+
+
 ## [v0.0.58] - 2026-06-20
 
 ### Other Changes
