@@ -110,7 +110,7 @@ function collOf(db: DbDevState, handle: number): string | null {
 export function buildDatabaseImports(
     ref: MemoryRef,
     db: DbDevState,
-): Record<string, (...args: number[]) => number> {
+): Record<string, (...args: number[]) => number | bigint> {
     return {
         'data.resolve_collection': (
             namePtr: number,
@@ -586,6 +586,17 @@ export function buildDatabaseImports(
             db.lastResult = null;
             return v.length;
         },
+
+        // `data.result_schema_version() -> i64`: the schema version the last
+        // value-returning read's row was written under, so the guest decoder can
+        // default new fields / reject an unknown layout. The production edge
+        // surfaces the real per-row version; this single-process, single-version
+        // dev store has no historical versions (data is always the current
+        // layout), so it returns -1 ("no version tracked"), which the decoder
+        // treats as "decode with the current layout". An i64 result returns a
+        // BigInt in Node's WASM ABI. (Per-row versions in dev would need catalog
+        // decoding; a follow-up if dev must exercise cross-version decode.)
+        'data.result_schema_version': (): bigint => -1n,
     };
 }
 
