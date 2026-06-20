@@ -171,7 +171,11 @@ function loadPrefs(): Prefs {
     }
 }
 
-let prefs: Prefs = typeof localStorage !== 'undefined' ? loadPrefs() : defaultPrefs;
+// Gate on `window`, not `localStorage`: the devtools are browser-only, and merely
+// touching the bare `localStorage` global under SSR/Node trips its experimental-API
+// warning ("localStorage is not available because --localstorage-file ..."). In the
+// browser `loadPrefs()` reads it; under SSR we keep the defaults and never touch it.
+let prefs: Prefs = typeof window !== 'undefined' ? loadPrefs() : defaultPrefs;
 const prefListeners = new Set<() => void>();
 function setPrefs(next: Partial<Prefs>): void {
     prefs = { ...prefs, ...next };
