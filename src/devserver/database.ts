@@ -597,6 +597,13 @@ export function buildDatabaseImports(
         // BigInt in Node's WASM ABI. (Per-row versions in dev would need catalog
         // decoding; a follow-up if dev must exercise cross-version decode.)
         'data.result_schema_version': (): bigint => -1n,
+
+        // `data.write_allowed() -> i32`: 1 if the current call may write. Used by
+        // the rewrite-on-read convergence after a lazy migration. The dev store is
+        // single-version, so result_schema_version always returns -1 and no
+        // migration dispatch ever fires - the convergence write is never reached
+        // here regardless. Returns 1 (the dev store permits writes) for parity.
+        'data.write_allowed': (): number => 1,
     };
 }
 
