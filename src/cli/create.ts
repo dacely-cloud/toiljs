@@ -114,7 +114,7 @@ function scaffold(
         '@types/react-dom': '^19.2.3',
         eslint: '^10.2.0',
         prettier: '^3.8.1',
-        toilscript: '^0.1.33',
+        toilscript: '^0.1.35',
         typescript: '^6.0.3',
     };
     for (const dep of requiredPackages(features).sort()) {
