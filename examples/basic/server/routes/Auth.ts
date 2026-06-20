@@ -100,8 +100,8 @@ class Challenge {
 
 @database
 class AuthDb {
-    @collection static accounts!: Documents<Username, AuthAccount>;
-    @collection static challenges!: Documents<ChallengeId, Challenge>;
+    @collection static accounts: Documents<Username, AuthAccount>;
+    @collection static challenges: Documents<ChallengeId, Challenge>;
 }
 
 @rest('auth')

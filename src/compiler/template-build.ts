@@ -17,6 +17,7 @@
  */
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { type ComponentType, type Context, createElement, type ReactNode } from 'react';
@@ -55,6 +56,14 @@ export interface RouteRenderInput {
     setSsrBuild: (on: boolean) => void;
     /** The built HTML shell (with hashed script tags) to splice into. */
     shell: string;
+    /** React's `createElement` from the SAME instance the page imports (the Vite
+     * SSR graph), so element creation and the components' hooks share one React.
+     * Defaults to the compiler's own React when omitted (unit tests). Mixing two
+     * React copies leaves the hook dispatcher null ("Cannot read properties of
+     * null (reading 'useRef')"). */
+    createElement?: typeof createElement;
+    /** `renderToStaticMarkup` paired with {@link createElement}'s React. */
+    renderToStaticMarkup?: typeof renderToStaticMarkup;
 }
 
 export interface TemplateArtifacts {
@@ -76,13 +85,14 @@ export function assembleRouteElement(
     layouts: ComponentType<{ children?: ReactNode }>[],
     loaderData: unknown,
     loaderContext: Context<unknown> | null,
+    h: typeof createElement = createElement,
 ): ReactNode {
-    let node: ReactNode = createElement(Page);
+    let node: ReactNode = h(Page);
     if (loaderContext) {
-        node = createElement(loaderContext.Provider, { value: loaderData }, node);
+        node = h(loaderContext.Provider, { value: loaderData }, node);
     }
     for (let i = layouts.length - 1; i >= 0; i--) {
-        node = createElement(layouts[i], null, node);
+        node = h(layouts[i], null, node);
     }
     return node;
 }
@@ -98,16 +108,19 @@ export function injectIntoShell(shell: string, routeHtml: string): string {
 
 /** Render one route to its template artifacts (pure given its inputs). */
 export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts {
+    const h = input.createElement ?? createElement;
+    const render = input.renderToStaticMarkup ?? renderToStaticMarkup;
     const element = assembleRouteElement(
         input.Page,
         input.layouts,
         input.loaderData,
         input.loaderContext,
+        h,
     );
     input.setSsrBuild(true);
     let routeHtml: string;
     try {
-        routeHtml = renderToStaticMarkup(element);
+        routeHtml = render(element);
     } finally {
         input.setSsrBuild(false);
     }
@@ -188,6 +201,28 @@ export async function extractTemplates(
         LoaderDataContext: Context<unknown>;
     };
 
+    // Install the ambient `Toil` global (+ registered pages / transitions) exactly
+    // as the client entry does, by evaluating the generated globals module. Without
+    // it, any layout or component using `Toil` (e.g. `<Toil.Head>`, `<Toil.Link>`)
+    // throws "Toil is not defined" during extraction, so the route is silently
+    // skipped and falls back to client rendering.
+    const globalsModule = path.join(cfg.toilDir, 'globals.ts');
+    if (fs.existsSync(globalsModule)) {
+        await server.ssrLoadModule(globalsModule);
+    }
+
+    // Render with the SAME React the components import. Vite externalizes react
+    // (CommonJS) for SSR and resolves it from the app root, so resolve it the same
+    // way (from cfg.root) rather than using the compiler's own copy. Two React
+    // copies leave the hook dispatcher null, so a layout/component hook
+    // (`useLocation` -> `useRef`) throws. (`ssrLoadModule('react')` can't be used:
+    // Vite's SSR runner cannot evaluate the CJS module -> "module is not defined".)
+    const appRequire = createRequire(path.join(cfg.root, 'package.json'));
+    const react = appRequire('react') as { createElement: typeof createElement };
+    const reactDomServer = appRequire('react-dom/server') as {
+        renderToStaticMarkup: typeof renderToStaticMarkup;
+    };
+
     const ssrDir = path.join(outDir, '_ssr');
     const hostsTmplDir = path.join(cfg.root, 'hosts', hostName, '_tmpl');
     const generated: string[] = [];
@@ -232,6 +267,8 @@ export async function extractTemplates(
                     loaderContext: client.LoaderDataContext,
                     setSsrBuild: client.__setSsrBuild,
                     shell,
+                    createElement: react.createElement,
+                    renderToStaticMarkup: reactDomServer.renderToStaticMarkup,
                 });
                 writeTemplateArtifacts(ssrDir, art);
                 fs.mkdirSync(hostsTmplDir, { recursive: true });

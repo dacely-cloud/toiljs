@@ -101,10 +101,12 @@ function useLocationSubscription(): void {
     );
 }
 
-/** Subscribes to and returns the current `location.pathname`. */
+/** Subscribes to and returns the current `location.pathname`. SSR-safe: during a
+ *  server render (build-time template extraction / edge SSR) there is no `window`,
+ *  so it reports `/`; the client recomputes on hydration. */
 export function useLocation(): string {
     useLocationSubscription();
-    return window.location.pathname;
+    return typeof window === 'undefined' ? '/' : window.location.pathname;
 }
 
 /** Alias of {@link useLocation}: the current `location.pathname`. */
@@ -115,7 +117,7 @@ export function usePathname(): string {
 /** The current query string as a `URLSearchParams`, re-read on every navigation. */
 export function useSearchParams(): URLSearchParams {
     useLocationSubscription();
-    const search = window.location.search;
+    const search = typeof window === 'undefined' ? '' : window.location.search;
     return useMemo(() => new URLSearchParams(search), [search]);
 }
 
