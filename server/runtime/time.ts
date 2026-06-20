@@ -17,13 +17,13 @@
 @global
 export class Time {
     /** Milliseconds since the Unix epoch (the host `Date.now()` value). */
-    static nowMillis(): i64 {
-        return <i64>Date.now();
+    static nowMillis(): u64 {
+        return Date.now();
     }
 
     /** Whole seconds since the Unix epoch (`nowMillis() / 1000`), the unit used
      *  for session and challenge timestamps. */
     static nowSeconds(): u64 {
-        return <u64>(Date.now() / 1000);
+        return Date.now() / 1000;
     }
 }

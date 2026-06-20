@@ -11,7 +11,7 @@ from `toiljs/server/runtime`.
 ```ts
 import { Time } from 'toiljs/server/runtime'; // optional; Time is also a global
 
-const ms = Time.nowMillis();   // i64 milliseconds since the Unix epoch
+const ms = Time.nowMillis();   // u64 milliseconds since the Unix epoch
 const s  = Time.nowSeconds();  // u64 whole seconds since the Unix epoch
 ```
 
@@ -19,7 +19,7 @@ const s  = Time.nowSeconds();  // u64 whole seconds since the Unix epoch
 
 | Member | Signature | Description |
 | --- | --- | --- |
-| `Time.nowMillis()` | `static nowMillis(): i64` | Milliseconds since the Unix epoch (the raw host `Date.now()` value). |
+| `Time.nowMillis()` | `static nowMillis(): u64` | Milliseconds since the Unix epoch (the raw host `Date.now()` value). |
 | `Time.nowSeconds()` | `static nowSeconds(): u64` | Whole seconds since the epoch (`nowMillis() / 1000`). The unit used by sessions and login challenges. |
 
 ## Semantics

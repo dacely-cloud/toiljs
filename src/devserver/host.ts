@@ -307,7 +307,7 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
 
             // `Date.now()` -> wall-clock milliseconds, matching the edge host.
             // The guest divides by 1000 for Unix seconds (sessions, challenges).
-            'Date.now': (): number => Date.now(),
+            'Date.now': (): bigint => BigInt(Date.now()),
 
             // Web Crypto host functions (`env.crypto.*`), backed by Node's
             // `crypto`. The dev server skips metering, so these charge nothing.
