@@ -1,5 +1,3 @@
-// Mutations: a `loader` reads, an action writes, then revalidation refetches the loader so the UI
-// reflects the new state with no manual refetch. Here a module-level counter stands in for a server.
 let serverCount = 0;
 async function wait(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
