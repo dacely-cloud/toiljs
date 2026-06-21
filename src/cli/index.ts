@@ -8,6 +8,7 @@ import { build, dev, start } from 'toiljs/compiler';
 
 import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
+import { runDb } from './db.js';
 import { runDoctor } from './doctor.js';
 import { notifyIfOutdated } from './notify.js';
 import { runUpdate } from './update.js';
@@ -132,6 +133,7 @@ function printHelp(): void {
             cmd('start', 'self-host the built app (hyper-express / uWS)'),
             cmd('doctor', 'diagnose project setup and dependencies'),
             cmd('update', 'check for and apply dependency updates'),
+            cmd('db <action>', 'manage dev DB data (status | reset | export | import)'),
             '',
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
@@ -254,6 +256,14 @@ async function main(): Promise<void> {
                 target: flags.target,
             });
             break;
+
+        case 'db': {
+            // `toiljs db <action> [file]` — no banner so `path`/`export` pipe cleanly.
+            const action = rest[0];
+            const fileArg = rest[1] !== undefined && !rest[1].startsWith('-') ? rest[1] : undefined;
+            runDb(action, fileArg, { root: flags.root });
+            break;
+        }
 
         case 'help':
         case '--help':
