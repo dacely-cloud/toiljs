@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import { cancel, intro, isCancel, multiselect, note, outro, spinner } from '@clack/prompts';
 
+import { MIGRATIONS_README } from './create.js';
 import { capture, run } from './proc.js';
 import { buildRows, type Bump, parseNcuJson, type UpdateRow } from './updates.js';
 import { accent, danger, dim, success, warn } from './ui.js';
@@ -49,6 +50,53 @@ function readDependencies(pkgPath: string): Record<string, string> {
     return { ...merge(pkg.dependencies), ...merge(pkg.devDependencies) };
 }
 
+/**
+ * The server dir(s) of a project: the directories of the toilconfig.json `entries`, conventionally
+ * `server/`. Falls back to `<root>/server` when there is no toilconfig (or it has no string entries),
+ * matching how `doctor` locates the server tree.
+ */
+function serverDirs(root: string): string[] {
+    const dirs = new Set<string>();
+    try {
+        const parsed: unknown = JSON.parse(
+            fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8'),
+        );
+        const entries =
+            typeof parsed === 'object' &&
+            parsed !== null &&
+            Array.isArray((parsed as { entries?: unknown }).entries)
+                ? (parsed as { entries: unknown[] }).entries.filter(
+                      (e): e is string => typeof e === 'string',
+                  )
+                : [];
+        for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
+    } catch {
+        // no/unreadable toilconfig.json: fall back to the conventional server/ below
+    }
+    if (dirs.size === 0) dirs.add(path.join(root, 'server'));
+    return [...dirs];
+}
+
+/**
+ * Ensures the ToilDB `migrations/` folder exists under each server dir that exists. `@migrate`
+ * functions MUST live in a `*.migration.ts` file under `migrations/` (folder + extension is a
+ * compile error otherwise) and the build auto-discovers them, so an up-to-date project keeps the
+ * folder ready. Idempotent: only writes the folder + README where the server dir exists and the
+ * folder is absent. Returns the project-relative paths created (for the note), empty if nothing.
+ */
+function ensureMigrationsDirs(root: string): string[] {
+    const created: string[] = [];
+    for (const dir of serverDirs(root)) {
+        if (!fs.existsSync(dir)) continue;
+        const migrations = path.join(dir, 'migrations');
+        if (fs.existsSync(migrations)) continue;
+        fs.mkdirSync(migrations, { recursive: true });
+        fs.writeFileSync(path.join(migrations, 'README.md'), MIGRATIONS_README);
+        created.push(path.relative(root, migrations) || 'migrations');
+    }
+    return created;
+}
+
 function bumpColor(bump: Bump, text: string): string {
     if (bump === 'major') return danger(text);
     if (bump === 'minor') return warn(text);
@@ -84,6 +132,16 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
     ];
 
     intro(accent('toiljs update'));
+
+    // Bring the project's structure up to date: ensure the ToilDB migrations folder exists (it is
+    // newer than some projects, and the compiler requires @migrate functions to live under it).
+    const createdMigrations = ensureMigrationsDirs(root);
+    if (createdMigrations.length > 0) {
+        note(
+            createdMigrations.map((p) => `${dim('+')} ${p}/`).join('\n'),
+            'Created ToilDB migrations folder',
+        );
+    }
 
     const s = spinner();
     s.start('Checking the registry for updates');

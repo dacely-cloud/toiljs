@@ -6,6 +6,7 @@ import {
     checkDevScripts,
     checkDuplicatePatterns,
     type CheckGroup,
+    checkMigrationsDir,
     checkMountSlots,
     checkNode,
     checkPeer,
@@ -216,6 +217,18 @@ describe('checkAuthSecrets', () => {
         expect(c.detail).toContain('AUTH_SESSION_SECRET');
         expect(c.detail).toContain('forge');
         expect(c.fix).toContain('.env.secrets');
+    });
+});
+
+describe('checkMigrationsDir', () => {
+    it('passes when the server/migrations/ folder exists', () => {
+        expect(checkMigrationsDir(true).status).toBe('pass');
+    });
+    it('warns (not fails) when missing, naming the convention and the update fix', () => {
+        const c = checkMigrationsDir(false);
+        expect(c.status).toBe('warn');
+        expect(c.detail).toContain('migration.ts');
+        expect(c.fix).toContain('toiljs update');
     });
 });
 

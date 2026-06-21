@@ -27,6 +27,7 @@ import {
     checkDir,
     checkDuplicatePatterns,
     type CheckGroup,
+    checkMigrationsDir,
     checkMountSlots,
     checkNode,
     checkPackageManager,
@@ -277,6 +278,24 @@ function serverTsconfigPath(root: string, toilconfig: Record<string, unknown> | 
         if (fs.existsSync(p)) return p;
     }
     return null;
+}
+
+/**
+ * Whether a `migrations/` folder exists under any server dir (the dir of a toilconfig entry,
+ * conventionally `server/`). ToilDB `@migrate` functions live in `*.migration.ts` files there, and
+ * the build auto-discovers them; a missing folder is a warn, not a fail (older projects predate it).
+ */
+function serverMigrationsExist(root: string, toilconfig: Record<string, unknown> | null): boolean {
+    const dirs = new Set<string>();
+    const entries = Array.isArray(toilconfig?.entries)
+        ? (toilconfig.entries as unknown[]).filter((e): e is string => typeof e === 'string')
+        : [];
+    for (const e of entries) dirs.add(path.dirname(path.resolve(root, e)));
+    if (dirs.size === 0) dirs.add(path.join(root, 'server'));
+    for (const dir of dirs) {
+        if (fs.existsSync(path.join(dir, 'migrations'))) return true;
+    }
+    return false;
 }
 
 /** Whether a parsed tsconfig's `compilerOptions.plugins` references the toilscript LS plugin. */
@@ -840,6 +859,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                       checkRestDispatch(restFacts),
                       checkPrettierPlugin(prettierPresent),
                       checkServerTsPlugin(serverTsPluginPresent),
+                      checkMigrationsDir(serverMigrationsExist(root, toilconfig)),
                   ]
                 : [checkToilconfig(false)],
         },

@@ -40,6 +40,38 @@ import { isPackageManager, isValidName, resolveProjectDir } from './validate.js'
 
 export type Template = 'app' | 'minimal';
 
+/**
+ * The `server/migrations/` README, scaffolded by `create` and ensured by `doctor`/`update`. ToilDB
+ * migrations are enforced by convention: a `@migrate` function MUST live in a `*.migration.ts` file
+ * under a `migrations/` folder (the toilscript compiler raises a compile error otherwise), and the
+ * build auto-discovers every such file. Keeping the convention documented next to the folder means a
+ * fresh project ships with a place to evolve `@data` value types from day one.
+ */
+export const MIGRATIONS_README =
+    '# migrations/\n\n' +
+    'ToilDB schema migrations. One file per evolving `@data` value type, named `<Type>.migration.ts`\n' +
+    '(e.g. `User.migration.ts`).\n\n' +
+    'Each file keeps the OLD `@data` shapes (e.g. `UserV1`) alongside the `@migrate` transform(s) that\n' +
+    'carry old records forward, and imports the CURRENT value type from the app. The build\n' +
+    'auto-discovers every `*.migration.ts` under the project.\n\n' +
+    'Do NOT put `@migrate` anywhere else: a `@migrate` outside a `*.migration.ts` file in a\n' +
+    '`migrations/` folder is a compile error.\n\n' +
+    '## Example\n\n' +
+    '`User.migration.ts`:\n\n' +
+    '```ts\n' +
+    "import { User } from '../models/User';\n\n" +
+    '// The previous on-disk shape of a User record.\n' +
+    '@data\n' +
+    'export class UserV1 {\n' +
+    "    name: string = '';\n" +
+    '}\n\n' +
+    '// Carry a UserV1 forward into the current User. Runs once per record on read.\n' +
+    '@migrate\n' +
+    'export function up(old: UserV1, into: User): void {\n' +
+    '    into.name = old.name;\n' +
+    '}\n' +
+    '```\n';
+
 /** Human label for each preprocessor in the styling picker. */
 const PREPROCESSOR_LABEL: Record<Preprocessor, string> = {
     css: 'Plain CSS',
@@ -259,6 +291,10 @@ function scaffold(
             '    npm run build',
             '',
         ].join('\n'),
+        // ToilDB migrations live under server/migrations/ (folder + `*.migration.ts` is enforced by
+        // the compiler; the build auto-discovers them). Ship the folder, documented, with no live
+        // *.migration.ts: a @migrate referencing types a fresh project lacks would break the build.
+        'server/migrations/README.md': MIGRATIONS_README,
     };
 
     // The `app` template's client UI + server are copied from examples/basic at runtime; `minimal`
@@ -377,6 +413,7 @@ function minimalServer(): Record<string, string> {
             '| `main.ts` | The entry point: wires the handler and imports the surface modules. |\n' +
             '| `core/` | The request handler and shared app logic (state, helpers). |\n' +
             '| `models/` | `@data` classes, the typed wire model shared by HTTP and RPC. One type per file. |\n' +
+            '| `migrations/` | ToilDB schema migrations: a `<Type>.migration.ts` per evolving `@data` value type, holding the old shapes + the `@migrate` transform. |\n' +
             '| `routes/` | `@rest` controllers (HTTP). One controller per file, named after its class. |\n' +
             '| `services/` | `@service` classes and free `@remote` functions (typed RPC). |\n' +
             '| `scheduled/` | Reserved for scheduled tasks (not shipped yet). |\n\n' +

@@ -1,6 +1,17 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { __resetDbForTests, buildDatabaseImports, freshDbState } from '../src/devserver/database.js';
+import {
+    __resetDbForTests,
+    __setDbCatalogForTests,
+    buildDatabaseImports,
+    configureDbPersistence,
+    freshDbState,
+    persistDb,
+} from '../src/devserver/database.js';
 import type { MemoryRef } from '../src/devserver/host.js';
 
 function setup() {
@@ -393,5 +404,66 @@ describe('toildb dev emulator (capacity family)', () => {
         // a non-positive amount is a typed error (BadAmount), invalid handle rejected.
         expect(imports['data.capacity_reserve'](h, kPtr, kLen, 0, 60000, 0)).toBe(-1006);
         expect(imports['data.capacity_available'](999, kPtr, kLen)).toBe(-1001);
+    });
+});
+
+describe('toildb dev emulator (migration + persistence)', () => {
+    const rsv = (imports: Imports): bigint =>
+        (imports['data.result_schema_version'] as () => bigint)();
+
+    it('stamps writes with the catalog schema_version and surfaces it on read', () => {
+        const { imports, buf } = setup();
+        __setDbCatalogForTests({ 'App/users': 0x1234 });
+        const h = resolve(imports, buf, 'App/users');
+        const [kPtr, kLen] = put(buf, 32, 'u1');
+        const [vPtr, vLen] = put(buf, 64, 'data');
+        imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0);
+        expect(imports['data.get'](h, kPtr, kLen)).toBe(4);
+        expect(rsv(imports)).toBe(0x1234n); // the woven decoder dispatches on this
+    });
+
+    it('an evolved @data type leaves old rows stamped with the OLD version', () => {
+        const { imports, buf } = setup();
+        __setDbCatalogForTests({ 'App/users': 100 }); // version A
+        const h = resolve(imports, buf, 'App/users');
+        const [kPtr, kLen] = put(buf, 32, 'u1');
+        const [vPtr, vLen] = put(buf, 64, 'old');
+        imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0);
+        // the @data type evolves + the wasm rebuilds -> the catalog version changes.
+        __setDbCatalogForTests({ 'App/users': 200 }); // version B
+        // a read of the existing row still reports the OLD version -> guest migrates it.
+        imports['data.get'](h, kPtr, kLen);
+        expect(rsv(imports)).toBe(100n);
+        // a NEW write stamps the current version.
+        const [k2, kl2] = put(buf, 96, 'u2');
+        imports['data.create'](h, k2, kl2, vPtr, vLen, 0);
+        imports['data.get'](h, k2, kl2);
+        expect(rsv(imports)).toBe(200n);
+    });
+
+    it('persists data + versions to disk and reloads them', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'toildb-'));
+        const file = join(dir, 'devdata.json');
+        try {
+            const a = setup();
+            __setDbCatalogForTests({ 'App/users': 777 });
+            configureDbPersistence(file);
+            const h = resolve(a.imports, a.buf, 'App/users');
+            const [kPtr, kLen] = put(a.buf, 32, 'u1');
+            const [vPtr, vLen] = put(a.buf, 64, 'persisted');
+            a.imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0);
+            persistDb();
+
+            // simulate a restart: wipe memory + catalog, then reload from disk.
+            __resetDbForTests();
+            configureDbPersistence(file);
+            const b = setup();
+            const h2 = resolve(b.imports, b.buf, 'App/users');
+            const [k2, kl2] = put(b.buf, 32, 'u1');
+            expect(b.imports['data.get'](h2, k2, kl2)).toBe(9); // "persisted" survived restart
+            expect(rsv(b.imports)).toBe(777n); // and so did its schema_version stamp
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });

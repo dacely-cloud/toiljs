@@ -521,6 +521,25 @@ export function checkServerTsPlugin(present: boolean): Check {
           };
 }
 
+/**
+ * Whether the server has a `migrations/` folder. ToilDB `@migrate` functions MUST live in a
+ * `*.migration.ts` file under `migrations/` (the toilscript compiler enforces folder + extension as
+ * a compile error), and the build auto-discovers them, so a server project should keep the folder
+ * ready. Older projects predate the convention, so this WARNS (does not fail) and points at the
+ * one-command fix (`toiljs update` creates it).
+ */
+export function checkMigrationsDir(exists: boolean): Check {
+    return exists
+        ? { id: 'migrations-dir', label: 'server/migrations/ directory', status: 'pass' }
+        : {
+              id: 'migrations-dir',
+              label: 'server/migrations/ directory',
+              status: 'warn',
+              detail: 'no server/migrations/ folder; ToilDB @migrate functions must live in a *.migration.ts file under it',
+              fix: 'Create server/migrations/ (one <Type>.migration.ts per evolving @data value type), or run `toiljs update` to add it.',
+          };
+}
+
 // --- Security -------------------------------------------------------------------------------------
 
 /** Whether the project uses the auth primitive, and whether its session secret is configured. */

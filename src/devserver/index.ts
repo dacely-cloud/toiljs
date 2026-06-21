@@ -28,6 +28,7 @@ import pc from 'picocolors';
 import type { EmailBackendConfig } from 'toiljs/shared';
 
 import { applyCacheRule, lookupCache } from './cache.js';
+import { configureDbPersistence } from './database.js';
 import { initEmailService } from './email/index.js';
 import { type EnvelopeRequest, METHOD_CODES } from './envelope.js';
 import { WasmServerModule } from './module.js';
@@ -199,6 +200,12 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
     }
 
     const module = new WasmServerModule(options.wasmFile);
+
+    // Persist dev DB data under the project's .toil/ so records, events, and their
+    // schema_versions survive restarts (delete .toil/devdata.json to reset). Only
+    // the running dev server persists; tests that construct WasmServerModule
+    // directly stay purely in-memory.
+    configureDbPersistence(path.join(root, '.toil', 'devdata.json'));
 
     let warnedMissing = false;
     let loadedOnce = false;

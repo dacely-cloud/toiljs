@@ -13,6 +13,7 @@
 
 import fs from 'node:fs';
 
+import { persistDb, setDbCatalog } from './database.js';
 import {
     decodeResponseEnvelope,
     encodeRequestEnvelope,
@@ -145,6 +146,9 @@ export class WasmServerModule {
         const module = new WebAssembly.Module(bytes);
         this.assertImportSurface(module);
         this.assertExportSurface(module);
+        // Refresh collection -> current schema_version so writes stamp the live layout;
+        // after a @data type evolves + rebuild, old on-disk rows now look out of date.
+        setDbCatalog(bytes);
         this.module = module;
         this.loadedMtimeMs = mtimeMs;
         return true;
@@ -196,6 +200,10 @@ export class WasmServerModule {
         const status = state.status ?? resp.status;
 
         const unhandled = headers.some(([n]) => n.toLowerCase() === UNHANDLED_HEADER);
+
+        // Flush any DB writes this request made to disk, so dev data survives a
+        // restart (and a crash never loses an already-served write).
+        persistDb();
 
         return {
             status,
