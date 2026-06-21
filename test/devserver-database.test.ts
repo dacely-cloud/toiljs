@@ -11,8 +11,8 @@ import {
     configureDbPersistence,
     freshDbState,
     persistDb,
-} from '../src/devserver/database.js';
-import type { MemoryRef } from '../src/devserver/host.js';
+} from '../src/devserver/db/index.js';
+import type { MemoryRef } from '../src/devserver/runtime/host.js';
 
 function setup() {
     const memory = new WebAssembly.Memory({ initial: 1 });

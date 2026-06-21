@@ -20,7 +20,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { ristretto255_oprf } from '@noble/curves/ed25519.js';
 
 import { WasmServerModule } from '../src/devserver/index.js';
-import { __resetDbForTests } from '../src/devserver/database.js';
+import { __resetDbForTests } from '../src/devserver/db/index.js';
 import { Auth } from '../src/client/auth.js';
 import { DataReader, DataWriter } from '../src/io/codec.js';
 

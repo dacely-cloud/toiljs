@@ -13,13 +13,13 @@
 
 import fs from 'node:fs';
 
-import { persistDb, setDbCatalog } from './database.js';
+import { persistDb, setDbCatalog } from '../db/index.js';
 import {
     decodeResponseEnvelope,
     encodeRequestEnvelope,
     type EnvelopeRequest,
     unpackHandleResult,
-} from './envelope.js';
+} from '../http/envelope.js';
 import { buildHostImports, freshDispatchState, type MemoryRef } from './host.js';
 
 export { WasmAbortError } from './host.js';

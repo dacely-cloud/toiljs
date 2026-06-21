@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ml_kem768 } from '@dacely/noble-post-quantum/ml-kem.js';
 
-import { buildCryptoImports, freshCryptoState } from '../src/devserver/crypto.js';
+import { buildCryptoImports, freshCryptoState } from '../src/devserver/runtime/crypto.js';
 
 type Ref = { memory: WebAssembly.Memory | null };
 

@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { buildHostImports, freshDispatchState, type MemoryRef } from '../src/devserver/host.js';
+import {
+    buildHostImports,
+    freshDispatchState,
+    type MemoryRef,
+} from '../src/devserver/runtime/host.js';
 
 /**
  * The dev host warns (once) when the guest reads a framework auth secret that is unset, since the

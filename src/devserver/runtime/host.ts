@@ -17,12 +17,12 @@
  * `WebAssembly.Instance`, so offering the full surface costs nothing.
  */
 
+import { devEnvGet, devEnvGetSecure } from '../config/env.js';
+import { ratelimitCheck } from '../config/ratelimit.js';
+import { buildDatabaseImports, type DbDevState, freshDbState } from '../db/index.js';
+import { EmailStatus, getEmailService } from '../email/index.js';
+import { parseEmailBlob } from '../email/wire.js';
 import { buildCryptoImports, type CryptoState, freshCryptoState } from './crypto.js';
-import { buildDatabaseImports, type DbDevState, freshDbState } from './database.js';
-import { EmailStatus, getEmailService } from './email/index.js';
-import { parseEmailBlob } from './email/wire.js';
-import { devEnvGet, devEnvGetSecure } from './env.js';
-import { ratelimitCheck } from './ratelimit.js';
 
 /** Limits identical to the edge's `set_header` / `respond_file` bounds. */
 const MAX_TOTAL_HEADERS_BYTES = 64 * 1024;

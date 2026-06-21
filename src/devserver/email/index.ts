@@ -9,7 +9,7 @@
  * optimistically; an async-capable host (a future self-host) can `await deliver()`
  * for the true status.
  */
-import { loadEnvFiles } from '../dotenv.js';
+import { loadEnvFiles } from '../config/dotenv.js';
 import { EmailCaps } from './caps.js';
 import { type ResolvedEmailConfig, resolveEmailConfig } from './config.js';
 import { type OutboundMessage, sendVia } from './providers.js';

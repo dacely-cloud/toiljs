@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import { WasmServerModule } from '../src/devserver/index.js';
-import { __resetDbForTests } from '../src/devserver/database.js';
+import { __resetDbForTests } from '../src/devserver/db/index.js';
 
 const EXAMPLE_WASM = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
