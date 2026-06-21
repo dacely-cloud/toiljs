@@ -95,6 +95,7 @@
     },
     "scripts": {
         "watch": "tsc -p tsconfig.json --watch",
+        "prepublishOnly": "npm run build",
         "build": "npm run build:shared && npm run build:logger && npm run build:io && npm run build:client && npm run build:backend && npm run build:devserver && npm run build:compiler && npm run build:cli",
         "build:shared": "tsc -p tsconfig.shared.json",
         "build:logger": "tsc -p tsconfig.logger.json",
