@@ -162,6 +162,7 @@ describe('toildb dev emulator (record family)', () => {
                 got.push(null);
                 continue;
             }
+            p += 4; // per-item schema_version (0 in dev)
             const len = buf.readUInt32LE(p);
             p += 4;
             got.push(buf.toString('utf8', p, p + len));
@@ -194,6 +195,7 @@ describe('toildb dev emulator (record family)', () => {
         expect(count).toBe(2);
         const out: string[] = [];
         for (let i = 0; i < count; i++) {
+            off += 4; // per-item schema_version (0 in dev)
             const len = buf.readUInt32LE(off);
             off += 4;
             out.push(buf.toString('utf8', off, off + len));
@@ -274,6 +276,7 @@ describe('toildb dev emulator (record family)', () => {
         expect(count).toBe(2);
         const out: string[] = [];
         for (let i = 0; i < count; i++) {
+            off += 4; // per-item schema_version (0 in dev)
             const len = buf.readUInt32LE(off);
             off += 4;
             out.push(buf.toString('utf8', off, off + len));
@@ -300,6 +303,36 @@ describe('toildb dev emulator (record family)', () => {
         imports['data.create'](users, kPtr, kLen, vPtr, vLen, 0);
         // the same logical key in another collection is absent.
         expect(imports['data.get'](posts, kPtr, kLen)).toBe(-2);
+    });
+
+    it('append_once dedups on eventId; enqueue replaces an existing record', () => {
+        const { imports, buf } = setup();
+        const feed = resolve(imports, buf, 'App/feed');
+        const [kPtr, kLen] = put(buf, 32, 'room1');
+        const [idPtr, idLen] = put(buf, 64, 'evt-1');
+        const [evPtr, evLen] = put(buf, 96, 'hello');
+        // first appendOnce appends (1); the same id is a no-op (0); a new id appends (1).
+        expect(imports['data.append_once'](feed, kPtr, kLen, idPtr, idLen, evPtr, evLen)).toBe(1);
+        expect(imports['data.append_once'](feed, kPtr, kLen, idPtr, idLen, evPtr, evLen)).toBe(0);
+        const [id2P, id2L] = put(buf, 128, 'evt-2');
+        expect(imports['data.append_once'](feed, kPtr, kLen, id2P, id2L, evPtr, evLen)).toBe(1);
+        // latest frames exactly 2 events (the duplicate did not double-append).
+        const total = imports['data.latest'](feed, kPtr, kLen, 10);
+        expect(total).toBeGreaterThan(0);
+        imports['data.take_result'](512, total);
+        expect(buf.readUInt32LE(512)).toBe(2);
+
+        // enqueue: absent -> ABSENT (-2); after create -> replaces (0); get sees the new value.
+        const docs = resolve(imports, buf, 'App/docs');
+        const [dkP, dkL] = put(buf, 160, 'doc1');
+        const [v1P, v1L] = put(buf, 192, 'AAAA');
+        expect(imports['data.enqueue'](docs, dkP, dkL, v1P, v1L, 0)).toBe(-2);
+        expect(imports['data.create'](docs, dkP, dkL, v1P, v1L, 0)).toBe(0);
+        const [v2P, v2L] = put(buf, 224, 'BBBB');
+        expect(imports['data.enqueue'](docs, dkP, dkL, v2P, v2L, 0)).toBe(0);
+        expect(imports['data.get'](docs, dkP, dkL)).toBe(4);
+        imports['data.take_result'](256, 4);
+        expect(buf.toString('utf8', 256, 260)).toBe('BBBB');
     });
 });
 

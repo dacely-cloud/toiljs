@@ -27,6 +27,8 @@ const MEMBERS = new Map<string, Map<string, Buffer>>();
 const COUNTERS = new Map<string, bigint>();
 /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
 const EVENTS = new Map<string, Buffer[]>();
+/** append_once dedup: `"collection\0key"` -> set of eventIds already appended. */
+const EVENT_DEDUP = new Map<string, Set<string>>();
 /** Capacity family: `"collection\0key"` -> an escrow ledger (ceiling + reservations). */
 const CAPACITY = new Map<string, CapLedger>();
 
@@ -185,9 +187,12 @@ export function buildDatabaseImports(
                 if (v === undefined) {
                     parts.push(Buffer.from([0]));
                 } else {
-                    const h = Buffer.alloc(5);
+                    // present(1) + per-item schema_version (0 = dev single-version,
+                    // no @migrate dispatch) + len(4) + bytes. Mirrors the edge.
+                    const h = Buffer.alloc(9);
                     h.writeUInt8(1, 0);
-                    h.writeUInt32LE(v.length, 1);
+                    h.writeUInt32LE(0, 1);
+                    h.writeUInt32LE(v.length, 5);
                     parts.push(h, v);
                 }
             }
@@ -395,8 +400,9 @@ export function buildDatabaseImports(
             header.writeUInt32LE(members.length, 0);
             const parts: Buffer[] = [header];
             for (const m of members) {
-                const h = Buffer.alloc(4);
-                h.writeUInt32LE(m.length, 0);
+                const h = Buffer.alloc(8);
+                h.writeUInt32LE(0, 0); // per-item schema_version (dev: 0)
+                h.writeUInt32LE(m.length, 4);
                 parts.push(h, m);
             }
             db.lastResult = Buffer.concat(parts);
@@ -481,6 +487,56 @@ export function buildDatabaseImports(
             return 0;
         },
 
+        // Idempotent append: dedup on eventId. 1 appended, 0 duplicate. Mirrors the
+        // edge's (key, event_id) dedup marker (just an in-memory set in dev).
+        'data.append_once': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            evidPtr: number,
+            evidLen: number,
+            evPtr: number,
+            evLen: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+            const evid = readCopy(ref, evidPtr, evidLen).toString('latin1');
+            let seen = EVENT_DEDUP.get(sk);
+            if (seen === undefined) {
+                seen = new Set();
+                EVENT_DEDUP.set(sk, seen);
+            }
+            if (seen.has(evid)) return 0; // already appended under this id
+            const ev = readCopy(ref, evPtr, evLen);
+            const log = EVENTS.get(sk);
+            if (log === undefined) EVENTS.set(sk, [ev]);
+            else log.push(ev);
+            seen.add(evid);
+            return 1;
+        },
+
+        // Version-checked replace of an EXISTING record's value. Returns 0 on apply,
+        // ABSENT (-2) if the record is absent. A single dev process has no concurrent
+        // writer, so the optimistic-concurrency check always succeeds here.
+        'data.enqueue': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            valPtr: number,
+            valLen: number,
+            _idemPtr: number,
+        ): number => {
+            const coll = collOf(db, handle);
+            if (coll === null) return INVALID_HANDLE;
+            if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+            const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+            if (!STORE.has(sk)) return ABSENT; // enqueue replaces an existing record
+            STORE.set(sk, readCopy(ref, valPtr, valLen));
+            return 0;
+        },
+
         // Frame the newest-`limit` events as `u32 count` then per event a
         // length-prefixed blob (`u32 len + bytes`), newest first; stash + return
         // the blob length. Matches the edge `op_latest` / `toildb::Writer` framing.
@@ -491,10 +547,11 @@ export function buildDatabaseImports(
             const n = Math.max(0, Math.min(limit, 0xffff));
             const newest = log.slice(Math.max(0, log.length - n)).reverse();
             let size = 4;
-            for (const ev of newest) size += 4 + ev.length;
+            for (const ev of newest) size += 8 + ev.length; // version + len + bytes
             const out = Buffer.alloc(size);
             let off = out.writeUInt32LE(newest.length, 0);
             for (const ev of newest) {
+                off = out.writeUInt32LE(0, off); // per-item schema_version (dev: 0)
                 off = out.writeUInt32LE(ev.length, off);
                 off += ev.copy(out, off);
             }

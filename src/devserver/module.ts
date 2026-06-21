@@ -100,6 +100,8 @@ const PROVIDED_IMPORTS = new Set([
     'data.counter_get',
     'data.counter_add',
     'data.append',
+    'data.append_once',
+    'data.enqueue',
     'data.latest',
     'data.capacity_set_total',
     'data.capacity_available',
