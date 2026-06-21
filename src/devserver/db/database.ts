@@ -19,6 +19,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { DataReader, DataWriter } from 'toiljs/io';
 import type { MemoryRef } from '../runtime/host.js';
 import { parseCatalog } from './catalog.js';
 import {
@@ -169,7 +170,12 @@ export class DevDatabase {
             };
         try {
             fs.mkdirSync(path.dirname(this.persistPath), { recursive: true });
-            fs.writeFileSync(this.persistPath, JSON.stringify(snap));
+            // Write to a temp file then rename: atomic on POSIX, so a crash mid-write
+            // leaves the previous good snapshot intact instead of a truncated file
+            // that would fail to parse and drop the whole dev database on next load.
+            const tmp = `${this.persistPath}.${process.pid}.tmp`;
+            fs.writeFileSync(tmp, JSON.stringify(snap));
+            fs.renameSync(tmp, this.persistPath);
         } catch {
             // dev-only best effort; a write failure must never crash a request.
         }
@@ -312,34 +318,29 @@ export class DevDatabase {
         const coll = collOf(db, handle);
         if (coll === null) return INVALID_HANDLE;
         if (keysLen > MAX_VALUE) throw new Error('data: keys blob too large');
-        const blob = readCopy(ref, keysPtr, keysLen);
-        let off = 0;
-        const count = blob.readUInt32LE(off);
-        off += 4;
+        // Keys blob: u32 count, then per key a u32-length-prefixed blob. The shared
+        // DataReader is bounds-safe (empty past end), so a malformed/truncated blob
+        // can't over-read; cap each key at MAX_KEY like the edge's prepare_key.
+        const r = new DataReader(readCopy(ref, keysPtr, keysLen));
+        const count = r.readU32();
         if (count > 1024) return TOO_MANY_KEYS; // anti-OOM cap, mirrors the edge
-        const header = Buffer.alloc(4);
-        header.writeUInt32LE(count, 0);
-        const parts: Buffer[] = [header];
+        // Result: u32 count, then per item present(u8) + (when present) the row's
+        // stored schema_version (u32, per-item @migrate dispatch) + value (u32 len +
+        // bytes). Byte-identical to the edge op_get_many framing.
+        const w = new DataWriter();
+        w.writeU32(count);
         for (let i = 0; i < count; i++) {
-            const len = blob.readUInt32LE(off);
-            off += 4;
-            const key = blob.subarray(off, off + len);
-            off += len;
-            const sk = storeKey(coll, key);
+            const key = r.readBytes();
+            if (key.length > MAX_KEY) throw new Error('data: key too long');
+            const sk = storeKey(coll, Buffer.from(key));
             const v = this.store.get(sk);
             if (v === undefined) {
-                parts.push(Buffer.from([0]));
+                w.writeU8(0);
             } else {
-                // present(1) + the row's stored schema_version (per-item @migrate
-                // dispatch) + len(4) + bytes. Mirrors the edge framing.
-                const h = Buffer.alloc(9);
-                h.writeUInt8(1, 0);
-                h.writeUInt32LE(this.versions.get(sk) ?? 0, 1);
-                h.writeUInt32LE(v.length, 5);
-                parts.push(h, v);
+                w.writeU8(1).writeU32(this.versions.get(sk) ?? 0).writeBytes(v);
             }
         }
-        db.lastResult = Buffer.concat(parts);
+        db.lastResult = Buffer.from(w.toBytes());
         return db.lastResult.length;
     }
 
@@ -386,6 +387,7 @@ export class DevDatabase {
         this.store.set(sk, v);
         this.stampVersion(coll, sk); // a patch rewrites the row at the current version
         db.lastResult = v; // patch returns the stored record
+        db.lastResultVersion = -1; // the just-written value is current; never migrate it (matches the edge's LenStash None)
         return v.length;
     }
 
@@ -568,16 +570,14 @@ export class DevDatabase {
         const n = Math.max(0, Math.min(limit, 0xffff));
         const members =
             set === undefined ? [] : Array.from(set.values()).sort(Buffer.compare).slice(0, n);
-        const header = Buffer.alloc(4);
-        header.writeUInt32LE(members.length, 0);
-        const parts: Buffer[] = [header];
+        // u32 count, then per member its stored schema_version (u32) + bytes (u32
+        // len + bytes). Same framing as the edge op_membership_list.
+        const w = new DataWriter();
+        w.writeU32(members.length);
         for (const m of members) {
-            const h = Buffer.alloc(8);
-            h.writeUInt32LE(mv?.get(m.toString('latin1')) ?? 0, 0); // per-member stored version
-            h.writeUInt32LE(m.length, 4);
-            parts.push(h, m);
+            w.writeU32(mv?.get(m.toString('latin1')) ?? 0).writeBytes(m);
         }
-        db.lastResult = Buffer.concat(parts);
+        db.lastResult = Buffer.from(w.toBytes());
         return db.lastResult.length;
     }
 
@@ -764,17 +764,15 @@ export class DevDatabase {
         const start = Math.max(0, log.length - n);
         const newest = log.slice(start).reverse();
         const newestVers = vers.slice(start).reverse();
-        let size = 4;
-        for (const ev of newest) size += 8 + ev.length; // version + len + bytes
-        const out = Buffer.alloc(size);
-        let off = out.writeUInt32LE(newest.length, 0);
+        // u32 count, then per event its stored schema_version (u32) + bytes (u32 len
+        // + bytes), newest first. Same framing as the edge op_latest.
+        const w = new DataWriter();
+        w.writeU32(newest.length);
         for (let i = 0; i < newest.length; i++) {
-            off = out.writeUInt32LE(newestVers[i] ?? 0, off); // per-event stored version
-            off = out.writeUInt32LE(newest[i].length, off);
-            off += newest[i].copy(out, off);
+            w.writeU32(newestVers[i] ?? 0).writeBytes(newest[i]);
         }
-        db.lastResult = out;
-        return out.length;
+        db.lastResult = Buffer.from(w.toBytes());
+        return db.lastResult.length;
     }
 
     // --- capacity family (escrow: set_total / available / reserve / confirm / cancel) ---
