@@ -225,11 +225,15 @@ function isReadOp(op: DbOp): boolean {
     );
 }
 
+function isScanOp(op: DbOp): boolean {
+    return op === DbOp.Latest || op === DbOp.MembershipList;
+}
+
 function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
-    if (kind === DbFunctionKind.Query) return isReadOp(op);
+    if (kind === DbFunctionKind.Query) return isReadOp(op) && !isScanOp(op);
     if (kind === DbFunctionKind.Action) {
         return (
-            isReadOp(op) ||
+            (isReadOp(op) && !isScanOp(op)) ||
             op === DbOp.Create ||
             op === DbOp.Patch ||
             op === DbOp.Delete ||

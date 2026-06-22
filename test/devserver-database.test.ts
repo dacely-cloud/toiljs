@@ -236,6 +236,30 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0)).toBe(-1011);
     });
 
+    it('query/action dispatch deny scan-class imports', () => {
+        const { imports, buf, db } = setup();
+        const feed = resolve(imports, buf, 'App/feed');
+        const rooms = resolve(imports, buf, 'App/rooms');
+        const [kPtr, kLen] = put(buf, 32, 'room1');
+        const [vPtr, vLen] = put(buf, 48, 'ev1');
+        const [mPtr, mLen] = put(buf, 64, 'alice');
+
+        expect(imports['data.append'](feed, kPtr, kLen, vPtr, vLen, 0)).toBe(0);
+        expect(imports['data.membership_add'](rooms, kPtr, kLen, mPtr, mLen, 0)).toBe(0);
+
+        db.functionKind = DbFunctionKind.Query;
+        expect(imports['data.latest'](feed, kPtr, kLen, 10)).toBe(-1011);
+        expect(imports['data.membership_list'](rooms, kPtr, kLen, 10)).toBe(-1011);
+
+        db.functionKind = DbFunctionKind.Action;
+        expect(imports['data.latest'](feed, kPtr, kLen, 10)).toBe(-1011);
+        expect(imports['data.membership_list'](rooms, kPtr, kLen, 10)).toBe(-1011);
+
+        db.functionKind = DbFunctionKind.Job;
+        expect(imports['data.latest'](feed, kPtr, kLen, 10)).toBeGreaterThan(0);
+        expect(imports['data.membership_list'](rooms, kPtr, kLen, 10)).toBeGreaterThan(0);
+    });
+
     it('resolve + create + get + take_result round-trips', () => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, 'App/users');
