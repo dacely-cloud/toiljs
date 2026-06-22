@@ -148,6 +148,27 @@ describe('toildb dev emulator (record family)', () => {
         expect(buf.toString('utf8', 128, 134)).toBe('world!');
     });
 
+    it('record patch idempotency replays and rejects request mismatch', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/users');
+        const [kPtr, kLen] = put(buf, 32, 'u1');
+        const [vPtr, vLen] = put(buf, 48, 'hello');
+        const [idemPtr] = put(buf, 64, '1234567890abcdef');
+        imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0);
+
+        const [pPtr, pLen] = put(buf, 96, 'world!');
+        expect(imports['data.patch'](h, kPtr, kLen, pPtr, pLen, idemPtr)).toBe(6);
+        expect(imports['data.patch'](h, kPtr, kLen, pPtr, pLen, idemPtr)).toBe(6);
+        expect(imports['data.take_result'](128, 64)).toBe(6);
+        expect(buf.toString('utf8', 128, 134)).toBe('world!');
+
+        const [otherPtr, otherLen] = put(buf, 160, 'again!');
+        expect(imports['data.patch'](h, kPtr, kLen, otherPtr, otherLen, idemPtr)).toBe(-1004);
+        expect(imports['data.get'](h, kPtr, kLen)).toBe(6);
+        expect(imports['data.take_result'](192, 64)).toBe(6);
+        expect(buf.toString('utf8', 192, 198)).toBe('world!');
+    });
+
     it('patch on a missing key is NotFound', () => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, 'App/users');
@@ -168,6 +189,24 @@ describe('toildb dev emulator (record family)', () => {
         expect(buf.toString('utf8', 64, 69)).toBe('nonce');
         // replay defeated
         expect(imports['data.get_delete'](h, kPtr, kLen, 0)).toBe(-2);
+    });
+
+    it('record get_delete idempotency replays the consumed value', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/challenges');
+        const [kPtr, kLen] = put(buf, 32, 'chal');
+        const [vPtr, vLen] = put(buf, 48, 'nonce');
+        const [idemPtr] = put(buf, 80, 'consume-idem-001');
+        imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0);
+
+        expect(imports['data.get_delete'](h, kPtr, kLen, idemPtr)).toBe(5);
+        expect(imports['data.take_result'](96, 64)).toBe(5);
+        expect(buf.toString('utf8', 96, 101)).toBe('nonce');
+
+        expect(imports['data.get_delete'](h, kPtr, kLen, idemPtr)).toBe(5);
+        expect(imports['data.take_result'](128, 64)).toBe(5);
+        expect(buf.toString('utf8', 128, 133)).toBe('nonce');
+        expect(imports['data.get'](h, kPtr, kLen)).toBe(-2);
     });
 
     it('absent / invalid handle / buffer-too-small return the edge codes', () => {
@@ -341,6 +380,14 @@ describe('toildb dev emulator (record family)', () => {
         imports['data.take_result'](72, 8);
         expect(buf.readBigInt64LE(72)).toBe(3n);
 
+        const [idemPtr] = put(buf, 96, 'counter-idem-001');
+        expect(imports['data.counter_add'](h, kPtr, kLen, 7, idemPtr)).toBe(0);
+        expect(imports['data.counter_add'](h, kPtr, kLen, 7, idemPtr)).toBe(0);
+        expect(imports['data.counter_add'](h, kPtr, kLen, 8, idemPtr)).toBe(-1004);
+        expect(imports['data.counter_get'](h, kPtr, kLen)).toBe(8);
+        imports['data.take_result'](104, 8);
+        expect(buf.readBigInt64LE(104)).toBe(10n);
+
         // invalid handle still rejected
         expect(imports['data.counter_add'](999, kPtr, kLen, 1, 0)).toBe(-1001);
     });
@@ -405,11 +452,14 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.append_once'](feed, kPtr, kLen, idPtr, idLen, evPtr, evLen)).toBe(0);
         const [id2P, id2L] = put(buf, 128, 'evt-2');
         expect(imports['data.append_once'](feed, kPtr, kLen, id2P, id2L, evPtr, evLen)).toBe(1);
+        const [appendIdemPtr] = put(buf, 144, 'append-idem-0001');
+        expect(imports['data.append'](feed, kPtr, kLen, evPtr, evLen, appendIdemPtr)).toBe(0);
+        expect(imports['data.append'](feed, kPtr, kLen, evPtr, evLen, appendIdemPtr)).toBe(0);
         // latest frames exactly 2 events (the duplicate did not double-append).
         const total = imports['data.latest'](feed, kPtr, kLen, 10);
         expect(total).toBeGreaterThan(0);
         imports['data.take_result'](512, total);
-        expect(buf.readUInt32LE(512)).toBe(2);
+        expect(buf.readUInt32LE(512)).toBe(3);
 
         // enqueue: absent -> ABSENT (-2); after create -> replaces (0); get sees the new value.
         const docs = resolve(imports, buf, 'App/docs');
@@ -454,9 +504,19 @@ describe('toildb dev emulator (capacity family)', () => {
         expect(id > 0n).toBe(true);
         expect(avail(imports, buf, h, kPtr, kLen)).toBe(7n);
 
+        const [idemPtr] = put(buf, 64, 'reserve-idem-001');
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 2, 60000, idemPtr)).toBe(8);
+        expect(imports['data.take_result'](520, 16)).toBe(8);
+        const idemId = buf.readBigUInt64LE(520);
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 2, 60000, idemPtr)).toBe(8);
+        expect(imports['data.take_result'](528, 16)).toBe(8);
+        expect(buf.readBigUInt64LE(528)).toBe(idemId);
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 1, 60000, idemPtr)).toBe(-1004);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(5n);
+
         // cancel returns the hold -> back to 10; a double-cancel is a no-op.
         expect(imports['data.capacity_cancel'](h, kPtr, kLen, Number(id), 0)).toBe(1);
-        expect(avail(imports, buf, h, kPtr, kLen)).toBe(10n);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(8n);
         expect(imports['data.capacity_cancel'](h, kPtr, kLen, Number(id), 0)).toBe(0);
 
         // reserve 4 then confirm -> a permanent consume; available holds at 6.
@@ -464,7 +524,7 @@ describe('toildb dev emulator (capacity family)', () => {
         imports['data.take_result'](512, 16);
         const id2 = Number(buf.readBigUInt64LE(512));
         expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(1);
-        expect(avail(imports, buf, h, kPtr, kLen)).toBe(6n);
+        expect(avail(imports, buf, h, kPtr, kLen)).toBe(4n);
         // a confirmed sale cannot be cancelled (0); re-confirm is idempotent (1).
         expect(imports['data.capacity_cancel'](h, kPtr, kLen, id2, 0)).toBe(0);
         expect(imports['data.capacity_confirm'](h, kPtr, kLen, id2, 0)).toBe(1);
@@ -482,6 +542,17 @@ describe('toildb dev emulator (capacity family)', () => {
         // a non-positive amount is a typed error (BadAmount), invalid handle rejected.
         expect(imports['data.capacity_reserve'](h, kPtr, kLen, 0, 60000, 0)).toBe(-1006);
         expect(imports['data.capacity_available'](999, kPtr, kLen)).toBe(-1001);
+    });
+
+    it('does not cache an idempotent insufficient reserve forever', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/tickets');
+        const [kPtr, kLen] = put(buf, 32, 'late-restock');
+        const [idemPtr] = put(buf, 64, 'reserve-idem-001');
+
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 1, 60000, idemPtr)).toBe(-2);
+        expect(imports['data.capacity_set_total'](h, kPtr, kLen, 1, 0)).toBe(0);
+        expect(imports['data.capacity_reserve'](h, kPtr, kLen, 1, 60000, idemPtr)).toBe(8);
     });
 });
 
@@ -540,6 +611,66 @@ describe('toildb dev emulator (migration + persistence)', () => {
             const [k2, kl2] = put(b.buf, 32, 'u1');
             expect(b.imports['data.get'](h2, k2, kl2)).toBe(9); // "persisted" survived restart
             expect(rsv(b.imports)).toBe(777n); // and so did its schema_version stamp
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('persists counter idempotency across devserver restart', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'toildb-'));
+        const file = join(dir, 'devdata.json');
+        try {
+            const a = setup();
+            configureDbPersistence(file);
+            const h = resolve(a.imports, a.buf, 'App/likes');
+            const [kPtr, kLen] = put(a.buf, 32, 'post-1');
+            const [idemPtr] = put(a.buf, 64, 'counter-idem-001');
+            expect(a.imports['data.counter_add'](h, kPtr, kLen, 7, idemPtr)).toBe(0);
+            persistDb();
+
+            __resetDbForTests();
+            configureDbPersistence(file);
+            const b = setup();
+            const h2 = resolve(b.imports, b.buf, 'App/likes');
+            const [k2, kl2] = put(b.buf, 32, 'post-1');
+            const [idem2] = put(b.buf, 64, 'counter-idem-001');
+            expect(b.imports['data.counter_add'](h2, k2, kl2, 7, idem2)).toBe(0);
+            expect(b.imports['data.counter_add'](h2, k2, kl2, 8, idem2)).toBe(-1004);
+            expect(b.imports['data.counter_get'](h2, k2, kl2)).toBe(8);
+            expect(b.imports['data.take_result'](96, 8)).toBe(8);
+            expect(b.buf.readBigInt64LE(96)).toBe(7n);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('replays idempotent capacity reservations across devserver restart', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'toildb-'));
+        const file = join(dir, 'devdata.json');
+        try {
+            const a = setup();
+            configureDbPersistence(file);
+            const h = resolve(a.imports, a.buf, 'App/seats');
+            const [kPtr, kLen] = put(a.buf, 32, 'showB');
+            const [idemPtr] = put(a.buf, 64, 'reserve-idem-001');
+            expect(a.imports['data.capacity_set_total'](h, kPtr, kLen, 3, 0)).toBe(0);
+            expect(a.imports['data.capacity_reserve'](h, kPtr, kLen, 2, 60000, idemPtr)).toBe(8);
+            expect(a.imports['data.take_result'](96, 16)).toBe(8);
+            const firstId = a.buf.readBigUInt64LE(96);
+            persistDb();
+
+            __resetDbForTests();
+            configureDbPersistence(file);
+            const b = setup();
+            const h2 = resolve(b.imports, b.buf, 'App/seats');
+            const [k2, kl2] = put(b.buf, 32, 'showB');
+            const [idem2] = put(b.buf, 64, 'reserve-idem-001');
+            expect(b.imports['data.capacity_reserve'](h2, k2, kl2, 2, 60000, idem2)).toBe(8);
+            expect(b.imports['data.take_result'](96, 16)).toBe(8);
+            expect(b.buf.readBigUInt64LE(96)).toBe(firstId);
+            expect(b.imports['data.capacity_available'](h2, k2, kl2)).toBe(8);
+            expect(b.imports['data.take_result'](112, 16)).toBe(8);
+            expect(b.buf.readBigInt64LE(112)).toBe(1n);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }

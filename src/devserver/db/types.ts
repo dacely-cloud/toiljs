@@ -76,9 +76,14 @@ export interface CapLedger {
 /** The on-disk snapshot shape: dev data + its versions, JSON with base64 buffers. */
 export interface DbSnapshot {
     store: Record<string, { v: string; sv: number }>; // records + unique owners (+ schema_version)
+    recordIdem?: Record<
+        string,
+        { requestHash: string; state: 'pending' | 'done'; outcome?: RecordOutcomeSnapshot }
+    >;
     views: Record<string, { v: string; sv: number }>;
     members: Record<string, Record<string, { v: string; sv: number }>>;
     counters: Record<string, string>;
+    counterIdem?: Record<string, string>;
     events: Record<string, { v: string; sv: number }[]>;
     eventDedup: Record<string, string[]>;
     capacity: Record<
@@ -90,6 +95,14 @@ export interface DbSnapshot {
         }
     >;
 }
+
+export type RecordOutcomeSnapshot =
+    | { kind: 'unit' }
+    | { kind: 'value'; v: string; sv: number }
+    | { kind: 'absent' }
+    | { kind: 'already_exists' }
+    | { kind: 'not_found' }
+    | { kind: 'conflict' };
 
 /** Edge caps (toildb::capacity::escrow): bound the reservation count + the hold TTL. */
 export const MAX_RESERVATIONS = 4096;
@@ -113,6 +126,7 @@ export const TOO_SMALL = -1;
 export const INVALID_HANDLE = -1001; // TDL001
 export const ALREADY_EXISTS = -1003; // TDL003 (create on an existing key)
 export const CONFLICT = -1004; // TDL004 (e.g. unique release by a non-owner)
+export const UNAVAILABLE = -1031; // TDL031 (retryable in-flight/uncertain op)
 export const CODEC_ERR = -1006; // TDL006 (e.g. a non-positive reserve amount)
 export const OP_NOT_ALLOWED_FOR_FAMILY = -1010; // TDL010
 export const OP_NOT_ALLOWED_IN_KIND = -1011; // TDL011

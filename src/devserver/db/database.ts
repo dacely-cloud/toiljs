@@ -17,6 +17,7 @@
  */
 
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { DataReader, DataWriter } from 'toiljs/io';
@@ -42,11 +43,13 @@ import {
     MAX_VALUE,
     OP_NOT_ALLOWED_FOR_FAMILY,
     OP_NOT_ALLOWED_IN_KIND,
+    type RecordOutcomeSnapshot,
     type Reservation,
     satI64,
     SCHEMA_UNAVAILABLE,
     TOO_MANY_KEYS,
     TOO_SMALL,
+    UNAVAILABLE,
     isCollectionFamily,
 } from './types.js';
 
@@ -79,6 +82,86 @@ function readKey(ref: MemoryRef, ptr: number, len: number): Buffer {
 
 function storeKey(collection: string, key: Buffer): string {
     return collection + '\0' + key.toString('latin1');
+}
+
+type RecordOutcome =
+    | { kind: 'unit' }
+    | { kind: 'value'; value: Buffer; schemaVersion: number }
+    | { kind: 'absent' }
+    | { kind: 'already_exists' }
+    | { kind: 'not_found' }
+    | { kind: 'conflict' };
+
+interface RecordIdemRow {
+    requestHash: string;
+    outcome: RecordOutcome | null;
+}
+
+function readIdem(ref: MemoryRef, ptr: number): Buffer | null {
+    if (ptr === 0) return null;
+    return readCopy(ref, ptr, 16);
+}
+
+function u64le(n: number): Buffer {
+    const b = Buffer.allocUnsafe(8);
+    b.writeBigUInt64LE(BigInt(n));
+    return b;
+}
+
+const RECORD_OP_CREATE = 4;
+const RECORD_OP_PATCH = 5;
+const RECORD_OP_DELETE = 6;
+const RECORD_OP_GET_DELETE = 7;
+const RECORD_OP_ENQUEUE = 8;
+
+function recordRequestHash(op: number, key: Buffer, value: Buffer): string {
+    return createHash('sha256')
+        .update('toildb/record-idempotency/request/v1')
+        .update(Buffer.from([op]))
+        .update(u64le(key.length))
+        .update(key)
+        .update(u64le(value.length))
+        .update(value)
+        .digest('hex');
+}
+
+function idemKey(coll: DevCollectionHandle, key: Buffer, op: string, idem: Buffer): string {
+    return `${storeKey(coll.name, key)}\0${op}\0${idem.toString('hex')}`;
+}
+
+function reservationIdFromIdem(coll: DevCollectionHandle, key: Buffer, idem: Buffer): bigint {
+    const digest = createHash('sha256')
+        .update('toildb/capacity-reservation-id/v1')
+        .update(coll.name)
+        .update('\0')
+        .update(key)
+        .update(idem)
+        .digest();
+    return digest.readBigUInt64LE(0) | (1n << 63n);
+}
+
+function snapshotOutcome(outcome: RecordOutcome): RecordOutcomeSnapshot {
+    switch (outcome.kind) {
+        case 'value':
+            return {
+                kind: 'value',
+                v: outcome.value.toString('base64'),
+                sv: outcome.schemaVersion,
+            };
+        default:
+            return { kind: outcome.kind };
+    }
+}
+
+function loadOutcome(outcome: RecordOutcomeSnapshot): RecordOutcome {
+    if (outcome.kind === 'value') {
+        return {
+            kind: 'value',
+            value: Buffer.from(outcome.v, 'base64'),
+            schemaVersion: outcome.sv,
+        };
+    }
+    return { kind: outcome.kind };
 }
 
 function collOf(db: DbDevState, handle: number): DevCollectionHandle | null {
@@ -198,19 +281,22 @@ type CatalogSeedEntry =
 export class DevDatabase {
     /** Process-lifetime store: `"collection\0keyLatin1"` -> value. Shared across dispatches. */
     private readonly store = new Map<string, Buffer>();
+    /** Record-family idempotency claims/outcomes: collection+key+op+idem -> row. */
+    private readonly recordIdem = new Map<string, RecordIdemRow>();
     /** View family: `"collection\0key"` -> the latest published view blob. */
     private readonly views = new Map<string, Buffer>();
     /** Membership family: `"collection\0setKey"` -> (memberLatin1 -> member bytes). */
     private readonly members = new Map<string, Map<string, Buffer>>();
     /** Counter family: `"collection\0key"` -> saturating i64 sum of deltas. */
     private readonly counters = new Map<string, bigint>();
+    /** Counter idempotency: collection+key+idem -> original delta. */
+    private readonly counterIdem = new Map<string, bigint>();
     /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
     private readonly events = new Map<string, Buffer[]>();
     /** append_once dedup: `"collection\0key"` -> set of eventIds already appended. */
     private readonly eventDedup = new Map<string, Set<string>>();
     /** Capacity family: `"collection\0key"` -> an escrow ledger (ceiling + reservations). */
     private readonly capacity = new Map<string, CapLedger>();
-
     /** `"collection\0key"` -> the schema_version the record/view/unique-owner was last
      *  written under (single-value families; the edge stores it per StoredValue). */
     private readonly versions = new Map<string, number>();
@@ -241,6 +327,58 @@ export class DevDatabase {
         this.versions.set(sk, this.currentSchemaVersion(coll)); // stamp the value type's current version
     }
 
+    private recordIdemStart(
+        coll: DevCollectionHandle,
+        key: Buffer,
+        op: string,
+        idem: Buffer | null,
+        requestHash: string,
+    ): { fresh: true } | { fresh: false; status: number; outcome?: RecordOutcome } {
+        if (idem === null) return { fresh: true };
+        const ik = idemKey(coll, key, op, idem);
+        const row = this.recordIdem.get(ik);
+        if (row === undefined) {
+            this.recordIdem.set(ik, { requestHash, outcome: null });
+            return { fresh: true };
+        }
+        if (row.requestHash !== requestHash) return { fresh: false, status: CONFLICT };
+        if (row.outcome === null) return { fresh: false, status: UNAVAILABLE };
+        return { fresh: false, status: 0, outcome: row.outcome };
+    }
+
+    private recordIdemFinish(
+        coll: DevCollectionHandle,
+        key: Buffer,
+        op: string,
+        idem: Buffer | null,
+        requestHash: string,
+        outcome: RecordOutcome,
+    ): void {
+        if (idem === null) return;
+        const ik = idemKey(coll, key, op, idem);
+        const row = this.recordIdem.get(ik);
+        if (row === undefined || row.requestHash !== requestHash) return;
+        if (row.outcome === null) row.outcome = outcome;
+    }
+
+    private replayRecordOutcome(db: DbDevState, outcome: RecordOutcome): number {
+        switch (outcome.kind) {
+            case 'unit':
+                return 0;
+            case 'value':
+                db.lastResult = outcome.value;
+                db.lastResultVersion = outcome.schemaVersion;
+                return outcome.value.length;
+            case 'absent':
+            case 'not_found':
+                return ABSENT;
+            case 'already_exists':
+                return ALREADY_EXISTS;
+            case 'conflict':
+                return CONFLICT;
+        }
+    }
+
     /** Point the dev DB at an on-disk file and load any existing snapshot. Call once at
      *  dev-server startup. Deleting the file (or the whole `.toil/` dir) resets dev data. */
     configurePersistence(filePath: string): void {
@@ -254,15 +392,23 @@ export class DevDatabase {
         if (this.persistPath === null) return;
         const snap: DbSnapshot = {
             store: {},
+            recordIdem: {},
             views: {},
             members: {},
             counters: {},
+            counterIdem: {},
             events: {},
             eventDedup: {},
             capacity: {},
         };
         for (const [k, v] of this.store)
             snap.store[k] = { v: v.toString('base64'), sv: this.versions.get(k) ?? 0 };
+        for (const [k, row] of this.recordIdem)
+            snap.recordIdem![k] = {
+                requestHash: row.requestHash,
+                state: row.outcome === null ? 'pending' : 'done',
+                outcome: row.outcome === null ? undefined : snapshotOutcome(row.outcome),
+            };
         for (const [k, v] of this.views)
             snap.views[k] = { v: v.toString('base64'), sv: this.versions.get(k) ?? 0 };
         for (const [k, m] of this.members) {
@@ -272,6 +418,7 @@ export class DevDatabase {
             snap.members[k] = o;
         }
         for (const [k, v] of this.counters) snap.counters[k] = v.toString();
+        for (const [k, v] of this.counterIdem) snap.counterIdem![k] = v.toString();
         for (const [k, log] of this.events) {
             const ver = this.eventVersions.get(k) ?? [];
             snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0 }));
@@ -312,6 +459,15 @@ export class DevDatabase {
             this.store.set(k, Buffer.from(e.v, 'base64'));
             this.versions.set(k, e.sv);
         }
+        for (const [k, row] of Object.entries(snap.recordIdem ?? {})) {
+            this.recordIdem.set(k, {
+                requestHash: row.requestHash,
+                outcome:
+                    row.state === 'done' && row.outcome !== undefined
+                        ? loadOutcome(row.outcome)
+                        : null,
+            });
+        }
         for (const [k, e] of Object.entries(snap.views ?? {})) {
             this.views.set(k, Buffer.from(e.v, 'base64'));
             this.versions.set(k, e.sv);
@@ -327,6 +483,8 @@ export class DevDatabase {
             this.memberVersions.set(k, ver);
         }
         for (const [k, v] of Object.entries(snap.counters ?? {})) this.counters.set(k, BigInt(v));
+        for (const [k, v] of Object.entries(snap.counterIdem ?? {}))
+            this.counterIdem.set(k, BigInt(v));
         for (const [k, log] of Object.entries(snap.events ?? {})) {
             this.events.set(
                 k,
@@ -357,11 +515,13 @@ export class DevDatabase {
 
     private clear(): void {
         this.store.clear();
+        this.recordIdem.clear();
         this.versions.clear();
         this.views.clear();
         this.members.clear();
         this.memberVersions.clear();
         this.counters.clear();
+        this.counterIdem.clear();
         this.eventVersions.clear();
         this.events.clear();
         this.eventDedup.clear();
@@ -505,15 +665,28 @@ export class DevDatabase {
         keyLen: number,
         valPtr: number,
         valLen: number,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.Create, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        if (this.store.has(sk)) return ALREADY_EXISTS;
-        this.store.set(sk, readCopy(ref, valPtr, valLen));
-        this.stampVersion(coll, sk); // stamp the value type's current schema version
-        return 0;
+        const key = readKey(ref, keyPtr, keyLen);
+        const value = readCopy(ref, valPtr, valLen);
+        const idem = readIdem(ref, idemPtr);
+        const requestHash = recordRequestHash(RECORD_OP_CREATE, key, value);
+        const start = this.recordIdemStart(coll, key, 'C', idem, requestHash);
+        if (!start.fresh)
+            return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
+        const sk = storeKey(coll.name, key);
+        const outcome: RecordOutcome = this.store.has(sk)
+            ? { kind: 'already_exists' }
+            : { kind: 'unit' };
+        if (outcome.kind === 'unit') {
+            this.store.set(sk, value);
+            this.stampVersion(coll, sk); // stamp the value type's current schema version
+        }
+        this.recordIdemFinish(coll, key, 'C', idem, requestHash, outcome);
+        return this.replayRecordOutcome(db, outcome);
     }
 
     patch(
@@ -524,27 +697,52 @@ export class DevDatabase {
         keyLen: number,
         patchPtr: number,
         patchLen: number,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.Patch, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || patchLen > MAX_VALUE) throw new Error('data: key/patch too large');
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        if (!this.store.has(sk)) return ABSENT; // NotFound -> ABSENT on the edge
+        const key = readKey(ref, keyPtr, keyLen);
         const v = readCopy(ref, patchPtr, patchLen);
-        this.store.set(sk, v);
-        this.stampVersion(coll, sk); // a patch rewrites the row at the current version
-        db.lastResult = v; // patch returns the stored record
-        db.lastResultVersion = -1; // the just-written value is current; never migrate it (matches the edge's LenStash None)
-        return v.length;
+        const idem = readIdem(ref, idemPtr);
+        const requestHash = recordRequestHash(RECORD_OP_PATCH, key, v);
+        const start = this.recordIdemStart(coll, key, 'P', idem, requestHash);
+        if (!start.fresh)
+            return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
+        const sk = storeKey(coll.name, key);
+        const outcome: RecordOutcome = this.store.has(sk)
+            ? { kind: 'value', value: v, schemaVersion: -1 }
+            : { kind: 'not_found' };
+        if (outcome.kind === 'value') {
+            this.store.set(sk, v);
+            this.stampVersion(coll, sk); // a patch rewrites the row at the current version
+        }
+        this.recordIdemFinish(coll, key, 'P', idem, requestHash, outcome);
+        return this.replayRecordOutcome(db, outcome);
     }
 
-    delete(ref: MemoryRef, db: DbDevState, handle: number, keyPtr: number, keyLen: number): number {
+    delete(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        keyPtr: number,
+        keyLen: number,
+        idemPtr: number,
+    ): number {
         const coll = collForOp(db, handle, DbOp.Delete, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
+        const key = readKey(ref, keyPtr, keyLen);
+        const idem = readIdem(ref, idemPtr);
+        const requestHash = recordRequestHash(RECORD_OP_DELETE, key, Buffer.alloc(0));
+        const start = this.recordIdemStart(coll, key, 'D', idem, requestHash);
+        if (!start.fresh)
+            return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
+        const sk = storeKey(coll.name, key);
         this.store.delete(sk);
         this.versions.delete(sk);
-        return 0;
+        const outcome: RecordOutcome = { kind: 'unit' };
+        this.recordIdemFinish(coll, key, 'D', idem, requestHash, outcome);
+        return this.replayRecordOutcome(db, outcome);
     }
 
     // Atomic fetch-and-delete (consume-once); deletes only on a real read.
@@ -554,17 +752,32 @@ export class DevDatabase {
         handle: number,
         keyPtr: number,
         keyLen: number,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.GetDelete, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
+        const key = readKey(ref, keyPtr, keyLen);
+        const idem = readIdem(ref, idemPtr);
+        const requestHash = recordRequestHash(RECORD_OP_GET_DELETE, key, Buffer.alloc(0));
+        const start = this.recordIdemStart(coll, key, 'G', idem, requestHash);
+        if (!start.fresh)
+            return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
+        const sk = storeKey(coll.name, key);
         const v = this.store.get(sk);
-        if (v === undefined) return ABSENT;
-        db.lastResultVersion = this.versions.get(sk) ?? 0; // surface before consuming
-        this.store.delete(sk);
-        this.versions.delete(sk);
-        db.lastResult = v;
-        return v.length;
+        const outcome: RecordOutcome =
+            v === undefined
+                ? { kind: 'absent' }
+                : {
+                      kind: 'value',
+                      value: v,
+                      schemaVersion: this.versions.get(sk) ?? 0,
+                  };
+        if (outcome.kind === 'value') {
+            this.store.delete(sk);
+            this.versions.delete(sk);
+        }
+        this.recordIdemFinish(coll, key, 'G', idem, requestHash, outcome);
+        return this.replayRecordOutcome(db, outcome);
     }
 
     // --- unique family (lookup / claim / release) ---
@@ -795,11 +1008,21 @@ export class DevDatabase {
         keyPtr: number,
         keyLen: number,
         delta: number | bigint,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.CounterAdd, CollectionFamily.Counter);
         if (typeof coll === 'number') return coll;
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        this.counters.set(sk, satI64((this.counters.get(sk) ?? 0n) + BigInt(delta)));
+        const key = readKey(ref, keyPtr, keyLen);
+        const idem = readIdem(ref, idemPtr);
+        const d = BigInt(delta);
+        if (idem !== null) {
+            const ik = idemKey(coll, key, 'A', idem);
+            const seen = this.counterIdem.get(ik);
+            if (seen !== undefined) return seen === d ? 0 : CONFLICT;
+            this.counterIdem.set(ik, d);
+        }
+        const sk = storeKey(coll.name, key);
+        this.counters.set(sk, satI64((this.counters.get(sk) ?? 0n) + d));
         return 0;
     }
 
@@ -813,11 +1036,24 @@ export class DevDatabase {
         keyLen: number,
         evPtr: number,
         evLen: number,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.Append, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
+        const key = readKey(ref, keyPtr, keyLen);
+        const sk = storeKey(coll.name, key);
+        const idem = readIdem(ref, idemPtr);
+        if (idem !== null) {
+            let seen = this.eventDedup.get(sk);
+            if (seen === undefined) {
+                seen = new Set();
+                this.eventDedup.set(sk, seen);
+            }
+            const eventId = idem.toString('latin1');
+            if (seen.has(eventId)) return 0;
+            seen.add(eventId);
+        }
         const log = this.events.get(sk);
         const ev = readCopy(ref, evPtr, evLen);
         const sv = this.currentSchemaVersion(coll);
@@ -880,15 +1116,28 @@ export class DevDatabase {
         keyLen: number,
         valPtr: number,
         valLen: number,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.Enqueue, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
-        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        if (!this.store.has(sk)) return ABSENT; // enqueue replaces an existing record
-        this.store.set(sk, readCopy(ref, valPtr, valLen));
-        this.stampVersion(coll, sk);
-        return 0;
+        const key = readKey(ref, keyPtr, keyLen);
+        const value = readCopy(ref, valPtr, valLen);
+        const idem = readIdem(ref, idemPtr);
+        const requestHash = recordRequestHash(RECORD_OP_ENQUEUE, key, value);
+        const start = this.recordIdemStart(coll, key, 'E', idem, requestHash);
+        if (!start.fresh)
+            return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
+        const sk = storeKey(coll.name, key);
+        const outcome: RecordOutcome = this.store.has(sk)
+            ? { kind: 'unit' }
+            : { kind: 'not_found' };
+        if (outcome.kind === 'unit') {
+            this.store.set(sk, value);
+            this.stampVersion(coll, sk);
+        }
+        this.recordIdemFinish(coll, key, 'E', idem, requestHash, outcome);
+        return this.replayRecordOutcome(db, outcome);
     }
 
     // Frame the newest-`limit` events as `u32 count` then per event a
@@ -974,18 +1223,32 @@ export class DevDatabase {
         keyLen: number,
         amount: number | bigint,
         ttlMs: number | bigint,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.CapacityReserve, CollectionFamily.Capacity);
         if (typeof coll === 'number') return coll;
         const want = BigInt(amount);
         if (want <= 0n) return CODEC_ERR; // BadAmount (edge: -1006)
-        const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
+        const key = readKey(ref, keyPtr, keyLen);
+        const idem = readIdem(ref, idemPtr);
+        const ttl = Math.min(Math.max(0, Number(ttlMs)), MAX_RESERVATION_TTL_MS);
+        const requestedId = idem === null ? null : reservationIdFromIdem(coll, key, idem);
+        const l = this.capLedger(storeKey(coll.name, key));
         const now = Date.now();
         this.capPrune(l, now);
+        if (requestedId !== null) {
+            const existing = l.reservations.get(requestedId);
+            if (existing !== undefined) {
+                if (existing.amount !== want) return CONFLICT;
+                const out = Buffer.alloc(8);
+                out.writeBigUInt64LE(requestedId);
+                db.lastResult = out;
+                return out.length;
+            }
+        }
         if (l.total - this.capReserved(l) < want || l.reservations.size >= MAX_RESERVATIONS)
             return ABSENT; // never oversell; bound the reservation count
-        const ttl = Math.min(Math.max(0, Number(ttlMs)), MAX_RESERVATION_TTL_MS);
-        const id = l.nextId++;
+        const id = requestedId ?? l.nextId++;
         l.reservations.set(id, { amount: want, expiresMs: now + ttl, confirmed: false });
         const out = Buffer.alloc(8);
         out.writeBigUInt64LE(id);
@@ -1146,8 +1409,8 @@ export function buildDatabaseImports(
             keyLen: number,
             valPtr: number,
             valLen: number,
-            _idemPtr: number,
-        ): number => devDb.create(ref, db, handle, keyPtr, keyLen, valPtr, valLen),
+            idemPtr: number,
+        ): number => devDb.create(ref, db, handle, keyPtr, keyLen, valPtr, valLen, idemPtr),
 
         'data.patch': (
             handle: number,
@@ -1155,18 +1418,18 @@ export function buildDatabaseImports(
             keyLen: number,
             patchPtr: number,
             patchLen: number,
-            _idemPtr: number,
-        ): number => devDb.patch(ref, db, handle, keyPtr, keyLen, patchPtr, patchLen),
+            idemPtr: number,
+        ): number => devDb.patch(ref, db, handle, keyPtr, keyLen, patchPtr, patchLen, idemPtr),
 
-        'data.delete': (handle: number, keyPtr: number, keyLen: number, _idemPtr: number): number =>
-            devDb.delete(ref, db, handle, keyPtr, keyLen),
+        'data.delete': (handle: number, keyPtr: number, keyLen: number, idemPtr: number): number =>
+            devDb.delete(ref, db, handle, keyPtr, keyLen, idemPtr),
 
         'data.get_delete': (
             handle: number,
             keyPtr: number,
             keyLen: number,
-            _idemPtr: number,
-        ): number => devDb.getDelete(ref, db, handle, keyPtr, keyLen),
+            idemPtr: number,
+        ): number => devDb.getDelete(ref, db, handle, keyPtr, keyLen, idemPtr),
 
         'data.unique_lookup': (handle: number, keyPtr: number, keyLen: number): number =>
             devDb.uniqueLookup(ref, db, handle, keyPtr, keyLen),
@@ -1243,8 +1506,8 @@ export function buildDatabaseImports(
             keyPtr: number,
             keyLen: number,
             delta: number | bigint,
-            _idemPtr: number,
-        ): number => devDb.counterAdd(ref, db, handle, keyPtr, keyLen, delta),
+            idemPtr: number,
+        ): number => devDb.counterAdd(ref, db, handle, keyPtr, keyLen, delta, idemPtr),
 
         'data.append': (
             handle: number,
@@ -1252,8 +1515,8 @@ export function buildDatabaseImports(
             keyLen: number,
             evPtr: number,
             evLen: number,
-            _idemPtr: number,
-        ): number => devDb.append(ref, db, handle, keyPtr, keyLen, evPtr, evLen),
+            idemPtr: number,
+        ): number => devDb.append(ref, db, handle, keyPtr, keyLen, evPtr, evLen, idemPtr),
 
         'data.append_once': (
             handle: number,
@@ -1272,8 +1535,8 @@ export function buildDatabaseImports(
             keyLen: number,
             valPtr: number,
             valLen: number,
-            _idemPtr: number,
-        ): number => devDb.enqueue(ref, db, handle, keyPtr, keyLen, valPtr, valLen),
+            idemPtr: number,
+        ): number => devDb.enqueue(ref, db, handle, keyPtr, keyLen, valPtr, valLen, idemPtr),
 
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
             devDb.latest(ref, db, handle, keyPtr, keyLen, limit),
@@ -1295,8 +1558,8 @@ export function buildDatabaseImports(
             keyLen: number,
             amount: number | bigint,
             ttlMs: number | bigint,
-            _idemPtr: number,
-        ): number => devDb.capacityReserve(ref, db, handle, keyPtr, keyLen, amount, ttlMs),
+            idemPtr: number,
+        ): number => devDb.capacityReserve(ref, db, handle, keyPtr, keyLen, amount, ttlMs, idemPtr),
 
         'data.capacity_confirm': (
             handle: number,
