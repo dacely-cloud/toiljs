@@ -283,6 +283,8 @@ export class DevDatabase {
     private readonly store = new Map<string, Buffer>();
     /** Record-family idempotency claims/outcomes: collection+key+op+idem -> row. */
     private readonly recordIdem = new Map<string, RecordIdemRow>();
+    /** Unique-claim request idempotency bytes: `"collection\0key"` -> hex idem. */
+    private readonly uniqueIdem = new Map<string, string>();
     /** View family: `"collection\0key"` -> the latest published view blob. */
     private readonly views = new Map<string, Buffer>();
     /** Membership family: `"collection\0setKey"` -> (memberLatin1 -> member bytes). */
@@ -393,6 +395,7 @@ export class DevDatabase {
         const snap: DbSnapshot = {
             store: {},
             recordIdem: {},
+            uniqueIdem: {},
             views: {},
             members: {},
             counters: {},
@@ -409,6 +412,7 @@ export class DevDatabase {
                 state: row.outcome === null ? 'pending' : 'done',
                 outcome: row.outcome === null ? undefined : snapshotOutcome(row.outcome),
             };
+        for (const [k, v] of this.uniqueIdem) snap.uniqueIdem![k] = v;
         for (const [k, v] of this.views)
             snap.views[k] = { v: v.toString('base64'), sv: this.versions.get(k) ?? 0 };
         for (const [k, m] of this.members) {
@@ -468,6 +472,7 @@ export class DevDatabase {
                         : null,
             });
         }
+        for (const [k, v] of Object.entries(snap.uniqueIdem ?? {})) this.uniqueIdem.set(k, v);
         for (const [k, e] of Object.entries(snap.views ?? {})) {
             this.views.set(k, Buffer.from(e.v, 'base64'));
             this.versions.set(k, e.sv);
@@ -516,6 +521,7 @@ export class DevDatabase {
     private clear(): void {
         this.store.clear();
         this.recordIdem.clear();
+        this.uniqueIdem.clear();
         this.versions.clear();
         this.views.clear();
         this.members.clear();
@@ -808,19 +814,24 @@ export class DevDatabase {
         keyLen: number,
         valPtr: number,
         valLen: number,
+        idemPtr: number,
     ): number {
         const coll = collForOp(db, handle, DbOp.UniqueClaim, CollectionFamily.Unique);
         if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const owner = readCopy(ref, valPtr, valLen);
+        const idem = readIdem(ref, idemPtr)?.toString('hex') ?? '';
         const existing = this.store.get(sk);
         if (existing === undefined) {
             this.store.set(sk, owner);
+            this.uniqueIdem.set(sk, idem);
             this.stampVersion(coll, sk);
             return 0; // Claimed
         }
-        if (existing.equals(owner)) return 2; // AlreadyOwnedByCaller
+        if (existing.equals(owner)) {
+            return (this.uniqueIdem.get(sk) ?? '') === idem ? 2 : CONFLICT;
+        }
         db.lastResult = existing;
         return 1; // AlreadyClaimed (current owner stashed)
     }
@@ -841,6 +852,7 @@ export class DevDatabase {
         if (existing === undefined) return 0; // idempotent
         if (!existing.equals(readCopy(ref, valPtr, valLen))) return CONFLICT; // not the owner
         this.store.delete(sk);
+        this.uniqueIdem.delete(sk);
         this.versions.delete(sk);
         return 0;
     }
@@ -1440,8 +1452,8 @@ export function buildDatabaseImports(
             keyLen: number,
             valPtr: number,
             valLen: number,
-            _idemPtr: number,
-        ): number => devDb.uniqueClaim(ref, db, handle, keyPtr, keyLen, valPtr, valLen),
+            idemPtr: number,
+        ): number => devDb.uniqueClaim(ref, db, handle, keyPtr, keyLen, valPtr, valLen, idemPtr),
 
         'data.unique_release': (
             handle: number,

@@ -80,6 +80,7 @@ export interface DbSnapshot {
         string,
         { requestHash: string; state: 'pending' | 'done'; outcome?: RecordOutcomeSnapshot }
     >;
+    uniqueIdem?: Record<string, string>;
     views: Record<string, { v: string; sv: number }>;
     members: Record<string, Record<string, { v: string; sv: number }>>;
     counters: Record<string, string>;

@@ -244,6 +244,19 @@ describe('toildb dev emulator (record family)', () => {
         expect(buf.toString('utf8', 200, 206)).toBe('user_1');
     });
 
+    it('unique claim: same owner must replay only with the same idempotency key', () => {
+        const { imports, buf } = setup();
+        const h = resolve(imports, buf, 'App/usernames');
+        const [kPtr, kLen] = put(buf, 32, 'grace');
+        const [u1Ptr, u1Len] = put(buf, 48, 'user_1');
+        const [idem1Ptr] = put(buf, 80, 'idem-claim-0001');
+        const [idem2Ptr] = put(buf, 112, 'idem-claim-0002');
+
+        expect(imports['data.unique_claim'](h, kPtr, kLen, u1Ptr, u1Len, idem1Ptr)).toBe(0);
+        expect(imports['data.unique_claim'](h, kPtr, kLen, u1Ptr, u1Len, idem1Ptr)).toBe(2);
+        expect(imports['data.unique_claim'](h, kPtr, kLen, u1Ptr, u1Len, idem2Ptr)).toBe(-1004);
+    });
+
     it('unique release: only the owner may release', () => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, 'App/usernames');
@@ -639,6 +652,34 @@ describe('toildb dev emulator (migration + persistence)', () => {
             expect(b.imports['data.counter_get'](h2, k2, kl2)).toBe(8);
             expect(b.imports['data.take_result'](96, 8)).toBe(8);
             expect(b.buf.readBigInt64LE(96)).toBe(7n);
+        } finally {
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('persists unique claim idempotency across devserver restart', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'toildb-'));
+        const file = join(dir, 'devdata.json');
+        try {
+            const a = setup();
+            configureDbPersistence(file);
+            const h = resolve(a.imports, a.buf, 'App/usernames');
+            const [kPtr, kLen] = put(a.buf, 32, 'hopper');
+            const [u1Ptr, u1Len] = put(a.buf, 48, 'user_1');
+            const [idemPtr] = put(a.buf, 80, 'idem-claim-0001');
+            expect(a.imports['data.unique_claim'](h, kPtr, kLen, u1Ptr, u1Len, idemPtr)).toBe(0);
+            persistDb();
+
+            __resetDbForTests();
+            configureDbPersistence(file);
+            const b = setup();
+            const h2 = resolve(b.imports, b.buf, 'App/usernames');
+            const [k2, kl2] = put(b.buf, 32, 'hopper');
+            const [u2, u2l] = put(b.buf, 48, 'user_1');
+            const [sameIdem] = put(b.buf, 80, 'idem-claim-0001');
+            const [otherIdem] = put(b.buf, 112, 'idem-claim-0002');
+            expect(b.imports['data.unique_claim'](h2, k2, kl2, u2, u2l, sameIdem)).toBe(2);
+            expect(b.imports['data.unique_claim'](h2, k2, kl2, u2, u2l, otherIdem)).toBe(-1004);
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
