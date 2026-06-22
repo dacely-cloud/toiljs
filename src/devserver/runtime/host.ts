@@ -91,11 +91,31 @@ function mem(ref: MemoryRef): Buffer {
 }
 
 /** Bounds-checked byte read out of guest linear memory. */
-function readBytes(ref: MemoryRef, ptr: number, len: number): Buffer {
+export function readBytes(ref: MemoryRef, ptr: number, len: number): Buffer {
     const m = mem(ref);
     if (ptr < 0 || len < 0 || ptr + len > m.length)
         throw new Error(`host import read out of bounds: ptr=${String(ptr)} len=${String(len)}`);
     return m.subarray(ptr, ptr + len);
+}
+
+/**
+ * Bounds-checked write of a variable-length result into a guest out-buffer, with
+ * the edge's inline-drain return protocol: the byte length on success, or `-1`
+ * (STATUS_TOO_SMALL) when `outCap` is too small (the guest retries with a bigger
+ * buffer). Used by the handleless `mstore.*` imports (RECONCILIATION Part 4 F2).
+ */
+export function writeBytesOut(
+    ref: MemoryRef,
+    bytes: Buffer,
+    outPtr: number,
+    outCap: number,
+): number {
+    if (bytes.length > outCap) return -1; // TOO_SMALL
+    const m = mem(ref);
+    if (outPtr < 0 || outPtr + bytes.length > m.length)
+        throw new Error('host import write out of bounds');
+    bytes.copy(m, outPtr);
+    return bytes.length;
 }
 
 /**
@@ -167,6 +187,77 @@ function envLookup(
         throw new Error('env_get write out of bounds');
     bytes.copy(m, outPtr);
     return bytes.length;
+}
+
+/**
+ * The portion of the `env.*` request surface that is SHARED by the daemon (cold)
+ * box: panic hook, `Environment.get`/`getSecure`, `email_send`, `thread_spawn`,
+ * and `Date.now`. It deliberately EXCLUDES the response/stream functions a cold
+ * box must not have (`set_status`/`set_header`/`respond_file`/`client_ip`/
+ * `ratelimit_check`), which stay in {@link buildHostImports}. None of these read
+ * the per-dispatch response state, so they need only `ref`. The crypto and DB
+ * namespaces are spread on top by each box's loader (they carry their own state).
+ */
+export function buildEnvImports(
+    ref: MemoryRef,
+    _state: { crypto: CryptoState; db: DbDevState },
+): Record<string, (...a: never[]) => unknown> {
+    return {
+        abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
+            throw new WasmAbortError(
+                readGuestString(ref, msgPtr),
+                readGuestString(ref, filePtr),
+                line,
+                col,
+            );
+        },
+
+        // `Environment.get` / `getSecure`: copy one tenant env value into the
+        // guest buffer. Returns the byte length (0 = present-but-empty), -1 if
+        // the buffer is too small (the guest retries bigger), -2 if absent.
+        env_get: (keyPtr: number, keyLen: number, outPtr: number, outCap: number): number =>
+            envLookup(ref, keyPtr, keyLen, outPtr, outCap, false),
+        env_get_secure: (
+            keyPtr: number,
+            keyLen: number,
+            outPtr: number,
+            outCap: number,
+        ): number => envLookup(ref, keyPtr, keyLen, outPtr, outCap, true),
+
+        thread_spawn: (_startArg: number): number => -1,
+
+        // `Date.now()` -> wall-clock milliseconds, matching the edge host.
+        'Date.now': (): bigint => BigInt(Date.now()),
+
+        // `env::email_send`: the FULL email pipeline in dev. A daemon may send
+        // mail, so this stays in the shared subset (00 B2 / doc 08 AN-8).
+        email_send: (reqPtr: number, reqLen: number): number => {
+            const raw = readBytes(ref, reqPtr, reqLen);
+            const svc = getEmailService();
+            if (svc === null) {
+                const to = parseEmailBlob(raw)?.to ?? '<unparsed>';
+                process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
+                return EmailStatus.Sent;
+            }
+            const { status, parsed } = svc.prepare(raw);
+            if (parsed === null) {
+                process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
+                return status;
+            }
+            void svc
+                .deliver(parsed)
+                .then((s) => {
+                    const label = s === EmailStatus.Sent ? 'sent' : EmailStatus[s];
+                    process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (${label})\n`);
+                })
+                .catch((e: unknown) => {
+                    process.stdout.write(
+                        `  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`,
+                    );
+                });
+            return EmailStatus.Sent; // optimistic; sync wasm can't await the send
+        },
+    };
 }
 
 /**

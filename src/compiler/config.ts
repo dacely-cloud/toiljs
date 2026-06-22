@@ -97,8 +97,32 @@ export interface ClientConfig {
 }
 
 /**
- * Server-side (toilscript → WASM) configuration. Reserved: the compiler does not yet
- * build the server target via `toil build`; today it is compiled by `toilscript` directly.
+ * Dev node mode: which layer the single dev process emulates. `hot` runs only the
+ * request path (today's behavior); `regional`/`continental` would run streams off
+ * `release-hot.wasm` (Phase 4); `daemon` runs `release-cold.wasm`; `all` runs every
+ * surface in one process (the default for a full local run). DEV / self-host knob;
+ * the production edge reads the authoritative role from per-host TCF + the plan.
+ */
+export type DevNodeMode = 'hot' | 'regional' | 'continental' | 'daemon' | 'all';
+
+/** Daemon (L4) config mirror (dev / self-host). All optional. */
+export interface DaemonConfig {
+    /** Region the daemon is pinned to (informational in dev; the dev process is leader). */
+    readonly region?: string;
+    /** Warm standby region (informational in dev). */
+    readonly standbyRegion?: string;
+    /** Default `@scheduled` interval (ms) when a task declares none. Default 60000. */
+    readonly defaultIntervalMs?: number;
+    /** Per-tick wall-clock budget (ms) before the dev scheduler logs an overrun. Default 30000. */
+    readonly tickBudgetMs?: number;
+    /** Per-tick gas cap (dev stub; charged-then-ignored). Mirrors `plan.gas_scheduled`. */
+    readonly gasTick?: number;
+    /** Max number of `@scheduled` tasks (mirrors `max_scheduled_tasks`). Default 64. */
+    readonly maxTasks?: number;
+}
+
+/**
+ * Server-side (toilscript → WASM) configuration.
  */
 export interface ServerConfig {
     /** Server source directory, relative to root. Default `server`. */
@@ -114,6 +138,20 @@ export interface ServerConfig {
      * the per-tenant env store); this drives `toiljs dev` / self-host.
      */
     readonly email?: EmailBackendConfig;
+    /** Which layer the dev process emulates. Default `all`. */
+    readonly nodeMode?: DevNodeMode;
+    /** Daemon (L4) config mirror (dev / self-host). */
+    readonly daemon?: DaemonConfig;
+}
+
+/** Fully-resolved {@link DaemonConfig}; every field non-optional, defaults applied. */
+export interface ResolvedDaemonConfig {
+    readonly region: string | null;
+    readonly standbyRegion: string | null;
+    readonly defaultIntervalMs: number;
+    readonly tickBudgetMs: number;
+    readonly gasTick: number;
+    readonly maxTasks: number;
 }
 
 /**
@@ -157,6 +195,10 @@ export interface ResolvedToilConfig {
     readonly seo: SeoConfig | null;
     /** The `server.email` backend config (dev / self-host), or `null` when unset. */
     readonly email: EmailBackendConfig | null;
+    /** Which layer the dev process emulates (dev / self-host). Default `all`. */
+    readonly nodeMode: DevNodeMode;
+    /** Daemon (L4) config mirror (dev / self-host), every field resolved. */
+    readonly daemon: ResolvedDaemonConfig;
     /** Absolute path to the framework client runtime (`toiljs/client`). */
     readonly runtimePath: string;
     readonly vite: InlineConfig;
@@ -229,7 +271,51 @@ export async function loadConfig(
                 : null,
         seo: client.seo ?? null,
         email: user.server?.email ?? null,
+        nodeMode: resolveNodeMode(user.server?.nodeMode),
+        daemon: resolveDaemonConfig(user.server?.daemon),
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
+    };
+}
+
+const DEV_NODE_MODES: readonly DevNodeMode[] = [
+    'hot',
+    'regional',
+    'continental',
+    'daemon',
+    'all',
+];
+
+/** A `nodeMode` outside the enum falls back to `all` with a warning (fail-soft:
+ *  the authoritative role is the edge's TCF + plan, so dev never bricks on it). */
+function resolveNodeMode(mode: DevNodeMode | undefined): DevNodeMode {
+    if (mode === undefined) return 'all';
+    if (DEV_NODE_MODES.includes(mode)) return mode;
+    process.stdout.write(
+        `  ! server.nodeMode '${mode}' is not a valid node mode; falling back to 'all'\n`,
+    );
+    return 'all';
+}
+
+/** Resolve the daemon config with defaults + light, fail-soft clamping (never
+ *  throws; the authoritative caps are the edge's). */
+function resolveDaemonConfig(d: DaemonConfig | undefined): ResolvedDaemonConfig {
+    // The dev scheduler uses setInterval; a sub-second loop floods the console.
+    let defaultIntervalMs = d?.defaultIntervalMs ?? 60000;
+    if (defaultIntervalMs < 1000) {
+        process.stdout.write(
+            `  ! server.daemon.defaultIntervalMs ${String(defaultIntervalMs)} < 1000; clamping to 1000\n`,
+        );
+        defaultIntervalMs = 1000;
+    }
+    let maxTasks = d?.maxTasks ?? 64;
+    if (maxTasks <= 0 || maxTasks > 1024) maxTasks = Math.min(1024, Math.max(1, maxTasks || 64));
+    return {
+        region: d?.region ?? null,
+        standbyRegion: d?.standbyRegion ?? null,
+        defaultIntervalMs,
+        tickBudgetMs: d?.tickBudgetMs ?? 30000,
+        gasTick: d?.gasTick ?? 0,
+        maxTasks,
     };
 }

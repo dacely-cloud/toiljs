@@ -27,6 +27,8 @@ import pc from 'picocolors';
 
 import type { EmailBackendConfig } from 'toiljs/shared';
 
+import { DaemonHost, daemonEmulationEnabled } from './daemon/index.js';
+import type { ResolvedDaemonConfig } from './daemon/host.js';
 import { configureDbPersistence } from './db/index.js';
 import { initEmailService } from './email/index.js';
 import { applyCacheRule, lookupCache } from './http/cache.js';
@@ -73,6 +75,16 @@ export interface DevServerOptions {
     readonly host?: string;
     /** Absolute path to the ToilScript server wasm (toilconfig `targets.release.outFile`). */
     readonly wasmFile: string;
+    /**
+     * Absolute path to the cold daemon artifact (`release-cold.wasm`). When present and the cold
+     * artifact declares a daemon surface, the dev daemon emulator drives its `@scheduled` tasks
+     * (per `nodeMode`). Omit for a project with no `@daemon` (the file is never built).
+     */
+    readonly coldWasmFile?: string;
+    /** Which layer the dev process emulates (gates the daemon emulator). Default `all`. */
+    readonly nodeMode?: string;
+    /** Daemon (L4) config mirror (drives the dev scheduler's budgets/caps). */
+    readonly daemon?: ResolvedDaemonConfig;
     /** The internal Vite dev server to proxy unclaimed traffic to. */
     readonly vite: ViteTarget;
     /** Max request body bytes. Default 8 MB. */
@@ -231,6 +243,27 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
 
     wireWebsocketProxy(app, options.vite);
 
+    // Dev DAEMON (L4) emulation: load `release-cold.wasm` once, run `daemon_start()`, and drive
+    // its `@scheduled` tasks. Only when `nodeMode` is daemon/all and a cold artifact path is given;
+    // the host stays idle until the cold artifact appears (a `@daemon` build). It has no request to
+    // hang a refresh off, so it polls its own mtime-watch on a low-frequency timer (section 9.3).
+    const nodeMode = options.nodeMode ?? 'all';
+    let daemonHost: DaemonHost | null = null;
+    let daemonTimer: NodeJS.Timeout | null = null;
+    if (options.coldWasmFile !== undefined && daemonEmulationEnabled(nodeMode) && options.daemon) {
+        daemonHost = new DaemonHost(options.coldWasmFile, options.daemon, nodeMode);
+        const pollDaemon = (): void => {
+            try {
+                daemonHost?.refresh();
+            } catch (e) {
+                process.stdout.write(pc.red(`  ✗ daemon reload failed: ${String(e)}`) + '\n');
+            }
+        };
+        pollDaemon();
+        daemonTimer = setInterval(pollDaemon, 500);
+        daemonTimer.unref?.();
+    }
+
     app.any('/*', async (request: Request, response: Response) => {
         response.removeHeader('uWebSockets');
 
@@ -286,6 +319,8 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         port: options.port,
         host,
         close: async (): Promise<void> => {
+            if (daemonTimer !== null) clearInterval(daemonTimer);
+            daemonHost?.close();
             await app.shutdown();
         },
     };

@@ -19,11 +19,14 @@ import { extractTemplates } from './template-build.js';
 import { createViteConfig } from './vite.js';
 
 /**
- * A `@data`/`@rest`/`@service`/`@remote` declaration - a file with one defines client surface.
- * Anchored to line-start (after indentation) so a mention in a comment (e.g. `// the @rest ...`)
- * does not count.
+ * A surface declaration - a file with one defines client and/or server surface, so it must be
+ * handed to toilscript even when it is not a `toilconfig.json` entry. Matches the request/RPC
+ * surface (`@data`/`@rest`/`@service`/`@remote`) and the streams/daemon surface
+ * (`@stream`/`@daemon`/`@scheduled`); without the latter, a file whose ONLY decorator is `@daemon`
+ * or `@scheduled` would silently vanish from the cold artifact. Anchored to line-start (after
+ * indentation) so a mention in a comment (e.g. `// the @rest ...`) does not count.
  */
-const SURFACE_DECORATOR = /^[ \t]*@(data|rest|service|remote)\b/m;
+export const SURFACE_DECORATOR = /^[ \t]*@(data|rest|service|remote|stream|daemon|scheduled)\b/m;
 
 /** The toilconfig `entries` (relative paths), or `null` when there is no readable toilconfig. */
 function toilconfigEntries(root: string): string[] | null {
@@ -107,7 +110,7 @@ function serverEntryFiles(root: string): string[] {
  * toilconfig entries) so dropped-in `@data`/`@rest` files are picked up. Runs the locally
  * installed `toilscript`, resolved + invoked via Node (no `.bin` shim / PATH assumptions).
  */
-async function buildServer(root: string): Promise<void> {
+export async function buildServer(root: string): Promise<void> {
     if (!fs.existsSync(path.join(root, 'toilconfig.json'))) return;
 
     // Regenerate the editor-only server-globals d.ts each build (the same way
@@ -123,8 +126,50 @@ async function buildServer(root: string): Promise<void> {
         }
     }
 
+    const binJs = resolveToilscriptBin(root);
+
+    // Explicit entries (every server file) override the toilconfig entries; the target options
+    // (optimization, features, runtime) still come from the toilconfig's `release` target.
+    const files = serverEntryFiles(root);
+
+    // A project that declares a `@daemon` (cold surface) compiles the ONE source tree into TWO
+    // artifacts via two toilscript passes (one per --targetMode); a project with only the legacy
+    // request surface keeps the single-artifact path (byte-identical to before). The cold pass
+    // runs FIRST (cheap, no client surface); the hot pass runs LAST because it (re)writes
+    // shared/server.ts via --rpcModule, which the downstream client build imports.
+    const split = splitSurfaceFiles(root, files);
+    if (split.hasDaemon) {
+        const artifacts = serverArtifacts(root);
+        // toilscript's gating matrix HARD-ERRORS a `@daemon`/`@scheduled` class compiled under
+        // `--targetMode hot` (and a `@rest`/`@stream`/`@service`/`@remote` class under cold). So
+        // each pass is handed only the files eligible for that mode: the cold pass drops hot-only
+        // files, the hot pass drops daemon-only files. `@data`/`@database`/plain files are shared.
+        await runToilscriptPass(root, binJs, split.cold, {
+            mode: 'cold',
+            outFile: artifacts.cold,
+            withRpc: false,
+        });
+        // The hot pass writes the legacy `outFile` (= hotFile alias, AN-1) so the request path
+        // and the dev server's `serverWasmFile` are unchanged; the request box loads it as today.
+        // A daemon-only project (no request/stream surface) has no hot files; skip the hot pass so
+        // toilscript is not handed an empty entry set. The request path then stays idle (no
+        // `handle` export), which is correct for a pure background worker.
+        if (split.hot.length > 0)
+            await runToilscriptPass(root, binJs, split.hot, {
+                mode: 'hot',
+                outFile: serverWasmFile(root),
+                withRpc: true,
+            });
+        return;
+    }
+
+    // Legacy single-artifact path (no daemon surface): exactly today's invocation.
+    await runToilscriptPass(root, binJs, files, { mode: null, outFile: null, withRpc: true });
+}
+
+/** Resolve the locally installed `toilscript` bin via Node (no `.bin` shim / PATH assumptions). */
+function resolveToilscriptBin(root: string): string {
     const require = createRequire(path.join(root, 'package.json'));
-    let binJs: string;
     try {
         const pkgPath = require.resolve('toilscript/package.json');
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as {
@@ -132,38 +177,101 @@ async function buildServer(root: string): Promise<void> {
         };
         const binRel = typeof pkg.bin === 'string' ? pkg.bin : pkg.bin?.toilscript;
         if (!binRel) throw new Error('toilscript declares no bin');
-        binJs = path.join(path.dirname(pkgPath), binRel);
+        return path.join(path.dirname(pkgPath), binRel);
     } catch {
         throw new Error(
             "toiljs: this project has a server target (toilconfig.json) but 'toilscript' is not " +
                 'installed. Run `npm i -D toilscript`, or remove toilconfig.json for a client-only build.',
         );
     }
+}
 
-    // Explicit entries (every server file) override the toilconfig entries; the target options
-    // (optimization, features, runtime) still come from the toilconfig's `release` target.
-    const files = serverEntryFiles(root);
-    // Suppress AS235 ("only variables/functions/enums become wasm exports"): a
-    // `@data`/`@rest` class is intentionally `export class` (so other server
-    // files import it), but never a wasm export — the warning is pure noise here.
-    const args = [
-        binJs,
-        ...files,
-        '--target',
-        'release',
-        '--rpcModule',
-        'shared/server.ts',
-        '--disableWarning',
-        '235',
-    ];
+/** Files classified per target mode for the two-pass build. */
+interface SurfaceSplit {
+    /** Whether any file declares a `@daemon` (so a cold pass is needed at all). */
+    readonly hasDaemon: boolean;
+    /** Files eligible for the COLD pass (everything except hot-only request files). */
+    readonly cold: string[];
+    /** Files eligible for the HOT pass (everything except daemon-only cold files). */
+    readonly hot: string[];
+}
 
-    await new Promise<void>((resolve, reject) => {
+/** A `@daemon`/`@scheduled` decorator at line start (a cold-only surface). */
+const COLD_DECORATOR = /^[ \t]*@(daemon|scheduled)\b/m;
+/** A request/stream-surface decorator at line start (a hot-only surface). */
+const HOT_DECORATOR = /^[ \t]*@(rest|route|stream|service|remote)\b/m;
+
+/**
+ * Classify each server source file by the surface decorators it declares, so each toilscript pass
+ * is handed only the files valid for its `--targetMode` (toilscript HARD-ERRORS a cold class in
+ * the hot artifact and vice versa). A file with a cold-only surface (`@daemon`/`@scheduled` and no
+ * hot decorator) is dropped from the hot pass; a file with a hot-only surface is dropped from the
+ * cold pass. Shared files (`@data`/`@database`/plain helpers, or a file mixing both surfaces) stay
+ * in both passes, matching toilscript's class-level gating which admits `@data`/`@database`
+ * everywhere.
+ */
+export function splitSurfaceFiles(root: string, files: string[]): SurfaceSplit {
+    let hasDaemon = false;
+    const cold: string[] = [];
+    const hot: string[] = [];
+    for (const rel of files) {
+        let src = '';
+        try {
+            src = fs.readFileSync(path.join(root, rel), 'utf8');
+        } catch {
+            // unreadable: keep it in both passes (let toilscript surface the error).
+            cold.push(rel);
+            hot.push(rel);
+            continue;
+        }
+        const isCold = COLD_DECORATOR.test(src);
+        const isHot = HOT_DECORATOR.test(src);
+        if (isCold) hasDaemon ||= /^[ \t]*@daemon\b/m.test(src);
+        // Drop a file from the hot pass only when it is cold-only (cold surface, no hot surface);
+        // a mixed file stays in both (toilscript gates per class, not per file).
+        if (!(isCold && !isHot)) hot.push(rel);
+        // Drop a file from the cold pass only when it is hot-only.
+        if (!(isHot && !isCold)) cold.push(rel);
+    }
+    return { hasDaemon, cold, hot };
+}
+
+interface PassOptions {
+    /** `--targetMode` value; `null` keeps the legacy single-artifact invocation (no flag). */
+    readonly mode: 'hot' | 'cold' | null;
+    /** Explicit `--outFile` for a two-pass build; `null` uses the toilconfig default. */
+    readonly outFile: string | null;
+    /** Only the hot/legacy pass carries `--rpcModule` (the cold artifact has no client surface). */
+    readonly withRpc: boolean;
+}
+
+/** Run one toilscript pass. The toilscript CLI flag is `--targetMode` (camelCase). */
+function runToilscriptPass(
+    root: string,
+    binJs: string,
+    files: string[],
+    opts: PassOptions,
+): Promise<void> {
+    // Suppress AS235 ("only variables/functions/enums become wasm exports"): a `@data`/`@rest`
+    // class is intentionally `export class` (so other server files import it), but never a wasm
+    // export — the warning is pure noise here.
+    const args = [binJs, ...files, '--target', 'release'];
+    if (opts.mode !== null) args.push('--targetMode', opts.mode);
+    if (opts.outFile !== null) args.push('--outFile', opts.outFile);
+    if (opts.withRpc) args.push('--rpcModule', 'shared/server.ts');
+    args.push('--disableWarning', '235');
+
+    return new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, args, { cwd: root, stdio: 'inherit' });
         child.on('error', reject);
         child.on('close', (code) =>
             code === 0
                 ? resolve()
-                : reject(new Error(`toilscript server build failed (exit ${String(code)})`)),
+                : reject(
+                      new Error(
+                          `toilscript ${opts.mode ?? 'release'} build failed (exit ${String(code)})`,
+                      ),
+                  ),
         );
     });
 }
@@ -285,7 +393,8 @@ function installDevShutdown(close: () => Promise<void> | void): void {
     for (const sig of ['SIGINT', 'SIGTERM'] as const) process.once(sig, shutdown);
 }
 
-/** The server wasm artifact path from the toilconfig `release` target (toilscript's output). */
+/** The server wasm artifact path from the toilconfig `release` target (toilscript's output).
+ *  This is the LEGACY single-artifact path (= the hot artifact under the two-pass build). */
 function serverWasmFile(root: string): string {
     let outFile = 'build/server/release.wasm';
     try {
@@ -297,6 +406,39 @@ function serverWasmFile(root: string): string {
         // No readable toilconfig: caller already gated on its existence; keep the default.
     }
     return path.resolve(root, outFile);
+}
+
+/** The hot + cold artifact paths for the two-pass build. `hotFile`/`coldFile` are honored when
+ *  present in the toilconfig `release` target; otherwise derived from `outFile` by inserting the
+ *  mode before the extension (`release.wasm` -> `release-hot.wasm` / `release-cold.wasm`). */
+export interface ServerArtifacts {
+    /** Absolute path to the hot (request/stream) artifact. */
+    readonly hot: string;
+    /** Absolute path to the cold (daemon) artifact. */
+    readonly cold: string;
+}
+export function serverArtifacts(root: string): ServerArtifacts {
+    let out = 'build/server/release.wasm';
+    let hot: string | undefined;
+    let cold: string | undefined;
+    try {
+        const cfg = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
+            targets?: Record<string, { outFile?: string; hotFile?: string; coldFile?: string }>;
+        };
+        out = cfg.targets?.release?.outFile ?? out;
+        hot = cfg.targets?.release?.hotFile;
+        cold = cfg.targets?.release?.coldFile;
+    } catch {
+        // No readable toilconfig: caller already gated on its existence; keep defaults.
+    }
+    const ins = (mode: 'hot' | 'cold'): string => {
+        const ext = path.extname(out);
+        return out.slice(0, ext ? -ext.length : undefined) + '-' + mode + (ext || '.wasm');
+    };
+    return {
+        hot: path.resolve(root, hot ?? ins('hot')),
+        cold: path.resolve(root, cold ?? ins('cold')),
+    };
 }
 
 /** An OS-assigned free loopback port (for the internal Vite server behind the dev front). */
@@ -385,6 +527,11 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         root: cfg.root,
         port: cfg.port,
         wasmFile: serverWasmFile(cfg.root),
+        // The daemon (cold) emulator drives `release-cold.wasm` per `nodeMode`; absent for a
+        // project with no `@daemon` (the cold artifact never gets built, so the host stays idle).
+        coldWasmFile: serverArtifacts(cfg.root).cold,
+        nodeMode: cfg.nodeMode,
+        daemon: cfg.daemon,
         vite: { host: '127.0.0.1', port: vitePort },
         email: cfg.email ?? undefined,
     });
