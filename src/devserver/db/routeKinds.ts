@@ -9,8 +9,10 @@ export interface RouteKindEntry {
 
 const SECTION = 'toildb.route_kinds';
 const VERSION = 1;
+const MAX_SECTION_BYTES = 128 * 1024;
 const MAX_ROUTES = 2048;
 const MAX_PATTERN_BYTES = 2048;
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
 
 const METHOD_CODES: Readonly<Record<string, number>> = {
     GET: 0,
@@ -30,6 +32,7 @@ export function parseRouteKinds(wasm: Buffer): readonly RouteKindEntry[] {
         return [];
     }
     if (section === null) return [];
+    if (section.length > MAX_SECTION_BYTES) return [];
 
     const r = new Reader(section);
     const version = r.u16();
@@ -44,15 +47,7 @@ export function parseRouteKinds(wasm: Buffer): readonly RouteKindEntry[] {
         const pattern = r.string();
         const kind =
             kindByte === 0 ? DbFunctionKind.Query : kindByte === 1 ? DbFunctionKind.Action : null;
-        if (
-            !r.ok ||
-            method < 0 ||
-            method > 6 ||
-            kind === null ||
-            pattern.length === 0 ||
-            !pattern.startsWith('/')
-        )
-            return [];
+        if (!r.ok || method < 0 || method > 6 || kind === null || !validPattern(pattern)) return [];
         routes.push({ method, kind, pattern });
     }
     if (!r.ok || r.remaining() !== 0) return [];
@@ -70,6 +65,15 @@ export function routeKindForRequest(
         if (route.method === methodCode && routeMatches(route.pattern, path)) return route.kind;
     }
     return null;
+}
+
+function validPattern(pattern: string): boolean {
+    if (pattern.length === 0 || !pattern.startsWith('/')) return false;
+    for (let i = 0; i < pattern.length; i++) {
+        const c = pattern.charCodeAt(i);
+        if (c < 0x20 || c > 0x7e) return false;
+    }
+    return true;
 }
 
 function routeMatches(pattern: string, pathWithQuery: string): boolean {
@@ -131,8 +135,13 @@ class Reader {
             this.ok = false;
             return '';
         }
-        const out = this.bytes.toString('utf8', this.pos, this.pos + len);
-        this.pos += len;
-        return out;
+        try {
+            const out = UTF8_DECODER.decode(this.bytes.subarray(this.pos, this.pos + len));
+            this.pos += len;
+            return out;
+        } catch {
+            this.ok = false;
+            return '';
+        }
     }
 }

@@ -116,6 +116,22 @@ describe('toildb dev emulator (record family)', () => {
         expect(
             parseRouteKinds(wasmWithSection('toildb.route_kinds', Buffer.from([1, 0, 1, 0, 1]))),
         ).toEqual([]);
+        expect(
+            parseRouteKinds(
+                wasmWithSection('toildb.route_kinds', routeKindsSection([[1, 0, 'relative']])),
+            ),
+        ).toEqual([]);
+        expect(
+            parseRouteKinds(
+                wasmWithSection('toildb.route_kinds', routeKindsSection([[1, 0, '/snowman-☃']])),
+            ),
+        ).toEqual([]);
+
+        const invalidUtf8 = Buffer.concat([
+            Buffer.from([1, 0, 1, 0, 1, 0, 2, 0, 0, 0]),
+            Buffer.from([0xc3, 0x28]),
+        ]);
+        expect(parseRouteKinds(wasmWithSection('toildb.route_kinds', invalidUtf8))).toEqual([]);
     });
 
     it('rejects unknown catalog collections instead of minting arbitrary handles', () => {
