@@ -34,6 +34,8 @@ export interface DevCollectionHandle {
     schemaVersion: number;
     replication: number;
     placement: number;
+    fillMaxWaitMs: number;
+    fillAllowStale: boolean;
 }
 
 export type DbCatalogState =
@@ -112,6 +114,8 @@ export const MAX_RESERVATION_TTL_MS = 86_400_000; // 24h
 export const MAX_NAME = 512;
 export const MAX_KEY = 4096;
 export const MAX_VALUE = 256 * 1024;
+export const DEFAULT_FILL_WAIT_MS = 50;
+export const MAX_FILL_WAIT_MS = 60_000;
 
 // i64 saturation bounds (the edge `MemEngine`/`ScyllaEngine` counters are i64).
 const I64_MIN = -(2n ** 63n);

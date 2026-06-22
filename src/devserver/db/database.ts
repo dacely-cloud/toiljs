@@ -34,9 +34,11 @@ import {
     type DbDevState,
     type DbSnapshot,
     DbFunctionKind,
+    DEFAULT_FILL_WAIT_MS,
     type DevCollectionHandle,
     INVALID_HANDLE,
     MAX_KEY,
+    MAX_FILL_WAIT_MS,
     MAX_NAME,
     MAX_RESERVATION_TTL_MS,
     MAX_RESERVATIONS,
@@ -271,6 +273,8 @@ type CatalogSeedEntry =
           schemaVersion?: number;
           replication?: number;
           placement?: number;
+          fillMaxWaitMs?: number;
+          fillAllowStale?: boolean;
       };
 
 /**
@@ -585,6 +589,8 @@ export class DevDatabase {
                     schemaVersion: 0,
                     replication: 0,
                     placement: 0,
+                    fillMaxWaitMs: DEFAULT_FILL_WAIT_MS,
+                    fillAllowStale: true,
                 };
                 break;
         }
@@ -1356,7 +1362,17 @@ export class DevDatabase {
                     : (entry.family ?? CollectionFamily.Record);
             const replication = typeof entry === 'number' ? 0 : (entry.replication ?? 0);
             const placement = typeof entry === 'number' ? 0 : (entry.placement ?? 0);
+            const fillMaxWaitMs =
+                typeof entry === 'number'
+                    ? DEFAULT_FILL_WAIT_MS
+                    : (entry.fillMaxWaitMs ?? DEFAULT_FILL_WAIT_MS);
+            const fillAllowStale =
+                typeof entry === 'number' ? true : (entry.fillAllowStale ?? true);
             if (!isCollectionFamily(family)) {
+                this.catalog = { kind: 'malformed' };
+                return;
+            }
+            if (fillMaxWaitMs > MAX_FILL_WAIT_MS) {
                 this.catalog = { kind: 'malformed' };
                 return;
             }
@@ -1366,6 +1382,8 @@ export class DevDatabase {
                 schemaVersion: schemaVersion >>> 0,
                 replication,
                 placement,
+                fillMaxWaitMs,
+                fillAllowStale,
             });
         }
         this.catalog = { kind: 'present', collections };

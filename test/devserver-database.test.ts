@@ -91,6 +91,45 @@ function routeKindsSection(routes: readonly (readonly [number, number, string])[
     return Buffer.concat(chunks);
 }
 
+function catalogSectionV2(fillMaxWaitMs: number, fillAllowStale: number): Buffer {
+    const chunks: Buffer[] = [];
+    const u8 = (v: number) => chunks.push(Buffer.from([v & 0xff]));
+    const u16 = (v: number) => {
+        const b = Buffer.alloc(2);
+        b.writeUInt16LE(v);
+        chunks.push(b);
+    };
+    const u32 = (v: number) => {
+        const b = Buffer.alloc(4);
+        b.writeUInt32LE(v >>> 0);
+        chunks.push(b);
+    };
+    const str = (s: string) => {
+        const b = Buffer.from(s, 'utf8');
+        u32(b.length);
+        chunks.push(b);
+    };
+
+    u16(2); // catalog version
+    u16(1); // databases
+    str('App');
+    u16(1); // collections
+    str('users');
+    u8(CollectionFamily.Record);
+    str('UserId');
+    str('User');
+    u32(0xaaaa);
+    u32(0x1234);
+    u32(0); // generation
+    u8(5); // replication = localOnly, accepted by the backend ABI
+    u8(0); // placement = hashKey
+    u32(fillMaxWaitMs);
+    u8(fillAllowStale);
+    u16(0); // fields
+    u16(0); // migrations
+    return Buffer.concat(chunks);
+}
+
 afterEach(() => {
     __resetDbForTests();
 });
@@ -144,6 +183,30 @@ describe('toildb dev emulator (record family)', () => {
 
     it('rejects a present but malformed catalog section', () => {
         setDbCatalog(wasmWithSection('toildb.catalog', Buffer.from([0xff, 0x00, 0xde, 0xad])));
+        const { imports, buf } = setupRaw();
+        const [p, l] = put(buf, 0, 'App/users');
+
+        expect(imports['data.resolve_collection'](p, l, 16)).toBe(-1070);
+    });
+
+    it('parses catalog v2 fill policy and backend replication bytes', () => {
+        setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV2(7, 0)));
+        const { imports, buf, db } = setupRaw();
+        const h = resolve(imports, buf, 'App/users');
+
+        expect(db.handles[h]).toMatchObject({
+            name: 'App/users',
+            family: CollectionFamily.Record,
+            schemaVersion: 0x1234,
+            replication: 5,
+            placement: 0,
+            fillMaxWaitMs: 7,
+            fillAllowStale: false,
+        });
+    });
+
+    it('rejects malformed catalog v2 fill policy', () => {
+        setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV2(7, 2)));
         const { imports, buf } = setupRaw();
         const [p, l] = put(buf, 0, 'App/users');
 
