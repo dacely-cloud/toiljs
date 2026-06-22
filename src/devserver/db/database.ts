@@ -27,19 +27,27 @@ import {
     ALREADY_EXISTS,
     type CapLedger,
     CODEC_ERR,
+    CollectionFamily,
     CONFLICT,
+    type DbCatalogState,
     type DbDevState,
     type DbSnapshot,
+    DbFunctionKind,
+    type DevCollectionHandle,
     INVALID_HANDLE,
     MAX_KEY,
     MAX_NAME,
     MAX_RESERVATION_TTL_MS,
     MAX_RESERVATIONS,
     MAX_VALUE,
+    OP_NOT_ALLOWED_FOR_FAMILY,
+    OP_NOT_ALLOWED_IN_KIND,
     type Reservation,
     satI64,
+    SCHEMA_UNAVAILABLE,
     TOO_MANY_KEYS,
     TOO_SMALL,
+    isCollectionFamily,
 } from './types.js';
 
 // ---- schema versions: the dev equivalent of the edge binding the row's
@@ -73,9 +81,114 @@ function storeKey(collection: string, key: Buffer): string {
     return collection + '\0' + key.toString('latin1');
 }
 
-function collOf(db: DbDevState, handle: number): string | null {
+function collOf(db: DbDevState, handle: number): DevCollectionHandle | null {
     return handle >= 0 && handle < db.handles.length ? db.handles[handle] : null;
 }
+
+function collOfFamily(
+    db: DbDevState,
+    handle: number,
+    ...families: CollectionFamily[]
+): DevCollectionHandle | number {
+    const coll = collOf(db, handle);
+    if (coll === null) return INVALID_HANDLE;
+    return families.includes(coll.family) ? coll : OP_NOT_ALLOWED_FOR_FAMILY;
+}
+
+enum DbOp {
+    Get,
+    GetMany,
+    Exists,
+    Create,
+    Patch,
+    Delete,
+    GetDelete,
+    Enqueue,
+    Append,
+    AppendOnce,
+    Latest,
+    CounterGet,
+    CounterAdd,
+    MembershipContains,
+    MembershipAdd,
+    MembershipRemove,
+    MembershipList,
+    UniqueLookup,
+    UniqueClaim,
+    UniqueRelease,
+    CapacityAvailable,
+    CapacityReserve,
+    CapacityConfirm,
+    CapacityCancel,
+    ViewGet,
+    ViewPublish,
+    CapacitySetTotal,
+}
+
+function isReadOp(op: DbOp): boolean {
+    return (
+        op === DbOp.Get ||
+        op === DbOp.GetMany ||
+        op === DbOp.Exists ||
+        op === DbOp.ViewGet ||
+        op === DbOp.CounterGet ||
+        op === DbOp.MembershipContains ||
+        op === DbOp.MembershipList ||
+        op === DbOp.UniqueLookup ||
+        op === DbOp.Latest ||
+        op === DbOp.CapacityAvailable
+    );
+}
+
+function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
+    if (kind === DbFunctionKind.Query) return isReadOp(op);
+    if (kind === DbFunctionKind.Action) {
+        return (
+            isReadOp(op) ||
+            op === DbOp.Create ||
+            op === DbOp.Patch ||
+            op === DbOp.Delete ||
+            op === DbOp.GetDelete ||
+            op === DbOp.Enqueue ||
+            op === DbOp.Append ||
+            op === DbOp.AppendOnce ||
+            op === DbOp.CounterAdd ||
+            op === DbOp.MembershipAdd ||
+            op === DbOp.MembershipRemove ||
+            op === DbOp.UniqueClaim ||
+            op === DbOp.UniqueRelease ||
+            op === DbOp.CapacityReserve ||
+            op === DbOp.CapacityConfirm ||
+            op === DbOp.CapacityCancel
+        );
+    }
+    if (kind === DbFunctionKind.Derive)
+        return (
+            isReadOp(op) || op === DbOp.ViewPublish || op === DbOp.Append || op === DbOp.CounterAdd
+        );
+    if (kind === DbFunctionKind.Job) return true;
+    return false;
+}
+
+function collForOp(
+    db: DbDevState,
+    handle: number,
+    op: DbOp,
+    ...families: CollectionFamily[]
+): DevCollectionHandle | number {
+    const coll = collOfFamily(db, handle, ...families);
+    if (typeof coll === 'number') return coll;
+    return kindAllows(db.functionKind, op) ? coll : OP_NOT_ALLOWED_IN_KIND;
+}
+
+type CatalogSeedEntry =
+    | number
+    | {
+          family?: number;
+          schemaVersion?: number;
+          replication?: number;
+          placement?: number;
+      };
 
 /**
  * The single-process dev data store: the seven ToilDB families, their per-row
@@ -105,22 +218,27 @@ export class DevDatabase {
     private readonly eventVersions = new Map<string, number[]>();
     /** Per-member schema_version: `sk` -> (memberLatin1 -> version), parallel to `members`. */
     private readonly memberVersions = new Map<string, Map<string, number>>();
-    /** `"<Db>/<collection>"` -> the CURRENT schema_version, from the loaded wasm catalog. */
-    private catalog = new Map<string, number>();
+    /** The decoded catalog from the loaded wasm, including family + current schema_version. */
+    private catalog: DbCatalogState = { kind: 'no-section' };
 
     // ---- on-disk persistence: dev data + its versions survive restarts, so a
     // developer can write rows, evolve a @data type, restart, and watch the @migrate
     // run. Delete the file to reset the dev database. JSON with base64 buffers.
     private persistPath: string | null = null;
 
-    /** (Re)load the collection -> current-schema_version map from a server wasm. The
-     *  module loader calls this on every (re)compile so writes stamp the live version. */
+    /** (Re)load the catalog capability metadata from a server wasm. The module
+     *  loader calls this on every (re)compile so writes stamp the live version. */
     setCatalog(wasm: Buffer): void {
         this.catalog = parseCatalog(wasm);
     }
 
-    private stampVersion(coll: string, sk: string): void {
-        this.versions.set(sk, this.catalog.get(coll) ?? 0); // stamp the value type's current version
+    private currentSchemaVersion(coll: DevCollectionHandle): number {
+        if (this.catalog.kind !== 'present') return coll.schemaVersion;
+        return this.catalog.collections.get(coll.name)?.schemaVersion ?? coll.schemaVersion;
+    }
+
+    private stampVersion(coll: DevCollectionHandle, sk: string): void {
+        this.versions.set(sk, this.currentSchemaVersion(coll)); // stamp the value type's current version
     }
 
     /** Point the dev DB at an on-disk file and load any existing snapshot. Call once at
@@ -284,8 +402,28 @@ export class DevDatabase {
     ): number {
         if (nameLen < 0 || nameLen > MAX_NAME) throw new Error('data: collection name too long');
         const name = readCopy(ref, namePtr, nameLen).toString('utf8');
+        let coll: DevCollectionHandle;
+        switch (this.catalog.kind) {
+            case 'present': {
+                const found = this.catalog.collections.get(name);
+                if (found === undefined) return SCHEMA_UNAVAILABLE;
+                coll = { ...found };
+                break;
+            }
+            case 'malformed':
+                return SCHEMA_UNAVAILABLE;
+            case 'no-section':
+                coll = {
+                    name,
+                    family: CollectionFamily.Record,
+                    schemaVersion: 0,
+                    replication: 0,
+                    placement: 0,
+                };
+                break;
+        }
         const handle = db.handles.length;
-        db.handles.push(name);
+        db.handles.push(coll);
         const m = mem(ref);
         if (outHandlePtr < 0 || outHandlePtr + 4 > m.length)
             throw new Error('data: resolve out-handle out of bounds');
@@ -294,10 +432,10 @@ export class DevDatabase {
     }
 
     get(ref: MemoryRef, db: DbDevState, handle: number, keyPtr: number, keyLen: number): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.Get, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY) throw new Error('data: key too long');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const v = this.store.get(sk);
         if (v === undefined) return ABSENT;
         db.lastResult = v;
@@ -315,9 +453,16 @@ export class DevDatabase {
         keysPtr: number,
         keysLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(
+            db,
+            handle,
+            DbOp.GetMany,
+            CollectionFamily.Record,
+            CollectionFamily.View,
+        );
+        if (typeof coll === 'number') return coll;
         if (keysLen > MAX_VALUE) throw new Error('data: keys blob too large');
+        const table = coll.family === CollectionFamily.View ? this.views : this.store;
         // Keys blob: u32 count, then per key a u32-length-prefixed blob. The shared
         // DataReader is bounds-safe (empty past end), so a malformed/truncated blob
         // can't over-read; cap each key at MAX_KEY like the edge's prepare_key.
@@ -332,12 +477,14 @@ export class DevDatabase {
         for (let i = 0; i < count; i++) {
             const key = r.readBytes();
             if (key.length > MAX_KEY) throw new Error('data: key too long');
-            const sk = storeKey(coll, Buffer.from(key));
-            const v = this.store.get(sk);
+            const sk = storeKey(coll.name, Buffer.from(key));
+            const v = table.get(sk);
             if (v === undefined) {
                 w.writeU8(0);
             } else {
-                w.writeU8(1).writeU32(this.versions.get(sk) ?? 0).writeBytes(v);
+                w.writeU8(1)
+                    .writeU32(this.versions.get(sk) ?? 0)
+                    .writeBytes(v);
             }
         }
         db.lastResult = Buffer.from(w.toBytes());
@@ -345,9 +492,9 @@ export class DevDatabase {
     }
 
     exists(ref: MemoryRef, db: DbDevState, handle: number, keyPtr: number, keyLen: number): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        return this.store.has(storeKey(coll, readKey(ref, keyPtr, keyLen))) ? 1 : 0;
+        const coll = collForOp(db, handle, DbOp.Exists, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
+        return this.store.has(storeKey(coll.name, readKey(ref, keyPtr, keyLen))) ? 1 : 0;
     }
 
     create(
@@ -359,10 +506,10 @@ export class DevDatabase {
         valPtr: number,
         valLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.Create, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         if (this.store.has(sk)) return ALREADY_EXISTS;
         this.store.set(sk, readCopy(ref, valPtr, valLen));
         this.stampVersion(coll, sk); // stamp the value type's current schema version
@@ -378,10 +525,10 @@ export class DevDatabase {
         patchPtr: number,
         patchLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.Patch, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || patchLen > MAX_VALUE) throw new Error('data: key/patch too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         if (!this.store.has(sk)) return ABSENT; // NotFound -> ABSENT on the edge
         const v = readCopy(ref, patchPtr, patchLen);
         this.store.set(sk, v);
@@ -392,9 +539,9 @@ export class DevDatabase {
     }
 
     delete(ref: MemoryRef, db: DbDevState, handle: number, keyPtr: number, keyLen: number): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.Delete, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         this.store.delete(sk);
         this.versions.delete(sk);
         return 0;
@@ -408,9 +555,9 @@ export class DevDatabase {
         keyPtr: number,
         keyLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.GetDelete, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const v = this.store.get(sk);
         if (v === undefined) return ABSENT;
         db.lastResultVersion = this.versions.get(sk) ?? 0; // surface before consuming
@@ -429,9 +576,9 @@ export class DevDatabase {
         keyPtr: number,
         keyLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.UniqueLookup, CollectionFamily.Unique);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const v = this.store.get(sk);
         if (v === undefined) return ABSENT;
         db.lastResult = v;
@@ -449,10 +596,10 @@ export class DevDatabase {
         valPtr: number,
         valLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.UniqueClaim, CollectionFamily.Unique);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const owner = readCopy(ref, valPtr, valLen);
         const existing = this.store.get(sk);
         if (existing === undefined) {
@@ -474,9 +621,9 @@ export class DevDatabase {
         valPtr: number,
         valLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.UniqueRelease, CollectionFamily.Unique);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const existing = this.store.get(sk);
         if (existing === undefined) return 0; // idempotent
         if (!existing.equals(readCopy(ref, valPtr, valLen))) return CONFLICT; // not the owner
@@ -496,9 +643,9 @@ export class DevDatabase {
         memberPtr: number,
         memberLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const set = this.members.get(storeKey(coll, readKey(ref, setPtr, setLen)));
+        const coll = collForOp(db, handle, DbOp.MembershipContains, CollectionFamily.Membership);
+        if (typeof coll === 'number') return coll;
+        const set = this.members.get(storeKey(coll.name, readKey(ref, setPtr, setLen)));
         if (set === undefined) return 0;
         return set.has(readCopy(ref, memberPtr, memberLen).toString('latin1')) ? 1 : 0;
     }
@@ -512,11 +659,11 @@ export class DevDatabase {
         memberPtr: number,
         memberLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.MembershipAdd, CollectionFamily.Membership);
+        if (typeof coll === 'number') return coll;
         if (setLen > MAX_KEY || memberLen > MAX_VALUE)
             throw new Error('data: set/member too large');
-        const sk = storeKey(coll, readKey(ref, setPtr, setLen));
+        const sk = storeKey(coll.name, readKey(ref, setPtr, setLen));
         const member = readCopy(ref, memberPtr, memberLen);
         let set = this.members.get(sk);
         if (set === undefined) {
@@ -530,7 +677,7 @@ export class DevDatabase {
             mv = new Map();
             this.memberVersions.set(sk, mv);
         }
-        mv.set(ml, this.catalog.get(coll) ?? 0);
+        mv.set(ml, this.currentSchemaVersion(coll));
         return 0;
     }
 
@@ -543,9 +690,9 @@ export class DevDatabase {
         memberPtr: number,
         memberLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, setPtr, setLen));
+        const coll = collForOp(db, handle, DbOp.MembershipRemove, CollectionFamily.Membership);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, setPtr, setLen));
         const ml = readCopy(ref, memberPtr, memberLen).toString('latin1');
         this.members.get(sk)?.delete(ml);
         this.memberVersions.get(sk)?.delete(ml);
@@ -562,9 +709,9 @@ export class DevDatabase {
         setLen: number,
         limit: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, setPtr, setLen));
+        const coll = collForOp(db, handle, DbOp.MembershipList, CollectionFamily.Membership);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, setPtr, setLen));
         const set = this.members.get(sk);
         const mv = this.memberVersions.get(sk);
         const n = Math.max(0, Math.min(limit, 0xffff));
@@ -590,9 +737,9 @@ export class DevDatabase {
         keyPtr: number,
         keyLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.ViewGet, CollectionFamily.View);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const v = this.views.get(sk);
         if (v === undefined) return ABSENT;
         db.lastResult = v;
@@ -610,10 +757,10 @@ export class DevDatabase {
         valPtr: number,
         valLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.ViewPublish, CollectionFamily.View);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/view too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         this.views.set(sk, readCopy(ref, valPtr, valLen));
         this.stampVersion(coll, sk);
         return 0;
@@ -630,9 +777,9 @@ export class DevDatabase {
         keyPtr: number,
         keyLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sum = this.counters.get(storeKey(coll, readKey(ref, keyPtr, keyLen))) ?? 0n;
+        const coll = collForOp(db, handle, DbOp.CounterGet, CollectionFamily.Counter);
+        if (typeof coll === 'number') return coll;
+        const sum = this.counters.get(storeKey(coll.name, readKey(ref, keyPtr, keyLen))) ?? 0n;
         const out = Buffer.alloc(8);
         out.writeBigInt64LE(sum);
         db.lastResult = out;
@@ -649,9 +796,9 @@ export class DevDatabase {
         keyLen: number,
         delta: number | bigint,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.CounterAdd, CollectionFamily.Counter);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         this.counters.set(sk, satI64((this.counters.get(sk) ?? 0n) + BigInt(delta)));
         return 0;
     }
@@ -667,13 +814,13 @@ export class DevDatabase {
         evPtr: number,
         evLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.Append, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const log = this.events.get(sk);
         const ev = readCopy(ref, evPtr, evLen);
-        const sv = this.catalog.get(coll) ?? 0;
+        const sv = this.currentSchemaVersion(coll);
         if (log === undefined) {
             this.events.set(sk, [ev]);
             this.eventVersions.set(sk, [sv]);
@@ -697,10 +844,10 @@ export class DevDatabase {
         evPtr: number,
         evLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.AppendOnce, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const evid = readCopy(ref, evidPtr, evidLen).toString('latin1');
         let seen = this.eventDedup.get(sk);
         if (seen === undefined) {
@@ -709,7 +856,7 @@ export class DevDatabase {
         }
         if (seen.has(evid)) return 0; // already appended under this id
         const ev = readCopy(ref, evPtr, evLen);
-        const sv = this.catalog.get(coll) ?? 0;
+        const sv = this.currentSchemaVersion(coll);
         const log = this.events.get(sk);
         if (log === undefined) {
             this.events.set(sk, [ev]);
@@ -734,10 +881,10 @@ export class DevDatabase {
         valPtr: number,
         valLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.Enqueue, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
         if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         if (!this.store.has(sk)) return ABSENT; // enqueue replaces an existing record
         this.store.set(sk, readCopy(ref, valPtr, valLen));
         this.stampVersion(coll, sk);
@@ -755,9 +902,9 @@ export class DevDatabase {
         keyLen: number,
         limit: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const sk = storeKey(coll, readKey(ref, keyPtr, keyLen));
+        const coll = collForOp(db, handle, DbOp.Latest, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const log = this.events.get(sk) ?? [];
         const vers = this.eventVersions.get(sk) ?? [];
         const n = Math.max(0, Math.min(limit, 0xffff));
@@ -787,9 +934,9 @@ export class DevDatabase {
         keyLen: number,
         total: number | bigint,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const l = this.capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
+        const coll = collForOp(db, handle, DbOp.CapacitySetTotal, CollectionFamily.Capacity);
+        if (typeof coll === 'number') return coll;
+        const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
         const t = BigInt(total);
         l.total = satI64(t < 0n ? 0n : t);
         return 0;
@@ -803,9 +950,9 @@ export class DevDatabase {
         keyPtr: number,
         keyLen: number,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const l = this.capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
+        const coll = collForOp(db, handle, DbOp.CapacityAvailable, CollectionFamily.Capacity);
+        if (typeof coll === 'number') return coll;
+        const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
         this.capPrune(l, Date.now());
         const avail = l.total - this.capReserved(l);
         const out = Buffer.alloc(8);
@@ -828,11 +975,11 @@ export class DevDatabase {
         amount: number | bigint,
         ttlMs: number | bigint,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
+        const coll = collForOp(db, handle, DbOp.CapacityReserve, CollectionFamily.Capacity);
+        if (typeof coll === 'number') return coll;
         const want = BigInt(amount);
         if (want <= 0n) return CODEC_ERR; // BadAmount (edge: -1006)
-        const l = this.capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
+        const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
         const now = Date.now();
         this.capPrune(l, now);
         if (l.total - this.capReserved(l) < want || l.reservations.size >= MAX_RESERVATIONS)
@@ -857,9 +1004,9 @@ export class DevDatabase {
         keyLen: number,
         reservationId: number | bigint,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const l = this.capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
+        const coll = collForOp(db, handle, DbOp.CapacityConfirm, CollectionFamily.Capacity);
+        if (typeof coll === 'number') return coll;
+        const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
         this.capPrune(l, Date.now());
         const r = l.reservations.get(BigInt(reservationId));
         if (r === undefined) return 0;
@@ -877,9 +1024,9 @@ export class DevDatabase {
         keyLen: number,
         reservationId: number | bigint,
     ): number {
-        const coll = collOf(db, handle);
-        if (coll === null) return INVALID_HANDLE;
-        const l = this.capLedger(storeKey(coll, readKey(ref, keyPtr, keyLen)));
+        const coll = collForOp(db, handle, DbOp.CapacityCancel, CollectionFamily.Capacity);
+        if (typeof coll === 'number') return coll;
+        const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
         this.capPrune(l, Date.now());
         const id = BigInt(reservationId);
         const r = l.reservations.get(id);
@@ -919,13 +1066,34 @@ export class DevDatabase {
     /** Test-only: clear the stores + catalog + persistence between unit tests. */
     resetForTests(): void {
         this.clear();
-        this.catalog = new Map();
+        this.catalog = { kind: 'no-section' };
         this.persistPath = null;
     }
 
-    /** Test-only: seed the catalog (collection -> current schema_version) directly. */
-    setCatalogForTests(entries: Record<string, number>): void {
-        this.catalog = new Map(Object.entries(entries));
+    /** Test-only: seed the catalog directly. Number values default to record-family entries. */
+    setCatalogForTests(entries: Record<string, CatalogSeedEntry>): void {
+        const collections = new Map<string, DevCollectionHandle>();
+        for (const [name, entry] of Object.entries(entries)) {
+            const schemaVersion = typeof entry === 'number' ? entry : (entry.schemaVersion ?? 0);
+            const family =
+                typeof entry === 'number'
+                    ? CollectionFamily.Record
+                    : (entry.family ?? CollectionFamily.Record);
+            const replication = typeof entry === 'number' ? 0 : (entry.replication ?? 0);
+            const placement = typeof entry === 'number' ? 0 : (entry.placement ?? 0);
+            if (!isCollectionFamily(family)) {
+                this.catalog = { kind: 'malformed' };
+                return;
+            }
+            collections.set(name, {
+                name,
+                family,
+                schemaVersion: schemaVersion >>> 0,
+                replication,
+                placement,
+            });
+        }
+        this.catalog = { kind: 'present', collections };
     }
 }
 
@@ -1151,10 +1319,9 @@ export function buildDatabaseImports(
 
         'data.result_schema_version': (): bigint => devDb.resultSchemaVersion(db),
 
-        // `data.write_allowed() -> i32`: 1 if the current call may write. Used by the
-        // rewrite-on-read convergence after a lazy migration to persist the converged
-        // row. The dev store permits writes, so return 1.
-        'data.write_allowed': (): number => 1,
+        // `data.write_allowed() -> i32`: 1 if the current call may issue the
+        // record patch used by rewrite-on-read migration convergence.
+        'data.write_allowed': (): number => (kindAllows(db.functionKind, DbOp.Patch) ? 1 : 0),
     };
 }
 
@@ -1163,7 +1330,7 @@ export function __resetDbForTests(): void {
     devDb.resetForTests();
 }
 
-/** Test-only: seed the catalog (collection -> current schema_version) directly. */
-export function __setDbCatalogForTests(entries: Record<string, number>): void {
+/** Test-only: seed the catalog directly. Number values default to record-family entries. */
+export function __setDbCatalogForTests(entries: Record<string, CatalogSeedEntry>): void {
     devDb.setCatalogForTests(entries);
 }

@@ -13,7 +13,7 @@
 
 import fs from 'node:fs';
 
-import { persistDb, setDbCatalog } from '../db/index.js';
+import { DbFunctionKind, persistDb, setDbCatalog } from '../db/index.js';
 import {
     decodeResponseEnvelope,
     encodeRequestEnvelope,
@@ -34,6 +34,21 @@ export { WasmAbortError } from './host.js';
 export const UNHANDLED_HEADER = 'x-toil-unhandled';
 
 const WASM_PAGE = 65536;
+
+function dbKindForHttpMethod(method: string): DbFunctionKind {
+    switch (method.toUpperCase()) {
+        case 'GET':
+        case 'HEAD':
+        case 'OPTIONS':
+            return DbFunctionKind.Query;
+        case 'POST':
+        case 'PUT':
+        case 'PATCH':
+        case 'DELETE':
+        default:
+            return DbFunctionKind.Action;
+    }
+}
 
 /** The shaped outcome of one guest dispatch. */
 export interface WasmDispatchResult {
@@ -167,6 +182,7 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
+        state.db.functionKind = dbKindForHttpMethod(req.method);
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
@@ -228,6 +244,7 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
+        state.db.functionKind = DbFunctionKind.Query;
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports & {
             render?: (reqOfs: number, reqLen: number) => bigint;

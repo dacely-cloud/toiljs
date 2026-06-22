@@ -5,22 +5,44 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+    CollectionFamily,
+    DbFunctionKind,
     __resetDbForTests,
     __setDbCatalogForTests,
     buildDatabaseImports,
     configureDbPersistence,
     freshDbState,
     persistDb,
+    setDbCatalog,
 } from '../src/devserver/db/index.js';
 import type { MemoryRef } from '../src/devserver/runtime/host.js';
 
-function setup() {
+const DEFAULT_CATALOG = {
+    'App/users': { family: CollectionFamily.Record },
+    'App/posts': { family: CollectionFamily.Record },
+    'App/docs': { family: CollectionFamily.Record },
+    'App/challenges': { family: CollectionFamily.Record },
+    'App/pages': { family: CollectionFamily.View },
+    'App/feed': { family: CollectionFamily.Events },
+    'App/likes': { family: CollectionFamily.Counter },
+    'App/rooms': { family: CollectionFamily.Membership },
+    'App/usernames': { family: CollectionFamily.Unique },
+    'App/seats': { family: CollectionFamily.Capacity },
+    'App/tickets': { family: CollectionFamily.Capacity },
+};
+
+function setupRaw() {
     const memory = new WebAssembly.Memory({ initial: 1 });
     const ref: MemoryRef = { memory };
     const db = freshDbState();
     const imports = buildDatabaseImports(ref, db);
     const buf = Buffer.from(memory.buffer);
     return { ref, db, imports, buf };
+}
+
+function setup() {
+    __setDbCatalogForTests(DEFAULT_CATALOG);
+    return setupRaw();
 }
 
 /** Write bytes at `offset`, returning the `[ptr, len]` pair the imports expect. */
@@ -30,10 +52,27 @@ function put(buf: Buffer, offset: number, data: string): [number, number] {
     return [offset, b.length];
 }
 
-function resolve(imports: Record<string, (...a: number[]) => number>, buf: Buffer, name: string): number {
+function resolve(
+    imports: Record<string, (...a: number[]) => number>,
+    buf: Buffer,
+    name: string,
+): number {
     const [p, l] = put(buf, 0, name);
     expect(imports['data.resolve_collection'](p, l, 16)).toBe(0);
     return buf.readUInt32LE(16);
+}
+
+function wasmWithSection(name: string, payload: Uint8Array): Buffer {
+    const nameBytes = Buffer.from(name);
+    const sectionPayload = Buffer.concat([
+        Buffer.from([nameBytes.length]),
+        nameBytes,
+        Buffer.from(payload),
+    ]);
+    return Buffer.concat([
+        Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x00, sectionPayload.length]),
+        sectionPayload,
+    ]);
 }
 
 afterEach(() => {
@@ -41,6 +80,45 @@ afterEach(() => {
 });
 
 describe('toildb dev emulator (record family)', () => {
+    it('rejects unknown catalog collections instead of minting arbitrary handles', () => {
+        const { imports, buf } = setup();
+        const [p, l] = put(buf, 0, 'App/missing');
+        buf.writeUInt32LE(0xdeadbeef, 16);
+        expect(imports['data.resolve_collection'](p, l, 16)).toBe(-1070);
+        expect(buf.readUInt32LE(16)).toBe(0xdeadbeef);
+    });
+
+    it('rejects a present but malformed catalog section', () => {
+        setDbCatalog(wasmWithSection('toildb.catalog', Buffer.from([0xff, 0x00, 0xde, 0xad])));
+        const { imports, buf } = setupRaw();
+        const [p, l] = put(buf, 0, 'App/users');
+
+        expect(imports['data.resolve_collection'](p, l, 16)).toBe(-1070);
+    });
+
+    it('rejects handles used with the wrong collection family', () => {
+        const { imports, buf } = setup();
+        const users = resolve(imports, buf, 'App/users');
+        const likes = resolve(imports, buf, 'App/likes');
+        const [kPtr, kLen] = put(buf, 32, 'k');
+        const [vPtr, vLen] = put(buf, 48, 'v');
+
+        expect(imports['data.counter_add'](users, kPtr, kLen, 1, 0)).toBe(-1010);
+        expect(imports['data.create'](likes, kPtr, kLen, vPtr, vLen, 0)).toBe(-1010);
+    });
+
+    it('query-kind dispatch denies writes and write_allowed is false', () => {
+        const { imports, buf, db } = setup();
+        db.functionKind = DbFunctionKind.Query;
+        const h = resolve(imports, buf, 'App/users');
+        const [kPtr, kLen] = put(buf, 32, 'u1');
+        const [vPtr, vLen] = put(buf, 48, 'hello');
+
+        expect(imports['data.write_allowed']()).toBe(0);
+        expect(imports['data.get'](h, kPtr, kLen)).toBe(-2);
+        expect(imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0)).toBe(-1011);
+    });
+
     it('resolve + create + get + take_result round-trips', () => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, 'App/users');

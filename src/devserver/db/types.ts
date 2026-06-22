@@ -6,16 +6,57 @@
  * `<= -1000` a typed error (`-(1000+TDLnnn)`).
  */
 
+export enum CollectionFamily {
+    Record = 0,
+    View = 1,
+    Events = 2,
+    Counter = 3,
+    Membership = 4,
+    Unique = 5,
+    Capacity = 6,
+}
+
+export enum DbFunctionKind {
+    Query = 'query',
+    Action = 'action',
+    Derive = 'derive',
+    Job = 'job',
+    Admin = 'admin',
+}
+
+export function isCollectionFamily(value: number): value is CollectionFamily {
+    return value >= CollectionFamily.Record && value <= CollectionFamily.Capacity;
+}
+
+export interface DevCollectionHandle {
+    name: string;
+    family: CollectionFamily;
+    schemaVersion: number;
+    replication: number;
+    placement: number;
+}
+
+export type DbCatalogState =
+    | { kind: 'no-section' }
+    | { kind: 'malformed' }
+    | { kind: 'present'; collections: Map<string, DevCollectionHandle> };
+
 /** Per-request data state: resolved handles + the last variable-length result +
  *  the schema_version of that result's row (surfaced via result_schema_version). */
 export interface DbDevState {
-    handles: string[];
+    handles: DevCollectionHandle[];
     lastResult: Buffer | null;
     lastResultVersion: number;
+    functionKind: DbFunctionKind;
 }
 
 export function freshDbState(): DbDevState {
-    return { handles: [], lastResult: null, lastResultVersion: -1 };
+    return {
+        handles: [],
+        lastResult: null,
+        lastResultVersion: -1,
+        functionKind: DbFunctionKind.Job,
+    };
 }
 
 /** A finite-resource escrow: a ceiling + a set of reservations, each held (in
@@ -73,4 +114,7 @@ export const INVALID_HANDLE = -1001; // TDL001
 export const ALREADY_EXISTS = -1003; // TDL003 (create on an existing key)
 export const CONFLICT = -1004; // TDL004 (e.g. unique release by a non-owner)
 export const CODEC_ERR = -1006; // TDL006 (e.g. a non-positive reserve amount)
+export const OP_NOT_ALLOWED_FOR_FAMILY = -1010; // TDL010
+export const OP_NOT_ALLOWED_IN_KIND = -1011; // TDL011
 export const TOO_MANY_KEYS = -1020; // TDL020 (get_many over the per-call cap)
+export const SCHEMA_UNAVAILABLE = -1070; // TDL070
