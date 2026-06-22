@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 
 import { DbFunctionKind, persistDb, setDbCatalog } from '../db/index.js';
+import { parseRouteKinds, routeKindForRequest, type RouteKindEntry } from '../db/routeKinds.js';
 import {
     decodeResponseEnvelope,
     encodeRequestEnvelope,
@@ -132,6 +133,7 @@ const PROVIDED_IMPORTS = new Set([
 export class WasmServerModule {
     private module: WebAssembly.Module | null = null;
     private loadedMtimeMs = -1;
+    private routeKinds: readonly RouteKindEntry[] = [];
 
     constructor(private readonly wasmPath: string) {}
 
@@ -152,6 +154,7 @@ export class WasmServerModule {
             mtimeMs = fs.statSync(this.wasmPath).mtimeMs;
         } catch {
             this.module = null;
+            this.routeKinds = [];
             this.loadedMtimeMs = -1;
             return false;
         }
@@ -164,6 +167,7 @@ export class WasmServerModule {
         // Refresh collection -> current schema_version so writes stamp the live layout;
         // after a @data type evolves + rebuild, old on-disk rows now look out of date.
         setDbCatalog(bytes);
+        this.routeKinds = parseRouteKinds(bytes);
         this.module = module;
         this.loadedMtimeMs = mtimeMs;
         return true;
@@ -182,7 +186,11 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
-        state.db.functionKind = dbKindForHttpMethod(req.method);
+        const routeKind = routeKindForRequest(this.routeKinds, req.method, req.path);
+        state.db.functionKind =
+            routeKind === DbFunctionKind.Query
+                ? DbFunctionKind.Query
+                : dbKindForHttpMethod(req.method);
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
