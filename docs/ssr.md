@@ -3,10 +3,10 @@
 toiljs server-renders a route by splitting it into two halves that the build
 keeps coherent:
 
-- **the template** — the HTML shell with the dynamic bits punched out (named
+- **the template**, the HTML shell with the dynamic bits punched out (named
   *holes*). It is React's own `renderToStaticMarkup` output with the holes
   removed, precompiled at build time and held (mmap'd) by the edge.
-- **the values** — the hole values for one request (text, attributes, repeated
+- **the values**, the hole values for one request (text, attributes, repeated
   rows, headers, status). The wasm guest's `render` entrypoint returns *only*
   these. The edge splices them into the template.
 
@@ -14,7 +14,7 @@ A 32-byte template **hash** travels with the values so the edge can reject a
 guest that was compiled against a different template than the one deployed.
 
 This split is the whole point. The guest never re-runs React and never emits the
-static page bytes — it stamps a tiny `(slot_id, kind, value)` list — so the wasm
+static page bytes, it stamps a tiny `(slot_id, kind, value)` list, so the wasm
 stays small and a request is served about as fast as a static file, while still
 delivering real first-paint HTML and SEO. The browser then hydrates the spliced
 markup in place with no flash and no client re-render, because the holes are
@@ -25,9 +25,9 @@ This page is about server-rendered HTML. JSON / binary API endpoints use
 
 The running example throughout is the basic example's `/hello` route:
 
-- `examples/basic/client/routes/hello.tsx` — the route (`ssr = true`, holes, loader)
-- `examples/basic/server/SsrHelloRender.ts` — the server `render` + `Ssr.register`
-- `examples/basic/server/_ssr/hello.slots.ts` — the generated `Slot` + `HASH` (gitignored, never hand-edited)
+- `examples/basic/client/routes/hello.tsx`, the route (`ssr = true`, holes, loader)
+- `examples/basic/server/SsrHelloRender.ts`, the server `render` + `Ssr.register`
+- `examples/basic/server/_ssr/hello.slots.ts`, the generated `Slot` + `HASH` (gitignored, never hand-edited)
 
 ---
 
@@ -40,9 +40,9 @@ manifest the edge serves. Routes without `ssr = true` are untouched and render
 purely on the client as before.
 
 Mark the dynamic bits with the four hole markers from `toiljs/client`. They are
-**transparent in the browser** — `<Hole>` renders its children, `<Repeat>`
+**transparent in the browser**, `<Hole>` renders its children, `<Repeat>`
 renders `each.map(...)`, `<RawHtml>` renders a `dangerouslySetInnerHTML`
-wrapper, `<Island>` renders its children — so the same component is your normal
+wrapper, `<Island>` renders its children, so the same component is your normal
 client UI. Only the build extractor and the server `render` treat them
 specially.
 
@@ -88,7 +88,7 @@ export default function Hello() {
 
 The build calls your `loader` once with synthesized sample params to obtain
 representative data, then renders the page with it. Only the **shape** of the
-data matters at build time — it drives which holes exist and (for `<Repeat>`)
+data matters at build time, it drives which holes exist and (for `<Repeat>`)
 captures the row sub-template. The real per-request values come from the
 **server** `render`, not from this loader. Note in particular that `<Repeat>`
 needs the sample to have **at least one row** so the build can capture the row
@@ -132,7 +132,7 @@ render under static markup: use the hole markers and `useLoaderData`, and put
 anything that needs router hooks (`useRouter`, `usePathname`, …) or browser-only
 APIs (`window`, `Date.now`, …) inside an `<Island>`. An island is empty in the
 first paint and appears only after hydration, so it gets no first-paint HTML or
-SEO — which is exactly right for "client only" content.
+SEO, which is exactly right for "client only" content.
 
 Opting in is always safe: a route (or a layout in its chain) that **throws**
 under static markup is **skipped at build with a warning** and falls back to
@@ -185,7 +185,7 @@ Ssr.register(renderHello); // side-effect registration
 
 ### Registration is manual; the import is load-bearing
 
-`ssr-codegen` generates ONLY the `Slot` enum and the `HASH` — it does **not**
+`ssr-codegen` generates ONLY the `Slot` enum and the `HASH`, it does **not**
 emit the render body and does **not** auto-register it. You write `renderHello`
 and call `Ssr.register(renderHello)` yourself.
 
@@ -215,11 +215,11 @@ edge splices it. All setters return `this` for chaining.
 | Method | Signature | Escaping | Use |
 | --- | --- | --- | --- |
 | `setText` | `setText(slotId, value: string)` | **React-escaped** | text content (safe by default) |
-| `setRaw` | `setRaw(slotId, html: string)` | **none (verbatim)** | raw HTML — *you* sanitize |
+| `setRaw` | `setRaw(slotId, html: string)` | **none (verbatim)** | raw HTML, *you* sanitize |
 | `setAttr` | `setAttr(slotId, value: string)` | **React-escaped** | an attribute value |
 | `setRepeat` | `setRepeat(slotId, rows: HtmlBuilder)` | per `HtmlBuilder` calls | a repeat region, pre-stamped row by row |
-| `setHeader` | `setHeader(name, value)` | — | a response header (e.g. `Cache-Control`, `Set-Cookie`) |
-| `setStatus` | `setStatus(code)` | — | the HTTP status (default 200) |
+| `setHeader` | `setHeader(name, value)` |, | a response header (e.g. `Cache-Control`, `Set-Cookie`) |
+| `setStatus` | `setStatus(code)` |, | the HTTP status (default 200) |
 
 `setText` and `setAttr` escape identically (React escapes text and attributes
 the same way). Slot ids passed are the `Slot` enum members; AS enums are `i32`,
@@ -240,7 +240,7 @@ v.setRepeat(Slot.list, rows);
 ```
 
 You are hand-writing the row markup, so it must match what `<Repeat>`'s child
-produces for the same item — the build captured exactly that markup as the row
+produces for the same item, the build captured exactly that markup as the row
 sub-template, and the edge inserts your stamped rows verbatim at the region
 offset. Keep the **structure** the same across rows; only the leaf hole values
 vary.
@@ -270,7 +270,7 @@ sees different markup and React throws a hydration mismatch and re-renders the
 subtree. The guest's `escapeHtml` and the build's `reactEscapeHtml` are pinned
 to be byte-identical for exactly this reason.
 
-`setRaw` and `HtmlBuilder.raw` do **not** escape — they insert your bytes
+`setRaw` and `HtmlBuilder.raw` do **not** escape, they insert your bytes
 verbatim. That is the right tool for markup you produced or sanitized yourself
 (the same contract as `dangerouslySetInnerHTML`), and the wrong tool for
 anything derived from request input.
@@ -284,7 +284,7 @@ anything derived from request input.
 1. loads the route + its layout chain through a short-lived Vite SSR server;
 2. calls the `loader` with sample params to get representative data;
 3. renders the page under its layouts with the markers in **sentinel mode**
-   (`__setSsrBuild(true)`) — each marker emits a Private-Use-Area sentinel token
+   (`__setSsrBuild(true)`), each marker emits a Private-Use-Area sentinel token
    instead of rendering normally;
 4. splices that into the built shell's `<div id="root">` and adds the SSR marker
    `<template id="__toil_ssr"></template>` (this is what the client `mount` looks
@@ -307,7 +307,7 @@ The `.tmpl` and `.slots` are then **copied** into the edge host bundle at
 `hosts/edge/_tmpl/<name>.{tmpl,slots}`.
 
 The build also writes the **server-importable** `Slot` + `HASH` module to
-`server/_ssr/<name>.slots.ts` — the one your `render` imports. It is generated
+`server/_ssr/<name>.slots.ts`, the one your `render` imports. It is generated
 and gitignored; never hand-edit it (see the two-pass note below).
 
 ### Route name derivation (`routeTemplateName`)
@@ -333,7 +333,7 @@ hand-maintained slots**:
 
 1. **Slots pre-pass** (before the server build) renders every `ssr = true`
    route to its `Slot` enum + `HASH` and writes the server-importable module at
-   `server/_ssr/<name>.slots.ts`. This is the file your `render` imports — it is
+   `server/_ssr/<name>.slots.ts`. This is the file your `render` imports, it is
    **generated, gitignored, and never hand-edited**.
 2. The server compiles against that module.
 3. The client (Vite) builds.
@@ -374,7 +374,7 @@ u16  n_slots
 
 `kind` is `0=text, 1=raw, 2=attr, 3=repeat`. The host keys values by `slot_id`
 and inserts each at the **manifest-fixed** offset, so the guest can never choose
-*where* bytes land — only what they are. If a value cannot be represented
+*where* bytes land, only what they are. If a value cannot be represented
 (a count or length overflows its field width, or the hash is the wrong size),
 the encoder writes the same fail-safe 500/zero-hash envelope instead of corrupt
 bytes.
@@ -426,7 +426,7 @@ interface GreetingData {
   services: Service[];
 }
 
-// Build-time sample data — only the SHAPE matters; the real per-request values
+// Build-time sample data, only the SHAPE matters; the real per-request values
 // come from the SERVER render. The repeat sample needs at least one row.
 export const loader = ({ params }: { params: Record<string, string> }): GreetingData => ({
   name: params.name ?? 'world',
@@ -490,7 +490,7 @@ export const HASH: StaticArray<u8> = [
 ];
 ```
 
-(Only the **top-level** holes get a `Slot` id — `name`, `blurb`, `services`. The
+(Only the **top-level** holes get a `Slot` id, `name`, `blurb`, `services`. The
 nested `svcName` / `svcRegion` live inside the repeat row sub-template, which the
 guest stamps with `HtmlBuilder`, so they are not separate slots.)
 
@@ -523,13 +523,13 @@ function renderHello(req: Request): SlotValues | null {
 
   const v = new SlotValues(HASH);
 
-  // Text hole — React-escaped (so ?name=<a>&b is safe).
+  // Text hole, React-escaped (so ?name=<a>&b is safe).
   v.setText(Slot.name, greetingName(req));
 
-  // Raw hole — verbatim; a fixed, trusted blurb (no request data).
+  // Raw hole, verbatim; a fixed, trusted blurb (no request data).
   v.setRaw(Slot.blurb, 'Rendered at the <strong>edge</strong> from a tiny values envelope.');
 
-  // Repeat — stamp the captured row markup once per item. The row sub-template
+  // Repeat, stamp the captured row markup once per item. The row sub-template
   // is <li><strong>{svcName}</strong><span class="hello-region">{svcRegion}</span></li>;
   // .text(...) escapes each nested hole exactly as React does.
   const services: Service[] = [
@@ -590,7 +590,7 @@ The `<Island>` is empty here (no first paint); it fills in after hydration.
 ## 9. Pitfalls and debugging
 
 - **Route skipped at build (warning, no SSR).** The route or a layout above it
-  threw under static markup — almost always a router hook (`useRouter`,
+  threw under static markup, almost always a router hook (`useRouter`,
   `usePathname`, …) or a browser-only API rendered outside an `<Island>`. The
   build prints `toil: SSR skipped <pattern> (...)` and the route falls back to
   client rendering. Move the offending content into an `<Island>`.
@@ -620,7 +620,7 @@ The `<Island>` is empty here (no first paint); it fills in after hydration.
   and `Ssr.dispatch` returns `null`. Add the import. (Plain render modules are
   not auto-discovered the way `@rest`/`@service` files are.)
 
-- **`setRaw` injecting unsanitized request data.** `setRaw` is verbatim — never
+- **`setRaw` injecting unsanitized request data.** `setRaw` is verbatim, never
   pass it anything derived from request input you have not sanitized. Use
   `setText` for request-derived text.
 

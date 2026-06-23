@@ -34,7 +34,7 @@ and as a named export from `toiljs/server/runtime`.
   type, `AuthService` (post-quantum login, signed sessions, `getUser()`), and
   the client half.
 - [Environment variables & secrets](./environment.md): `Environment.get` /
-  `getSecure` — per-tenant config + secrets set out of band (GitHub-Actions
+  `getSecure`, per-tenant config + secrets set out of band (GitHub-Actions
   style), so the `.wasm` carries no credentials. Two disjoint buckets, read-only.
 - [Email](./email.md): `EmailService`, `EmailTemplate`, the `emails/` React
   template pipeline, the stateless `TwoFactor` codes, provider config
@@ -52,14 +52,14 @@ and as a named export from `toiljs/server/runtime`.
 
 ## Conventions
 
-- **"Global, no import"** — a symbol marked `@global` in the runtime is in scope
+- **"Global, no import"**, a symbol marked `@global` in the runtime is in scope
   everywhere in a tenant without an `import`, exactly like `crypto`. The
   matching named export exists so editors resolve the type and so the module is
   pulled into every build. Either form works.
-- **Binary, not JSON, on the hot paths** — request/response bodies, sessions,
+- **Binary, not JSON, on the hot paths**, request/response bodies, sessions,
   and cookies use the deterministic `DataWriter`/`DataReader` codec. JSON is
   available for `@rest` routes but binary is the default for anything
   performance- or security-sensitive.
-- **One fresh instance per request** — guest memory is wiped between requests,
+- **One fresh instance per request**, guest memory is wiped between requests,
   so nothing persists in module globals across requests. Use a host-backed store
   for anything that must outlive a single request.

@@ -5,17 +5,17 @@ toiljs can send transactional email from a route handler. A handler calls
 `emails/` folder, or the stateless `TwoFactor` helper); the edge hands the
 message to a single off-core mailer thread that talks to the provider over the
 kernel network (never the worker cores), and **suspends** the wasm call until the
-provider responds — so a slow send never blocks the worker.
+provider responds, so a slow send never blocks the worker.
 
 Everything here is an ambient **global** (no import), like `crypto` and
 `AuthService`. A tenant that never sends email pulls none of it into its build.
 
-- **`EmailService`** — send one email.
-- **`EmailTemplate`** — a reusable template with `{{placeholder}}` substitution
+- **`EmailService`**, send one email.
+- **`EmailTemplate`**, a reusable template with `{{placeholder}}` substitution
   (plain text and/or HTML).
-- **`emails/*.tsx`** — author emails as React components; the build renders them
+- **`emails/*.tsx`**, author emails as React components; the build renders them
   to static HTML and generates a typed `Emails.<Name>.send(...)`.
-- **`TwoFactor`** — stateless email verification codes (2FA / confirm), no DB.
+- **`TwoFactor`**, stateless email verification codes (2FA / confirm), no DB.
 
 > **The one rule of HTML email:** email clients run **no JavaScript** and strip
 > `<style>`/external CSS. So HTML email is a static, inline-styled string, and
@@ -24,7 +24,7 @@ Everything here is an ambient **global** (no import), like `crypto` and
 
 ## Configure email
 
-Email is a **framework-reserved namespace of the tenant's environment** — the
+Email is a **framework-reserved namespace of the tenant's environment**, the
 same out-of-band [Environment](./environment.md) store that backs
 `Environment.get` / `getSecure`, but the `[email]` block is **host-only**: it is
 read and used in Rust (the off-core mailer) and is **never exposed to the
@@ -35,7 +35,7 @@ On the edge today it lives in the tenant's env secrets file,
 `$TOIL_ENV_DIR/<host>.env.secrets` (default dir `/run/toil/env`), kept `0600` and
 **out of `hosts/`** so the config watcher never sees a credential (the dashboard /
 edge DB replaces this file later). Email config is a set of **reserved
-`TOIL_EMAIL_*` keys** — host-only, stripped from the guest buckets, so a tenant
+`TOIL_EMAIL_*` keys**, host-only, stripped from the guest buckets, so a tenant
 can never read them via `Environment.getSecure`:
 
 ```bash
@@ -57,15 +57,15 @@ reserved namespace the framework consumes.
 When `enabled` is `false` (the default) the host has no email capability and
 `EmailService.send` returns `Disabled`. The env is loaded **lazily** (on the
 first send) and the `api_key` is materialized into a zeroizing secret in host
-memory — never written to logs or `/_admin`. A malformed `[email]` block is
+memory, never written to logs or `/_admin`. A malformed `[email]` block is
 treated as "no email" (the host returns `Disabled`); validate config on the
 dashboard before deploying.
 
 ### Providers
 
-**Resend** (`provider = "resend"`) — a JSON API; `api_key` holds the API key.
+**Resend** (`provider = "resend"`), a JSON API; `api_key` holds the API key.
 
-**Gmail** (`TOIL_EMAIL_PROVIDER=gmail`) — SMTP with Gmail defaults:
+**Gmail** (`TOIL_EMAIL_PROVIDER=gmail`), SMTP with Gmail defaults:
 `smtp.gmail.com`, port `587` (STARTTLS), username = `from`. `TOIL_EMAIL_API_KEY`
 holds a Gmail **App Password** (create one at
 <https://myaccount.google.com/apppasswords>; the account needs 2-Step
@@ -78,7 +78,7 @@ TOIL_EMAIL_PROVIDER=gmail
 TOIL_EMAIL_API_KEY=abcd efgh ijkl mnop
 ```
 
-**Generic SMTP** (`TOIL_EMAIL_PROVIDER=smtp`) — any submission server (Outlook,
+**Generic SMTP** (`TOIL_EMAIL_PROVIDER=smtp`), any submission server (Outlook,
 SendGrid/Mailgun SMTP, your own). Requires `TOIL_EMAIL_SMTP_HOST`; port defaults
 to `587` (STARTTLS), or set `465` for implicit TLS. `TOIL_EMAIL_SMTP_USER`
 defaults to `from`.
@@ -95,9 +95,9 @@ TOIL_EMAIL_SMTP_USER=noreply@example.com
 
 ### In dev
 
-`toiljs dev` runs the **full email pipeline** in Node — recipient validation,
+`toiljs dev` runs the **full email pipeline** in Node, recipient validation,
 dedup, and the per-minute / per-day / per-recipient caps all behave exactly like
-the edge — and **really sends** once you configure a provider. Configure it in
+the edge, and **really sends** once you configure a provider. Configure it in
 `toil.config.ts` (non-secret) with the API key in `.env.secrets`:
 
 ```ts
@@ -153,7 +153,7 @@ class Notify {
 
 | Status            | Meaning                                                     | Retry?           |
 | ----------------- | ----------------------------------------------------------- | ---------------- |
-| `Sent`            | Accepted by the provider                                    | —                |
+| `Sent`            | Accepted by the provider                                    |, |
 | `Deduped`         | An identical recent `(recipient, purpose)` was collapsed    | treat as sent    |
 | `Budget`          | The host's per-minute budget is exhausted                   | yes, later       |
 | `TryLater`        | The mailer was saturated / a queue was full                 | yes, back off    |
@@ -193,7 +193,7 @@ const status = welcome.send('alice@example.com', vars, 'welcome');
 - `template.render(vars)` returns the rendered `{ subject, body, html }` without
   sending (useful for preview/testing).
 
-For anything richer than `{{token}}` substitution — real layout, CSS, brand —
+For anything richer than `{{token}}` substitution, real layout, CSS, brand,
 author the email as a React component instead.
 
 ## React email templates
@@ -247,7 +247,7 @@ Authoring notes:
   email name), `export const text` (a plain-text alternative; otherwise derived
   from the HTML), `export const purpose`.
 - **Build-time, field substitution only.** Because the component renders once at
-  build, per-send data is `{{token}}` substitution — a runtime `{items.map(...)}`
+  build, per-send data is `{{token}}` substitution, a runtime `{items.map(...)}`
   or conditional bakes in at build, it does not re-run per recipient. That covers
   transactional / 2FA / confirmation email; dynamic lists need a different
   approach.
@@ -265,7 +265,7 @@ editor. It refreshes live as you edit the template or its CSS.
 ## Email verification codes (`TwoFactor`)
 
 `TwoFactor` is a **stateless** email-code primitive (2FA, email confirmation,
-magic codes) — no database. It emails a random code and returns a signed
+magic codes), no database. It emails a random code and returns a signed
 **token** that commits to the code via HMAC, without putting the code in the
 token (the code is only in the email). Verification recomputes the HMAC from the
 token plus the user-entered code, so a valid `(token, code)` pair can only come
@@ -281,18 +281,18 @@ const challenge = TwoFactor.send('alice@example.com', 'login'); // emails the co
 const ok: bool = TwoFactor.verify(challenge.token, 'alice@example.com', userEntered);
 ```
 
-- **`send(recipient, purpose, ttlSecs = 600, digits = 6)`** — issues a code,
+- **`send(recipient, purpose, ttlSecs = 600, digits = 6)`**, issues a code,
   emails it with a built-in template, returns `{ token, status }`.
-- **`issue(recipient, purpose, ttlSecs, digits)`** — returns `{ code, token }`
+- **`issue(recipient, purpose, ttlSecs, digits)`**, returns `{ code, token }`
   **without** sending, so you can email `code` with your own `EmailTemplate` /
   `Emails.*` for a branded message.
-- **`verify(token, recipient, code)`** — `true` only for a code issued for that
+- **`verify(token, recipient, code)`**, `true` only for a code issued for that
   recipient that hasn't expired. Constant-time compare.
-- **`TwoFactor.setSecret(secret)`** — the HMAC secret for the tokens. Call once
+- **`TwoFactor.setSecret(secret)`**, the HMAC secret for the tokens. Call once
   at startup in `main.ts`; it must be identical on every edge instance and out of
   any client bundle. (This is separate from the provider `api_key`.)
 
-**Limitation:** this gives integrity + expiry but **not single-use** — a valid
+**Limitation:** this gives integrity + expiry but **not single-use**, a valid
 code verifies repeatedly within its TTL, because there is no server state to burn
 it. Keep the TTL short; for true single-use, store a per-recipient
 last-verified-at and reject at or before it.
@@ -302,13 +302,13 @@ last-verified-at and reject at or before it.
 All enforced authoritatively in the single mailer (so the counts are exact across
 all workers):
 
-- **Per-host budget** — two rolling windows, both enforced: a 1-minute cap
+- **Per-host budget**, two rolling windows, both enforced: a 1-minute cap
   (`max_per_min`) and a 24-hour cap (`max_per_day`, `0` = unlimited). Over either
   one → `Budget`. Each host's caps, in-window sends, and reject counts are visible
   per host at `GET /_admin/email`.
-- **Per-recipient cap** — `max_per_recipient_per_hour`. Over it →
+- **Per-recipient cap**, `max_per_recipient_per_hour`. Over it →
   `RecipientCapped`.
-- **Dedup** — identical `(host, recipient, purpose)` within ~30s → `Deduped`.
+- **Dedup**, identical `(host, recipient, purpose)` within ~30s → `Deduped`.
 
 Editing these in the host config takes effect on the next send (no restart).
 
@@ -316,11 +316,11 @@ Editing these in the host config takes effect on the next send (no restart).
 
 `GET /_admin/email` returns process-wide counters by reason (JSON), e.g.
 `submitted`, `sent`, `deduped`, `budget`, `recipient_capped`, `try_later`,
-`bad_recipient`, `provider_error`. It exposes **counts only** — never a
+`bad_recipient`, `provider_error`. It exposes **counts only**, never a
 recipient, code, subject, body, or secret.
 
 ## See also
 
-- [Rate limiting](./ratelimit.md) — protect your routes (including any email
+- [Rate limiting](./ratelimit.md), protect your routes (including any email
   trigger) with `@ratelimit`.
-- [Web Crypto](./crypto.md) — the `crypto` global `TwoFactor` builds on.
+- [Web Crypto](./crypto.md), the `crypto` global `TwoFactor` builds on.

@@ -134,11 +134,11 @@ serialized.
 
 Each route is either **JSON** (default) or **Binary**:
 
-- **JSON** — the body is `JSON.parse`d and revived via the `@data` type's
+- **JSON**, the body is `JSON.parse`d and revived via the `@data` type's
   `fromJSON`; the response is the type's `toJSON()`. 64-bit-and-larger integers
   cross the wire as decimal strings (exact at any size). Best for endpoints a
   browser or third party calls directly.
-- **Binary** — the body is `Body.decode(bytes)` and the response is
+- **Binary**, the body is `Body.decode(bytes)` and the response is
   `value.encode()`, using the deterministic `DataWriter`/`DataReader` codec. No
   precision loss, smaller, faster. Best for app-to-app and anything
   security-sensitive.

@@ -59,14 +59,14 @@ return Response.bytes(blob).cacheFor(5);
 
 The cache layer refuses to store anything unsafe, regardless of the directive:
 
-- **5xx** responses are never cached — a server error is transient, and `@cache`
+- **5xx** responses are never cached, a server error is transient, and `@cache`
   wraps the whole route, so a `@cache`d route that hits a blip returns its 500
   carrying the directive; caching it would serve the failure for the full TTL.
   **2xx, 3xx, and 4xx are cacheable** (a redirect or a `404`/`410` is a
   deterministic function of the request key);
 - a response that sets a **`Set-Cookie`** is never cached;
 - a response to an **authenticated** request is not cached unless you pass
-  `allowAuth = true` — this prevents one user's personalized response from being
+  `allowAuth = true`, this prevents one user's personalized response from being
   served to another;
 - the edge TTL is **clamped to 24 hours**.
 
@@ -75,7 +75,7 @@ an unauthorized request is rejected with 401 before anything is cached, and a
 cached entry is only ever produced from a handler that actually ran.
 
 Caching is **always opt-in.** A response with no `Toil-Cache-Control` directive
-(i.e. no `@cache` / `Response.cache(...)`) is never stored — there is no blind
+(i.e. no `@cache` / `Response.cache(...)`) is never stored, there is no blind
 "cache every GET" mode, because an automatic window cannot tell a personalized
 response from a public one and would key it without a per-user component.
 
@@ -84,11 +84,11 @@ response from a public one and would key it without a per-user component.
 The edge cache is per-core and hard-capped so it can never exhaust node memory.
 It has two tiers:
 
-- **RAM tier** — small, short-TTL responses. Bounded by a per-core byte budget
+- **RAM tier**, small, short-TTL responses. Bounded by a per-core byte budget
   (each core holds at most ~128 MB) plus an entry-count cap; an insert that would
   exceed the budget drops expired entries first, then evicts the soonest-to-expire
   ones. A response over ~256 KB does not go in the RAM tier.
-- **Disk tier (spill)** — when the operator enables `--spill-dir`, a **big**
+- **Disk tier (spill)**, when the operator enables `--spill-dir`, a **big**
   (over the ~256 KB RAM cap) or **long-TTL** (≥ 10 min) cacheable response is
   written to disk instead and served back zero-RAM via a memory map, the same way
   static files are served. This keeps the RAM tier for the hot working set while
