@@ -96,6 +96,7 @@
     "scripts": {
         "watch": "tsc -p tsconfig.json --watch",
         "prepublishOnly": "npm run build",
+        "gen:docs": "node scripts/gen-toil-docs.mjs",
         "build": "npm run build:shared && npm run build:logger && npm run build:io && npm run build:client && npm run build:backend && npm run build:devserver && npm run build:compiler && npm run build:cli",
         "build:shared": "tsc -p tsconfig.shared.json",
         "build:logger": "tsc -p tsconfig.logger.json",
@@ -103,8 +104,8 @@
         "build:io": "tsc -p tsconfig.io.json",
         "build:backend": "tsc -p tsconfig.backend.json",
         "build:devserver": "tsc -p tsconfig.devserver.json",
-        "build:compiler": "tsc -p tsconfig.compiler.json",
-        "build:cli": "tsc -p tsconfig.cli.json --noEmit && esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=build/cli/index.js --external:toiljs/*",
+        "build:compiler": "npm run gen:docs && tsc -p tsconfig.compiler.json",
+        "build:cli": "npm run gen:docs && tsc -p tsconfig.cli.json --noEmit && esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=build/cli/index.js --external:toiljs/*",
         "test": "vitest run --coverage",
         "test:watch": "vitest",
         "test:ui": "vitest --ui",
@@ -112,6 +113,7 @@
         "test:server": "asp --config as-pect.config.js --verbose --no-logo",
         "test:server:ci": "asp --config as-pect.config.js --summary --no-logo",
         "test:all": "npm run test && npm run test:server",
+        "prelint": "npm run gen:docs",
         "lint": "eslint src",
         "docs": "typedoc --out docs --tsconfig tsconfig.json --readme README.md --name TOILJS --plugin typedoc-material-theme --themeColor '#cb9820' src",
         "setup": "npm i && npm run build"

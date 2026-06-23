@@ -6,6 +6,9 @@ export default defineConfig({
     test: {
         globals: true,
         environment: 'node',
+        // Generate src/compiler/toil-docs.generated.ts (gitignored, imported by
+        // docs.ts) before the suite, so a fresh checkout can test without a build.
+        globalSetup: ['./test/global-setup.ts'],
         include: ['test/**/*.test.ts', 'test/**/*.test.tsx', 'test/**/*.spec.ts'],
         // test/assembly holds toilscript specs run by as-pect, not vitest.
         exclude: [...configDefaults.exclude, 'test/assembly/**'],
