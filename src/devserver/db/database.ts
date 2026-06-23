@@ -610,7 +610,7 @@ export class DevDatabase {
     }
 
     // Bounded multi-get. Keys blob: u32 count + per key (u32 len + bytes).
-    // Result (stashed): u32 count + per item u8 present (+ u32 len + bytes),
+    // Result (stashed): u32 count + per item u8 present (+ u32 schema_version + u32 len + bytes),
     // in request order. Mirrors the edge `op_get_many` framing byte-for-byte.
     getMany(
         ref: MemoryRef,
@@ -925,7 +925,7 @@ export class DevDatabase {
     }
 
     // Frame the members (sorted by bytes, matching the edge BTreeMap) as
-    // `u32 count` + per member `u32 len + bytes`; stash + return the length.
+    // `u32 count` + per member `u32 schema_version + u32 len + bytes`; stash + return the length.
     membershipList(
         ref: MemoryRef,
         db: DbDevState,
@@ -1153,7 +1153,7 @@ export class DevDatabase {
     }
 
     // Frame the newest-`limit` events as `u32 count` then per event a
-    // length-prefixed blob (`u32 len + bytes`), newest first; stash + return
+    // `u32 schema_version` + length-prefixed blob (`u32 len + bytes`), newest first; stash + return
     // the blob length. Matches the edge `op_latest` / `toildb::Writer` framing.
     latest(
         ref: MemoryRef,

@@ -15,6 +15,7 @@ import {
     persistDb,
     setDbCatalog,
 } from '../src/devserver/db/index.js';
+import { parseRouteKinds, routeKindForRequest } from '../src/devserver/db/routeKinds.js';
 import type { MemoryRef } from '../src/devserver/runtime/host.js';
 
 const DEFAULT_CATALOG = {
@@ -75,11 +76,48 @@ function wasmWithSection(name: string, payload: Uint8Array): Buffer {
     ]);
 }
 
+function routeKindsSection(routes: readonly (readonly [number, number, string])[]): Buffer {
+    const chunks: Buffer[] = [Buffer.alloc(4)];
+    chunks[0].writeUInt16LE(1, 0);
+    chunks[0].writeUInt16LE(routes.length, 2);
+    for (const [method, kind, pattern] of routes) {
+        const p = Buffer.from(pattern, 'utf8');
+        const header = Buffer.alloc(6);
+        header.writeUInt8(method, 0);
+        header.writeUInt8(kind, 1);
+        header.writeUInt32LE(p.length, 2);
+        chunks.push(header, p);
+    }
+    return Buffer.concat(chunks);
+}
+
 afterEach(() => {
     __resetDbForTests();
 });
 
 describe('toildb dev emulator (record family)', () => {
+    it('parses route-kind metadata and only tightens matching mutating routes', () => {
+        const wasm = wasmWithSection(
+            'toildb.route_kinds',
+            routeKindsSection([
+                [1, 0, '/api/search'],
+                [1, 0, '/api/items/:id'],
+            ]),
+        );
+        const routes = parseRouteKinds(wasm);
+
+        expect(routeKindForRequest(routes, 'POST', '/api/search?q=x')).toBe(DbFunctionKind.Query);
+        expect(routeKindForRequest(routes, 'POST', '/api/items/42')).toBe(DbFunctionKind.Query);
+        expect(routeKindForRequest(routes, 'GET', '/api/search')).toBeNull();
+        expect(routeKindForRequest(routes, 'POST', '/api/items')).toBeNull();
+    });
+
+    it('ignores malformed route-kind metadata like the edge method clamp fallback', () => {
+        expect(
+            parseRouteKinds(wasmWithSection('toildb.route_kinds', Buffer.from([1, 0, 1, 0, 1]))),
+        ).toEqual([]);
+    });
+
     it('rejects unknown catalog collections instead of minting arbitrary handles', () => {
         const { imports, buf } = setup();
         const [p, l] = put(buf, 0, 'App/missing');
