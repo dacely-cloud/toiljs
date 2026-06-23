@@ -15,6 +15,11 @@ import './routes/EnvDemo';
 import './services/Stats';
 import './services/remotes';
 
+// Edge SSR: importing the render module compiles it in and self-registers its
+// `/hello` renderer with the `Ssr` router (the route opts in via `export const
+// ssr = true` in client/routes/hello.tsx). See server/SsrHelloRender.ts.
+import './SsrHelloRender';
+
 // DO NOT TOUCH THIS.
 Server.handler = () => {
     // ONLY CHANGE THE HANDLER CLASS NAME.
