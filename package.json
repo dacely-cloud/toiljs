@@ -105,7 +105,7 @@
         "build:backend": "tsc -p tsconfig.backend.json",
         "build:devserver": "tsc -p tsconfig.devserver.json",
         "build:compiler": "npm run gen:docs && tsc -p tsconfig.compiler.json",
-        "build:cli": "npm run gen:docs && tsc -p tsconfig.cli.json --noEmit && esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=build/cli/index.js --external:toiljs/*",
+        "build:cli": "tsc -p tsconfig.cli.json --noEmit && esbuild src/cli/index.ts --bundle --platform=node --format=esm --outfile=build/cli/index.js --external:toiljs/*",
         "test": "vitest run --coverage",
         "test:watch": "vitest",
         "test:ui": "vitest --ui",
