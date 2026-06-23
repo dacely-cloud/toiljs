@@ -625,3 +625,51 @@ code {
     pointer-events: none;
     z-index: 0;
 }
+
+/* ── Edge SSR demo (/hello) ── */
+.hello {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+.hello h1 {
+    background: linear-gradient(90deg, var(--accent), var(--accent3));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.hello-blurb {
+    color: var(--muted);
+}
+
+.hello-services {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.hello-services li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0.9rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+
+.hello-region {
+    color: var(--accent3);
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+}
+
+.hello-island {
+    margin-top: 1.5rem;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
