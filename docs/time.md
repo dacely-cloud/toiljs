@@ -24,7 +24,7 @@ const s  = Time.nowSeconds();  // u64 whole seconds since the Unix epoch
 
 ## Semantics
 
-`Time` is **wall-clock, not monotonic** — exactly like browser `Date.now()`. It
+`Time` is **wall-clock, not monotonic**, exactly like browser `Date.now()`. It
 tracks the system clock and can step backward across an NTP correction.
 
 - Use it to stamp and compare absolute instants: session `iat`/`exp`, login

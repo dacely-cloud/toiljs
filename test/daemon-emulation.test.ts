@@ -80,7 +80,9 @@ const counter = (key: string): number => {
     return v === null ? 0 : Number(v.toString('utf8'));
 };
 
-describe('dev daemon emulation', () => {
+// Needs the local toilscript dev build (with --targetMode); skip where the
+// sibling repo is absent (e.g. CI, which has only the published dep).
+describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () => {
     it('compiles the @daemon fixture to a cold artifact', () => {
         // Guard: every assertion below depends on the local toilscript link. A hard
         // failure here (rather than a silent skip) surfaces the cross-repo break.

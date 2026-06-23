@@ -35,6 +35,13 @@ import { applyCacheRule, lookupCache } from './http/cache.js';
 import { type EnvelopeRequest, METHOD_CODES } from './http/envelope.js';
 import { proxyToVite, type ViteTarget, wireWebsocketProxy } from './http/proxy.js';
 import { WasmServerModule } from './runtime/module.js';
+import {
+    assembleSsr,
+    buildSsrRoutes,
+    type DevSsrTemplate,
+    pathnameOf,
+    type SsrResult,
+} from './ssr.js';
 
 const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
 
@@ -95,6 +102,13 @@ export interface DevServerOptions {
      * otherwise it stays a log-only mock. See `./email`.
      */
     readonly email?: EmailBackendConfig;
+    /**
+     * Edge-SSR templates (one per `ssr = true` route), extracted at dev startup
+     * against the live dev shell. When a GET/HEAD matches a route the dev server
+     * runs the guest `render`, splices the values, and serves the SSR HTML (same
+     * path as the prod edge). Omit / empty for a project with no SSR route.
+     */
+    readonly ssrTemplates?: readonly DevSsrTemplate[];
 }
 
 /** A running dev server. */
@@ -179,6 +193,23 @@ function sendWasmResponse(
     response.send(Buffer.from(result.body.buffer, result.body.byteOffset, result.body.length));
 }
 
+/** Sends a spliced edge-SSR response (the full server-rendered HTML document). */
+function sendSsr(response: Response, out: SsrResult, headOnly: boolean): void {
+    response.status(out.status);
+    let hasContentType = false;
+    for (const [name, value] of out.headers) {
+        if (name.toLowerCase() === 'content-type') hasContentType = true;
+        response.header(name, value);
+    }
+    if (!hasContentType) response.header('content-type', 'text/html; charset=utf-8');
+    response.header('server', 'toil-dev');
+    if (headOnly) {
+        response.send('');
+        return;
+    }
+    response.send(Buffer.from(out.html.buffer, out.html.byteOffset, out.html.length));
+}
+
 /**
  * Starts the front server. The caller owns the Vite dev server (start it on a
  * loopback port first) and the toilscript rebuild watcher; this watches only
@@ -199,6 +230,16 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
     }
 
     const module = new WasmServerModule(options.wasmFile);
+
+    // Edge-SSR routes (extracted against the live dev shell at startup). When a
+    // GET/HEAD matches one, the dev server runs the guest `render`, splices the
+    // values into the template, and serves the SSR HTML (prod-edge parity).
+    const ssrRoutes = buildSsrRoutes(options.ssrTemplates ?? []);
+    if (ssrRoutes.length > 0) {
+        process.stdout.write(
+            pc.dim(`  edge SSR: ${String(ssrRoutes.length)} route(s) served server-side`) + '\n',
+        );
+    }
 
     // Persist dev DB data under the project's .toil/ so records, events, and their
     // schema_versions survive restarts (delete .toil/devdata.json to reset). Only
@@ -307,6 +348,31 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
                 );
                 response.status(500).send('internal error\n');
                 return;
+            }
+
+            // Edge SSR: handle() did not claim this path; if it matches an
+            // `ssr = true` route, run the guest `render`, splice the values, and
+            // serve the server-rendered HTML. A fail-safe envelope (no renderer
+            // matched / malformed) returns null, so we fall through to Vite (the
+            // route then client-renders, same as before).
+            if (
+                (request.method === 'GET' || request.method === 'HEAD') &&
+                ssrRoutes.length > 0
+            ) {
+                const route = ssrRoutes.find((r) => r.test(pathnameOf(request.url)));
+                if (route) {
+                    try {
+                        const out = assembleSsr(route, module.dispatchRender(envelopeReq));
+                        if (out !== null) {
+                            sendSsr(response, out, request.method === 'HEAD');
+                            return;
+                        }
+                    } catch (e) {
+                        process.stdout.write(
+                            pc.red(`  ✗ SSR ${request.path}: ${String(e)}`) + '\n',
+                        );
+                    }
+                }
             }
         }
 

@@ -46,12 +46,21 @@ interface GreetingData {
 }
 
 /**
- * Sample data for the build-time render. At request time the SERVER `render`
- * derives the real values (see `server/SsrHelloRender.ts`); only the SHAPE of
- * this data has to match so the extractor captures the right holes.
+ * This loader plays two roles:
+ *
+ *  1. BUILD: it is rendered once (with empty search params) so the extractor
+ *     captures the holes; only the SHAPE matters there.
+ *  2. CLIENT HYDRATION: after the edge serves the server-rendered HTML, the
+ *     browser hydrates by re-rendering this component with THIS loader's data.
+ *     For a byte-clean hydrate, that data must reproduce the values the SERVER
+ *     `render` stamped (see `server/SsrHelloRender.ts`). So the greeting reads
+ *     `?name=` here exactly as the server `render` does; if it didn't,
+ *     `/hello?Bob` would hydrate the server's "Bob" back to the loader default
+ *     and flash. (Holes that the client cannot reproduce belong in an
+ *     `<Island>`.)
  */
-export const loader = ({ params }: { params: Record<string, string> }): GreetingData => ({
-    name: params.name ?? 'world',
+export const loader = ({ searchParams }: { searchParams: URLSearchParams }): GreetingData => ({
+    name: searchParams.get('name') || 'world',
     blurbHtml: 'Rendered at the <strong>edge</strong> from a tiny values envelope.',
     services: [
         { name: 'record', region: 'us-east' },

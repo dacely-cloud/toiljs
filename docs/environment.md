@@ -2,7 +2,7 @@
 
 `Environment` gives a tenant **per-app environment variables and secrets**, set
 out of band (a dashboard, like GitHub Actions) so the deployed `.wasm` carries
-**no credentials**. It is read-only from app code — there is no `set`; values are
+**no credentials**. It is read-only from app code, there is no `set`; values are
 configured on the deployment side, never from the module.
 
 ```ts
@@ -20,15 +20,15 @@ class Cfg {
 }
 ```
 
-`Environment` is a global — no import needed (like `EmailService` / `AuthService`).
+`Environment` is a global, no import needed (like `EmailService` / `AuthService`).
 
 ## Two disjoint buckets
 
 Just like GitHub Actions' `vars` vs `secrets`:
 
-- **`Environment.get(key)`** reads **plain vars** — non-sensitive config (a public
+- **`Environment.get(key)`** reads **plain vars**, non-sensitive config (a public
   API base URL, a feature flag, a region). Returns the string, or `null`.
-- **`Environment.getSecure(key)`** reads **secrets** — sensitive values (a
+- **`Environment.getSecure(key)`** reads **secrets**, sensitive values (a
   third-party API key). Returns the string, or `null`.
 
 The buckets are **disjoint**: a secret is **never** returned by `get()`, and a
@@ -37,13 +37,13 @@ through a code path that logs the result of a `get()`. Keys are case-sensitive,
 exact-match.
 
 > Secrets you read with `getSecure` are plaintext in your module at runtime
-> (that's the point — you need them to call out). Don't log them, don't put them
+> (that's the point, you need them to call out). Don't log them, don't put them
 > in a response, and don't copy them into a client bundle.
 
 ## What is NOT here
 
-Framework-reserved namespaces (today: **email** provider config) are **host-only**
-— resolved and used in Rust where the framework needs them, and **never exposed to
+Framework-reserved namespaces (today: **email** provider config) are **host-only**,
+resolved and used in Rust where the framework needs them, and **never exposed to
 the `.wasm`**. There is no `Environment.email`; you configure email in the
 `[email]` block of the same env file and the platform uses it for you (see
 [Email](./email.md)). The env imports only ever see your own `vars` / `secrets`.
@@ -53,7 +53,7 @@ the `.wasm`**. There is no `Environment.email`; you configure email in the
 Vars and secrets live in **two separate dotenv (`.env`) files**, so the disjoint
 split is structural and the secrets file can be locked down on its own. On the
 edge they are per host, **out of `hosts/`** (so the config watcher never sees a
-credential) — the dashboard / edge database replaces them later:
+credential), the dashboard / edge database replaces them later:
 
 ```bash
 # $TOIL_ENV_DIR/<host>.env          (default dir /run/toil/env)
@@ -63,7 +63,7 @@ REGION=eu
 # $TOIL_ENV_DIR/<host>.env.secrets  (mode 0600)
 STRIPE_KEY=sk_live_xxx                     # -> Environment.getSecure("STRIPE_KEY")
 
-# host-only email config — reserved TOIL_EMAIL_* keys, NEVER exposed to the .wasm
+# host-only email config, reserved TOIL_EMAIL_* keys, NEVER exposed to the .wasm
 TOIL_EMAIL_ENABLED=true
 TOIL_EMAIL_PROVIDER=resend
 TOIL_EMAIL_FROM=noreply@example.com
@@ -72,7 +72,7 @@ TOIL_EMAIL_API_KEY=re_xxx
 
 Each file is plain dotenv: `KEY=value` per line, `#` comments, optional `export`,
 optional quotes. Keys with the reserved **`TOIL_`** prefix are framework/host-only
-and are stripped from BOTH guest buckets — a tenant can never read them via
+and are stripped from BOTH guest buckets, a tenant can never read them via
 `get`/`getSecure` (see [Email](./email.md) for `TOIL_EMAIL_*`).
 
 On the edge, env is loaded **lazily** (the first time your code reads it) into a

@@ -370,6 +370,44 @@ export async function extractServerSlots(cfg: ResolvedToilConfig): Promise<Map<s
     );
 }
 
+/** One SSR route's in-memory dev template: the spliceable `.tmpl` plus its
+ * top-level slot insertion points (numeric id -> byte offset), parsed from the
+ * `.slots` manifest. Used by the dev server to serve SSR without a prod build. */
+export interface DevSsrTemplate {
+    pattern: string;
+    name: string;
+    tmpl: Buffer;
+    entries: { id: number; offset: number }[];
+}
+
+/**
+ * Render every `ssr = true` route against the given (live, Vite-transformed) dev
+ * `shell` into an in-memory template + slot offsets, for the dev server to splice
+ * the guest `render` values into. Unlike {@link extractTemplates} this has NO
+ * side effects (it writes nothing and does not touch `server/_ssr` or the host
+ * bundle); the dev server builds together with the guest, so there is no hash to
+ * reconcile. Returns `[]` when no route opts in.
+ */
+export async function extractDevSsrTemplates(
+    cfg: ResolvedToilConfig,
+    shell: string,
+): Promise<DevSsrTemplate[]> {
+    const rendered = await renderSsrRoutes(cfg, shell);
+    return rendered.map(({ pattern, art }) => {
+        // Parse the `.slots` manifest: 46-byte header (n_slots at offset 44),
+        // then 8-byte entries (u32 offset, u16 id, u8 kind, u8 reserved).
+        const bin = art.slotsBin;
+        const n = bin.readUInt16LE(44);
+        const entries: { id: number; offset: number }[] = [];
+        let o = 46;
+        for (let i = 0; i < n; i++) {
+            entries.push({ offset: bin.readUInt32LE(o), id: bin.readUInt16LE(o + 4) });
+            o += 8;
+        }
+        return { pattern, name: art.name, tmpl: art.tmpl, entries };
+    });
+}
+
 /** A file-safe, identifier-ish name for a route pattern (`/u/:name` -> `u_name`). */
 export function routeTemplateName(pattern: string): string {
     const n = pattern.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');

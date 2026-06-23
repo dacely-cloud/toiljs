@@ -24,7 +24,7 @@ imports in `toil-backend` (`crypto.mlkem_decapsulate`, `crypto.voprf_evaluate`),
 
 ---
 
-## Tier 1 — blocks production (cannot run on the edge yet)
+## Tier 1, blocks production (cannot run on the edge yet)
 
 ### 1.1 Storage on toildb (THE blocker) -- "when building toildb, consider this"
 The accounts + login challenges live in the **DEV-ONLY** `kv.*` Map
@@ -72,17 +72,17 @@ in-prod `mldsa_verify` import). Do before trusting in prod.
 
 ---
 
-## Tier 2 — protocol hardening
+## Tier 2, protocol hardening
 
-### 2.6 A properly bound session key — DONE (on main, unreleased)
+### 2.6 A properly bound session key, DONE (on main, unreleased)
 The session key is now `K = HMAC-SHA256(sharedSecret, SESSION_KEY_LABEL || H(M))` and the
 mutual-auth tag is `HMAC-SHA256(K, SERVER_CONFIRM_LABEL || H(M))` (`AuthService.deriveSessionKey`
 + `serverConfirmTag`; client mirrors it with hash-wasm `createHMAC`). REMAINING: binding the
 *session cookie* to the transport (so a stolen cookie is useless on another channel) needs
-the TLS exporter, which the wasm guest cannot see — an edge/transport follow-up, not doable
+the TLS exporter, which the wasm guest cannot see, an edge/transport follow-up, not doable
 purely in the guest.
 
-### 2.7 Bind the KDF params + server key into the transcript — DONE (on main, unreleased)
+### 2.7 Bind the KDF params + server key into the transcript, DONE (on main, unreleased)
 The single `buildLoginMessage` now binds the ML-KEM ciphertext, the Argon2id params
 (mem/iters/par), and `serverKemKeyId = SHA-256(serverKemPublicKey)`. Closes
 key-substitution and param-downgrade confusion. (There is ONE login message format, no
@@ -96,7 +96,7 @@ a reviewable artifact.
 
 ---
 
-## Tier 3 — account lifecycle (missing today)
+## Tier 3, account lifecycle (missing today)
 
 ### 3.1 Password change / key rotation
 Re-derive under a fresh salt while authenticated, re-register the new public key. None

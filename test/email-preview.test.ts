@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 import { createServer } from 'vite';
@@ -14,7 +15,11 @@ import { createViteConfig } from '../src/compiler/vite';
 
 const EXAMPLE = path.resolve(__dirname, '../examples/basic');
 
-describe('email preview end-to-end (examples/basic)', () => {
+// Drives a Vite server over examples/basic; skip where the example's deps are
+// not installed (e.g. CI without the example set up).
+describe.skipIf(!existsSync(path.join(EXAMPLE, 'node_modules')))(
+    'email preview end-to-end (examples/basic)',
+    () => {
     it('lists Welcome and inlines its emails/styles/email.css; client/* alias resolves', async () => {
         const cfg = await loadConfig({ root: EXAMPLE });
         const items = listEmails(cfg);

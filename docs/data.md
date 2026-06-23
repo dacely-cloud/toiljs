@@ -17,13 +17,13 @@ class Player {
 
 From that the compiler synthesizes, on the class:
 
-- `encode(): Uint8Array` / `static decode(buf): T` — the binary codec (with a
+- `encode(): Uint8Array` / `static decode(buf): T`, the binary codec (with a
   4-byte type id prefix).
-- `encodeInto(w: DataWriter)` / `static decodeFrom(r: DataReader)` — the codec
+- `encodeInto(w: DataWriter)` / `static decodeFrom(r: DataReader)`, the codec
   without the type-id frame, for nesting.
-- `toJSON()` / `static fromJSON(v)` — the JSON codec (64-bit-and-larger integers
+- `toJSON()` / `static fromJSON(v)`, the JSON codec (64-bit-and-larger integers
   as decimal strings, so they survive `JSON.parse` exactly).
-- `static dataId(): u32` — a stable FNV-1a hash of the class name, written as the
+- `static dataId(): u32`, a stable FNV-1a hash of the class name, written as the
   type-id prefix by `encode()`.
 
 Fields may be scalars (`u8`..`u256`, `i8`..`i256`, `f32`, `f64`, `bool`),
@@ -47,8 +47,8 @@ public blob(input: FileData): FileResult { /* input.decode, result.encode */ }
 
 ## The binary codec: `DataWriter` / `DataReader`
 
-When you need to lay out bytes yourself — custom bodies, session payloads,
-challenge messages — use the codec directly. It lives in the `data` module:
+When you need to lay out bytes yourself, custom bodies, session payloads,
+challenge messages, use the codec directly. It lives in the `data` module:
 
 ```ts
 import { DataWriter, DataReader } from 'data';

@@ -2,7 +2,7 @@
 
 The guest gets a synchronous Web Crypto surface through the ambient `crypto`
 global, backed by host functions. It mirrors the browser `crypto` /
-`crypto.subtle` API but **without Promises** — ToilScript has no `async`, so
+`crypto.subtle` API but **without Promises**, ToilScript has no `async`, so
 every call returns its result directly. Keys are opaque per-request handles in a
 host keystore; a `CryptoKey` is valid only for the request that created it.
 
@@ -84,7 +84,7 @@ Each algorithm has a small params class you pass to `importKey`/`sign`/etc.:
 - **Key formats:** `FMT_RAW`, `FMT_PKCS8`, `FMT_SPKI` (`FMT_JWK` is rejected).
 - **Usages (bitmask):** `USAGE_ENCRYPT`, `USAGE_DECRYPT`, `USAGE_SIGN`,
   `USAGE_VERIFY`, `USAGE_DERIVE_KEY`, `USAGE_DERIVE_BITS`, `USAGE_WRAP_KEY`,
-  `USAGE_UNWRAP_KEY` — OR them together.
+  `USAGE_UNWRAP_KEY`, OR them together.
 - **Named curves:** `CURVE_P256`, `CURVE_P384` (`CURVE_P521` is not supported).
 
 ### `CryptoKey`
@@ -116,7 +116,7 @@ const ct = crypto.subtle.encrypt(new AesGcmParams(iv, aad, 128), k, plaintext);
 ## Post-quantum verify
 
 The host also exposes ML-DSA-44 (FIPS 204) signature verification as
-`crypto.mldsa_verify`. It is verify-only — the host never holds a secret key — and
+`crypto.mldsa_verify`. It is verify-only, the host never holds a secret key, and
 underpins the [auth primitive](./auth.md). Most code reaches it through
 `AuthService.verifyLogin(publicKey, message, signature)` rather than calling the
 import directly. Public key is 1312 bytes, signature 2420 bytes, with a FIPS 204
@@ -124,7 +124,7 @@ domain-separation context.
 
 ## Limitations
 
-- **No Promises** — every call is synchronous.
+- **No Promises**, every call is synchronous.
 - **No RSA** and **no JWK** key format.
 - **P-521** is not supported (P-256 and P-384 are).
 - Signature *generation* for ML-DSA is client-side only; the server verifies.
