@@ -15,7 +15,12 @@ import { loadConfig, type ResolvedToilConfig } from './config.js';
 import { renderEmails } from './emails.js';
 import { generate, TOIL_SERVER_ENV_DTS } from './generate.js';
 import { prerenderStaticParams } from './ssg.js';
-import { extractServerSlots, extractTemplates } from './template-build.js';
+import {
+    type DevSsrTemplate,
+    extractDevSsrTemplates,
+    extractServerSlots,
+    extractTemplates,
+} from './template-build.js';
 import { createViteConfig } from './vite.js';
 
 /**
@@ -528,6 +533,31 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     const server = await createServer(viteConfig);
     await server.listen();
 
+    // Edge SSR in dev: render each `ssr = true` route against the LIVE (Vite-
+    // transformed) dev shell into a template-with-holes, so the dev server can
+    // splice the guest `render` values into it and serve real server-rendered
+    // HTML (the prod-edge path), which then hydrates in place. Extracted once at
+    // startup; a route's MARKUP change needs a dev restart to re-extract, but its
+    // per-request VALUES are always live via `render`. Best-effort: on failure the
+    // routes simply client-render as before.
+    let ssrTemplates: DevSsrTemplate[] = [];
+    try {
+        const rawIndex = fs.readFileSync(path.join(cfg.toilDir, 'index.html'), 'utf8');
+        const devShell = await server.transformIndexHtml('/', rawIndex);
+        ssrTemplates = await extractDevSsrTemplates(cfg, devShell);
+        if (ssrTemplates.length > 0) {
+            process.stdout.write(
+                pc.green('  ✓ ') +
+                    pc.dim(`edge SSR: ${String(ssrTemplates.length)} route(s) server-rendered`) +
+                    '\n',
+            );
+        }
+    } catch (e) {
+        process.stdout.write(
+            pc.yellow('  ! ') + pc.dim(`SSR dev extraction skipped: ${String(e)}`) + '\n',
+        );
+    }
+
     const { startDevServer } = await import('toiljs/devserver');
     const front = await startDevServer({
         root: cfg.root,
@@ -540,6 +570,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         daemon: cfg.daemon,
         vite: { host: '127.0.0.1', port: vitePort },
         email: cfg.email ?? undefined,
+        ssrTemplates,
     });
     server.httpServer?.once('close', () => {
         void front.close();

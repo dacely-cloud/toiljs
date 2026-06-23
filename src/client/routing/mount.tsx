@@ -65,9 +65,15 @@ export function mount(
     // branch, and the dev-only imports, are dead-code-eliminated and tree-shaken from production.
     if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
         initDevErrorOverlay();
-        createRoot(el).render(
+        // Dev tools (error overlay + toolbar) render into their OWN body-level
+        // container, never inside #root, so they don't perturb #root's markup.
+        // That lets a dev SSR document hydrate cleanly (the server only rendered
+        // the app into #root), and is harmless for a plain client-rendered page.
+        const devEl = document.createElement('div');
+        devEl.id = '__toil_dev';
+        document.body.appendChild(devEl);
+        createRoot(devEl).render(
             <>
-                <DevErrorBoundary>{app}</DevErrorBoundary>
                 <DevErrorOverlay />
                 <DevToolbar
                     routes={routes}
@@ -75,6 +81,16 @@ export function mount(
                 />
             </>,
         );
+        const tree = <DevErrorBoundary>{app}</DevErrorBoundary>;
+        if (isSsrDocument()) {
+            // Dev edge-SSR: the dev server served real server-rendered markup
+            // (guest `render` + splice); hydrate it in place, same as production,
+            // instead of client-rendering from scratch.
+            seedSsrHydration(routes);
+            hydrateRoot(el, tree);
+        } else {
+            createRoot(el).render(tree);
+        }
     } else if (isSsrDocument()) {
         // Edge-SSR: the document already holds server-rendered markup. Seed the
         // loader cache from `#__toil_state` and hydrate in place (reuse the DOM)
