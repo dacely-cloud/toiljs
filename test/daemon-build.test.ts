@@ -158,7 +158,9 @@ describe('splitSurfaceFiles per-pass classification', () => {
     });
 });
 
-describe('buildServer two-pass (daemon project)', () => {
+// Needs the local toilscript dev build (with --targetMode) linked as a sibling
+// repo; skip where it is absent (e.g. CI, which has only the published dep).
+describe.skipIf(!existsSync(LOCAL_TOILSCRIPT))('buildServer two-pass (daemon project)', () => {
     it('runs the cold pass and produces the cold artifact with a daemon catalog', async () => {
         scaffold(DAEMON_SRC, BASE_TOILCONFIG);
         await buildServer(tmp);
