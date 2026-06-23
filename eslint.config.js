@@ -5,7 +5,16 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
     // toilscript server (WASM) + its ambient std + build output are not part of the TS project.
-    { ignores: ['build/**', 'server/**', 'std/server/**', 'toil-env.d.ts'] },
+    // toil-docs.generated.ts is a build artifact (gitignored, emitted by gen:docs) — not linted.
+    {
+        ignores: [
+            'build/**',
+            'server/**',
+            'std/server/**',
+            'toil-env.d.ts',
+            'src/compiler/toil-docs.generated.ts',
+        ],
+    },
     eslint.configs.recommended,
     ...tseslint.configs.strictTypeChecked,
     {

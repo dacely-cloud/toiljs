@@ -15,7 +15,7 @@ import { loadConfig, type ResolvedToilConfig } from './config.js';
 import { renderEmails } from './emails.js';
 import { generate, TOIL_SERVER_ENV_DTS } from './generate.js';
 import { prerenderStaticParams } from './ssg.js';
-import { extractTemplates } from './template-build.js';
+import { extractServerSlots, extractTemplates } from './template-build.js';
 import { createViteConfig } from './vite.js';
 
 /**
@@ -501,9 +501,15 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     if (hasServer) process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
     // Compile emails/*.tsx -> generated server module BEFORE toilscript builds it in.
     await renderEmails(cfg);
+    // Generate the client codegen first so the SSR slots pre-pass can load the route graph, then
+    // emit the server-importable `<server>/_ssr/<name>.slots.ts` BEFORE the server build so its
+    // `render` can import them. Dev reuses the prior build's shell (or the template) for the HASH;
+    // `dispatchRender` checks coherence against the same `.slots`, so a hash drift surfaces as the
+    // documented fail-safe 500 until the next full `build`. A no-op without an `ssr = true` route.
+    generate(cfg);
+    if (hasServer) await extractServerSlots(cfg);
     await buildServer(cfg.root);
     if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
-    generate(cfg);
 
     if (!hasServer) {
         const server = await createServer(await createViteConfig(cfg));
@@ -572,20 +578,40 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
         process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
     // Compile emails/*.tsx -> generated server module BEFORE toilscript builds it in.
     await renderEmails(cfg);
+    // Generate the client codegen (`.toil/globals.ts`, `.toil/index.html`, …) NOW — before the
+    // server build — so the SSR slots pre-pass below can load the route/layout module graph and
+    // render the opted-in routes.
+    generate(cfg);
+    // SSR slots PRE-PASS: emit the server-importable `<server>/_ssr/<name>.slots.ts` (the `Slot`
+    // enum + `HASH`) the guest `render` imports, so toilscript can compile it. This is what makes a
+    // CLEAN build work with zero hand-maintained slots: the modules are generated here, before the
+    // server compiles. (The `HASH` is finalized by the post-Vite `extractTemplates` below, which
+    // recompiles the server only if it rotated.) A no-op for a project with no `ssr = true` route.
+    const priorServerSlots = hasServer ? await extractServerSlots(cfg) : new Map<string, string>();
     await buildServer(cfg.root);
     if (opts.serverOnly) return;
     if (hasServer)
         process.stdout.write(
             pc.green('  ✓ ') + pc.dim('server built; building the client (vite)…') + '\n',
         );
-    generate(cfg);
     await viteBuild(await createViteConfig(cfg));
     // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
     await prerenderStaticParams(cfg);
     // Edge SSR: render `export const ssr = true` routes to template-with-holes
     // (`_ssr/*.tmpl|slots` + the guest `Slot` module), copied into the edge host
-    // bundle. No-op when no route opts in.
-    await extractTemplates(cfg);
+    // bundle. This also rewrites the server-importable slots module against the REAL built shell
+    // (authoritative `HASH`). No-op when no route opts in.
+    const ssr = await extractTemplates(cfg, 'edge', priorServerSlots);
+    // If the authoritative `HASH` (or `Slot` ids) rotated since the pre-pass the server was
+    // compiled against, recompile the server ONCE so the guest bakes the deployed hash; otherwise
+    // the host rejects the response as a deploy skew. The common case (an unchanged rebuild) reuses
+    // the prior shell in the pre-pass, so the hashes already match and this is skipped.
+    if (ssr.serverSlotsChanged) {
+        process.stdout.write(
+            pc.dim('  SSR template changed; recompiling the server with the new hash…') + '\n',
+        );
+        await buildServer(cfg.root);
+    }
 }
 
 /**
