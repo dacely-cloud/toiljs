@@ -107,6 +107,24 @@ markup; an empty array at build time leaves nothing to stamp.
 is the `as` wrapper (defaults to `div`). The captured `<as>` tag is part of the
 template, only its inner HTML is a hole.
 
+### Attribute holes (`attr()`)
+
+An attribute value is not a child node, so it cannot be a JSX marker element.
+Use the `attr(id, value)` helper from `toiljs/client` in attribute position
+instead:
+
+```tsx
+import { attr } from 'toiljs/client';
+
+<a href={attr('profileUrl', d.url)} class={attr('cls', d.cls)}>…</a>
+```
+
+Browser: `attr` returns `value` unchanged. Build: it emits an `attr` hole at the
+attribute's byte offset (stripping to an empty value in the `.tmpl`). The server
+`render` fills it with `v.setAttr(Slot.profileUrl, url)` (React-escaped, the same
+as `setText`), and the host splices it between the quotes. It composes with
+literal text in the same attribute (`` class={`btn ${attr('x', v)}`} ``).
+
 ### SSR-safe routes (and `<Island>`)
 
 For hydration to be byte-clean, the route **and the layouts above it** must
@@ -180,10 +198,11 @@ falls back to the fail-safe 500.
 
 ### What `render` does for a request the router misses
 
-If no registered renderer matches (or the request envelope is malformed), the
-`render` export emits a **fail-safe** envelope: status 500 with a **zeroed**
-32-byte hash and no slots. The edge rejects the zero hash as a coherence
-mismatch, so a miss surfaces as a clean 500 rather than a corrupt page.
+If no registered renderer matches, the `render` export emits a **fail-safe**
+envelope: status 500 with a **zeroed** 32-byte hash and no slots (a malformed
+request envelope yields the same fail-safe with status 400). The edge rejects
+the zero hash as a coherence mismatch, so a miss surfaces as a clean error
+rather than a corrupt page.
 
 ---
 
@@ -366,18 +385,21 @@ followed by 8-byte entries (`u32 offset, u16 slot_id, u8 kind, u8 reserved`).
 
 ---
 
-## 7. Dev server parity
+## 7. Dev server and testing
 
-`WasmServerModule.dispatchRender` runs the **real** `render` export of your
-built server wasm and returns the **same** values envelope the edge gets. So SSR
-behaves identically locally: the dev server decodes the envelope, splices
-against the same `.tmpl`/`.slots`, and serves the page. There is no separate dev
-SSR code path to diverge.
+`toiljs dev` serves SSR routes the same way the edge does. It runs the **real**
+`render` export (`WasmServerModule.dispatchRender`), decodes the values
+envelope, and splices the values into the route's template, so you get real
+server-rendered HTML locally (`curl` a route, or view source), which then
+hydrates in place. The dev template is extracted once at startup against the
+live (Vite-transformed) dev shell rather than a built one; a route's per-request
+**values** are always live, but a change to its **markup** needs a dev restart
+to re-extract. A fail-safe envelope (no renderer matched) falls back to client
+rendering.
 
-This is also how the end-to-end test
-(`test/ssr-render.test.ts`) drives the real `/hello` route: it calls
-`dispatchRender({ path: '/hello' })`, decodes the envelope, asserts the slots,
-and splices against the built `hello.tmpl`.
+The end-to-end test (`test/ssr-render.test.ts`) drives the same `dispatchRender`
+path directly: it calls `dispatchRender({ path: '/hello' })`, decodes the
+envelope, asserts the slots, and splices against the built `hello.tmpl`.
 
 ---
 
@@ -580,9 +602,16 @@ The `<Island>` is empty here (no first paint); it fills in after hydration.
   surfaces from a partial or stale deploy (a guest built against a different
   template than the one deployed), never from hand-copied slots.
 
-- **Hydration mismatch (flash / React re-render in the browser).** A marker (or
-  a non-static node) rendered outside an `<Island>`, or hole escaping that does
-  not match React's (e.g. emitting `&#39;` instead of `&#x27;`, or using `setRaw`
+- **Hydration mismatch (flash / React re-render in the browser).** Two common
+  causes. (1) The client **loader** does not reproduce the values the server
+  `render` stamped. Hydration re-renders the route with the loader's data, so for
+  any request-derived hole the loader must derive the **same** value the server
+  `render` does (e.g. read the same `?query` / param). The two are separate
+  sources (the client loader is TypeScript; the server `render` is the wasm
+  guest), so keeping them in sync is the author's contract; if the client cannot
+  reproduce a value, put that content in an `<Island>`. (2) A marker (or a
+  non-static node) rendered outside an `<Island>`, or hole escaping that does not
+  match React's (e.g. emitting `&#39;` instead of `&#x27;`, or using `setRaw`
   where the client would escape). Keep dynamic text in `<Hole>` / `setText` and
   client-only content in `<Island>`.
 
