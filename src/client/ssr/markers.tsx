@@ -76,6 +76,28 @@ export function Hole(props: HoleProps): ReactNode {
     return createElement(Fragment, null, props.children);
 }
 
+/**
+ * An attribute-value hole. Unlike the child markers, an attribute is not a child
+ * node, so this is a *function* used in attribute position rather than a JSX
+ * element:
+ *
+ * ```tsx
+ * <a href={attr('profileUrl', d.url)} class={attr('cls', d.cls)}>…</a>
+ * ```
+ *
+ * Browser: returns `value` unchanged, so the attribute renders normally. Build:
+ * returns a PUA sentinel token, so the extractor records an `attr` slot at the
+ * attribute's byte offset (the token sits between the quotes and strips to zero
+ * bytes). The guest fills it per request with the React-escaped value (kind
+ * `attr`), which the host splices at that offset — exactly like a text hole, but
+ * inside an attribute. It composes with surrounding literal text
+ * (`` `btn ${attr('x', v)}` ``), and `setAttr`/`HtmlBuilder.attr` produce the
+ * value on the server side.
+ */
+export function attr(id: string, value: string): string {
+    return ssrBuild ? token(HoleKindChar.Attr, id) : value;
+}
+
 export interface RawHtmlProps {
     id: string;
     /** Raw HTML string. The author owns sanitisation (same as React

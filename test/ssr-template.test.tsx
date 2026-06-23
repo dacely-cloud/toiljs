@@ -20,7 +20,7 @@ import path from 'node:path';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
-import { Hole, Island, RawHtml, Repeat, __setSsrBuild } from '../src/client/ssr/markers';
+import { Hole, Island, RawHtml, Repeat, attr, __setSsrBuild } from '../src/client/ssr/markers';
 import { LoaderDataContext, useLoaderData } from '../src/client/routing/loader';
 import {
     extractRouteTemplate,
@@ -262,6 +262,49 @@ describe('ssr guest codegen (Slot enum + HASH)', () => {
     it('rejects a hole id that is not a valid identifier', () => {
         const bad: SlotRecord[] = [{ id: 'has-dash', kind: 'text', offset: 0 }];
         expect(() => generateSlotsModule('r', bad, Buffer.alloc(32))).toThrow(/not a valid identifier/);
+    });
+});
+
+describe('ssr attribute holes (attr())', () => {
+    it('is transparent in the browser and a sentinel under the build extractor', () => {
+        // Browser (default): passes the value through unchanged.
+        expect(attr('link', '/u/ada')).toBe('/u/ada');
+        // Build: emits a PUA sentinel token (start codepoint U+E000) carrying the id.
+        __setSsrBuild(true);
+        try {
+            const tok = attr('link', '/u/ada');
+            expect(tok).not.toBe('/u/ada');
+            expect(tok.charCodeAt(0)).toBe(0xe000);
+            expect(tok).toContain('link');
+        } finally {
+            __setSsrBuild(false);
+        }
+    });
+
+    it('extracts an attr slot whose guest stamp reproduces React attribute output byte-for-byte', () => {
+        // Render with the attr() hole in an attribute position, in build mode.
+        __setSsrBuild(true);
+        let built: string;
+        try {
+            built = renderToStaticMarkup(<a href={attr('link', 'IGNORED_AT_BUILD')}>x</a>);
+        } finally {
+            __setSsrBuild(false);
+        }
+        const { tmpl, slots } = extractFromHtml(built);
+        expect(slots).toHaveLength(1);
+        expect(slots[0]).toMatchObject({ id: 'link', kind: 'attr' });
+        expect(kindByte(slots[0].kind)).toBe(2);
+        // The .tmpl carries the attribute with the hole stripped to an empty value.
+        expect(tmpl.toString('utf8')).toBe('<a href="">x</a>');
+
+        // Guest stamp: setAttr React-escapes (identical to text); splice at the offset.
+        const value = '/u/ada?q="a"&b<c>';
+        const stamped = spliceTemplate(tmpl, [
+            { offset: slots[0].offset, value: Buffer.from(reactEscapeHtml(value), 'utf8') },
+        ]).toString('utf8');
+
+        // Byte-identical to what React renders for the same attribute value (clean hydration).
+        expect(stamped).toBe(renderToStaticMarkup(<a href={value}>x</a>));
     });
 });
 
