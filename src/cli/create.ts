@@ -195,9 +195,9 @@ function scaffold(
         // Generated files don't need formatting. (toilscript server decorators like @main /
         // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
         '.prettierignore':
-            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/toil-server-env.d.ts\n',
+            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/_ssr/\nserver/toil-server-env.d.ts\n',
         '.gitignore':
-            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
+            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_ssr/\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
         // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled
         // version, and prompt to switch, so the editor loads the toilscript LS plugin wired
         // in server/tsconfig.json (which clears the @database / @data editor false positives).

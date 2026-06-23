@@ -14,7 +14,7 @@
  * ```ts
  * import { Request } from 'toiljs/server/runtime';
  * import { SlotValues } from 'toiljs/server/runtime/ssr/slots';
- * import { Slot, HASH } from './u_name.slots';
+ * import { Slot, HASH } from './_ssr/u_name.slots';
  *
  * export function renderUName(req: Request): SlotValues {
  *   const v = new SlotValues(HASH);
