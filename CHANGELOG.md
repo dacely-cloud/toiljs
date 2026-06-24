@@ -1,5 +1,17 @@
 # Changelog
 
+## [v0.0.61] - 2026-06-24
+
+### Other Changes
+
+- feat(toiljs): two-pass build + cold-artifact daemon dev runtime (M1 Phase 0) ([#196](https://github.com/dacely-cloud/toiljs/pull/196)) by @BlobMaster41
+- feat(ssr): auto-generate the SSR slots module (no committed copy) + generate TOIL_DOCS from docs/*.md ([#197](https://github.com/dacely-cloud/toiljs/pull/197)) by @BlobMaster41
+- SSR gap fixes + docs em-dash cleanup + CI ([#198](https://github.com/dacely-cloud/toiljs/pull/198)) by @BlobMaster41
+- fix(devserver): only enforce DB route-kind gating when the guest declares it ([#199](https://github.com/dacely-cloud/toiljs/pull/199)) by @BlobMaster41
+
+
+
+
 ## [v0.0.60] - 2026-06-21
 
 - No changes
