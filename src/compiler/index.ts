@@ -307,6 +307,11 @@ function runToilscriptPass(
     if (opts.mode !== null) args.push('--targetMode', opts.mode);
     if (opts.outFile !== null) args.push('--outFile', opts.outFile);
     if (opts.withRpc) args.push('--rpcModule', 'shared/server.ts');
+    // Each pass is handed its OWN entry subset (the per-tier `files`); suppress the toilconfig
+    // `entries` so toilscript does not ALSO append every project entry to every pass (which would
+    // pull, e.g., a `@stream` class into the cold daemon pass). serverEntryFiles already folds
+    // config.entries into `files`, so no entry is lost by ignoring them here.
+    args.push('--noConfigEntries');
     args.push('--disableWarning', '235');
 
     return new Promise<void>((resolve, reject) => {
