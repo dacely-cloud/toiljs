@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.62] - 2026-06-24
+
+### Other Changes
+
+- fix(ssr): client-render SSR documents instead of hydrating ([#200](https://github.com/dacely-cloud/toiljs/pull/200)) by @BlobMaster41
+- feat(ssr): true hydration (renderToString + text-boundary markers) ([#201](https://github.com/dacely-cloud/toiljs/pull/201)) by @BlobMaster41
+
+
+
+
 ## [v0.0.61] - 2026-06-24
 
 ### Other Changes
