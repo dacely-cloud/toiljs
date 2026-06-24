@@ -17,6 +17,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { DevStreamBox } from '../src/devserver/stream/index.js';
 import { StreamDevHost } from '../src/devserver/stream/manager.js';
+import { StreamWsSession, type StreamWsTransport } from '../src/devserver/stream/ws.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // The LOCAL toilscript build (the @message + @connect bridge codegen); the published dep predates it.
@@ -161,5 +162,51 @@ describe('dev stream session driver (StreamDevHost)', () => {
         const host = new StreamDevHost(ECHO_PATH);
         host.acceptUpgrade('c1', 'acme.toil', '/');
         expect(() => host.acceptUpgrade('c1', 'acme.toil', '/')).toThrow();
+    });
+});
+
+describe('dev stream WS session adapter (StreamWsSession)', () => {
+    function makeTransport(): { sent: Buffer[]; closed: number[]; t: StreamWsTransport } {
+        const sent: Buffer[] = [];
+        const closed: number[] = [];
+        return {
+            sent,
+            closed,
+            t: { send: (f: Buffer) => sent.push(f), close: (c: number) => closed.push(c) },
+        };
+    }
+
+    it('accepts, echoes a frame back, and tears down', () => {
+        const host = new StreamDevHost(ECHO_PATH);
+        const { sent, closed, t } = makeTransport();
+        const s = new StreamWsSession(host, 'ws1', 'acme.toil', '/', t);
+        expect(s.onOpen()).toBe(true);
+        expect(s.isOpen).toBe(true);
+        s.onMessage(Buffer.from('hi'));
+        expect(sent).toEqual([Buffer.from('hi')]);
+        expect(closed).toEqual([]);
+        s.onClose();
+        expect(host.activeConnections).toBe(0);
+    });
+
+    it('closes the socket with the code on a guest reject, then fires @close on socket close', () => {
+        const host = new StreamDevHost(ECHO_PATH);
+        const { closed, t } = makeTransport();
+        const s = new StreamWsSession(host, 'ws1', 'acme.toil', '/', t);
+        s.onOpen();
+        s.onMessage(Buffer.from('Xstop')); // guest reject -> close 0x0210
+        expect(closed).toEqual([0x0210]);
+        expect(s.isOpen).toBe(false);
+        s.onClose();
+        expect(host.activeConnections).toBe(0);
+    });
+
+    it('closes a @connect-rejected upgrade without holding a box', () => {
+        const host = new StreamDevHost(GATE_PATH);
+        const { closed, t } = makeTransport();
+        const s = new StreamWsSession(host, 'ws1', 'acme.toil', '/blocked', t);
+        expect(s.onOpen()).toBe(false);
+        expect(closed).toEqual([0x0211]);
+        expect(host.activeConnections).toBe(0);
     });
 });
