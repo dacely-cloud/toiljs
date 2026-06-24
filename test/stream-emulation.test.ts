@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { matchStreamRoute, parseStreamCatalog } from '../src/devserver/stream/catalog.js';
 import { DevStreamBox } from '../src/devserver/stream/index.js';
 import { StreamDevHost } from '../src/devserver/stream/manager.js';
 import { StreamWsSession, type StreamWsTransport } from '../src/devserver/stream/ws.js';
@@ -208,5 +209,21 @@ describe('dev stream WS session adapter (StreamWsSession)', () => {
         expect(s.onOpen()).toBe(false);
         expect(closed).toEqual([0x0211]);
         expect(host.activeConnections).toBe(0);
+    });
+});
+
+describe('dev stream catalog (toilstream.catalog route table, doc 08 3.1/4.2)', () => {
+    it('parses the @stream route table and matches routes (query stripped)', () => {
+        const cat = parseStreamCatalog(ECHO);
+        expect(cat.size).toBe(1);
+        const def = [...cat.values()][0];
+        expect(def.route.length).toBeGreaterThan(0);
+        expect(def.hooks.message).toBe(true);
+        expect(def.scope).toBe('regional'); // declared_scope default
+        expect(def.messageMode).toBe('raw'); // the raw @message bridge
+        // matchRoute (4.2): exact match, query stripped; a non-route misses (-> proxied to Vite).
+        expect(matchStreamRoute(cat, def.route)).toBe(def);
+        expect(matchStreamRoute(cat, `${def.route}?x=1`)).toBe(def);
+        expect(matchStreamRoute(cat, '/definitely-not-a-stream')).toBeNull();
     });
 });
