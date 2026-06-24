@@ -48,7 +48,7 @@ export function parseCatalog(wasm: Buffer): DbCatalogState {
 
     const r = new DataReader(sec);
     const version = r.readU16();
-    if (!r.ok || (version !== 1 && version !== 2)) return { kind: 'malformed' };
+    if (!r.ok || version !== 1) return { kind: 'malformed' };
     const ndb = r.readU16();
     for (let d = 0; d < ndb && r.ok; d++) {
         const db = r.readString();
@@ -63,18 +63,14 @@ export function parseCatalog(wasm: Buffer): DbCatalogState {
             r.readU32(); // generation
             const replication = r.readU8(); // emitter order: replication then placement
             const placement = r.readU8();
-            let fillMaxWaitMs = DEFAULT_FILL_WAIT_MS;
-            let fillAllowStale = true;
-            if (version >= 2) {
-                fillMaxWaitMs = r.readU32();
-                const fillAllowStaleByte = r.readU8();
-                if (
-                    fillMaxWaitMs > MAX_FILL_WAIT_MS ||
-                    (fillAllowStaleByte !== 0 && fillAllowStaleByte !== 1)
-                )
-                    return { kind: 'malformed' };
-                fillAllowStale = fillAllowStaleByte === 1;
-            }
+            const fillMaxWaitMs = r.readU32();
+            const fillAllowStaleByte = r.readU8();
+            if (
+                fillMaxWaitMs > MAX_FILL_WAIT_MS ||
+                (fillAllowStaleByte !== 0 && fillAllowStaleByte !== 1)
+            )
+                return { kind: 'malformed' };
+            const fillAllowStale = fillAllowStaleByte === 1;
             const nFields = r.readU16();
             for (let f = 0; f < nFields; f++) {
                 r.readString(); // field name

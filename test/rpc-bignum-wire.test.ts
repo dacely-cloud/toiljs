@@ -7,7 +7,7 @@
  * Compiles test/fixtures/bignum-wire/spec.ts with the installed toilscript (so it
  * exercises the published compiler + generated client, not a hand-written stub), then
  * imports the generated TS client and asserts the wire shape both directions, including
- * values far above 2^53 and the legacy limb-array shape older servers emitted.
+ * values far above 2^53.
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -24,6 +24,9 @@ const codec = path.join(here, '..', 'src', 'io', 'codec.ts');
 
 /** Resolves the installed toilscript CLI entry (no PATH / .bin assumptions). */
 function toilscriptBin(): string {
+    if (process.env.TOILSCRIPT_BIN) return process.env.TOILSCRIPT_BIN;
+    const sibling = path.resolve(here, '..', '..', 'toilscript', 'bin', 'toilscript.js');
+    if (fs.existsSync(sibling)) return sibling;
     const pkgPath = require.resolve('toilscript/package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { bin?: Record<string, string> };
     const binRel = pkg.bin?.toilscript;
@@ -83,6 +86,10 @@ beforeAll(async () => {
         { encoding: 'utf8' },
     );
     if (res.status !== 0) throw new Error('toilscript compile failed:\n' + res.stderr);
+    const generatedSource = fs.readFileSync(mod, 'utf8');
+    const removedHelper = ['__toil', 'Unlimb'].join('');
+    expect(generatedSource).toContain('__toilBigInt');
+    expect(generatedSource).not.toContain(removedHelper);
     const gen = (await import(pathToFileURL(mod).href)) as {
         Wallet: WalletStatic;
         Account: AccountStatic;
@@ -140,13 +147,6 @@ describe('generated client bignum JSON wire format', () => {
         const back = Wallet.fromJSONValue(JSON.parse(JSON.stringify(w.toJSONValue())));
         expect(back.c).toBe(BigInt(huge));
         expect(back.d).toBe(BigInt('-' + huge));
-    });
-
-    it('still revives the legacy little-endian limb-array shape (back-compat)', () => {
-        // u256 [5,0,4,0] little-endian = 5 + 4*2^128.
-        const w = Wallet.fromJSONValue({ c: [5, 0, 4, 0], a: [9, 1] });
-        expect(w.c).toBe(2n ** 130n + 5n);
-        expect(w.a).toBe(2n ** 64n + 9n);
     });
 
     it('recurses into nested @data and arrays of bignums', () => {

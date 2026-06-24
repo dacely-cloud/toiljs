@@ -92,7 +92,7 @@ function routeKindsSection(routes: readonly (readonly [number, number, string])[
     return Buffer.concat(chunks);
 }
 
-function catalogSectionV2(fillMaxWaitMs: number, fillAllowStale: number, replication = 5): Buffer {
+function catalogSectionV1(fillMaxWaitMs: number, fillAllowStale: number, replication = 5): Buffer {
     const chunks: Buffer[] = [];
     const u8 = (v: number) => chunks.push(Buffer.from([v & 0xff]));
     const u16 = (v: number) => {
@@ -111,7 +111,7 @@ function catalogSectionV2(fillMaxWaitMs: number, fillAllowStale: number, replica
         chunks.push(b);
     };
 
-    u16(2); // catalog version
+    u16(1); // catalog version
     u16(1); // databases
     str('App');
     u16(1); // collections
@@ -215,8 +215,8 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.resolve_collection'](p, l, 16)).toBe(-1070);
     });
 
-    it('parses catalog v2 fill policy and backend replication bytes', () => {
-        setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV2(7, 0)));
+    it('parses catalog v1 fill policy and backend replication bytes', () => {
+        setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV1(7, 0)));
         const { imports, buf, db } = setupRaw();
         const h = resolve(imports, buf, 'App/users');
 
@@ -233,7 +233,7 @@ describe('toildb dev emulator (record family)', () => {
 
     it('rejects replication policies that require catalog v3 metadata', () => {
         for (const replication of [3, 4]) {
-            setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV2(7, 0, replication)));
+            setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV1(7, 0, replication)));
             const { imports, buf } = setupRaw();
             const [p, l] = put(buf, 0, 'App/users');
 
@@ -241,8 +241,8 @@ describe('toildb dev emulator (record family)', () => {
         }
     });
 
-    it('rejects malformed catalog v2 fill policy', () => {
-        setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV2(7, 2)));
+    it('rejects malformed catalog v1 fill policy', () => {
+        setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV1(7, 2)));
         const { imports, buf } = setupRaw();
         const [p, l] = put(buf, 0, 'App/users');
 
