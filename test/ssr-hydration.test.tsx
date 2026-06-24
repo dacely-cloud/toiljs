@@ -4,13 +4,17 @@
  * renders with `renderToString`) -> splice -> `hydrateRoot` path in jsdom and
  * assert there is NO hydration mismatch and the content is present. This is the
  * failure users hit ("server rendered HTML didn't match the client"), and it
- * covers the three things that broke it:
+ * covers the things that broke it:
  *   - "text + hole + text" (`Hello, <Hole>{name}</Hole>!`): needs the `<!-- -->`
  *     text-boundary markers `renderToString` emits.
  *   - an `<img>`, whose React 19 auto-preload `<link>` must be kept OUT of `#root`.
  *   - an `<Island>`, which must be empty on the first (hydration) render.
+ *   - the Suspense dehydration markers (`<!--$-->`): `assembleRouteElement` wraps the
+ *     route (and each layout) in `Suspense`, so we hydrate through the SAME `Suspense`
+ *     structure the client Router renders. Remove that wrapping and this test fails
+ *     with "server rendered HTML didn't match the client", the exact regression.
  */
-import { act } from 'react';
+import { act, Suspense } from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -87,9 +91,20 @@ describe('ssr hydration (real hydrateRoot, no mismatch)', () => {
         });
         try {
             await act(async () => {
-                hydrateRoot(rootEl, <Page />, {
-                    onRecoverableError: (e) => recoverable.push(String(e)),
-                });
+                // Hydrate through the route Suspense `assembleRouteElement` emits (layouts: []
+                // here -> just the route boundary), so the client's Suspense markers line up
+                // with the server's. This is what the real client Router does.
+                hydrateRoot(
+                    rootEl,
+                    (
+                        <Suspense fallback={null}>
+                            <Page />
+                        </Suspense>
+                    ),
+                    {
+                        onRecoverableError: (e) => recoverable.push(String(e)),
+                    },
+                );
             });
         } finally {
             spy.mockRestore();

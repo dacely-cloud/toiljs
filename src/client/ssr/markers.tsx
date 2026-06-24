@@ -145,7 +145,10 @@ export function Repeat<T>(props: RepeatProps<T>): ReactNode {
     return createElement(
         Fragment,
         null,
-        props.each.map((item, i) => props.children(item, i)),
+        // Each row is wrapped in a keyed Fragment so React has a stable list key (the
+        // row markup itself need not carry one). Index keys are fine here: an SSR'd
+        // region hydrates 1:1 against the host's pre-stamped rows and does not reorder.
+        props.each.map((item, i) => createElement(Fragment, { key: i }, props.children(item, i))),
     );
 }
 
