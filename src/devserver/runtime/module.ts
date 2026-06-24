@@ -186,11 +186,20 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
+        // Enforce per-route DB-kind gating ONLY when the guest declares its route
+        // kinds (the `toildb.route_kinds` custom section). A guest built with a
+        // toolchain that does not emit that section leaves `routeKinds` empty;
+        // inferring a kind from the HTTP method and enforcing it would wrongly
+        // reject legitimate bounded reads (e.g. a GET that reads `events.latest`,
+        // a scan-class op denied in `Query`). With no declarations we keep the
+        // unenforced default (`Job`, see `freshDbState`).
         const routeKind = routeKindForRequest(this.routeKinds, req.method, req.path);
         state.db.functionKind =
-            routeKind === DbFunctionKind.Query
-                ? DbFunctionKind.Query
-                : dbKindForHttpMethod(req.method);
+            this.routeKinds.length === 0
+                ? DbFunctionKind.Job
+                : routeKind === DbFunctionKind.Query
+                  ? DbFunctionKind.Query
+                  : dbKindForHttpMethod(req.method);
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
