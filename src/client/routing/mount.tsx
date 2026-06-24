@@ -62,6 +62,13 @@ export function mount(
         if (isSsrDocument()) {
             // Edge-SSR: hydrate the server-rendered markup in place.
             hydrateRoot(el, tree);
+            // The dev shell carried render-blocking `<link data-toil-dev-ssr>` so this
+            // server-rendered first paint was already styled (no FOUC). Vite has since injected the
+            // same CSS via the entry's imports (HMR-managed), so drop the static links to avoid stale
+            // duplicates surviving a hot edit.
+            document.querySelectorAll('link[data-toil-dev-ssr]').forEach((n) => {
+                n.remove();
+            });
         } else {
             createRoot(el).render(tree);
         }

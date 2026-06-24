@@ -555,6 +555,51 @@ function printEmailsUrl(cfg: ResolvedToilConfig, localUrl: string | undefined): 
  * server on an internal loopback port. Vite keeps 100% of its dev behavior;
  * it just stops being the public listener. Returns the running Vite server.
  */
+/** Stylesheet module ids (incl. preprocessors), to find CSS in the module graph. */
+const DEV_CSS_RE = /\.(css|scss|sass|less|styl|stylus|pcss|postcss|sss)(\?|$)/;
+
+/**
+ * Collects the stylesheet URLs reachable from the dev client entry (`/entry.tsx`) by walking Vite's
+ * module graph over static imports. Used to inline render-blocking `<link>`s into the dev SSR shell so
+ * the server-rendered first paint is styled (Vite otherwise injects JS-imported CSS only at runtime).
+ * Best-effort: returns whatever it can resolve, or `[]` if the entry can't be walked.
+ */
+async function collectDevCssLinks(server: ViteDevServer): Promise<string[]> {
+    const ENTRY = '/entry.tsx';
+    const cssUrls = new Set<string>();
+    const seen = new Set<string>();
+    try {
+        await server.transformRequest(ENTRY);
+    } catch {
+        return [];
+    }
+    const entry = await server.moduleGraph.getModuleByUrl(ENTRY);
+    if (!entry) return [];
+    const queue = [entry];
+    while (queue.length > 0) {
+        const mod = queue.shift();
+        if (!mod || mod.id === null || seen.has(mod.id)) continue;
+        seen.add(mod.id);
+        // Transform (once) so the module's imports are populated in the graph.
+        if (!mod.transformResult && mod.url) {
+            try {
+                await server.transformRequest(mod.url);
+            } catch {
+                continue;
+            }
+        }
+        for (const dep of mod.importedModules) {
+            if (dep.id === null) continue;
+            if (DEV_CSS_RE.test(dep.id)) {
+                if (dep.url) cssUrls.add(dep.url);
+            } else if (!seen.has(dep.id)) {
+                queue.push(dep);
+            }
+        }
+    }
+    return [...cssUrls];
+}
+
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
     // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
@@ -599,7 +644,24 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     let ssrTemplates: DevSsrTemplate[] = [];
     try {
         const rawIndex = fs.readFileSync(path.join(cfg.toilDir, 'index.html'), 'utf8');
-        const devShell = await server.transformIndexHtml('/', rawIndex);
+        let devShell = await server.transformIndexHtml('/', rawIndex);
+        // In dev, Vite injects JS-imported CSS at RUNTIME (after the entry script runs), so a
+        // server-rendered document would paint unstyled until then (a FOUC). Inject the entry's
+        // stylesheets as render-blocking `<link ...?direct>` into the SSR shell so the first paint is
+        // styled (prod already bakes the `<link>` into the built shell); the client drops these after
+        // hydration so Vite's HMR-managed styles take over (see routing/mount.tsx).
+        const devCssLinks = await collectDevCssLinks(server);
+        if (devCssLinks.length > 0) {
+            const tags = devCssLinks
+                .map(
+                    (u) =>
+                        `<link rel="stylesheet" data-toil-dev-ssr href="${u}${u.includes('?') ? '&' : '?'}direct">`,
+                )
+                .join('');
+            devShell = devShell.includes('</head>')
+                ? devShell.replace('</head>', `${tags}</head>`)
+                : tags + devShell;
+        }
         ssrTemplates = await extractDevSsrTemplates(cfg, devShell);
         if (ssrTemplates.length > 0) {
             process.stdout.write(
