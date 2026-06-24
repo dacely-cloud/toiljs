@@ -1,5 +1,9 @@
 import { useState } from 'react';
 
+// Server-render the initial (empty-query) shell so it paints instantly; the client hydrates the
+// interactive search state on top.
+export const ssr = true;
+
 export const metadata: Toil.Metadata = {
     title: 'Search',
     description: 'Search every page by its metadata and jump straight to it.',

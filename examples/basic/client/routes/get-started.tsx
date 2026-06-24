@@ -1,3 +1,6 @@
+// Server-render this static page so it paints instantly (no blank-until-JS flash).
+export const ssr = true;
+
 export default function GetStarted() {
     return (
         <div className="gs-page">

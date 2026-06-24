@@ -8,9 +8,19 @@
     <title>ToilJS</title>
     <link href="https://fonts.googleapis.com" rel="preconnect"/>
     <link crossorigin href="https://fonts.gstatic.com" rel="preconnect"/>
+    <!-- Load fonts WITHOUT blocking first paint: `media="print"` keeps the sheet off the render
+         path, then `onload` flips it to `all` once fetched (font-display:swap handles the swap).
+         The <noscript> copy keeps fonts working without JS. -->
     <link
             href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=swap"
-            rel="stylesheet"/>
+            rel="stylesheet"
+            media="print"
+            onload="this.media='all'"/>
+    <noscript>
+        <link
+                href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800;900&display=swap"
+                rel="stylesheet"/>
+    </noscript>
 </head>
 <body>
 <div id="root"></div>

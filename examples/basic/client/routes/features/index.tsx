@@ -1,6 +1,9 @@
 // The feature hub: one place that links to a live demo of every ToilJS capability. Its own tab
 // title comes from the `metadata` export below (rendered as "Features | ToilJS" via the layout
 // template) and is baked into build/client/features/index.html at build time.
+// Server-render this static page so it paints instantly (no blank-until-JS flash).
+export const ssr = true;
+
 export const metadata: Toil.Metadata = {
     title: 'Features',
     description:

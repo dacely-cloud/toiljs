@@ -362,7 +362,14 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
                 const route = ssrRoutes.find((r) => r.test(pathnameOf(request.url)));
                 if (route) {
                     try {
-                        const out = assembleSsr(route, module.dispatchRender(envelopeReq));
+                        // A static route (its template has no holes -> no slots) needs no guest
+                        // render: serve the prerendered template directly so it paints instantly
+                        // instead of falling through to a (blank-until-JS) client render. Dynamic
+                        // routes run the guest `render` and splice its values in.
+                        const out: SsrResult | null =
+                            route.entries.length === 0
+                                ? { status: 200, headers: [], html: route.tmpl }
+                                : assembleSsr(route, module.dispatchRender(envelopeReq));
                         if (out !== null) {
                             sendSsr(response, out, request.method === 'HEAD');
                             return;
