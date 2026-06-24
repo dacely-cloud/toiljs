@@ -50,6 +50,11 @@ export interface DbDevState {
     lastResult: Buffer | null;
     lastResultVersion: number;
     functionKind: DbFunctionKind;
+    /** Names ("Db/coll") of source collections written during this dispatch, so
+     *  the runtime can re-run the affected `@derive` materializers afterward.
+     *  Only populated for non-Derive dispatches (a derive's own writes must not
+     *  re-trigger it - see `database.ts` `recordWrite`). */
+    writtenCollections: Set<string>;
 }
 
 export function freshDbState(): DbDevState {
@@ -58,6 +63,7 @@ export function freshDbState(): DbDevState {
         lastResult: null,
         lastResultVersion: -1,
         functionKind: DbFunctionKind.Job,
+        writtenCollections: new Set<string>(),
     };
 }
 

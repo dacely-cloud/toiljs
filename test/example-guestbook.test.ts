@@ -64,17 +64,20 @@ describe.skipIf(!haveWasm)('guestbook demo: ToilDB events + counter persist acro
         expect(json(r).total).toBe('1');
 
         // A brand-new wasm instance - its memory is empty - still sees the prior
-        // signature, because it lives in ToilDB, not module state.
+        // signature, because it lives in ToilDB, not module state. The action
+        // acks with the running total; the entries list is served by the GET.
         r = sign(load(), 'Linus', 'second');
-        const v = json(r);
+        expect(json(r).total).toBe('2');
+
+        // The newest entries are served by GET /guestbook from the materialized
+        // view that the @derive republishes after each signature (events.latest
+        // is a scan, barred in the request handlers, so it runs in the derive).
+        const v = json(list(load()));
         expect(v.total).toBe('2');
         expect(v.entries.length).toBe(2);
         expect(v.entries[0].author).toBe('Linus'); // events.latest is newest-first
         expect(v.entries[1].author).toBe('Ada');
         expect(v.entries[1].message).toBe('first!');
-
-        // A read-only GET on yet another instance sees the same persisted state.
-        expect(json(list(load())).total).toBe('2');
     });
 
     // End-to-end proof that the `server/migrations/GuestEntry.migration.ts` demo

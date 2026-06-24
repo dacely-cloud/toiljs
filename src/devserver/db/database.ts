@@ -700,6 +700,7 @@ export class DevDatabase {
         if (outcome.kind === 'unit') {
             this.store.set(sk, value);
             this.stampVersion(coll, sk); // stamp the value type's current schema version
+            this.recordWrite(db, coll);
         }
         this.recordIdemFinish(coll, key, 'C', idem, requestHash, outcome);
         return this.replayRecordOutcome(db, outcome);
@@ -732,6 +733,7 @@ export class DevDatabase {
         if (outcome.kind === 'value') {
             this.store.set(sk, v);
             this.stampVersion(coll, sk); // a patch rewrites the row at the current version
+            this.recordWrite(db, coll);
         }
         this.recordIdemFinish(coll, key, 'P', idem, requestHash, outcome);
         return this.replayRecordOutcome(db, outcome);
@@ -1023,6 +1025,15 @@ export class DevDatabase {
 
     // `delta` is the wasm i64 (a BigInt across the boundary); `BigInt()`
     // normalizes the test's plain-number form too. Saturates like the edge.
+    /** Note a successful write to a SOURCE collection, so the runtime can re-run
+     *  the `@derive` materializers that depend on it after this dispatch. A
+     *  derive's OWN writes run under FunctionKind=Derive and must never
+     *  re-trigger a derive (which would loop), so they are never recorded. */
+    private recordWrite(db: DbDevState, coll: DevCollectionHandle): void {
+        if (db.functionKind === DbFunctionKind.Derive) return;
+        db.writtenCollections.add(coll.name);
+    }
+
     counterAdd(
         ref: MemoryRef,
         db: DbDevState,
@@ -1045,6 +1056,7 @@ export class DevDatabase {
         }
         const sk = storeKey(coll.name, key);
         this.counters.set(sk, satI64((this.counters.get(sk) ?? 0n) + d));
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1086,6 +1098,7 @@ export class DevDatabase {
             log.push(ev);
             (this.eventVersions.get(sk) ?? this.eventVersions.set(sk, []).get(sk)!).push(sv);
         }
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1124,6 +1137,7 @@ export class DevDatabase {
             (this.eventVersions.get(sk) ?? this.eventVersions.set(sk, []).get(sk)!).push(sv);
         }
         seen.add(evid);
+        this.recordWrite(db, coll);
         return 1;
     }
 

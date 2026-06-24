@@ -15,4 +15,5 @@ export {
     setDbCatalog,
 } from './database.js';
 export { parseCatalog } from './catalog.js';
+export { type DeriveEntry, derivesForWrites, parseDerives } from './derives.js';
 export { CollectionFamily, DbFunctionKind, type DbDevState, freshDbState } from './types.js';

@@ -13,7 +13,14 @@
 
 import fs from 'node:fs';
 
-import { DbFunctionKind, persistDb, setDbCatalog } from '../db/index.js';
+import {
+    DbFunctionKind,
+    type DeriveEntry,
+    derivesForWrites,
+    parseDerives,
+    persistDb,
+    setDbCatalog,
+} from '../db/index.js';
 import { parseRouteKinds, routeKindForRequest, type RouteKindEntry } from '../db/routeKinds.js';
 import {
     decodeResponseEnvelope,
@@ -74,6 +81,13 @@ export interface WasmDispatchResult {
 interface HandleExports {
     readonly memory: WebAssembly.Memory;
     readonly handle: (reqOfs: number, reqLen: number) => bigint;
+}
+
+/** A `@database` with `@derive` methods exports `derive_run` (optional: absent
+ *  when the program declares no derive). See toilscript `injectDeriveHandler`. */
+interface DeriveExports {
+    readonly memory: WebAssembly.Memory;
+    readonly derive_run?: (deriveId: number) => bigint;
 }
 
 /** Host functions the dev server provides under `env` (see `host.ts`). */
@@ -143,6 +157,10 @@ export class WasmServerModule {
     private module: WebAssembly.Module | null = null;
     private loadedMtimeMs = -1;
     private routeKinds: readonly RouteKindEntry[] = [];
+    private derives: readonly DeriveEntry[] = [];
+    // Set when a (re)compile loaded a module with @derive methods; the first
+    // dispatch afterward rebuilds every materialized view from its sources.
+    private derivesDirty = false;
 
     constructor(private readonly wasmPath: string) {}
 
@@ -164,6 +182,8 @@ export class WasmServerModule {
         } catch {
             this.module = null;
             this.routeKinds = [];
+            this.derives = [];
+            this.derivesDirty = false;
             this.loadedMtimeMs = -1;
             return false;
         }
@@ -177,8 +197,13 @@ export class WasmServerModule {
         // after a @data type evolves + rebuild, old on-disk rows now look out of date.
         setDbCatalog(bytes);
         this.routeKinds = parseRouteKinds(bytes);
+        this.derives = parseDerives(bytes);
         this.module = module;
         this.loadedMtimeMs = mtimeMs;
+        // Rebuild materialized views from their sources on the first dispatch
+        // (after persistence is configured), so a freshly-loaded box serves
+        // up-to-date views even after an out-of-band change to the source data.
+        this.derivesDirty = this.derives.length > 0;
         return true;
     }
 
@@ -189,6 +214,10 @@ export class WasmServerModule {
      */
     dispatch(req: EnvelopeRequest): WasmDispatchResult {
         if (this.module === null) throw new Error(`server wasm not loaded (${this.wasmPath})`);
+
+        // First dispatch after a (re)load: materialize views from their sources
+        // before serving the request, so reads see fresh views.
+        this.rebuildDerivedViewsIfStale();
 
         const envelope = encodeRequestEnvelope(req);
 
@@ -231,6 +260,13 @@ export class WasmServerModule {
         const status = state.status ?? resp.status;
 
         const unhandled = headers.some(([n]) => n.toLowerCase() === UNHANDLED_HEADER);
+
+        // Materialize: re-run any @derive whose @database had a source
+        // collection written this request, under FunctionKind=Derive, so its
+        // view.publish lands BEFORE the single persistDb() below flushes both the
+        // request's writes and the derive's view to disk. A read writes nothing,
+        // so this is a no-op for GETs.
+        this.runAffectedDerives(state.db.writtenCollections);
 
         // Flush any DB writes this request made to disk, so dev data survives a
         // restart (and a crash never loses an already-served write).
@@ -282,6 +318,64 @@ export class WasmServerModule {
             );
         // Copy out of the (about-to-be-dropped) instance's memory.
         return new Uint8Array(exports.memory.buffer, ptr, len).slice();
+    }
+
+    /**
+     * After a mutating dispatch, re-run each `@derive` whose `@database` had a
+     * source collection written, on a fresh instance under FunctionKind=Derive.
+     * Each derive recomputes + `view.publish`es its materialized view (a later
+     * Query route reads it via the non-scan `view.get`). A trapped derive is
+     * logged and skipped: the request has already succeeded and the next write
+     * re-derives, so a stale view is the worst case. Mirrors the edge runner,
+     * which folds events into the view off the request path; in single-process
+     * dev, running it synchronously-after-the-write is observably equivalent.
+     */
+    private runAffectedDerives(written: ReadonlySet<string>): void {
+        if (this.module === null) return;
+        for (const derive of derivesForWrites(this.derives, written)) {
+            try {
+                this.runDerive(derive.deriveId);
+            } catch (err) {
+                console.error(`[toil] derive ${derive.dbName}#${derive.methodName} failed:`, err);
+            }
+        }
+    }
+
+    /**
+     * On the first dispatch after a (re)compile, rebuild every materialized view
+     * from its sources (server start, hot-reload, or an out-of-band change to the
+     * persisted source data). Runs once per load; ongoing writes are materialized
+     * incrementally by {@link runAffectedDerives}. Mirrors the edge rebuilding a
+     * view from its event log when a box first comes up.
+     */
+    private rebuildDerivedViewsIfStale(): void {
+        if (!this.derivesDirty) return;
+        this.derivesDirty = false;
+        for (const derive of this.derives) {
+            try {
+                this.runDerive(derive.deriveId);
+            } catch (err) {
+                console.error(
+                    `[toil] derive ${derive.dbName}#${derive.methodName} failed on load:`,
+                    err,
+                );
+            }
+        }
+    }
+
+    /** One derive invocation: a fresh instance under Derive kind, calling the
+     *  synthesized `derive_run(derive_id)` export (writes flow to the shared dev
+     *  store via the `data.*` imports; the caller's persistDb() flushes them). */
+    private runDerive(deriveId: number): void {
+        if (this.module === null) return;
+        const ref: MemoryRef = { memory: null };
+        const state = freshDispatchState();
+        state.db.functionKind = DbFunctionKind.Derive;
+        const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
+        const exports = instance.exports as unknown as DeriveExports;
+        ref.memory = exports.memory;
+        if (typeof exports.derive_run !== 'function') return;
+        exports.derive_run(deriveId);
     }
 
     /** Fail instantiation up front, with names, when the guest needs imports we do not provide. */
