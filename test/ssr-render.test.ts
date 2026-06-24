@@ -172,9 +172,11 @@ describe.skipIf(!built)('edge SSR guest render (real single-wasm build)', () => 
         }
         const out = spliceTemplate(tmpl, inserts).toString('utf8');
 
-        // The spliced section is well-formed and carries every filled hole.
+        // The spliced section is well-formed and carries every filled hole. The
+        // `<!-- -->` around `world` are React's text-boundary markers (renderToString
+        // emits them so hydrateRoot can align the `name` hole between "Hello, " and "!").
         expect(out).toContain(
-            '<section class="hello"><h1>Hello, world!</h1>' +
+            '<section class="hello"><h1>Hello, <!-- -->world<!-- -->!</h1>' +
                 '<p class="hello-blurb"><span>Rendered at the <strong>edge</strong> ' +
                 'from a tiny values envelope.</span></p>' +
                 '<h2>Service snapshot</h2>' +

@@ -1,4 +1,4 @@
-import { createRoot } from 'react-dom/client';
+import { createRoot, hydrateRoot } from 'react-dom/client';
 
 import { DevToolbar } from '../dev/devtools.js';
 import { DevErrorBoundary, DevErrorOverlay, initDevErrorOverlay } from '../dev/error-overlay.js';
@@ -8,8 +8,8 @@ import { Router } from './Router.js';
 import type { ErrorComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
 /** An edge-SSR document carries a `<* id="__toil_ssr">` marker baked into the
- * template; its presence means the server already rendered real first-paint HTML
- * (and SEO) into `#root`. */
+ * template; its presence means the server rendered real first-paint HTML into
+ * `#root`, so `mount` hydrates it in place rather than client-rendering. */
 function isSsrDocument(): boolean {
     return typeof document !== 'undefined' && document.getElementById('__toil_ssr') !== null;
 }
@@ -28,14 +28,6 @@ export function mount(
     const el = document.getElementById('root');
     if (!el) throw new Error('toil: #root element not found');
     initNavigation();
-    // An edge-SSR document already holds server-rendered markup in `#root` (the
-    // real first paint + SEO). We do NOT hydrate it: the template-with-holes is
-    // produced by `renderToStaticMarkup`, which omits the text-node boundary
-    // markers `hydrateRoot` needs, so adjacent "text + hole" content cannot
-    // hydrate cleanly. Instead the client renders over it with `createRoot` (the
-    // server provided the first paint; the client takes over for interactivity).
-    // Clear `#root` first so React renders into an empty container.
-    if (isSsrDocument()) el.replaceChildren();
     const app = (
         <Router
             routes={routes}
@@ -50,9 +42,15 @@ export function mount(
     // branch, and the dev-only imports, are dead-code-eliminated and tree-shaken from production.
     if ((import.meta as unknown as { env: { DEV: boolean } }).env.DEV) {
         initDevErrorOverlay();
-        createRoot(el).render(
+        // Dev tools (error overlay + toolbar) render into their OWN body-level
+        // container, never inside `#root`, so `#root` holds only the app markup.
+        // That lets an SSR document hydrate cleanly (the server only rendered the
+        // app into `#root`), and is harmless for a plain client-rendered page.
+        const devEl = document.createElement('div');
+        devEl.id = '__toil_dev';
+        document.body.appendChild(devEl);
+        createRoot(devEl).render(
             <>
-                <DevErrorBoundary>{app}</DevErrorBoundary>
                 <DevErrorOverlay />
                 <DevToolbar
                     routes={routes}
@@ -60,6 +58,17 @@ export function mount(
                 />
             </>,
         );
+        const tree = <DevErrorBoundary>{app}</DevErrorBoundary>;
+        if (isSsrDocument()) {
+            // Edge-SSR: hydrate the server-rendered markup in place.
+            hydrateRoot(el, tree);
+        } else {
+            createRoot(el).render(tree);
+        }
+    } else if (isSsrDocument()) {
+        // Edge-SSR: the document already holds server-rendered markup; hydrate it
+        // (reuse the DOM) rather than client-rendering from scratch.
+        hydrateRoot(el, app);
     } else {
         createRoot(el).render(app);
     }

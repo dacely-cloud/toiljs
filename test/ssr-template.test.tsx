@@ -356,8 +356,10 @@ describe('ssr build orchestration', () => {
 
         const tmpl = art.tmpl.toString('utf8');
         // Full document with the layout + page scaffold spliced into #root, holes removed.
+        // The `<!-- -->` after `@` is React's text-boundary marker (renderToString emits
+        // it so hydrateRoot can align the `username` hole); the hole text itself is stripped.
         expect(tmpl).toContain(
-            '<div id="root"><div class="app"><main><h1>@</h1><div></div><ul></ul></main></div></div>',
+            '<div id="root"><div class="app"><main><h1>@<!-- --></h1><div></div><ul></ul></main></div></div>',
         );
         expect(tmpl).toContain('<template id="__toil_ssr"></template>');
         expect(tmpl).toContain('/assets/app-abc123.js'); // bootstrap script preserved

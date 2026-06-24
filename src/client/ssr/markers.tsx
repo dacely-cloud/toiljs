@@ -21,7 +21,7 @@
  * does (it does: see `server/runtime/ssr/escape.ts`).
  */
 
-import { createElement, Fragment, type ReactNode } from 'react';
+import { createElement, Fragment, type ReactNode, useEffect, useState } from 'react';
 
 /** Token framing codepoints (Unicode Private Use Area). */
 export const SENTINEL_START = String.fromCharCode(0xe000);
@@ -154,9 +154,16 @@ export interface IslandProps {
 }
 
 /** A client-only escape hatch for content outside the server-template subset.
- * Client: renders `children`. Build: renders nothing (the block is empty in the
- * server HTML and appears after hydration; it gets no first-paint/SEO). */
+ * Build: renders nothing (empty in the server HTML). Client: ALSO renders nothing
+ * on the first (hydration) render, so it matches the empty server markup, then a
+ * mount effect reveals `children` on the next commit. Rendering the children
+ * during hydration instead would diverge from the server's empty markup and trip
+ * a hydration mismatch. So an island gets no first-paint / SEO, by design. */
 export function Island(props: IslandProps): ReactNode {
-    if (ssrBuild) return null;
+    const [hydrated, setHydrated] = useState(false);
+    useEffect(() => {
+        setHydrated(true);
+    }, []);
+    if (ssrBuild || !hydrated) return null;
     return createElement(Fragment, null, props.children);
 }
