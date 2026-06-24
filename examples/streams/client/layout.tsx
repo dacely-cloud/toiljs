@@ -10,7 +10,7 @@ export default function Layout({ children }: { children?: ReactNode }) {
                     alignItems: 'baseline',
                     borderBottom: '1px solid #1b2330',
                     paddingBottom: '0.75rem',
-                    marginBottom: '1.5rem',
+                    marginBottom: '1.5rem'
                 }}>
                 <strong style={{ color: '#2563FF', fontSize: '1.1rem' }}>streams</strong>
                 <nav style={{ display: 'flex', gap: '1rem' }}>

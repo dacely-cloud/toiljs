@@ -11,6 +11,12 @@ interface TierProps {
     blurb: string;
 }
 
+async function test(): void {
+    const stream = await Server.STREAM.echo.connect();
+
+
+}
+
 function Tier({ tag, title, entry, surface, artifact, blurb }: TierProps) {
     return (
         <section
@@ -18,9 +24,8 @@ function Tier({ tag, title, entry, surface, artifact, blurb }: TierProps) {
                 border: '1px solid #e2e2e2',
                 borderRadius: 10,
                 padding: '1rem 1.25rem',
-                margin: '1rem 0',
-            }}
-        >
+                margin: '1rem 0'
+            }}>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.6rem' }}>
                 <span
                     style={{
@@ -29,9 +34,8 @@ function Tier({ tag, title, entry, surface, artifact, blurb }: TierProps) {
                         background: '#111',
                         color: '#fff',
                         borderRadius: 6,
-                        padding: '0.15rem 0.45rem',
-                    }}
-                >
+                        padding: '0.15rem 0.45rem'
+                    }}>
                     {tag}
                 </span>
                 <h2 style={{ margin: 0, fontSize: '1.15rem' }}>{title}</h2>
@@ -46,13 +50,14 @@ function Tier({ tag, title, entry, surface, artifact, blurb }: TierProps) {
 }
 
 export default function Home() {
+
     return (
         <main style={{ maxWidth: 760, margin: '0 auto', padding: '2rem 1.25rem', lineHeight: 1.5 }}>
             <h1>Toil streams example</h1>
             <p>
-                One source tree, compiled into <strong>three WebAssembly artifacts</strong> - one per
-                deployment tier of the Toil edge. This page is served by the L1 request tier; the
-                stream and daemon tiers run as their own resident boxes.
+                One source tree, compiled into <strong>three WebAssembly artifacts</strong> - one per deployment tier of
+                the Toil edge. This page is served by the L1 request tier; the stream and daemon tiers run as their own
+                resident boxes.
             </p>
 
             <Tier
@@ -81,8 +86,8 @@ export default function Home() {
             />
 
             <p style={{ marginTop: '2rem', color: '#666' }}>
-                Run <code>npm run build</code>, then <code>ls build/server/*.wasm</code> to see the
-                three artifacts the single build produced. See the README for the full mapping.
+                Run <code>npm run build</code>, then <code>ls build/server/*.wasm</code> to see the three artifacts the
+                single build produced. See the README for the full mapping.
             </p>
         </main>
     );

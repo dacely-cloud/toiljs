@@ -42,7 +42,7 @@ class Echo {
     }
 
     @message
-    onMessage(): void {
+    onMessage(packet: StreamPacket): void {
         // Increments on every inbound frame - and PERSISTS across them, because
         // this is the same resident box for the whole connection.
         this.count = this.count + 1;
