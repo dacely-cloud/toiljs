@@ -21,6 +21,10 @@ toilscript-to-WebAssembly server target.
   generated `Server` RPC surface are globals too.
 - Scripts: `npm run dev` (HMR), `npm run build` (→ `build/client` + `build/server`),
   `npm start` (self-host the build).
+- Compute tiers: the server can span L1 request (`server/main.ts`, `@rest`/`@service`/`@remote`),
+  L2/L3 stream (`server/main.stream.ts`, `@stream`), and L4 daemon (`server/main.daemon.ts`,
+  `@daemon`/`@scheduled`); each tier compiles into its own artifact. See [tiers.md](./tiers.md).
 
 See [routing.md](./routing.md), [client.md](./client.md), [styling.md](./styling.md),
-[server.md](./server.md), [ssr.md](./ssr.md), [cli.md](./cli.md).
+[server.md](./server.md), [ssr.md](./ssr.md), [rpc.md](./rpc.md), [tiers.md](./tiers.md),
+[streams.md](./streams.md), [daemon.md](./daemon.md), [cli.md](./cli.md).
