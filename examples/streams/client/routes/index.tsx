@@ -11,12 +11,6 @@ interface TierProps {
     blurb: string;
 }
 
-async function test(): void {
-    const stream = await Server.STREAM.echo.connect();
-
-
-}
-
 function Tier({ tag, title, entry, surface, artifact, blurb }: TierProps) {
     return (
         <section
