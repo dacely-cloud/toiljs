@@ -559,22 +559,23 @@ function printEmailsUrl(cfg: ResolvedToilConfig, localUrl: string | undefined): 
 const DEV_CSS_RE = /\.(css|scss|sass|less|styl|stylus|pcss|postcss|sss)(\?|$)/;
 
 /**
- * Collects the stylesheet URLs reachable from the dev client entry (`/entry.tsx`) by walking Vite's
- * module graph over static imports. Used to inline render-blocking `<link>`s into the dev SSR shell so
- * the server-rendered first paint is styled (Vite otherwise injects JS-imported CSS only at runtime).
- * Best-effort: returns whatever it can resolve, or `[]` if the entry can't be walked.
+ * Collects the CSS reachable from the dev client entry (`/entry.tsx`) by walking Vite's module graph
+ * over static imports, then fetching each stylesheet's raw text (`?direct`). The dev SSR shell INLINES
+ * this so the server-rendered first paint is styled with NO extra request: a render-blocking `<link>`
+ * would otherwise stall the paint while Vite cold-transforms+serves the CSS (a visible blank beat on a
+ * cold load). Best-effort + transitive; returns '' if the entry can't be walked.
  */
-async function collectDevCssLinks(server: ViteDevServer): Promise<string[]> {
+async function collectDevCss(server: ViteDevServer): Promise<string> {
     const ENTRY = '/entry.tsx';
     const cssUrls = new Set<string>();
     const seen = new Set<string>();
     try {
         await server.transformRequest(ENTRY);
     } catch {
-        return [];
+        return '';
     }
     const entry = await server.moduleGraph.getModuleByUrl(ENTRY);
-    if (!entry) return [];
+    if (!entry) return '';
     const queue = [entry];
     while (queue.length > 0) {
         const mod = queue.shift();
@@ -597,7 +598,19 @@ async function collectDevCssLinks(server: ViteDevServer): Promise<string[]> {
             }
         }
     }
-    return [...cssUrls];
+    // Fetch each stylesheet's raw text (`?direct` serves real CSS, not the HMR JS shim) at startup,
+    // while Vite is already warm, so it can be inlined rather than fetched on the paint critical path.
+    let css = '';
+    for (const url of cssUrls) {
+        const direct = `${url}${url.includes('?') ? '&' : '?'}direct`;
+        try {
+            const result = await server.transformRequest(direct, { ssr: false });
+            if (result?.code) css += `${result.code}\n`;
+        } catch {
+            // skip a stylesheet that fails to transform; inline what we can
+        }
+    }
+    return css;
 }
 
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
@@ -646,21 +659,17 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         const rawIndex = fs.readFileSync(path.join(cfg.toilDir, 'index.html'), 'utf8');
         let devShell = await server.transformIndexHtml('/', rawIndex);
         // In dev, Vite injects JS-imported CSS at RUNTIME (after the entry script runs), so a
-        // server-rendered document would paint unstyled until then (a FOUC). Inject the entry's
-        // stylesheets as render-blocking `<link ...?direct>` into the SSR shell so the first paint is
-        // styled (prod already bakes the `<link>` into the built shell); the client drops these after
-        // hydration so Vite's HMR-managed styles take over (see routing/mount.tsx).
-        const devCssLinks = await collectDevCssLinks(server);
-        if (devCssLinks.length > 0) {
-            const tags = devCssLinks
-                .map(
-                    (u) =>
-                        `<link rel="stylesheet" data-toil-dev-ssr href="${u}${u.includes('?') ? '&' : '?'}direct">`,
-                )
-                .join('');
+        // server-rendered document would paint unstyled until then (a FOUC). INLINE the entry's CSS
+        // into the SSR shell so the first paint is styled with no extra request (a `<link>` would
+        // render-block the paint while Vite cold-serves the CSS, a visible blank beat). Prod bakes the
+        // real `<link>` into the built shell; the client drops this <style> after hydration so Vite's
+        // HMR-managed styles take over (see routing/mount.tsx).
+        const devCss = await collectDevCss(server);
+        if (devCss.trim().length > 0) {
+            const tag = `<style data-toil-dev-ssr>${devCss}</style>`;
             devShell = devShell.includes('</head>')
-                ? devShell.replace('</head>', `${tags}</head>`)
-                : tags + devShell;
+                ? devShell.replace('</head>', `${tag}</head>`)
+                : tag + devShell;
         }
         ssrTemplates = await extractDevSsrTemplates(cfg, devShell);
         if (ssrTemplates.length > 0) {
