@@ -1,0 +1,37 @@
+{
+    "entries": [
+        "server/main.ts",
+        "server/main.stream.ts",
+        "server/main.daemon.ts"
+    ],
+    "targets": {
+        "release": {
+            "outFile": "build/server/release.wasm",
+            "textFile": "build/server/release.wat"
+        }
+    },
+    "options": {
+        "sourceMap": false,
+        "optimizeLevel": 3,
+        "shrinkLevel": 1,
+        "converge": true,
+        "noAssert": false,
+        "enable": [
+            "sign-extension",
+            "mutable-globals",
+            "nontrapping-f2i",
+            "bulk-memory",
+            "simd",
+            "reference-types",
+            "multi-value"
+        ],
+        "runtime": "stub",
+        "lib": [
+            "node_modules/toiljs/server/globals"
+        ],
+        "memoryBase": 65536,
+        "initialMemory": 4,
+        "debug": false,
+        "trapMode": "allow"
+    }
+}

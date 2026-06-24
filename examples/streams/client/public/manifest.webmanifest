@@ -1,0 +1,15 @@
+{
+    "name": "streams",
+    "short_name": "streams",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#080D11",
+    "theme_color": "#080D11",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "type": "image/svg+xml",
+            "sizes": "any"
+        }
+    ]
+}

@@ -1,0 +1,11 @@
+node_modules
+build
+.toil
+shared/server.ts
+toil-env.d.ts
+toil-routes.d.ts
+server/_ssr/
+hosts/*/_tmpl/
+# Local dev env vars/secrets (never commit)
+.env
+.env.secrets

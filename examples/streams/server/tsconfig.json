@@ -1,0 +1,13 @@
+{
+    "extends": "toilscript/std/assembly.json",
+    "compilerOptions": {
+        "plugins": [
+            {
+                "name": "toilscript/std/ts-plugin.cjs"
+            }
+        ]
+    },
+    "include": [
+        "./**/*.ts"
+    ]
+}

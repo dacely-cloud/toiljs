@@ -1,0 +1,7 @@
+{
+    "extends": "toiljs/tsconfig",
+    "compilerOptions": {
+        "paths": { "shared/*": ["./shared/*"] }
+    },
+    "include": ["client", "shared", "emails", "toil.config.ts", "toil-env.d.ts", "toil-routes.d.ts"]
+}

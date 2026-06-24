@@ -137,30 +137,42 @@ export async function buildServer(root: string): Promise<void> {
     // (optimization, features, runtime) still come from the toilconfig's `release` target.
     const files = serverEntryFiles(root);
 
-    // A project that declares a `@daemon` (cold surface) compiles the ONE source tree into TWO
-    // artifacts via two toilscript passes (one per --targetMode); a project with only the legacy
-    // request surface keeps the single-artifact path (byte-identical to before). The cold pass
-    // runs FIRST (cheap, no client surface); the hot pass runs LAST because it (re)writes
-    // shared/server.ts via --rpcModule, which the downstream client build imports.
+    // A project that declares a `@daemon` (L4 cold surface) and/or a `@stream` (L2/L3 stream
+    // surface) compiles the ONE source tree into SEPARATE artifacts, one per deployment tier, via
+    // one toilscript pass each; a project with only the legacy request surface keeps the
+    // single-artifact path (byte-identical to before). The three tiers:
+    //   - REQUEST (L1)   `server/main.ts`    + `@rest`/`@service`/`@remote` -> `release.wasm`
+    //   - STREAM  (L2/L3) `server/main.stream.ts` + `@stream`              -> `release-stream.wasm`
+    //   - DAEMON  (L4)   `@daemon`/`@scheduled`                            -> `release-cold.wasm`
+    // toilscript's gating matrix HARD-ERRORS a class compiled under the wrong --targetMode, so each
+    // pass is handed only the files eligible for its tier (`@data`/`@database`/plain helpers are
+    // SHARED into every pass). The request pass runs LAST because it (re)writes shared/server.ts via
+    // --rpcModule, which the downstream client build imports.
     const split = splitSurfaceFiles(root, files);
-    if (split.hasDaemon) {
+    if (split.hasDaemon || split.hasStream) {
         const artifacts = serverArtifacts(root);
-        // toilscript's gating matrix HARD-ERRORS a `@daemon`/`@scheduled` class compiled under
-        // `--targetMode hot` (and a `@rest`/`@stream`/`@service`/`@remote` class under cold). So
-        // each pass is handed only the files eligible for that mode: the cold pass drops hot-only
-        // files, the hot pass drops daemon-only files. `@data`/`@database`/plain files are shared.
-        await runToilscriptPass(root, binJs, split.cold, {
-            mode: 'cold',
-            outFile: artifacts.cold,
-            withRpc: false,
-        });
-        // The hot pass writes the legacy `outFile` (= hotFile alias, AN-1) so the request path
-        // and the dev server's `serverWasmFile` are unchanged; the request box loads it as today.
-        // A daemon-only project (no request/stream surface) has no hot files; skip the hot pass so
-        // toilscript is not handed an empty entry set. The request path then stays idle (no
-        // `handle` export), which is correct for a pure background worker.
-        if (split.hot.length > 0)
-            await runToilscriptPass(root, binJs, split.hot, {
+        // DAEMON (cold) pass: --targetMode cold, no client RPC surface.
+        if (split.hasDaemon)
+            await runToilscriptPass(root, binJs, split.cold, {
+                mode: 'cold',
+                outFile: artifacts.cold,
+                withRpc: false,
+            });
+        // STREAM pass: --targetMode hot into its OWN `release-stream.wasm`, no client RPC surface
+        // (a resident stream box exposes `stream_dispatch`, not the request client surface). Driven
+        // by `server/main.stream.ts` + the `@stream` classes; the request box never loads it.
+        if (split.hasStream && split.stream.length > 0)
+            await runToilscriptPass(root, binJs, split.stream, {
+                mode: 'hot',
+                outFile: artifacts.stream,
+                withRpc: false,
+            });
+        // REQUEST pass: the L1 artifact (= the legacy `outFile`, AN-1), WITH the client RPC surface.
+        // A pure daemon/stream project (no request files) skips it so toilscript is not handed an
+        // empty entry set; the request path then stays idle (no `handle` export), correct for a
+        // background-only worker.
+        if (split.request.length > 0)
+            await runToilscriptPass(root, binJs, split.request, {
                 mode: 'hot',
                 outFile: serverWasmFile(root),
                 withRpc: true,
@@ -168,7 +180,7 @@ export async function buildServer(root: string): Promise<void> {
         return;
     }
 
-    // Legacy single-artifact path (no daemon surface): exactly today's invocation.
+    // Legacy single-artifact path (no daemon/stream surface): exactly today's invocation.
     await runToilscriptPass(root, binJs, files, { mode: null, outFile: null, withRpc: true });
 }
 
@@ -191,54 +203,85 @@ function resolveToilscriptBin(root: string): string {
     }
 }
 
-/** Files classified per target mode for the two-pass build. */
+/** Files classified per deployment TIER for the multi-artifact build. */
 interface SurfaceSplit {
-    /** Whether any file declares a `@daemon` (so a cold pass is needed at all). */
+    /** Whether any file declares a `@daemon` (so a cold/daemon pass is needed at all). */
     readonly hasDaemon: boolean;
-    /** Files eligible for the COLD pass (everything except hot-only request files). */
+    /** Whether any file declares a `@stream` (or is a `*.stream.ts` entry), so a stream pass is needed. */
+    readonly hasStream: boolean;
+    /** Files for the DAEMON (cold) pass: `@daemon`/`@scheduled` surfaces + shared helpers. */
     readonly cold: string[];
-    /** Files eligible for the HOT pass (everything except daemon-only cold files). */
-    readonly hot: string[];
+    /** Files for the STREAM pass: `@stream` surfaces + the `*.stream.ts` entry + shared helpers. */
+    readonly stream: string[];
+    /** Files for the REQUEST pass: `@rest`/`@service`/`@remote` surfaces + the request entry + shared helpers. */
+    readonly request: string[];
 }
 
-/** A `@daemon`/`@scheduled` decorator at line start (a cold-only surface). */
+/** A `@daemon`/`@scheduled` decorator at line start (the L4 cold/daemon surface). */
 const COLD_DECORATOR = /^[ \t]*@(daemon|scheduled)\b/m;
-/** A request/stream-surface decorator at line start (a hot-only surface). */
-const HOT_DECORATOR = /^[ \t]*@(rest|route|stream|service|remote)\b/m;
+/** A `@stream` decorator at line start (the L2/L3 stream surface). */
+const STREAM_DECORATOR = /^[ \t]*@stream\b/m;
+/** A request-surface decorator at line start (`@rest`/`@route`/`@service`/`@remote`, the L1 tier). */
+const REQUEST_DECORATOR = /^[ \t]*@(rest|route|service|remote)\b/m;
+/** A server ENTRY re-exports the runtime WASM entry points; this marks `main.ts` / `main.stream.ts`
+ *  (vs a plain `@data`/helper), so each entry is routed to exactly ONE tier and two entries never
+ *  collide on a duplicate `export *` in the same pass. */
+const RUNTIME_ENTRY = /from\s+['"]toiljs\/server\/runtime\/exports['"]/;
+
+/** True for a STREAM-tier entry by the `*.stream.ts` naming convention (e.g. `main.stream.ts`). */
+function isStreamEntryFile(rel: string): boolean {
+    return rel.endsWith('.stream.ts');
+}
+
+/** True for a COLD/daemon-tier entry by the `*.daemon.ts` naming convention (e.g. `main.daemon.ts`). */
+function isDaemonEntryFile(rel: string): boolean {
+    return rel.endsWith('.daemon.ts');
+}
 
 /**
- * Classify each server source file by the surface decorators it declares, so each toilscript pass
- * is handed only the files valid for its `--targetMode` (toilscript HARD-ERRORS a cold class in
- * the hot artifact and vice versa). A file with a cold-only surface (`@daemon`/`@scheduled` and no
- * hot decorator) is dropped from the hot pass; a file with a hot-only surface is dropped from the
- * cold pass. Shared files (`@data`/`@database`/plain helpers, or a file mixing both surfaces) stay
- * in both passes, matching toilscript's class-level gating which admits `@data`/`@database`
- * everywhere.
+ * Classify each server source file by its deployment TIER, so each toilscript pass is handed only
+ * the files valid for its `--targetMode` (toilscript HARD-ERRORS a class compiled under the wrong
+ * mode). Three tiers:
+ *   - COLD/daemon: a file declaring `@daemon`/`@scheduled` -> `release-cold.wasm`.
+ *   - STREAM (L2/L3): a file declaring `@stream`, OR a `*.stream.ts` entry (`main.stream.ts`) ->
+ *     `release-stream.wasm`.
+ *   - REQUEST (L1): a file declaring `@rest`/`@service`/`@remote`, OR a non-`*.stream.ts` runtime
+ *     ENTRY (`main.ts`) -> `release.wasm`.
+ * A file with NONE of these (a plain `@data`/`@database`/helper) is SHARED into every pass, matching
+ * toilscript's class-level gating. Routing each entry to exactly one tier keeps `release.wasm` free
+ * of `stream_dispatch` and stops two entries re-exporting the runtime in the same pass.
  */
 export function splitSurfaceFiles(root: string, files: string[]): SurfaceSplit {
     let hasDaemon = false;
+    let hasStream = false;
     const cold: string[] = [];
-    const hot: string[] = [];
+    const stream: string[] = [];
+    const request: string[] = [];
     for (const rel of files) {
         let src = '';
         try {
             src = fs.readFileSync(path.join(root, rel), 'utf8');
         } catch {
-            // unreadable: keep it in both passes (let toilscript surface the error).
+            // unreadable: keep it in EVERY pass (let toilscript surface the error).
             cold.push(rel);
-            hot.push(rel);
+            stream.push(rel);
+            request.push(rel);
             continue;
         }
-        const isCold = COLD_DECORATOR.test(src);
-        const isHot = HOT_DECORATOR.test(src);
-        if (isCold) hasDaemon ||= /^[ \t]*@daemon\b/m.test(src);
-        // Drop a file from the hot pass only when it is cold-only (cold surface, no hot surface);
-        // a mixed file stays in both (toilscript gates per class, not per file).
-        if (!(isCold && !isHot)) hot.push(rel);
-        // Drop a file from the cold pass only when it is hot-only.
-        if (!(isHot && !isCold)) cold.push(rel);
+        const isCold = COLD_DECORATOR.test(src) || isDaemonEntryFile(rel);
+        const isStream = STREAM_DECORATOR.test(src) || isStreamEntryFile(rel);
+        const isRequest =
+            REQUEST_DECORATOR.test(src) ||
+            (RUNTIME_ENTRY.test(src) && !isStreamEntryFile(rel) && !isDaemonEntryFile(rel));
+        if (isCold) hasDaemon ||= /^[ \t]*@daemon\b/m.test(src) || isDaemonEntryFile(rel);
+        if (isStream) hasStream = true;
+        // A file with no tier-specific surface is a SHARED helper, compiled into every pass.
+        const shared = !isCold && !isStream && !isRequest;
+        if (isCold || shared) cold.push(rel);
+        if (isStream || shared) stream.push(rel);
+        if (isRequest || shared) request.push(rel);
     }
-    return { hasDaemon, cold, hot };
+    return { hasDaemon, hasStream, cold, stream, request };
 }
 
 interface PassOptions {
@@ -417,32 +460,40 @@ function serverWasmFile(root: string): string {
  *  present in the toilconfig `release` target; otherwise derived from `outFile` by inserting the
  *  mode before the extension (`release.wasm` -> `release-hot.wasm` / `release-cold.wasm`). */
 export interface ServerArtifacts {
-    /** Absolute path to the hot (request/stream) artifact. */
+    /** Absolute path to the hot (request) artifact. */
     readonly hot: string;
     /** Absolute path to the cold (daemon) artifact. */
     readonly cold: string;
+    /** Absolute path to the stream (L2/L3 `@stream`) artifact (`release-stream.wasm`). */
+    readonly stream: string;
 }
 export function serverArtifacts(root: string): ServerArtifacts {
     let out = 'build/server/release.wasm';
     let hot: string | undefined;
     let cold: string | undefined;
+    let stream: string | undefined;
     try {
         const cfg = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
-            targets?: Record<string, { outFile?: string; hotFile?: string; coldFile?: string }>;
+            targets?: Record<
+                string,
+                { outFile?: string; hotFile?: string; coldFile?: string; streamFile?: string }
+            >;
         };
         out = cfg.targets?.release?.outFile ?? out;
         hot = cfg.targets?.release?.hotFile;
         cold = cfg.targets?.release?.coldFile;
+        stream = cfg.targets?.release?.streamFile;
     } catch {
         // No readable toilconfig: caller already gated on its existence; keep defaults.
     }
-    const ins = (mode: 'hot' | 'cold'): string => {
+    const ins = (mode: 'hot' | 'cold' | 'stream'): string => {
         const ext = path.extname(out);
         return out.slice(0, ext ? -ext.length : undefined) + '-' + mode + (ext || '.wasm');
     };
     return {
         hot: path.resolve(root, hot ?? ins('hot')),
         cold: path.resolve(root, cold ?? ins('cold')),
+        stream: path.resolve(root, stream ?? ins('stream')),
     };
 }
 

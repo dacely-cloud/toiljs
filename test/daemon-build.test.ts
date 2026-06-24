@@ -84,9 +84,10 @@ describe('serverArtifacts path derivation', () => {
         const a = serverArtifacts(tmp);
         expect(a.hot).toBe(join(tmp, 'build/server/release-hot.wasm'));
         expect(a.cold).toBe(join(tmp, 'build/server/release-cold.wasm'));
+        expect(a.stream).toBe(join(tmp, 'build/server/release-stream.wasm'));
     });
 
-    it('honors explicit hotFile/coldFile when present', () => {
+    it('honors explicit hotFile/coldFile/streamFile when present', () => {
         writeFileSync(
             join(tmp, 'toilconfig.json'),
             JSON.stringify({
@@ -95,6 +96,7 @@ describe('serverArtifacts path derivation', () => {
                         outFile: 'build/server/release.wasm',
                         hotFile: 'out/hot.wasm',
                         coldFile: 'out/cold.wasm',
+                        streamFile: 'out/stream.wasm',
                     },
                 },
             }),
@@ -102,6 +104,7 @@ describe('serverArtifacts path derivation', () => {
         const a = serverArtifacts(tmp);
         expect(a.hot).toBe(join(tmp, 'out/hot.wasm'));
         expect(a.cold).toBe(join(tmp, 'out/cold.wasm'));
+        expect(a.stream).toBe(join(tmp, 'out/stream.wasm'));
     });
 });
 
@@ -131,30 +134,46 @@ describe('splitSurfaceFiles per-pass classification', () => {
         return rels;
     }
 
-    it('drops daemon-only files from the hot pass and hot-only files from the cold pass', () => {
+    it('routes each surface to its tier (request/stream/cold) and shares plain helpers', () => {
         const rels = lay({
             'server/jobs.ts': '@daemon\nclass J { @scheduled("1s") t(): void {} }\n',
             'server/api.ts': '@rest\nclass A {}\n',
+            'server/chat.ts': "@stream('chat')\nclass C {}\n",
             'server/model.ts': '@data\nclass M {}\n',
             'server/util.ts': 'export function helper(): i32 { return 1; }\n',
         });
         const split = splitSurfaceFiles(tmp, rels);
         expect(split.hasDaemon).toBe(true);
-        // hot pass: everything except the daemon-only jobs.ts.
-        expect(split.hot.sort()).toEqual(
-            ['server/api.ts', 'server/model.ts', 'server/util.ts'].sort(),
-        );
-        // cold pass: everything except the hot-only api.ts.
-        expect(split.cold.sort()).toEqual(
-            ['server/jobs.ts', 'server/model.ts', 'server/util.ts'].sort(),
-        );
+        expect(split.hasStream).toBe(true);
+        const shared = ['server/model.ts', 'server/util.ts'];
+        // Each surface goes to ONLY its tier; the @data/helper files are shared into all three.
+        expect(split.cold.sort()).toEqual(['server/jobs.ts', ...shared].sort());
+        expect(split.stream.sort()).toEqual(['server/chat.ts', ...shared].sort());
+        expect(split.request.sort()).toEqual(['server/api.ts', ...shared].sort());
     });
 
-    it('keeps a file that mixes both surfaces in both passes', () => {
+    it('routes entries by the *.stream.ts / *.daemon.ts naming and the runtime-export request entry', () => {
+        const RT = "export * from 'toiljs/server/runtime/exports';\n";
+        const rels = lay({
+            'server/main.ts': RT, // runtime entry, not *.stream/.daemon -> request
+            'server/main.stream.ts': RT, // *.stream.ts -> stream (not request, despite the runtime export)
+            'server/main.daemon.ts': "import './daemon/Jobs';\n", // *.daemon.ts -> cold
+        });
+        const split = splitSurfaceFiles(tmp, rels);
+        expect(split.hasStream).toBe(true);
+        expect(split.hasDaemon).toBe(true);
+        // Each entry is routed to EXACTLY one tier (so two entries never collide on `export *`).
+        expect(split.request).toEqual(['server/main.ts']);
+        expect(split.stream).toEqual(['server/main.stream.ts']);
+        expect(split.cold).toEqual(['server/main.daemon.ts']);
+    });
+
+    it('keeps a file that mixes daemon + request surfaces in both of those passes (not stream)', () => {
         const rels = lay({ 'server/both.ts': '@daemon\nclass J {}\n@rest\nclass A {}\n' });
         const split = splitSurfaceFiles(tmp, rels);
-        expect(split.hot).toContain('server/both.ts');
         expect(split.cold).toContain('server/both.ts');
+        expect(split.request).toContain('server/both.ts');
+        expect(split.stream).not.toContain('server/both.ts');
     });
 });
 
