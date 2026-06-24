@@ -1,9 +1,10 @@
 /**
- * Dev STREAM emulation end-to-end (Phase 4). Compiles a real `@stream` fixture to `release-stream.wasm`
- * with the LOCAL toilscript (`--targetMode hot`), then drives `DevStreamBox` against it and asserts the
- * raw `@message` ring bridge - echo / reject / empty - matches the production edge byte-for-byte, with
- * state persisting across events on the single resident box. This is the dev-side mirror of
- * toil-backend's `message_bridge_reply_reject_empty_roundtrip`.
+ * Dev STREAM emulation end-to-end (Phase 4). Compiles real `@stream` fixtures with the LOCAL toilscript
+ * (`--targetMode hot`), then drives `DevStreamBox` + `StreamDevHost` and asserts the dev runtime mirrors
+ * the production edge (`toil-backend` `src/wasm/stream`) BYTE-FOR-BYTE: the `@message` ring bridge
+ * (echo / reject / empty), the `@connect` info-block bridge (path-based accept/reject + egress clear),
+ * and the session driver (accept / dispatch / trap-close / lifecycle). The dev mirror of toil-backend's
+ * message_bridge + @connect + hostile-isolation tests.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -18,26 +19,39 @@ import { DevStreamBox } from '../src/devserver/stream/index.js';
 import { StreamDevHost } from '../src/devserver/stream/manager.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const FIXTURE_SRC = join(here, 'fixtures', 'stream-echo.ts');
-// The LOCAL toilscript build (the @message-bridge codegen); the published dep predates it.
+// The LOCAL toilscript build (the @message + @connect bridge codegen); the published dep predates it.
 const LOCAL_TOILSCRIPT_BIN = join(here, '..', '..', 'toilscript', 'bin', 'toilscript.js');
 
-let WASM: Buffer;
-let WASM_PATH: string;
 let tmp: string;
+let ECHO_PATH: string;
+let GATE_PATH: string;
+let TRAP_PATH: string;
+let ECHO: Buffer;
+let GATE: Buffer;
 
-beforeAll(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'toiljs-stream-'));
-    WASM_PATH = join(tmp, 'release-stream.wasm');
+function compile(srcName: string): { path: string; wasm: Buffer } {
+    const src = join(here, 'fixtures', srcName);
+    const out = join(tmp, srcName.replace(/\.ts$/, '.wasm'));
     const r = spawnSync(
         'node',
-        [LOCAL_TOILSCRIPT_BIN, FIXTURE_SRC, '-o', WASM_PATH, '--targetMode', 'hot', '--runtime', 'stub'],
+        [LOCAL_TOILSCRIPT_BIN, src, '-o', out, '--targetMode', 'hot', '--runtime', 'stub'],
         { encoding: 'utf8' },
     );
     if (r.status !== 0) {
-        throw new Error(`toilscript compile failed (${String(r.status)}):\n${r.stderr}${r.stdout}`);
+        throw new Error(`toilscript compile ${srcName} failed (${String(r.status)}):\n${r.stderr}${r.stdout}`);
     }
-    WASM = readFileSync(WASM_PATH);
+    return { path: out, wasm: readFileSync(out) };
+}
+
+beforeAll(() => {
+    tmp = mkdtempSync(join(tmpdir(), 'toiljs-stream-'));
+    const echo = compile('stream-echo.ts');
+    ECHO_PATH = echo.path;
+    ECHO = echo.wasm;
+    const gate = compile('stream-gate.ts');
+    GATE_PATH = gate.path;
+    GATE = gate.wasm;
+    TRAP_PATH = compile('stream-trap.ts').path;
 });
 
 afterAll(() => {
@@ -48,90 +62,104 @@ describe('dev stream box: the @message ring bridge', () => {
     const id = 0x0000_0007_0000_0005n;
 
     it('loads a hot stream artifact with the ring runtime', () => {
-        const box = DevStreamBox.load(WASM);
-        expect(box.hasRings).toBe(true);
+        expect(DevStreamBox.load(ECHO).hasRings).toBe(true);
     });
 
     it('echoes / rejects / empties through the ring, persisting state across events', () => {
-        const box = DevStreamBox.load(WASM);
-
-        // @connect is absent on the echo class -> a no-op success (non-negative).
-        expect(box.onConnect(id) >= 0n).toBe(true);
-
-        // "hello" echoes back through the egress ring.
+        const box = DevStreamBox.load(ECHO);
+        expect(box.onConnect(id, 'localhost', '/').kind).toBe('accept'); // echo declares no @connect
         expect(box.onMessage(id, Buffer.from('hello'))).toEqual({
             kind: 'reply',
             frames: [Buffer.from('hello')],
         });
-
-        // A second, longer message echoes again on the SAME resident box (the drained-reset works).
         expect(box.onMessage(id, Buffer.from('second frame'))).toEqual({
             kind: 'reply',
             frames: [Buffer.from('second frame')],
         });
-
-        // An 'X'-prefixed frame rejects with 0x0210 (the negative packed-i64 bridge).
         expect(box.onMessage(id, Buffer.from('Xdrop'))).toEqual({ kind: 'reject', code: 0x0210 });
-
-        // An empty frame stages nothing -> zero reply frames.
         expect(box.onMessage(id, Buffer.from(''))).toEqual({ kind: 'reply', frames: [] });
     });
 
     it('rejects a non-stream artifact (fails closed)', () => {
-        const notStream = Buffer.from('\0asm\x01\0\0\0', 'binary');
-        expect(() => DevStreamBox.load(notStream)).toThrow();
+        expect(() => DevStreamBox.load(Buffer.from('\0asm\x01\0\0\0', 'binary'))).toThrow();
     });
 });
 
-describe('dev stream connection manager (StreamDevHost)', () => {
-    it('drives independent per-connection resident boxes through their lifecycle', () => {
-        const host = new StreamDevHost(WASM_PATH);
+describe('dev stream box: the @connect info-block bridge', () => {
+    const id = 0x11n;
 
-        // Two independent connections, each a fresh resident box with its own host stream id.
-        const id1 = host.open('c1');
-        const id2 = host.open('c2');
-        expect(id1).not.toBe(id2);
-        expect(id1).not.toBe(0n);
-        expect(host.activeConnections).toBe(2);
+    it('reads the connect path and rejects /blocked while accepting others', () => {
+        const box = DevStreamBox.load(GATE);
+        expect(box.hasConnectBridge).toBe(true);
+        expect(box.onConnect(id, 'acme.toil', '/blocked')).toEqual({ kind: 'reject', code: 0x0211 });
 
-        // Each connection's @message echoes independently.
-        expect(host.message('c1', Buffer.from('one'))).toEqual({
+        const ok = DevStreamBox.load(GATE);
+        expect(ok.onConnect(id, 'acme.toil', '/room/42')).toEqual({ kind: 'accept' });
+        // An accepted connection is usable: its @message echoes.
+        expect(ok.onMessage(id, Buffer.from('hi'))).toEqual({
+            kind: 'reply',
+            frames: [Buffer.from('hi')],
+        });
+    });
+
+    it('clears @connect-staged egress so the first @message reply is clean', () => {
+        const box = DevStreamBox.load(GATE);
+        // /greet stages "GHI" during @connect; the host clears it on accept.
+        expect(box.onConnect(id, 'acme.toil', '/greet')).toEqual({ kind: 'accept' });
+        // The first @message must see ONLY its own reply, never the stale "GHI".
+        expect(box.onMessage(id, Buffer.from('hi'))).toEqual({
+            kind: 'reply',
+            frames: [Buffer.from('hi')],
+        });
+    });
+});
+
+describe('dev stream session driver (StreamDevHost)', () => {
+    it('accepts, dispatches, and closes - mirroring StreamWorker', () => {
+        const host = new StreamDevHost(ECHO_PATH);
+        expect(host.acceptUpgrade('c1', 'acme.toil', '/').kind).toBe('accepted');
+        expect(host.activeConnections).toBe(1);
+        expect(host.dispatch('c1', Buffer.from('one'))).toEqual({
             kind: 'reply',
             frames: [Buffer.from('one')],
         });
-        expect(host.message('c2', Buffer.from('two'))).toEqual({
-            kind: 'reply',
-            frames: [Buffer.from('two')],
-        });
-
-        // A reject on one connection does not disturb the other.
-        expect(host.message('c1', Buffer.from('Xstop'))).toEqual({ kind: 'reject', code: 0x0210 });
-        expect(host.message('c2', Buffer.from('again'))).toEqual({
-            kind: 'reply',
-            frames: [Buffer.from('again')],
-        });
-
-        // Close drops one box; the neighbour stays live.
+        // A guest reject -> close with the 0x02xx code.
+        expect(host.dispatch('c1', Buffer.from('Xstop'))).toEqual({ kind: 'close', code: 0x0210 });
+        // A frame for an unknown connection.
+        expect(host.dispatch('ghost', Buffer.from('x'))).toEqual({ kind: 'noConnection' });
         host.close('c1');
-        expect(host.has('c1')).toBe(false);
-        expect(host.activeConnections).toBe(1);
-        expect(host.message('c2', Buffer.from('still'))).toEqual({
-            kind: 'reply',
-            frames: [Buffer.from('still')],
-        });
-
-        // Re-opening a freed id works; disconnect drops the last box.
-        host.open('c1');
-        expect(host.activeConnections).toBe(2);
-        host.disconnect('c1');
-        host.disconnect('c2');
         expect(host.activeConnections).toBe(0);
     });
 
-    it('throws on a duplicate open and on a message for an unknown connection', () => {
-        const host = new StreamDevHost(WASM_PATH);
-        host.open('c1');
-        expect(() => host.open('c1')).toThrow();
-        expect(() => host.message('ghost', Buffer.from('x'))).toThrow();
+    it('honors a @connect reject at the upgrade (no box registered)', () => {
+        const host = new StreamDevHost(GATE_PATH);
+        expect(host.acceptUpgrade('c1', 'acme.toil', '/blocked')).toEqual({
+            kind: 'rejected',
+            code: 0x0211,
+        });
+        expect(host.activeConnections).toBe(0);
+        expect(host.acceptUpgrade('c2', 'acme.toil', '/ok').kind).toBe('accepted');
+        expect(host.dispatch('c2', Buffer.from('hi'))).toEqual({
+            kind: 'reply',
+            frames: [Buffer.from('hi')],
+        });
+    });
+
+    it('trap-closes a hostile @message and discards only its box', () => {
+        const host = new StreamDevHost(TRAP_PATH);
+        host.acceptUpgrade('h1', 'acme.toil', '/');
+        host.acceptUpgrade('h2', 'acme.toil', '/');
+        expect(host.activeConnections).toBe(2);
+        // h1's @message TRAPS -> STREAM_HOOK_TRAPPED close, its box discarded; h2 is untouched.
+        expect(host.dispatch('h1', Buffer.from('boom'))).toEqual({ kind: 'close', code: 0x0200 });
+        expect(host.has('h1')).toBe(false);
+        expect(host.has('h2')).toBe(true);
+        expect(host.activeConnections).toBe(1);
+    });
+
+    it('throws on a duplicate open', () => {
+        const host = new StreamDevHost(ECHO_PATH);
+        host.acceptUpgrade('c1', 'acme.toil', '/');
+        expect(() => host.acceptUpgrade('c1', 'acme.toil', '/')).toThrow();
     });
 });

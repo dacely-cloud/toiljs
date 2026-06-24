@@ -3,14 +3,16 @@
  * box and drive its lifecycle (`@connect` / `@message` / `@close` / `@disconnect`) through the
  * `stream_dispatch` export + the ingress/egress RING BRIDGE - the dev-side port of the production
  * `StreamBox` (`toil-backend` `src/wasm/stream/runtime.rs`). The ring wire format (RingControl 32B +
- * RingFrame 12B + the drained-reset semantics + the packed-i64 reject bridge) is replicated
- * BYTE-FOR-BYTE so a `@stream` app behaves identically under `npm run dev` and at the edge.
+ * RingFrame 12B + drained-reset + the packed-i64 reject bridge) AND the `@connect` info-block ABI are
+ * replicated BYTE-FOR-BYTE so a `@stream` app behaves identically under `npm run dev` and at the edge.
  *
  * RESIDENT: one box per connection, NEVER reset between events (linear memory persists across
  * connect -> message -> close); a fresh `WebAssembly.Instance` per connection IS that residency.
  *
- * DEFERRED (mirrors the edge): packet gas, chunk reassembly, `@channel`, and the `stream.*` host
- * imports. A trapping hook surfaces as a thrown error the caller turns into a connection close.
+ * DEV LIMITATION vs the edge: Node's `WebAssembly` has NO gas-metering middleware, so a runaway guest
+ * loop is NOT gas-killed in dev (it hangs) - only a genuine wasm TRAP (unreachable / OOB / abort)
+ * surfaces, which the caller turns into a `STREAM_HOOK_TRAPPED` close. Packet gas, chunk reassembly,
+ * `@channel`, and the `stream.*` host imports are deferred exactly as on the edge.
  */
 
 import { parseSurface } from '../wasm/surface.js';
@@ -32,6 +34,25 @@ const RC_READ = 16; // read_cursor offset
 const FRAME_TYPE_DATA_RELIABLE = 1;
 const MAX_STREAM_FRAME_LEN = 65536; // 64 KiB per egress frame (05 6.1)
 
+// --- @connect info-block ABI (05 section 2.2; toil-backend runtime.rs write_connect_info) ---
+// Layout: [u64 stream_id][u8 transport][u8 _][u16 auth_len][u16 path_len][u16 _] then auth + path UTF8.
+const SI_TRANSPORT = 8;
+const SI_AUTH_LEN = 10;
+const SI_PATH_LEN = 12;
+const SI_RESERVED2 = 14;
+const SI_BODY = 16;
+const SI_TRANSPORT_WEBTRANSPORT = 1; // the v1 transport (the dev emulates it)
+
+/**
+ * Decode a guest's NEGATIVE `stream_dispatch` return into a `0x02xx` reject/close code (the Part-3
+ * bridge `-(0x10000 + code)`), clamped to the stream range `0x0200..=0x02FF`; an out-of-range value
+ * normalizes to `0x0208 STREAM_REJECTED`, mirroring `toil-backend` `decode_reject_code`.
+ */
+export function decodeRejectCode(rc: bigint): number {
+    const raw = Number((-rc - 0x10000n) & 0xffffn);
+    return raw >= 0x0200 && raw <= 0x02ff ? raw : 0x0208;
+}
+
 interface StreamExports {
     readonly memory: WebAssembly.Memory;
     readonly stream_dispatch: (eventKind: number, lo: number, hi: number) => bigint;
@@ -39,6 +60,8 @@ interface StreamExports {
     readonly stream_ring_capacity?: () => number;
     readonly stream_egress_offset?: () => number;
     readonly stream_egress_capacity?: () => number;
+    readonly stream_info_offset?: () => number;
+    readonly stream_info_capacity?: () => number;
 }
 
 interface Rings {
@@ -48,9 +71,19 @@ interface Rings {
     readonly egressCap: number;
 }
 
+interface StreamInfo {
+    readonly offset: number;
+    readonly cap: number;
+}
+
 /** A `@message` dispatch outcome: the drained egress reply frames, or a guest reject code. */
 export type StreamMessageOutcome =
     | { readonly kind: 'reply'; readonly frames: Buffer[] }
+    | { readonly kind: 'reject'; readonly code: number };
+
+/** A `@connect` outcome: the guest accepted (the box is usable) or rejected with a `0x02xx` code. */
+export type StreamConnectOutcome =
+    | { readonly kind: 'accept' }
     | { readonly kind: 'reject'; readonly code: number };
 
 export class DevStreamBox {
@@ -58,6 +91,7 @@ export class DevStreamBox {
         private readonly exports: StreamExports,
         private readonly _state: StreamBoxState,
         private readonly rings: Rings | null,
+        private readonly streamInfo: StreamInfo | null,
     ) {}
 
     /** Compile + instantiate a resident stream box from a HOT `release-stream.wasm`. Fails closed: a
@@ -80,7 +114,8 @@ export class DevStreamBox {
         }
         ref.memory = exports.memory;
         const rings = DevStreamBox.resolveRings(exports);
-        const box = new DevStreamBox(exports, state, rings);
+        const streamInfo = DevStreamBox.resolveStreamInfo(exports);
+        const box = new DevStreamBox(exports, state, rings, streamInfo);
         if (rings) box.stampRings();
         return box;
     }
@@ -90,9 +125,24 @@ export class DevStreamBox {
         return this.rings !== null;
     }
 
-    /** Fire `@connect` (a new connection). Returns the packed-i64 dispatch result. */
-    onConnect(streamId: bigint): bigint {
-        return this.dispatch(EVENT_CONNECT, streamId);
+    /** Whether the box carries the `@connect` info-block bridge (a `@connect(StreamInbound)` hook). */
+    get hasConnectBridge(): boolean {
+        return this.streamInfo !== null;
+    }
+
+    /**
+     * Fire `@connect`: write the connect-info block (stream id + transport + authority + path) into the
+     * guest's info region, dispatch `EVENT_CONNECT`, and decode the `StreamOutbound` accept/reject. On
+     * accept, clear any `@connect`-staged egress (initial-egress is deferred, like the edge) so it does
+     * not contaminate the first `@message` reply. A box without the bridge runs `@connect` context-free
+     * (the write is a no-op) and always accepts unless it returns a negative code.
+     */
+    onConnect(streamId: bigint, authority: string, path: string): StreamConnectOutcome {
+        this.writeConnectInfo(streamId, authority, path);
+        const rc = this.dispatch(EVENT_CONNECT, streamId);
+        if (rc < 0n) return { kind: 'reject', code: decodeRejectCode(rc) };
+        this.resetEgressRing();
+        return { kind: 'accept' };
     }
 
     /** Fire `@close` (graceful close). */
@@ -106,17 +156,15 @@ export class DevStreamBox {
     }
 
     /** Drive the raw-bytes `@message` bridge: write `inbound` as one DATA_RELIABLE frame into the
-     *  ingress ring, fire `@message`, then drain the egress ring (reply) or surface the reject code. */
+     *  ingress ring, fire `@message`, then drain the egress ring (reply) or surface the reject code.
+     *  A genuine wasm trap propagates (the caller maps it to a STREAM_HOOK_TRAPPED close). */
     onMessage(streamId: bigint, inbound: Buffer): StreamMessageOutcome {
         if (!this.rings) {
             throw new Error('stream box has no ring runtime; the message bridge is unavailable');
         }
         this.ingressWrite(inbound);
         const ret = this.dispatch(EVENT_MESSAGE, streamId);
-        if (ret < 0n) {
-            // Part-3 reject bridge: code = (-ret) - 0x10000.
-            return { kind: 'reject', code: Number((-ret - 0x10000n) & 0xffffn) };
-        }
+        if (ret < 0n) return { kind: 'reject', code: decodeRejectCode(ret) };
         return { kind: 'reply', frames: this.egressDrain() };
     }
 
@@ -143,8 +191,13 @@ export class DevStreamBox {
         };
     }
 
-    /** Stamp both RingControls (magic + version + capacity, cursors zeroed) - the host's job at box
-     *  build, mirroring the edge. */
+    private static resolveStreamInfo(e: StreamExports): StreamInfo | null {
+        if (typeof e.stream_info_offset !== 'function' || typeof e.stream_info_capacity !== 'function') {
+            return null;
+        }
+        return { offset: e.stream_info_offset() >>> 0, cap: e.stream_info_capacity() >>> 0 };
+    }
+
     private stampRings(): void {
         const rings = this.rings;
         if (!rings) return;
@@ -160,6 +213,39 @@ export class DevStreamBox {
         dv.setUint32(base + 8, cap, true); // capacity
         dv.setUint32(base + RC_WRITE, 0, true);
         dv.setUint32(base + RC_READ, 0, true);
+    }
+
+    /** Write the `@connect` info block into the guest's info region (no-op if the box carries none).
+     *  Authority + path are bounded into `[SI_BODY, cap)` - truncated to fit, never an OOB write. */
+    private writeConnectInfo(streamId: bigint, authority: string, path: string): void {
+        const info = this.streamInfo;
+        if (!info) return;
+        const base = info.offset;
+        const body = Math.max(0, info.cap - SI_BODY);
+        const authBytes = Buffer.from(authority, 'utf8');
+        const authLen = Math.min(authBytes.length, 0xffff, body);
+        const pathBytes = Buffer.from(path, 'utf8');
+        const pathLen = Math.min(pathBytes.length, 0xffff, body - authLen);
+        const dv = new DataView(this.exports.memory.buffer);
+        dv.setBigUint64(base + 0, streamId, true);
+        dv.setUint8(base + SI_TRANSPORT, SI_TRANSPORT_WEBTRANSPORT);
+        dv.setUint8(base + SI_TRANSPORT + 1, 0); // reserved
+        dv.setUint16(base + SI_AUTH_LEN, authLen, true);
+        dv.setUint16(base + SI_PATH_LEN, pathLen, true);
+        dv.setUint16(base + SI_RESERVED2, 0, true); // reserved
+        const memU8 = new Uint8Array(this.exports.memory.buffer);
+        if (authLen > 0) memU8.set(authBytes.subarray(0, authLen), base + SI_BODY);
+        if (pathLen > 0) memU8.set(pathBytes.subarray(0, pathLen), base + SI_BODY + authLen);
+    }
+
+    /** Zero the egress ring cursors, discarding any staged frames. Safe between dispatches (the guest,
+     *  the sole egress producer, is idle). */
+    private resetEgressRing(): void {
+        const rings = this.rings;
+        if (!rings) return;
+        const dv = new DataView(this.exports.memory.buffer);
+        dv.setUint32(rings.egressOff + RC_WRITE, 0, true);
+        dv.setUint32(rings.egressOff + RC_READ, 0, true);
     }
 
     /** Host (producer) writes ONE inbound RingFrame into the ingress ring with the drained-reset
