@@ -30,7 +30,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { type ComponentType, type Context, createElement, type ReactNode } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
+import { renderToString } from 'react-dom/server';
 import { createServer } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
@@ -71,8 +71,10 @@ export interface RouteRenderInput {
      * React copies leaves the hook dispatcher null ("Cannot read properties of
      * null (reading 'useRef')"). */
     createElement?: typeof createElement;
-    /** `renderToStaticMarkup` paired with {@link createElement}'s React. */
-    renderToStaticMarkup?: typeof renderToStaticMarkup;
+    /** `renderToString` paired with {@link createElement}'s React. We use it (NOT
+     * `renderToStaticMarkup`) because hydration needs the `<!-- -->` text-node
+     * boundary markers it emits, so `hydrateRoot` can align "text + hole" runs. */
+    renderToString?: typeof renderToString;
 }
 
 export interface TemplateArtifacts {
@@ -115,10 +117,25 @@ export function injectIntoShell(shell: string, routeHtml: string): string {
     return shell.replace(ROOT_DIV, `<div id="root">${routeHtml}</div>${SSR_MARKER}`);
 }
 
+/**
+ * React 19 auto-emits hoistable resource tags into `<head>` on the client (it
+ * adds a `<link rel="preload">` for an `<img>`, and hoists `<title>` / `<meta>`),
+ * but the string renderer emits them INLINE in the route fragment. Left in the
+ * spliced `#root` template they would not appear in the client's hydrated `#root`
+ * (the client puts them in `<head>`), so `hydrateRoot` reports a mismatch. Strip
+ * them from the route fragment; the shell already carries the document head, and
+ * the client re-adds its own resource hints. Only the fragment is stripped. */
+function stripHoistedResourceTags(html: string): string {
+    return html
+        .replace(/<link\b[^>]*>/gi, '')
+        .replace(/<meta\b[^>]*>/gi, '')
+        .replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi, '');
+}
+
 /** Render one route to its template artifacts (pure given its inputs). */
 export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts {
     const h = input.createElement ?? createElement;
-    const render = input.renderToStaticMarkup ?? renderToStaticMarkup;
+    const render = input.renderToString ?? renderToString;
     const element = assembleRouteElement(
         input.Page,
         input.layouts,
@@ -133,7 +150,7 @@ export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts
     } finally {
         input.setSsrBuild(false);
     }
-    const full = injectIntoShell(input.shell, routeHtml);
+    const full = injectIntoShell(input.shell, stripHoistedResourceTags(routeHtml));
     const extracted: Extracted = extractFromHtml(full);
     const ids = assignSlotIds(extracted.slots);
     const hash = coherenceHash(extracted.tmpl, extracted.slots);
@@ -264,7 +281,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
     const appRequire = createRequire(path.join(cfg.root, 'package.json'));
     const react = appRequire('react') as { createElement: typeof createElement };
     const reactDomServer = appRequire('react-dom/server') as {
-        renderToStaticMarkup: typeof renderToStaticMarkup;
+        renderToString: typeof renderToString;
     };
 
     const rendered: RenderedRoute[] = [];
@@ -308,7 +325,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                     setSsrBuild: client.__setSsrBuild,
                     shell,
                     createElement: react.createElement,
-                    renderToStaticMarkup: reactDomServer.renderToStaticMarkup,
+                    renderToString: reactDomServer.renderToString,
                 });
                 rendered.push({ pattern: r.pattern, art });
             } catch (err) {
