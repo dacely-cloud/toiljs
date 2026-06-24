@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 
-import { type ComponentType, type Context, createElement, type ReactNode } from 'react';
+import { type ComponentType, type Context, createElement, type ReactNode, Suspense } from 'react';
 import { renderToString } from 'react-dom/server';
 import { createServer } from 'vite';
 
@@ -75,6 +75,9 @@ export interface RouteRenderInput {
      * `renderToStaticMarkup`) because hydration needs the `<!-- -->` text-node
      * boundary markers it emits, so `hydrateRoot` can align "text + hole" runs. */
     renderToString?: typeof renderToString;
+    /** React's `Suspense` from the SAME instance as {@link createElement}, so the
+     * Suspense dehydration markers (`<!--$-->`) emitted match the client's. */
+    Suspense?: typeof Suspense;
 }
 
 export interface TemplateArtifacts {
@@ -88,22 +91,29 @@ export interface TemplateArtifacts {
     slotCount: number;
 }
 
-/** Build the route element tree: layouts (outermost first) wrapping the page,
- * under the loader-data provider. The Suspense/RoutePage wrappers the client
- * adds contribute no DOM, so this reproduces the client's markup. */
+/** Build the route element tree, mirroring the client Router so `renderToString`
+ * emits the SAME Suspense dehydration markers (`<!--$-->`) `hydrateRoot` expects.
+ * The page sits under the loader-data provider inside a route `Suspense`, and EACH
+ * layout (outermost first) gets its own `Suspense`, exactly as `renderMatched` +
+ * `Router` wrap them. Without these markers the client's Suspense boundaries have
+ * nothing to align to and hydration regenerates the whole tree. (The ErrorBoundary
+ * / context wrappers the client adds emit no DOM and no markers, so they are
+ * omitted here.) The `Suspense` component must come from the SAME React as `h`. */
 export function assembleRouteElement(
     Page: ComponentType,
     layouts: ComponentType<{ children?: ReactNode }>[],
     loaderData: unknown,
     loaderContext: Context<unknown> | null,
     h: typeof createElement = createElement,
+    SuspenseComp: typeof Suspense = Suspense,
 ): ReactNode {
     let node: ReactNode = h(Page);
     if (loaderContext) {
         node = h(loaderContext.Provider, { value: loaderData }, node);
     }
+    node = h(SuspenseComp, { fallback: null }, node); // route Suspense (mirrors RoutePage's boundary)
     for (let i = layouts.length - 1; i >= 0; i--) {
-        node = h(layouts[i], null, node);
+        node = h(SuspenseComp, { fallback: null }, h(layouts[i], null, node));
     }
     return node;
 }
@@ -136,12 +146,14 @@ function stripHoistedResourceTags(html: string): string {
 export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts {
     const h = input.createElement ?? createElement;
     const render = input.renderToString ?? renderToString;
+    const SuspenseComp = input.Suspense ?? Suspense;
     const element = assembleRouteElement(
         input.Page,
         input.layouts,
         input.loaderData,
         input.loaderContext,
         h,
+        SuspenseComp,
     );
     input.setSsrBuild(true);
     let routeHtml: string;
@@ -259,6 +271,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
 
     const client = (await server.ssrLoadModule('toiljs/client')) as unknown as {
         __setSsrBuild: (on: boolean) => void;
+        __setSsrLocation: (path: string | null) => void;
         LoaderDataContext: Context<unknown>;
     };
 
@@ -279,7 +292,10 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
     // (`useLocation` -> `useRef`) throws. (`ssrLoadModule('react')` can't be used:
     // Vite's SSR runner cannot evaluate the CJS module -> "module is not defined".)
     const appRequire = createRequire(path.join(cfg.root, 'package.json'));
-    const react = appRequire('react') as { createElement: typeof createElement };
+    const react = appRequire('react') as {
+        createElement: typeof createElement;
+        Suspense: typeof Suspense;
+    };
     const reactDomServer = appRequire('react-dom/server') as {
         renderToString: typeof renderToString;
     };
@@ -303,8 +319,9 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                         ? await mod.loader({ params, searchParams: new URLSearchParams() })
                         : undefined;
 
+                const rootLayout = findLayout(cfg);
                 const layoutFiles = [
-                    ...(findLayout(cfg) ? [findLayout(cfg)!] : []),
+                    ...(rootLayout ? [rootLayout] : []),
                     ...findSpecialChain(cfg, r.file, 'layout', false),
                 ];
                 const layouts: ComponentType<{ children?: ReactNode }>[] = [];
@@ -316,6 +333,10 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                 }
 
                 const name = routeTemplateName(r.pattern);
+                // Tell location hooks which URL this template is for, so a NavLink's active
+                // class / aria-current render as they will on the client at this route (else
+                // the `/` default mismatches on hydration). Cleared in `finally`.
+                client.__setSsrLocation(samplePath(r.pattern));
                 const art = extractRouteTemplate({
                     name,
                     Page: mod.default,
@@ -326,6 +347,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                     shell,
                     createElement: react.createElement,
                     renderToString: reactDomServer.renderToString,
+                    Suspense: react.Suspense,
                 });
                 rendered.push({ pattern: r.pattern, art });
             } catch (err) {
@@ -334,6 +356,8 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                         err instanceof Error ? err.message : String(err)
                     }) — falls back to client rendering`,
                 );
+            } finally {
+                client.__setSsrLocation(null);
             }
         }
     } finally {
@@ -438,6 +462,13 @@ function sampleParams(pattern: string): Record<string, string> {
         params[m[1]] = 'sample';
     }
     return params;
+}
+
+/** The concrete pathname for a route pattern, dynamic segments filled with the same `sample`
+ * value {@link sampleParams} uses, so location-dependent markup renders consistently. Static
+ * routes return their pattern unchanged. */
+function samplePath(pattern: string): string {
+    return pattern.replace(/[:*]+([A-Za-z0-9_]+)/g, 'sample');
 }
 
 interface RouteModule {

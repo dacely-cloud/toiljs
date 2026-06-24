@@ -101,12 +101,25 @@ function useLocationSubscription(): void {
     );
 }
 
+/** Build-only override for the SSR pathname, set by the template extractor per route via
+ * {@link __setSsrLocation}. Lets location-dependent markup (a `NavLink`'s active class /
+ * `aria-current`) render as the route's own URL so it matches what the client computes on
+ * hydration, instead of the `/` default. Ignored in the browser (the live URL wins). */
+let ssrLocationOverride: string | null = null;
+
+/** Build-only: set the pathname the extractor is currently rendering (or `null` to clear).
+ * No effect in the browser. Exported through `toiljs/client` for the compiler. */
+export function __setSsrLocation(path: string | null): void {
+    ssrLocationOverride = path;
+}
+
 /** Subscribes to and returns the current `location.pathname`. SSR-safe: during a
- *  server render (build-time template extraction / edge SSR) there is no `window`,
- *  so it reports `/`; the client recomputes on hydration. */
+ *  server render there is no `window`, so it reports the extractor's override (the route
+ *  being rendered) or `/`; the client recomputes on hydration. */
 export function useLocation(): string {
     useLocationSubscription();
-    return typeof window === 'undefined' ? '/' : window.location.pathname;
+    if (typeof window === 'undefined') return ssrLocationOverride ?? '/';
+    return window.location.pathname;
 }
 
 /** Alias of {@link useLocation}: the current `location.pathname`. */

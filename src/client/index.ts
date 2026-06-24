@@ -40,6 +40,7 @@ export {
     useSearchParams,
     useRouter,
     useNavigationPending,
+    __setSsrLocation,
 } from './routing/hooks.js';
 export type { RouterInstance } from './routing/hooks.js';
 export {
