@@ -8,11 +8,11 @@ tier purely by adding its entry file and surface decorator; nothing else changes
 
 ## The tiers
 
-| Entry (`server/`) | Surface | Artifact | Tier | Lifetime / placement |
-| --- | --- | --- | --- | --- |
-| `main.ts` | `@rest` / `@service` / `@remote` | `build/server/release.wasm` | **L1** request | A fresh handler per request, anywhere on the edge. |
-| `main.stream.ts` | `@stream` | `build/server/release-stream.wasm` | **L2/L3** stream | One resident box per connection, pinned to a worker via QUIC connection-id steering; its state survives every event. See [Streams](./streams.md). |
-| `main.daemon.ts` | `@daemon` / `@scheduled` | `build/server/release-cold.wasm` | **L4** daemon | Exactly one leader-elected box per domain (warm standby, at-most-once failover) firing `@scheduled` tasks. See [Daemon](./daemon.md). |
+| Entry (`server/`) | Surface                          | Artifact                           | Tier             | Lifetime / placement                                                                                                                              |
+| ----------------- | -------------------------------- | ---------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `main.ts`         | `@rest` / `@service` / `@remote` | `build/server/release.wasm`        | **L1** request   | A fresh handler per request, anywhere on the edge.                                                                                                |
+| `main.stream.ts`  | `@stream`                        | `build/server/release-stream.wasm` | **L2/L3** stream | One resident box per connection, pinned to a worker via QUIC connection-id steering; its state survives every event. See [Streams](./streams.md). |
+| `main.daemon.ts`  | `@daemon` / `@scheduled`         | `build/server/release-cold.wasm`   | **L4** daemon    | Exactly one leader-elected box per domain (warm standby, at-most-once failover) firing `@scheduled` tasks. See [Daemon](./daemon.md).             |
 
 The three tiers differ in how long a box lives and how many of it exist:
 
@@ -79,7 +79,7 @@ build/server/release-cold.wasm     # L4 daemon      (exports: daemon_start, sche
 
 ## Single-artifact default
 
-A project with no `@stream` and no `@daemon` surface keeps the legacy
+A project with no `@stream` and no `@daemon` surface keeps the default
 single-artifact build - just `build/server/release.wasm`. The stream and daemon
 tiers are opt-in: add `main.stream.ts` (and a `@stream` class) to get
 `release-stream.wasm`, add `main.daemon.ts` (and a `@daemon` class) to get
@@ -102,9 +102,15 @@ tiers are opt-in: add `main.stream.ts` (and a `@stream` class) to get
 class Echo {
     private count: i32 = 0;
 
-    @connect onConnect(): void { this.count = 0; }
-    @message onMessage(): void { this.count = this.count + 1; }
-    @close   onClose(): void { /* box torn down after this hook */ }
+    @connect onConnect(): void {
+        this.count = 0;
+    }
+    @message onMessage(): void {
+        this.count = this.count + 1;
+    }
+    @close onClose(): void {
+        /* box torn down after this hook */
+    }
 }
 ```
 

@@ -117,7 +117,13 @@ describe('parseDaemonCatalog (Part 5)', () => {
                 name: 'lateMinute',
                 taskIndex: 0,
                 kind: 1,
-                cron: { minute: minuteMask, hour: 0xffffff, dom: 0xfffffffe, month: 0x1ffe, dow: 0x7f },
+                cron: {
+                    minute: minuteMask,
+                    hour: 0xffffff,
+                    dom: 0xfffffffe,
+                    month: 0x1ffe,
+                    dow: 0x7f,
+                },
             },
         ]);
         const cat = parseDaemonCatalog(wasmWithSection('toildaemon.catalog', payload));
@@ -173,10 +179,11 @@ function buildSurfaceBytes(opts: {
 describe('parseSurface (Part 5)', () => {
     it('decodes a cold daemon surface with exactly three trailing u32 hashes', () => {
         const flags = 0b000100 | 0b001000; // daemon (bit2) + scheduled (bit3)
-        const s = parseSurface(wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 1, flags })));
-        expect(s).not.toBe('absent');
+        const s = parseSurface(
+            wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 1, flags })),
+        );
         expect(s).not.toBe('invalid');
-        if (s !== 'absent' && s !== 'invalid') {
+        if (s !== 'invalid') {
             expect(s.targetMode).toBe('cold');
             expect(s.flags.daemon).toBe(true);
             expect(s.flags.scheduled).toBe(true);
@@ -188,13 +195,15 @@ describe('parseSurface (Part 5)', () => {
     });
 
     it('decodes a hot surface (target_mode 0)', () => {
-        const s = parseSurface(wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 0, flags: 1 })));
-        expect(s !== 'absent' && s !== 'invalid' && s.targetMode).toBe('hot');
+        const s = parseSurface(
+            wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 0, flags: 1 })),
+        );
+        expect(s !== 'invalid' && s.targetMode).toBe('hot');
     });
 
-    it("treats an ABSENT section as 'absent' (legacy single artifact, load as hot)", () => {
+    it('fails closed when toil.surface is absent', () => {
         const wasm = wasmWithSection('toildb.catalog', Buffer.from([0x01, 0x00]));
-        expect(parseSurface(wasm)).toBe('absent');
+        expect(parseSurface(wasm)).toBe('invalid');
     });
 
     it("fails closed: a PRESENT but truncated section is 'invalid'", () => {

@@ -139,8 +139,8 @@ export async function buildServer(root: string): Promise<void> {
 
     // A project that declares a `@daemon` (L4 cold surface) and/or a `@stream` (L2/L3 stream
     // surface) compiles the ONE source tree into SEPARATE artifacts, one per deployment tier, via
-    // one toilscript pass each; a project with only the legacy request surface keeps the
-    // single-artifact path (byte-identical to before). The three tiers:
+    // one toilscript pass each; a project with only the request surface keeps the default
+    // single-artifact path. The three tiers:
     //   - REQUEST (L1)   `server/main.ts`    + `@rest`/`@service`/`@remote` -> `release.wasm`
     //   - STREAM  (L2/L3) `server/main.stream.ts` + `@stream`              -> `release-stream.wasm`
     //   - DAEMON  (L4)   `@daemon`/`@scheduled`                            -> `release-cold.wasm`
@@ -167,7 +167,7 @@ export async function buildServer(root: string): Promise<void> {
                 outFile: artifacts.stream,
                 withRpc: false,
             });
-        // REQUEST pass: the L1 artifact (= the legacy `outFile`, AN-1), WITH the client RPC surface.
+        // REQUEST pass: the L1 artifact (= `outFile`), WITH the client RPC surface.
         // A pure daemon/stream project (no request files) skips it so toilscript is not handed an
         // empty entry set; the request path then stays idle (no `handle` export), correct for a
         // background-only worker.
@@ -180,7 +180,7 @@ export async function buildServer(root: string): Promise<void> {
         return;
     }
 
-    // Legacy single-artifact path (no daemon/stream surface): exactly today's invocation.
+    // Default request-only single-artifact path (no daemon/stream surface).
     await runToilscriptPass(root, binJs, files, { mode: null, outFile: null, withRpc: true });
 }
 
@@ -285,11 +285,11 @@ export function splitSurfaceFiles(root: string, files: string[]): SurfaceSplit {
 }
 
 interface PassOptions {
-    /** `--targetMode` value; `null` keeps the legacy single-artifact invocation (no flag). */
+    /** `--targetMode` value; `null` keeps the default request-artifact invocation (no flag). */
     readonly mode: 'hot' | 'cold' | null;
     /** Explicit `--outFile` for a two-pass build; `null` uses the toilconfig default. */
     readonly outFile: string | null;
-    /** Only the hot/legacy pass carries `--rpcModule` (the cold artifact has no client surface). */
+    /** Only the hot/default request pass carries `--rpcModule` (the cold artifact has no client surface). */
     readonly withRpc: boolean;
 }
 
@@ -447,7 +447,7 @@ function installDevShutdown(close: () => Promise<void> | void): void {
 }
 
 /** The server wasm artifact path from the toilconfig `release` target (toilscript's output).
- *  This is the LEGACY single-artifact path (= the hot artifact under the two-pass build). */
+ *  This is the default request artifact path (= the hot artifact under the two-pass build). */
 function serverWasmFile(root: string): string {
     let outFile = 'build/server/release.wasm';
     try {
@@ -598,16 +598,22 @@ async function collectDevCss(server: ViteDevServer): Promise<string> {
             }
         }
     }
-    // Fetch each stylesheet's raw text (`?direct` serves real CSS, not the HMR JS shim) at startup,
-    // while Vite is already warm, so it can be inlined rather than fetched on the paint critical path.
+    // Extract each stylesheet's real CSS from its normal (non-`?direct`) module. Vite serves a
+    // JS-imported CSS file as a JS module that carries the CSS in a `const __vite__css = "..."`
+    // literal (JSON-encoded); that module is valid JS, so vite-plugin-node-polyfills' inject plugin
+    // passes it through intact. We deliberately AVOID the `?direct` variant: it serves raw CSS, which
+    // the inject plugin then fails to parse-as-JS and truncates to the leading comment (whether via
+    // transformRequest OR an HTTP fetch). We inline this at startup so the SSR first paint is styled.
     let css = '';
     for (const url of cssUrls) {
-        const direct = `${url}${url.includes('?') ? '&' : '?'}direct`;
         try {
-            const result = await server.transformRequest(direct, { ssr: false });
-            if (result?.code) css += `${result.code}\n`;
+            const result = await server.transformRequest(url);
+            const m = result?.code
+                ? /const __vite__css = ("(?:[^"\\]|\\.)*")/.exec(result.code)
+                : null;
+            if (m) css += `${JSON.parse(m[1]) as string}\n`;
         } catch {
-            // skip a stylesheet that fails to transform; inline what we can
+            // skip a stylesheet whose CSS can't be extracted; inline what we can
         }
     }
     return css;

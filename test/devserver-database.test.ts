@@ -231,7 +231,7 @@ describe('toildb dev emulator (record family)', () => {
         });
     });
 
-    it('rejects replication policies that require catalog v3 metadata', () => {
+    it('rejects replication policies that require explicit policy metadata', () => {
         for (const replication of [3, 4]) {
             setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV1(7, 0, replication)));
             const { imports, buf } = setupRaw();

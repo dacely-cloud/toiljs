@@ -9,7 +9,7 @@
  *     passes (one `--targetMode cold`, one `--targetMode hot`) and produces BOTH
  *     `release-hot.wasm` and `release-cold.wasm`; the cold artifact decodes to a
  *     daemon catalog and its `toil.surface` is target_mode = cold.
- *   - a project with only the legacy request surface keeps the single-artifact
+ *   - a project with only the default request surface keeps the single-artifact
  *     path (no cold pass, no cold artifact).
  *
  * The build invokes the LOCAL toilscript (branch feat/streams-phase0-compiler),
@@ -17,7 +17,15 @@
  * `node_modules` the same way the dev build resolves it (`require.resolve`).
  */
 
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+    existsSync,
+    mkdirSync,
+    mkdtempSync,
+    readFileSync,
+    rmSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -190,8 +198,8 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT))('buildServer two-pass (daemon pro
         // The cold artifact carries the daemon surface + catalog (decoded byte-for-byte).
         const coldBytes = readFileSync(cold);
         const surface = parseSurface(coldBytes);
-        expect(surface !== 'absent' && surface !== 'invalid' && surface.targetMode).toBe('cold');
-        expect(surface !== 'absent' && surface !== 'invalid' && surface.flags.daemon).toBe(true);
+        expect(surface !== 'invalid' && surface.targetMode).toBe('cold');
+        expect(surface !== 'invalid' && surface.flags.daemon).toBe(true);
 
         const catalog = parseDaemonCatalog(coldBytes);
         expect(catalog).not.toBeNull();
@@ -201,12 +209,12 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT))('buildServer two-pass (daemon pro
         expect(catalog!.tasks[1].schedule.kind).toBe('cron');
 
         // A daemon-only project (no request/stream surface) has no hot files, so the hot pass is
-        // skipped (toilscript would HARD-ERROR a @daemon class under --targetMode hot). The legacy
-        // single-artifact `release.wasm` is therefore not produced for a pure background worker.
+        // skipped (toilscript would HARD-ERROR a @daemon class under --targetMode hot). The default
+        // request artifact `release.wasm` is therefore not produced for a pure background worker.
         expect(existsSync(join(tmp, 'build/server/release.wasm'))).toBe(false);
     }, 60_000);
 
-    it('keeps the single-artifact path for a legacy (no-daemon) project', async () => {
+    it('keeps the single-artifact path for a request-only project', async () => {
         scaffold(LEGACY_SRC, BASE_TOILCONFIG);
         await buildServer(tmp);
 

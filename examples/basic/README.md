@@ -14,8 +14,8 @@ into its own artifact - see the `streams` example.
 - `server/services/Stats.ts` - a `@service` exposing typed `@remote` methods to the client.
 - `server/models/*` + `server/migrations/*` - `@data` models and their migrations.
 
-This whole app compiles into a single `build/server/release.wasm` (the legacy single-artifact
-build), because it declares no `@stream` or `@daemon` surface.
+This whole app compiles into a single `build/server/release.wasm` (the default request artifact),
+because it declares no `@stream` or `@daemon` surface.
 
 ## Develop
 

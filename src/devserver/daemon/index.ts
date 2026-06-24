@@ -139,20 +139,21 @@ export class DaemonHost implements DaemonRuntime {
         // else the emulator stays off (fail-closed; section 3.3 / 5.1).
         const surface = parseSurface(bytes);
         if (surface === 'invalid') {
-            this.log(pc.red('  ✗ cold artifact toil.surface is corrupt; daemon not started') + '\n');
+            this.log(
+                pc.red('  ✗ cold artifact toil.surface is corrupt; daemon not started') + '\n',
+            );
             if (this.running) this.stop();
             this.loadedMtimeMs = mtimeMs;
             return false;
         }
-        if (surface !== 'absent' && surface.targetMode !== 'cold')
+        if (surface.targetMode !== 'cold')
             this.log(
                 pc.yellow('  ! ') +
                     pc.dim('cold slot holds a hot-mode artifact; ignoring daemon emulator') +
                     '\n',
             );
         const catalog = parseDaemonCatalog(bytes);
-        const declaresDaemon =
-            (surface === 'absent' ? false : surface.flags.daemon) || (catalog?.hasDaemon ?? false);
+        const declaresDaemon = surface.flags.daemon || (catalog?.hasDaemon ?? false);
 
         // A restart: stop the old box (timers + instance), bump epoch, start fresh.
         if (this.running) this.stop();
@@ -318,9 +319,8 @@ export class DaemonHost implements DaemonRuntime {
             const ret = this.exports.scheduled_tick(task.taskIndex); // packed-i64
             if (ret < 0n)
                 this.log(
-                    pc.yellow(
-                        `  ⏱ @scheduled ${task.name} returned error ${decodeAbiError(ret)}`,
-                    ) + '\n',
+                    pc.yellow(`  ⏱ @scheduled ${task.name} returned error ${decodeAbiError(ret)}`) +
+                        '\n',
                 );
         } catch (e) {
             // A trapped tick does NOT tear down the long-lived daemon box (unlike a

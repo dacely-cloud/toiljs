@@ -18,9 +18,8 @@
  *   u32 data_coherence_hash
  *   u32 pair_coherence_hash    (exactly THREE u32 after build_id, not four)
  *
- * Fail-closed per Part 5's host rule: an ABSENT section is "legacy single
- * artifact, load as hot" (NOT a hard reject); a PRESENT-but-unparseable section is
- * a corrupt artifact -> do not start that artifact's emulator.
+ * Fail-closed per Part 5's host rule: an absent or unparseable section is a
+ * corrupt Toil artifact -> do not start that artifact's emulator.
  */
 
 import { DataReader } from 'toiljs/io';
@@ -47,16 +46,15 @@ export interface Surface {
     readonly pairCoherenceHash: number;
 }
 
-/** `'absent'` => legacy single artifact (load as hot, no emulators).
- *  `'invalid'` => present but corrupt (fail closed). Otherwise the parsed surface. */
-export function parseSurface(wasm: Buffer): Surface | 'absent' | 'invalid' {
+/** `'invalid'` => absent or corrupt (fail closed). Otherwise the parsed surface. */
+export function parseSurface(wasm: Buffer): Surface | 'invalid' {
     let sec: Buffer | null;
     try {
         sec = customSection(wasm, 'toil.surface');
     } catch {
         return 'invalid'; // garbage section table
     }
-    if (sec === null) return 'absent';
+    if (sec === null) return 'invalid';
 
     const r = new DataReader(sec);
     r.readU16(); // format_version
