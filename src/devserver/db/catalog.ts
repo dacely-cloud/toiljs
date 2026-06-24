@@ -26,7 +26,7 @@ import {
 } from './types.js';
 
 function validReplication(value: number): boolean {
-    return value >= 0 && value <= 5;
+    return value === 0 || value === 1 || value === 2 || value === 5;
 }
 
 function validPlacement(value: number): boolean {

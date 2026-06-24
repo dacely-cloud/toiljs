@@ -92,7 +92,7 @@ function routeKindsSection(routes: readonly (readonly [number, number, string])[
     return Buffer.concat(chunks);
 }
 
-function catalogSectionV2(fillMaxWaitMs: number, fillAllowStale: number): Buffer {
+function catalogSectionV2(fillMaxWaitMs: number, fillAllowStale: number, replication = 5): Buffer {
     const chunks: Buffer[] = [];
     const u8 = (v: number) => chunks.push(Buffer.from([v & 0xff]));
     const u16 = (v: number) => {
@@ -122,7 +122,7 @@ function catalogSectionV2(fillMaxWaitMs: number, fillAllowStale: number): Buffer
     u32(0xaaaa);
     u32(0x1234);
     u32(0); // generation
-    u8(5); // replication = localOnly, accepted by the backend ABI
+    u8(replication); // replication
     u8(0); // placement = hashKey
     u32(fillMaxWaitMs);
     u8(fillAllowStale);
@@ -229,6 +229,16 @@ describe('toildb dev emulator (record family)', () => {
             fillMaxWaitMs: 7,
             fillAllowStale: false,
         });
+    });
+
+    it('rejects replication policies that require catalog v3 metadata', () => {
+        for (const replication of [3, 4]) {
+            setDbCatalog(wasmWithSection('toildb.catalog', catalogSectionV2(7, 0, replication)));
+            const { imports, buf } = setupRaw();
+            const [p, l] = put(buf, 0, 'App/users');
+
+            expect(imports['data.resolve_collection'](p, l, 16)).toBe(-1070);
+        }
     });
 
     it('rejects malformed catalog v2 fill policy', () => {
