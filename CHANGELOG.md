@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.0.63] - 2026-06-24
+
+### Other Changes
+
+- fix(ssr): emit Suspense markers so edge-SSR documents hydrate cleanly ([#202](https://github.com/dacely-cloud/toiljs/pull/202)) by @BlobMaster41
+- fix(example): remove @stream Echo from examples/basic so it builds ([#203](https://github.com/dacely-cloud/toiljs/pull/203)) by @BlobMaster41
+
+
+
+
 ## [v0.0.62] - 2026-06-24
 
 ### Other Changes
