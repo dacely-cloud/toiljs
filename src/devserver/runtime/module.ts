@@ -51,6 +51,15 @@ function dbKindForHttpMethod(method: string): DbFunctionKind {
     }
 }
 
+export function dbFunctionKindForRequest(
+    routes: readonly RouteKindEntry[],
+    method: string,
+    path: string,
+): DbFunctionKind {
+    const routeKind = routeKindForRequest(routes, method, path);
+    return routeKind === DbFunctionKind.Query ? DbFunctionKind.Query : dbKindForHttpMethod(method);
+}
+
 /** The shaped outcome of one guest dispatch. */
 export interface WasmDispatchResult {
     readonly status: number;
@@ -186,20 +195,9 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
-        // Enforce per-route DB-kind gating ONLY when the guest declares its route
-        // kinds (the `toildb.route_kinds` custom section). A guest built with a
-        // toolchain that does not emit that section leaves `routeKinds` empty;
-        // inferring a kind from the HTTP method and enforcing it would wrongly
-        // reject legitimate bounded reads (e.g. a GET that reads `events.latest`,
-        // a scan-class op denied in `Query`). With no declarations we keep the
-        // unenforced default (`Job`, see `freshDbState`).
-        const routeKind = routeKindForRequest(this.routeKinds, req.method, req.path);
-        state.db.functionKind =
-            this.routeKinds.length === 0
-                ? DbFunctionKind.Job
-                : routeKind === DbFunctionKind.Query
-                  ? DbFunctionKind.Query
-                  : dbKindForHttpMethod(req.method);
+        // Match the edge DB gate: the HTTP method is the baseline authority,
+        // and `toildb.route_kinds` can only tighten a mutating route to query.
+        state.db.functionKind = dbFunctionKindForRequest(this.routeKinds, req.method, req.path);
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;

@@ -16,6 +16,7 @@ import {
     setDbCatalog,
 } from '../src/devserver/db/index.js';
 import { parseRouteKinds, routeKindForRequest } from '../src/devserver/db/routeKinds.js';
+import { dbFunctionKindForRequest } from '../src/devserver/runtime/module.js';
 import type { MemoryRef } from '../src/devserver/runtime/host.js';
 
 const DEFAULT_CATALOG = {
@@ -149,6 +150,31 @@ describe('toildb dev emulator (record family)', () => {
         expect(routeKindForRequest(routes, 'POST', '/api/items/42')).toBe(DbFunctionKind.Query);
         expect(routeKindForRequest(routes, 'GET', '/api/search')).toBeNull();
         expect(routeKindForRequest(routes, 'POST', '/api/items')).toBeNull();
+    });
+
+    it('matches the edge method clamp when route-kind metadata is absent', () => {
+        expect(dbFunctionKindForRequest([], 'GET', '/api/users')).toBe(DbFunctionKind.Query);
+        expect(dbFunctionKindForRequest([], 'HEAD', '/api/users')).toBe(DbFunctionKind.Query);
+        expect(dbFunctionKindForRequest([], 'OPTIONS', '/api/users')).toBe(DbFunctionKind.Query);
+        expect(dbFunctionKindForRequest([], 'POST', '/api/users')).toBe(DbFunctionKind.Action);
+        expect(dbFunctionKindForRequest([], 'PUT', '/api/users')).toBe(DbFunctionKind.Action);
+        expect(dbFunctionKindForRequest([], 'PATCH', '/api/users')).toBe(DbFunctionKind.Action);
+        expect(dbFunctionKindForRequest([], 'DELETE', '/api/users')).toBe(DbFunctionKind.Action);
+    });
+
+    it('uses route-kind metadata only to tighten mutating routes to query', () => {
+        const wasm = wasmWithSection(
+            'toildb.route_kinds',
+            routeKindsSection([
+                [1, 0, '/api/search'],
+                [0, 1, '/api/users'],
+            ]),
+        );
+        const routes = parseRouteKinds(wasm);
+
+        expect(dbFunctionKindForRequest(routes, 'POST', '/api/search')).toBe(DbFunctionKind.Query);
+        expect(dbFunctionKindForRequest(routes, 'POST', '/api/write')).toBe(DbFunctionKind.Action);
+        expect(dbFunctionKindForRequest(routes, 'GET', '/api/users')).toBe(DbFunctionKind.Query);
     });
 
     it('ignores malformed route-kind metadata like the edge method clamp fallback', () => {
