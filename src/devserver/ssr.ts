@@ -20,6 +20,8 @@ export interface DevSsrTemplate {
     name: string;
     tmpl: Uint8Array;
     entries: { id: number; offset: number }[];
+    /** Optional deployed template hash. Present for built/self-host SSR, omitted in dev. */
+    hash?: Uint8Array;
 }
 
 /** A matchable SSR route. */
@@ -28,6 +30,8 @@ export interface SsrRoute {
     test: (pathname: string) => boolean;
     tmpl: Uint8Array;
     entries: { id: number; offset: number }[];
+    /** Optional deployed template hash. When present, guest values must match it. */
+    hash?: Uint8Array;
 }
 
 /** The pathname of a request URL (strip the query string). */
@@ -71,12 +75,18 @@ function patternToTest(pattern: string): (pathname: string) => boolean {
 
 /** Build matchable SSR routes from the extracted dev templates. */
 export function buildSsrRoutes(templates: readonly DevSsrTemplate[]): SsrRoute[] {
-    return templates.map((t) => ({ test: patternToTest(t.pattern), tmpl: t.tmpl, entries: t.entries }));
+    return templates.map((t) => ({
+        test: patternToTest(t.pattern),
+        tmpl: t.tmpl,
+        entries: t.entries,
+        hash: t.hash,
+    }));
 }
 
 /** A decoded guest values envelope. */
 interface DecodedValues {
     status: number;
+    hash: Uint8Array;
     headers: [string, string][];
     /** Slot value bytes keyed by numeric slot id. */
     values: Map<number, Uint8Array>;
@@ -92,7 +102,8 @@ function decodeValues(buf: Uint8Array): DecodedValues | null {
         if (!need(2 + 32 + 2)) return null;
         const status = dv.getUint16(o, true);
         o += 2;
-        o += 32; // template hash (coherence is built together in dev; not checked)
+        const hash = buf.subarray(o, o + 32);
+        o += 32;
         const nHeaders = dv.getUint16(o, true);
         o += 2;
         const headers: [string, string][] = [];
@@ -124,10 +135,18 @@ function decodeValues(buf: Uint8Array): DecodedValues | null {
             values.set(id, buf.subarray(o, o + len));
             o += len;
         }
-        return { status, headers, values };
+        return { status, hash, headers, values };
     } catch {
         return null;
     }
+}
+
+function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+    if (a.byteLength !== b.byteLength) return false;
+    for (let i = 0; i < a.byteLength; i++) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
 }
 
 /** Splice ascending-offset inserts into the template (mirrors the host `assemble`). */
@@ -159,6 +178,7 @@ export function assembleSsr(route: SsrRoute, envelope: Uint8Array): SsrResult | 
     const decoded = decodeValues(envelope);
     if (decoded === null) return null;
     if (decoded.status >= 500 || decoded.values.size === 0) return null;
+    if (route.hash !== undefined && !sameBytes(decoded.hash, route.hash)) return null;
     const inserts = route.entries
         .map((e) => ({ offset: e.offset, value: decoded.values.get(e.id) ?? new Uint8Array(0) }))
         .sort((a, b) => a.offset - b.offset);

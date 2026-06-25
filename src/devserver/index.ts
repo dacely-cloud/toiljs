@@ -15,6 +15,8 @@
 
 export { startDevServer } from './server.js';
 export type { DevServerOptions, RunningDevServer } from './server.js';
+export { loadBuiltSsrTemplates, startBuiltServer } from './production.js';
+export type { BuiltServerOptions, RunningBuiltServer } from './production.js';
 
 export {
     METHOD_CODES,
