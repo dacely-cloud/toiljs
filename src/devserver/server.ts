@@ -35,6 +35,8 @@ import { applyCacheRule, lookupCache } from './http/cache.js';
 import { type EnvelopeRequest, METHOD_CODES } from './http/envelope.js';
 import { proxyToVite, type ViteTarget, wireWebsocketProxy } from './http/proxy.js';
 import { WasmServerModule } from './runtime/module.js';
+import { StreamRouter } from './stream/router.js';
+import { streamEmulationEnabled, wireStreams } from './stream/wire.js';
 import {
     assembleSsr,
     buildSsrRoutes,
@@ -88,7 +90,13 @@ export interface DevServerOptions {
      * (per `nodeMode`). Omit for a project with no `@daemon` (the file is never built).
      */
     readonly coldWasmFile?: string;
-    /** Which layer the dev process emulates (gates the daemon emulator). Default `all`. */
+    /**
+     * Absolute path to the stream artifact (`release-stream.wasm`). When present and this dev process
+     * serves streams (`nodeMode` regional/continental/all), the dev stream router (doc 08 4.1) serves
+     * `@stream`-route WebSocket upgrades. Omit for a project with no `@stream` (the file is never built).
+     */
+    readonly streamWasmFile?: string;
+    /** Which layer the dev process emulates (gates the daemon + stream emulators). Default `all`. */
     readonly nodeMode?: string;
     /** Daemon (L4) config mirror (drives the dev scheduler's budgets/caps). */
     readonly daemon?: ResolvedDaemonConfig;
@@ -282,13 +290,21 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         });
     });
 
-    wireWebsocketProxy(app, options.vite);
+    const nodeMode = options.nodeMode ?? 'all';
+
+    // Dev STREAM (L2/L3) emulation (doc 08 4.1): when a stream artifact is built AND this dev process
+    // serves streams, route `@stream`-route WebSocket upgrades to the resident-box stream router and
+    // proxy everything else (Vite HMR) upstream; otherwise the plain Vite proxy (existing behaviour).
+    if (options.streamWasmFile !== undefined && streamEmulationEnabled(nodeMode)) {
+        wireStreams(app, options.vite, new StreamRouter(options.streamWasmFile));
+    } else {
+        wireWebsocketProxy(app, options.vite);
+    }
 
     // Dev DAEMON (L4) emulation: load `release-cold.wasm` once, run `daemon_start()`, and drive
     // its `@scheduled` tasks. Only when `nodeMode` is daemon/all and a cold artifact path is given;
     // the host stays idle until the cold artifact appears (a `@daemon` build). It has no request to
     // hang a refresh off, so it polls its own mtime-watch on a low-frequency timer (section 9.3).
-    const nodeMode = options.nodeMode ?? 'all';
     let daemonHost: DaemonHost | null = null;
     let daemonTimer: NodeJS.Timeout | null = null;
     if (options.coldWasmFile !== undefined && daemonEmulationEnabled(nodeMode) && options.daemon) {
