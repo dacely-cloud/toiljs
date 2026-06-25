@@ -176,6 +176,10 @@ export async function buildServer(root: string): Promise<void> {
                 mode: 'hot',
                 outFile: serverWasmFile(root),
                 withRpc: true,
+                // Fold the @stream tier's classes into this pass's client surface so toilscript emits
+                // the typed `Server.Stream` (class names, message-type encoders, merged @rest type)
+                // WITHOUT compiling stream code into release.wasm.
+                rpcSurfaceFiles: split.hasStream ? split.stream : undefined,
             });
         // The stream pass carries no client RPC surface (withRpc:false), so toilscript never emits the
         // `Server.Stream` client into shared/server.ts. Append it here from the compiled stream
@@ -296,6 +300,10 @@ interface PassOptions {
     readonly outFile: string | null;
     /** Only the hot/default request pass carries `--rpcModule` (the cold artifact has no client surface). */
     readonly withRpc: boolean;
+    /** Files parsed for the client surface only (e.g. a sibling tier's `@stream` classes) - NOT compiled
+     *  into this artifact. Lets the request pass emit `Server.Stream` without pulling stream code into
+     *  release.wasm. */
+    readonly rpcSurfaceFiles?: readonly string[];
 }
 
 /** Run one toilscript pass. The toilscript CLI flag is `--targetMode` (camelCase). */
@@ -312,6 +320,8 @@ function runToilscriptPass(
     if (opts.mode !== null) args.push('--targetMode', opts.mode);
     if (opts.outFile !== null) args.push('--outFile', opts.outFile);
     if (opts.withRpc) args.push('--rpcModule', 'shared/server.ts');
+    if (opts.rpcSurfaceFiles)
+        for (const surfaceFile of opts.rpcSurfaceFiles) args.push('--rpcSurfaceFiles', surfaceFile);
     // Each pass is handed its OWN entry subset (the per-tier `files`); suppress the toilconfig
     // `entries` so toilscript does not ALSO append every project entry to every pass (which would
     // pull, e.g., a `@stream` class into the cold daemon pass). serverEntryFiles already folds
@@ -1017,7 +1027,20 @@ function emitStreamClientSurface(
     } catch {
         /* absent (a stream-only project, or no @rest surface): create it */
     }
-    if (existing.includes('__toilStream')) return; // already wired
+    if (existing.includes('__toilStream')) {
+        // toilscript already emitted the Server.Stream surface + ambient type (via --rpcSurfaceFiles).
+        // It does NOT wire `globalThis.Server` (the runtime backing for the `declare global const
+        // Server`), so add that here. Importing the proxy also keeps it from being tree-shaken out of
+        // the bundle. Idempotent: skip if a `Server =` assignment is already present.
+        if (!/\bServer\s*=/.test(existing)) {
+            const wiring =
+                'import { Server as __toilServer } from "toiljs/client";\n' +
+                'if (typeof globalThis !== "undefined") (globalThis as Record<string, unknown>).Server = __toilServer;\n';
+            fs.mkdirSync(path.dirname(rpcModule), { recursive: true });
+            fs.writeFileSync(rpcModule, wiring + existing);
+        }
+        return;
+    }
 
     const routes = streams
         .map((s) => `        ${JSON.stringify(s.key)}: ${JSON.stringify(s.route)},`)
