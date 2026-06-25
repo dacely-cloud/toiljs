@@ -86,3 +86,8 @@ function rpcStub(path: string): unknown {
  * come from the generated `shared/server.ts`. toiljs assigns this to `globalThis`.
  */
 export const Server: unknown = rpcStub('Server');
+
+// Back the generated `declare global { const Server }` (shared/server.ts) with a runtime value, so an
+// app reaches `Server.REST` / `Server.Stream.<Name>` via the global without an import (the design note
+// above). Idempotent - the proxy is a singleton; importing `toiljs/client` evaluates this once.
+(globalThis as Record<string, unknown>).Server = Server;

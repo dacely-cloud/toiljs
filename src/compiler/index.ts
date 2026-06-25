@@ -181,7 +181,7 @@ export async function buildServer(root: string): Promise<void> {
         // `Server.Stream` client into shared/server.ts. Append it here from the compiled stream
         // artifact's `toilstream.catalog` (the origin stays runtime-resolved, so this is origin-agnostic).
         if (split.hasStream && split.stream.length > 0)
-            emitStreamClientSurface(root, artifacts.stream);
+            emitStreamClientSurface(root, artifacts.stream, split.stream);
         return;
     }
 
@@ -946,11 +946,54 @@ function readStreamCatalog(wasm: Buffer): CatalogStream[] {
     return out;
 }
 
-/** Append the `Server.Stream` client surface to `shared/server.ts` from the stream artifact's catalog.
- *  The origin is omitted, so the runtime resolves it (`__TOIL_STREAM_ORIGIN__` deploy override -> the WT
- *  edge; else same-origin dev WebSocket). Idempotent: a file that already wires `__toilStream` is left
- *  untouched (so a future toilscript that emits it directly wins). */
-function emitStreamClientSurface(root: string, streamWasmPath: string | undefined): void {
+/** One `@stream` class from a source scan: its client key (the class name) and mount route. */
+interface SourceStream {
+    className: string;
+    route: string;
+}
+
+/** Scan the `@stream` tier source files for their classes. The catalog carries only the declared route
+ *  name; the typed client wants the CLASS name (`Server.Stream.Echo`), which only the source has.
+ *  Best-effort regex mirroring toilscript's streamRoute; a class the scan misses falls back to its
+ *  catalog declared name. */
+function scanStreamSource(root: string, files: string[]): SourceStream[] {
+    const out: SourceStream[] = [];
+    const re =
+        /@stream\b\s*(\([^)]*\))?\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)/g;
+    for (const rel of files) {
+        let src: string;
+        try {
+            src = fs.readFileSync(path.isAbsolute(rel) ? rel : path.join(root, rel), 'utf8');
+        } catch {
+            continue;
+        }
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src)) !== null) {
+            const className = m[2];
+            if (className === undefined) continue;
+            const args = m[1] ?? '';
+            // The declared name: `@stream('x')` / `@stream({ name: 'x' })`, else the class name.
+            let declared = className;
+            const strArg = /^\(\s*['"]([^'"]+)['"]/.exec(args);
+            const nameProp = /\bname\s*:\s*['"]([^'"]+)['"]/.exec(args);
+            if (strArg?.[1] !== undefined) declared = strArg[1];
+            else if (nameProp?.[1] !== undefined) declared = nameProp[1];
+            out.push({ className, route: '/' + declared });
+        }
+    }
+    return out;
+}
+
+/** Append the typed `Server.Stream` client surface to `shared/server.ts`. The compiled stream catalog
+ *  is authoritative for WHICH streams exist (their routes); a source scan supplies the class name (the
+ *  client key, `Server.Stream.Echo`). Emits the `__toilStream` runtime attach plus - unless
+ *  shared/server.ts already declares `Server` (a @rest surface toilscript owns) - the
+ *  `declare global { const Server }` ambient type. The origin stays runtime-resolved. Idempotent. */
+function emitStreamClientSurface(
+    root: string,
+    streamWasmPath: string | undefined,
+    streamFiles: string[],
+): void {
     if (streamWasmPath === undefined) return;
     let wasm: Buffer;
     try {
@@ -961,8 +1004,11 @@ function emitStreamClientSurface(root: string, streamWasmPath: string | undefine
     } catch {
         return; // no stream artifact: nothing to wire
     }
-    const streams = readStreamCatalog(wasm);
-    if (streams.length === 0) return;
+    const catalog = readStreamCatalog(wasm);
+    if (catalog.length === 0) return;
+
+    const classByRoute = new Map(scanStreamSource(root, streamFiles).map((s) => [s.route, s.className]));
+    const streams = catalog.map((c) => ({ key: classByRoute.get(c.route) ?? c.name, route: c.route }));
 
     const rpcModule = path.join(root, 'shared', 'server.ts');
     let existing = '';
@@ -974,15 +1020,38 @@ function emitStreamClientSurface(root: string, streamWasmPath: string | undefine
     if (existing.includes('__toilStream')) return; // already wired
 
     const routes = streams
-        .map((s) => `        ${JSON.stringify(s.name)}: ${JSON.stringify(s.route)},`)
+        .map((s) => `        ${JSON.stringify(s.key)}: ${JSON.stringify(s.route)},`)
         .join('\n');
-    const hasImport = /from ['"]toiljs\/client['"]/.test(existing);
+    const attach =
+        'if (typeof globalThis !== "undefined") {\n' +
+        `    (globalThis as Record<string, unknown>).__toilStream = __mkStream({\n${routes}\n    });\n` +
+        '    // Back the `declare global { const Server }` below with a runtime value (the proxy reads\n' +
+        '    // __toilStream), so the app reaches `Server.Stream.<Name>` via the global. Importing the\n' +
+        '    // proxy here also keeps it from being tree-shaken out of the bundle.\n' +
+        '    (globalThis as Record<string, unknown>).Server = __toilServer;\n' +
+        '}\n';
+
+    // The ambient `Server.Stream` type - only when toilscript has not already declared `Server` (a
+    // @rest surface). For a @rest project, teaching toilscript the @stream surface is the follow-up;
+    // the runtime attach above works regardless of the type.
+    const declareType = !/declare global[\s\S]*?const Server\b/.test(existing);
+    const typeBlock = declareType
+        ? 'declare global {\n' +
+          '    /** The client-callable server surface (generated from the @stream catalog). */\n' +
+          '    const Server: {\n' +
+          '        readonly Stream: {\n' +
+          streams
+              .map((s) => `            readonly ${s.key}: import('toiljs/client').StreamConnectable;`)
+              .join('\n') +
+          '\n        };\n    };\n}\n\nexport {};\n'
+        : '';
+
     const out =
-        (hasImport ? '' : 'import { makeStreamClient } from "toiljs/client";\n') +
+        'import { makeStreamClient as __mkStream, Server as __toilServer } from "toiljs/client";\n' +
         existing +
         '\n// --- @stream client surface (auto-generated from toilstream.catalog) ---\n' +
-        'if (typeof globalThis !== "undefined")\n' +
-        `    (globalThis as Record<string, unknown>).__toilStream = makeStreamClient({\n${routes}\n    });\n`;
+        attach +
+        (typeBlock.length > 0 ? '\n' + typeBlock : '');
 
     fs.mkdirSync(path.dirname(rpcModule), { recursive: true });
     fs.writeFileSync(rpcModule, out);

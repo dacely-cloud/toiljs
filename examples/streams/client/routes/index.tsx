@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 
-import type { StreamChannel, StreamConnectable } from 'toiljs/client';
+import type { StreamChannel } from 'toiljs/client';
 
 interface TierProps {
     tag: string;
@@ -47,13 +47,7 @@ function Tier({ tag, title, entry, surface, artifact, blurb }: TierProps) {
     );
 }
 
-/** The generated `Server.Stream` runtime (attached to `globalThis.__toilStream` by shared/server.ts).
- *  Keyed by the `@stream` route name; each value is a `connect()` factory. */
-function streamClient(): Record<string, StreamConnectable> | undefined {
-    return (globalThis as { __toilStream?: Record<string, StreamConnectable> }).__toilStream;
-}
-
-/** Live `Server.Stream.echo` demo: open a real browser WebTransport session to the stream edge,
+/** Live `Server.Stream.Echo` demo: open a real browser WebTransport session to the stream edge,
  *  send a message, and show the echo the resident `@stream` box returns. */
 function EchoDemo() {
     const [origin, setOrigin] = useState('https://wt.dacely.com');
@@ -66,17 +60,13 @@ function EchoDemo() {
     async function connect(): Promise<void> {
         // Point the runtime at the WebTransport edge; without this it falls back to same-origin dev WS.
         (globalThis as Record<string, unknown>).__TOIL_STREAM_ORIGIN__ = origin;
-        // shared/server.ts (generated from the @stream catalog) attaches `globalThis.__toilStream`.
-        // Load it lazily, browser-only, so SSR never evaluates its `globalThis.location` access.
+        // shared/server.ts (generated from the @stream catalog) attaches `globalThis.__toilStream` and,
+        // via toiljs/client, sets `globalThis.Server`. Load it lazily, browser-only, so SSR never
+        // evaluates its `globalThis.location` access.
         await import('../../shared/server');
-        const echo = streamClient()?.echo;
-        if (echo === undefined) {
-            add('Server.Stream.echo missing - run `npm run build` so shared/server.ts is generated');
-            return;
-        }
         add('connecting -> ' + origin + '/echo');
         try {
-            const c = await echo.connect();
+            const c = await Server.Stream.Echo.connect();
             add('session READY');
             c.onMessage((bytes) => add('<- echo: ' + new TextDecoder().decode(bytes)));
             c.onClose((code) => add('closed (0x' + code.toString(16) + ')'));
@@ -102,7 +92,7 @@ function EchoDemo() {
                 background: '#fafdff'
             }}>
             <h2 style={{ margin: 0, fontSize: '1.15rem' }}>
-                Live <code>Server.Stream.echo</code>
+                Live <code>Server.Stream.Echo</code>
             </h2>
             <p style={{ margin: '0.5rem 0', fontSize: '0.85rem', color: '#666' }}>
                 Opens a real WebTransport session to the stream edge and echoes a message back through the resident box.
