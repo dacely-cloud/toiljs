@@ -24,7 +24,26 @@ function restMissingStub(path: string): unknown {
     return new Proxy(call, {
         get(_target, prop) {
             if (typeof prop === 'symbol' || prop === 'then') return undefined;
-            return restMissingStub(`${path}.${String(prop)}`);
+            return restMissingStub(`${path}.${prop}`);
+        },
+        apply() {
+            return call();
+        },
+    });
+}
+
+/** A recursive proxy that throws on call, used when the stream client hasn't loaded. */
+function streamMissingStub(path: string): unknown {
+    const call = (): never => {
+        throw new Error(
+            `toiljs Stream: ${path}() is unavailable. The generated stream client has not loaded - ` +
+                `import a type from your 'shared/server' (so the client attaches), or run 'npm run build:server'.`,
+        );
+    };
+    return new Proxy(call, {
+        get(_target, prop) {
+            if (typeof prop === 'symbol' || prop === 'then') return undefined;
+            return streamMissingStub(`${path}.${prop}`);
         },
         apply() {
             return call();
@@ -48,6 +67,11 @@ function rpcStub(path: string): unknown {
             if (path === 'Server' && prop === 'REST') {
                 const rest = (globalThis as { __toilRest?: unknown }).__toilRest;
                 return rest !== undefined ? rest : restMissingStub('Server.REST');
+            }
+            // `Server.Stream` surfaces the generated stream client attached by shared/server.ts.
+            if (path === 'Server' && prop === 'Stream') {
+                const stream = (globalThis as { __toilStream?: unknown }).__toilStream;
+                return stream !== undefined ? stream : streamMissingStub('Server.Stream');
             }
             return rpcStub(`${path}.${prop}`);
         },

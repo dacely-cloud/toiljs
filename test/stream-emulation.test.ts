@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { Server } from '@dacely/hyper-express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { makeStreamClient } from '../src/client/stream/client.js';
 import { matchStreamRoute, parseStreamCatalog } from '../src/devserver/stream/catalog.js';
 import { wireStreams } from '../src/devserver/stream/wire.js';
 import { DevStreamBox } from '../src/devserver/stream/index.js';
@@ -321,6 +322,37 @@ describe('dev stream LIVE round-trip (wireStreams over a real WebSocket)', () =>
                 };
             });
             expect(echoed).toEqual(Buffer.from('hi'));
+        } finally {
+            app.close();
+        }
+    });
+});
+
+describe('Server.Stream client (doc 08 8.2 makeStreamClient)', () => {
+    it('connects + echoes through a real WebSocket end to end', async () => {
+        const router = new StreamRouter(ECHO_PATH);
+        const route = [...parseStreamCatalog(ECHO).keys()][0];
+        const app = new Server();
+        wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
+
+        const PORT = 49318;
+        await app.listen(PORT);
+        try {
+            // The generated client would call makeStreamClient({ Echo: route }) -> globalThis.__toilStream.
+            const stream = makeStreamClient({ Echo: route }, `ws://127.0.0.1:${String(PORT)}`);
+            const channel = await stream.Echo.connect();
+            const echoed = await new Promise<Uint8Array>((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    reject(new Error('no echo within 3s'));
+                }, 3000);
+                channel.onMessage((d) => {
+                    clearTimeout(timer);
+                    resolve(d);
+                });
+                channel.send(new Uint8Array([0x68, 0x69])); // "hi"
+            });
+            expect(Buffer.from(echoed)).toEqual(Buffer.from('hi'));
+            channel.close();
         } finally {
             app.close();
         }
