@@ -13,9 +13,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { Server } from '@dacely/hyper-express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { matchStreamRoute, parseStreamCatalog } from '../src/devserver/stream/catalog.js';
+import { wireStreams } from '../src/devserver/stream/wire.js';
 import { DevStreamBox } from '../src/devserver/stream/index.js';
 import { StreamDevHost } from '../src/devserver/stream/manager.js';
 import {
@@ -285,5 +287,42 @@ describe('dev stream router (doc 08 4.1/4.2)', () => {
         router.onUpgrade(ws, { kind: 'stream', route, url: '/blocked', authority: 'acme.toil' });
         expect(ws.closed).toEqual([0x0211]);
         expect(router.activeConnections).toBe(0); // rejected -> no resident box
+    });
+});
+
+describe('dev stream LIVE round-trip (wireStreams over a real WebSocket)', () => {
+    it('echoes a binary frame end-to-end through app.upgrade + app.ws', async () => {
+        const router = new StreamRouter(ECHO_PATH);
+        const route = [...parseStreamCatalog(ECHO).keys()][0];
+        const app = new Server();
+        // A dummy Vite target: a @stream-route upgrade never touches it (it goes to the StreamRouter).
+        wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
+
+        const PORT = 49317;
+        await app.listen(PORT);
+        try {
+            const echoed = await new Promise<Buffer>((resolve, reject) => {
+                const ws = new WebSocket(`ws://127.0.0.1:${String(PORT)}${route}`);
+                ws.binaryType = 'arraybuffer';
+                const timer = setTimeout(() => {
+                    reject(new Error('no echo within 3s'));
+                }, 3000);
+                ws.onopen = (): void => {
+                    ws.send(new Uint8Array([0x68, 0x69])); // "hi"
+                };
+                ws.onmessage = (ev: MessageEvent): void => {
+                    clearTimeout(timer);
+                    resolve(Buffer.from(ev.data as ArrayBuffer));
+                    ws.close();
+                };
+                ws.onerror = (): void => {
+                    clearTimeout(timer);
+                    reject(new Error('websocket error'));
+                };
+            });
+            expect(echoed).toEqual(Buffer.from('hi'));
+        } finally {
+            app.close();
+        }
     });
 });
