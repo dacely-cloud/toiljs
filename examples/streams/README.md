@@ -39,9 +39,16 @@ Then look at the three artifacts the single build produced:
     build/server/release-stream.wasm   # L2/L3 stream   (exports: stream_dispatch)
     build/server/release-cold.wasm     # L4 daemon      (exports: daemon_start, scheduled_tick)
 
-## Note on the `@stream` message bridge
+## The `@stream` message bridge + client
 
-The stream lifecycle (`@connect`/`@message`/`@close`/`@disconnect`) runs today, and this example
-proves a resident box keeps state across those events. Reading the inbound frame bytes and replying
-(the `StreamPacket` / `StreamOutbound` API, plus the typed `Server.STREAM.echo.connect()` client) is
-the next increment - see the comments in `server/streams/Echo.ts`.
+`Echo` reads each inbound frame via `StreamPacket` and replies via `StreamOutbound` (it echoes the
+bytes straight back), and its `count` field proves the resident box keeps state across events. From
+the browser, the generated typed client `Server.Stream.Echo` opens the channel:
+
+    const echo = await Server.Stream.Echo.connect();
+    echo.onMessage((bytes) => { /* the echoed reply frame */ });
+    echo.send(new TextEncoder().encode('hello'));
+
+See `server/streams/Echo.ts` and the [streams guide](../../docs/streams.md). A typed `@stream`
+(`@stream({ message: SomeData })`) decodes the frame into the `@data` class for you, and the client's
+`send` takes that class and encodes it.

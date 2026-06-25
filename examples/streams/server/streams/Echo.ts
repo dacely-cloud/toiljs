@@ -12,23 +12,17 @@
  * every `@message` because the box is never reset between events (a `@rest`
  * handler's fields would reset each request).
  *
- * On the client (once the message bridge lands - see the NOTE):
+ * On the client, the typed client is generated as `Server.Stream.Echo` (into
+ * `shared/server.ts`, alongside `Server.REST`):
  *
- *   const stream = await Server.STREAM.echo.connect();
- *   stream.send(new TextEncoder().encode('hello'));
+ *   const echo = await Server.Stream.Echo.connect();
+ *   echo.onMessage((bytes) => { ... });             // the echoed reply frame
+ *   echo.send(new TextEncoder().encode('hello'));
  *
- * Lifecycle hooks: `@connect` (open), `@message` (an inbound frame), `@close`
- * (graceful close), `@disconnect` (abrupt transport loss).
- *
- * NOTE: reading the inbound frame and replying is the next increment (the
- * `StreamPacket` / `StreamOutbound` message bridge). The intended shape:
- *
- *   @message reply(packet: StreamPacket): StreamOutbound {
- *     return StreamOutbound.reply(packet.bytes());   // echo the bytes back
- *   }
- *
- * Until that lands, the hooks run on the connection lifecycle; this example
- * counts frames to show the resident box keeps state across them.
+ * Lifecycle hooks: `@connect` (open), `@message` (an inbound frame - here read
+ * via `StreamPacket` and echoed back via `StreamOutbound`), `@close` (graceful
+ * close), `@disconnect` (abrupt transport loss). This example also counts frames
+ * to show the resident box keeps its state across them.
  */
 @stream('echo')
 class Echo {
@@ -42,10 +36,12 @@ class Echo {
     }
 
     @message
-    onMessage(packet: StreamPacket): void {
+    onMessage(packet: StreamPacket): StreamOutbound {
         // Increments on every inbound frame - and PERSISTS across them, because
-        // this is the same resident box for the whole connection.
+        // this is the same resident box for the whole connection - then echoes
+        // the inbound bytes straight back to the client.
         this.count = this.count + 1;
+        return StreamOutbound.reply(packet.bytes());
     }
 
     @close
