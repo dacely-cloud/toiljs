@@ -114,45 +114,59 @@ export function wireWebsocketProxy(app: Server, target: ViteTarget): void {
         '/*',
         { message_type: 'Buffer', idle_timeout: 120, max_payload_length: 16 * 1024 * 1024 },
         (ws: Websocket) => {
-            const { url, protocol } = ws.context as { url: string; protocol: string };
-            const upstream = new WebSocket(
-                `ws://${target.host}:${String(target.port)}${url}`,
-                protocol ? protocol.split(',').map((p) => p.trim()) : [],
-            );
-            upstream.binaryType = 'arraybuffer';
-
-            const pending: (string | Uint8Array<ArrayBuffer>)[] = [];
-            let open = false;
-
-            upstream.onopen = (): void => {
-                open = true;
-                for (const m of pending) upstream.send(m);
-                pending.length = 0;
-            };
-            upstream.onmessage = (event: MessageEvent): void => {
-                if (typeof event.data === 'string') ws.send(event.data);
-                else ws.send(Buffer.from(event.data as ArrayBuffer), true);
-            };
-            upstream.onclose = (event: CloseEvent): void => {
-                ws.close(event.code, event.reason);
-            };
-            upstream.onerror = (): void => {
-                ws.close();
-            };
-
-            ws.on('message', (message: Buffer, isBinary: boolean) => {
-                const m = toUpstreamMessage(message, isBinary);
-                if (open) upstream.send(m);
-                else pending.push(m);
-            });
-            ws.on('close', () => {
-                if (
-                    upstream.readyState === WebSocket.OPEN ||
-                    upstream.readyState === WebSocket.CONNECTING
-                ) {
-                    upstream.close();
-                }
-            });
+            pipeToVite(ws, target, ws.context as { url: string; protocol: string });
         },
     );
+}
+
+/**
+ * Pipe ONE upgraded websocket to the internal Vite HMR server. The verbatim body extracted from
+ * {@link wireWebsocketProxy} so the dev STREAM router (doc 08 4.1 `wireStreams`) can reuse it for every
+ * NON-stream upgrade while it handles `@stream`-route upgrades itself - HMR stays byte-for-byte
+ * unchanged. `ctx` is the upgrade context (`{ url, protocol }`) the upgrade handler stamped.
+ */
+export function pipeToVite(
+    ws: Websocket,
+    target: ViteTarget,
+    ctx: { url: string; protocol: string },
+): void {
+    const { url, protocol } = ctx;
+    const upstream = new WebSocket(
+        `ws://${target.host}:${String(target.port)}${url}`,
+        protocol ? protocol.split(',').map((p) => p.trim()) : [],
+    );
+    upstream.binaryType = 'arraybuffer';
+
+    const pending: (string | Uint8Array<ArrayBuffer>)[] = [];
+    let open = false;
+
+    upstream.onopen = (): void => {
+        open = true;
+        for (const m of pending) upstream.send(m);
+        pending.length = 0;
+    };
+    upstream.onmessage = (event: MessageEvent): void => {
+        if (typeof event.data === 'string') ws.send(event.data);
+        else ws.send(Buffer.from(event.data as ArrayBuffer), true);
+    };
+    upstream.onclose = (event: CloseEvent): void => {
+        ws.close(event.code, event.reason);
+    };
+    upstream.onerror = (): void => {
+        ws.close();
+    };
+
+    ws.on('message', (message: Buffer, isBinary: boolean) => {
+        const m = toUpstreamMessage(message, isBinary);
+        if (open) upstream.send(m);
+        else pending.push(m);
+    });
+    ws.on('close', () => {
+        if (
+            upstream.readyState === WebSocket.OPEN ||
+            upstream.readyState === WebSocket.CONNECTING
+        ) {
+            upstream.close();
+        }
+    });
 }

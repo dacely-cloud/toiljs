@@ -18,6 +18,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { matchStreamRoute, parseStreamCatalog } from '../src/devserver/stream/catalog.js';
 import { DevStreamBox } from '../src/devserver/stream/index.js';
 import { StreamDevHost } from '../src/devserver/stream/manager.js';
+import {
+    StreamRouter,
+    type StreamUpgradeContext,
+    type StreamWs,
+} from '../src/devserver/stream/router.js';
 import { StreamWsSession, type StreamWsTransport } from '../src/devserver/stream/ws.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -225,5 +230,60 @@ describe('dev stream catalog (toilstream.catalog route table, doc 08 3.1/4.2)', 
         expect(matchStreamRoute(cat, def.route)).toBe(def);
         expect(matchStreamRoute(cat, `${def.route}?x=1`)).toBe(def);
         expect(matchStreamRoute(cat, '/definitely-not-a-stream')).toBeNull();
+    });
+});
+
+/** A minimal hyper-express `Websocket` mock for the router (records send/close, replays events). */
+class MockWs implements StreamWs {
+    readonly sent: Buffer[] = [];
+    readonly closed: number[] = [];
+    private msgCb?: (m: Buffer, b: boolean) => void;
+    private closeCb?: () => void;
+    send(d: Buffer, _isBinary: boolean): void {
+        this.sent.push(d);
+    }
+    close(c: number): void {
+        this.closed.push(c);
+    }
+    on(event: 'message', cb: (m: Buffer, b: boolean) => void): void;
+    on(event: 'close', cb: () => void): void;
+    on(event: 'message' | 'close', cb: ((m: Buffer, b: boolean) => void) | (() => void)): void {
+        if (event === 'message') this.msgCb = cb as (m: Buffer, b: boolean) => void;
+        else this.closeCb = cb as () => void;
+    }
+    emitMessage(m: Buffer): void {
+        this.msgCb?.(m, true);
+    }
+    emitClose(): void {
+        this.closeCb?.();
+    }
+}
+
+describe('dev stream router (doc 08 4.1/4.2)', () => {
+    it('matches @stream routes and bridges a socket to a resident box', () => {
+        const router = new StreamRouter(ECHO_PATH);
+        const route = [...parseStreamCatalog(ECHO).keys()][0];
+        expect(router.matchRoute(route)).not.toBeNull();
+        expect(router.matchRoute(`${route}?x=1`)).not.toBeNull(); // query stripped
+        expect(router.matchRoute('/not-a-stream')).toBeNull(); // -> proxied to Vite
+
+        const ws = new MockWs();
+        const ctx: StreamUpgradeContext = { kind: 'stream', route, url: route, authority: 'acme.toil' };
+        router.onUpgrade(ws, ctx);
+        expect(router.activeConnections).toBe(1);
+        ws.emitMessage(Buffer.from('hi'));
+        expect(ws.sent).toEqual([Buffer.from('hi')]); // @message echoed back over the socket
+        ws.emitClose();
+        expect(router.activeConnections).toBe(0); // @close fired + box dropped
+    });
+
+    it('closes the socket with the code on a @connect reject', () => {
+        const router = new StreamRouter(GATE_PATH);
+        const route = [...parseStreamCatalog(GATE).keys()][0];
+        const ws = new MockWs();
+        // The gate rejects path "/blocked"; the upgrade's url carries the connect path.
+        router.onUpgrade(ws, { kind: 'stream', route, url: '/blocked', authority: 'acme.toil' });
+        expect(ws.closed).toEqual([0x0211]);
+        expect(router.activeConnections).toBe(0); // rejected -> no resident box
     });
 });
