@@ -158,15 +158,17 @@ describe('parseDaemonCatalog (Part 5)', () => {
 // --- toil.surface (Part 5) -------------------------------------------------
 
 function buildSurfaceBytes(opts: {
-    mode: 0 | 1;
+    mode: number;
     flags: number;
+    version?: number;
+    reserved0?: number;
     abi?: number;
     buildId?: string;
 }): Uint8Array {
     const w = new DataWriter();
-    w.writeU16(1); // format_version
+    w.writeU16(opts.version ?? 1); // format_version
     w.writeU8(opts.mode); // target_mode
-    w.writeU8(0); // reserved0
+    w.writeU8(opts.reserved0 ?? 0); // reserved0
     w.writeU32(opts.flags); // surface_flags
     w.writeU16(opts.abi ?? 1); // abi_version
     w.writeString(opts.buildId ?? ''); // build_id
@@ -188,6 +190,7 @@ describe('parseSurface (Part 5)', () => {
             expect(s.flags.daemon).toBe(true);
             expect(s.flags.scheduled).toBe(true);
             expect(s.flags.rest).toBe(false);
+            expect(s.abiVersion).toBe(1);
             expect(s.fingerprint).toBe(0xdeadbeef);
             expect(s.dataCoherenceHash).toBe(0x11111111);
             expect(s.pairCoherenceHash).toBe(0x22222222);
@@ -210,6 +213,78 @@ describe('parseSurface (Part 5)', () => {
         const full = buildSurfaceBytes({ mode: 1, flags: 4 });
         const truncated = full.subarray(0, full.length - 3); // chop a trailing hash
         expect(parseSurface(wasmWithSection('toil.surface', truncated))).toBe('invalid');
+    });
+
+    it("fails closed: trailing bytes after toil.surface are 'invalid'", () => {
+        const full = Buffer.from(buildSurfaceBytes({ mode: 0, flags: 1 }));
+        const withGarbage = Buffer.concat([full, Buffer.from([0xff])]);
+        expect(parseSurface(wasmWithSection('toil.surface', withGarbage))).toBe('invalid');
+    });
+
+    it("fails closed: unsupported format version is 'invalid'", () => {
+        expect(
+            parseSurface(
+                wasmWithSection(
+                    'toil.surface',
+                    buildSurfaceBytes({ version: 2, mode: 0, flags: 1 }),
+                ),
+            ),
+        ).toBe('invalid');
+    });
+
+    it("fails closed: unsupported abi_version is 'invalid'", () => {
+        expect(
+            parseSurface(
+                wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 0, flags: 1, abi: 2 })),
+            ),
+        ).toBe('invalid');
+    });
+
+    it('fails closed: target_mode 2 is not silently treated as hot', () => {
+        expect(
+            parseSurface(wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 2, flags: 1 }))),
+        ).toBe('invalid');
+    });
+
+    it("fails closed: nonzero reserved byte is 'invalid'", () => {
+        expect(
+            parseSurface(
+                wasmWithSection(
+                    'toil.surface',
+                    buildSurfaceBytes({ mode: 0, flags: 1, reserved0: 1 }),
+                ),
+            ),
+        ).toBe('invalid');
+    });
+
+    it("fails closed: reserved surface flag bits are 'invalid'", () => {
+        expect(
+            parseSurface(
+                wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 0, flags: 1 << 6 })),
+            ),
+        ).toBe('invalid');
+    });
+
+    it('fails closed: daemon flags are illegal on hot artifacts', () => {
+        expect(
+            parseSurface(
+                wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 0, flags: 1 | 4 })),
+            ),
+        ).toBe('invalid');
+    });
+
+    it('fails closed: stream flags are illegal on cold artifacts', () => {
+        expect(
+            parseSurface(
+                wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 1, flags: 4 | 2 })),
+            ),
+        ).toBe('invalid');
+    });
+
+    it('fails closed: scheduled requires daemon', () => {
+        expect(
+            parseSurface(wasmWithSection('toil.surface', buildSurfaceBytes({ mode: 1, flags: 8 }))),
+        ).toBe('invalid');
     });
 });
 

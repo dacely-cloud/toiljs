@@ -153,14 +153,20 @@ export class DaemonHost implements DaemonRuntime {
             this.loadedMtimeMs = mtimeMs;
             return false;
         }
-        if (surface.targetMode !== 'cold')
+        if (surface.targetMode !== 'cold') {
             this.log(
                 pc.yellow('  ! ') +
                     pc.dim('cold slot holds a hot-mode artifact; ignoring daemon emulator') +
                     '\n',
             );
+            if (this.running) this.stop();
+            this.module = null;
+            this.catalog = null;
+            this.loadedMtimeMs = mtimeMs;
+            return false;
+        }
         const catalog = parseDaemonCatalog(bytes);
-        const declaresDaemon = surface.flags.daemon || (catalog?.hasDaemon ?? false);
+        const declaresDaemon = surface.flags.daemon && (catalog?.hasDaemon ?? false);
 
         // A restart: stop the old box (timers + instance), bump epoch, start fresh.
         if (this.running) this.stop();

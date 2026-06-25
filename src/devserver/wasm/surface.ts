@@ -26,6 +26,20 @@ import { DataReader } from 'toiljs/io';
 
 import { customSection } from './sections.js';
 
+export const SURFACE_FORMAT_VERSION = 1;
+export const SURFACE_ABI_VERSION = 1;
+
+const TARGET_HOT = 0;
+const TARGET_COLD = 1;
+const FLAG_REST = 1 << 0;
+const FLAG_STREAM = 1 << 1;
+const FLAG_DAEMON = 1 << 2;
+const FLAG_SCHEDULED = 1 << 3;
+const FLAG_DATABASE = 1 << 4;
+const FLAG_RENDER = 1 << 5;
+const FLAG_KNOWN_MASK =
+    FLAG_REST | FLAG_STREAM | FLAG_DAEMON | FLAG_SCHEDULED | FLAG_DATABASE | FLAG_RENDER;
+
 export interface SurfaceFlags {
     readonly rest: boolean;
     readonly stream: boolean;
@@ -57,16 +71,31 @@ export function parseSurface(wasm: Buffer): Surface | 'invalid' {
     if (sec === null) return 'invalid';
 
     const r = new DataReader(sec);
-    r.readU16(); // format_version
-    const targetMode = r.readU8() === 1 ? 'cold' : 'hot';
-    r.readU8(); // reserved0
+    const version = r.readU16(); // format_version
+    if (!r.ok || version !== SURFACE_FORMAT_VERSION) return 'invalid';
+    const targetModeByte = r.readU8();
+    if (!r.ok || (targetModeByte !== TARGET_HOT && targetModeByte !== TARGET_COLD)) {
+        return 'invalid';
+    }
+    const targetMode = targetModeByte === TARGET_COLD ? 'cold' : 'hot';
+    const reserved0 = r.readU8(); // reserved0
+    if (!r.ok || reserved0 !== 0) return 'invalid';
     const f = r.readU32(); // surface_flags
+    if (!r.ok || (f & ~FLAG_KNOWN_MASK) !== 0) return 'invalid';
+    if ((f & FLAG_SCHEDULED) !== 0 && (f & FLAG_DAEMON) === 0) return 'invalid';
+    if (targetMode === 'hot' && (f & (FLAG_DAEMON | FLAG_SCHEDULED)) !== 0) {
+        return 'invalid';
+    }
+    if (targetMode === 'cold' && (f & (FLAG_REST | FLAG_STREAM | FLAG_RENDER)) !== 0) {
+        return 'invalid';
+    }
     const abiVersion = r.readU16();
+    if (!r.ok || abiVersion !== SURFACE_ABI_VERSION) return 'invalid';
     const buildId = r.readString();
     const fingerprint = r.readU32();
     const dataCoherenceHash = r.readU32(); // exactly THREE u32 after build_id
     const pairCoherenceHash = r.readU32();
-    if (!r.ok) return 'invalid'; // PRESENT but corrupt => fail closed
+    if (!r.ok || r.remaining() !== 0) return 'invalid'; // PRESENT but corrupt => fail closed
     return {
         targetMode,
         flags: {

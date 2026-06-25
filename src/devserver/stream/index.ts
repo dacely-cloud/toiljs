@@ -98,8 +98,8 @@ export class DevStreamBox {
      *  cold artifact, a missing `stream_dispatch`/`memory`, or a bad module throws. */
     static load(wasm: Buffer): DevStreamBox {
         const surface = parseSurface(wasm);
-        if (surface === 'invalid' || surface.targetMode !== 'hot') {
-            throw new Error('stream box requires a hot artifact with a valid toil.surface');
+        if (surface === 'invalid' || surface.targetMode !== 'hot' || !surface.flags.stream) {
+            throw new Error('stream box requires a hot stream artifact with a valid toil.surface');
         }
         const ref: { memory: WebAssembly.Memory | null } = { memory: null };
         const state = freshStreamBoxState();
@@ -192,7 +192,10 @@ export class DevStreamBox {
     }
 
     private static resolveStreamInfo(e: StreamExports): StreamInfo | null {
-        if (typeof e.stream_info_offset !== 'function' || typeof e.stream_info_capacity !== 'function') {
+        if (
+            typeof e.stream_info_offset !== 'function' ||
+            typeof e.stream_info_capacity !== 'function'
+        ) {
             return null;
         }
         return { offset: e.stream_info_offset() >>> 0, cap: e.stream_info_capacity() >>> 0 };
@@ -277,7 +280,8 @@ export class DevStreamBox {
         dv.setUint16(f + 2, 0, true); // flags
         dv.setUint32(f + 4, n, true); // length
         dv.setUint32(f + 8, 0, true); // msg_seq
-        if (n > 0) new Uint8Array(this.exports.memory.buffer, f + RING_FRAME_HEADER, n).set(inbound);
+        if (n > 0)
+            new Uint8Array(this.exports.memory.buffer, f + RING_FRAME_HEADER, n).set(inbound);
         dv.setUint32(base + RC_WRITE, w + frameLen, true);
     }
 
