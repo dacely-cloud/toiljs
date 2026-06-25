@@ -27,4 +27,4 @@ toilscript-to-WebAssembly server target.
 
 See [routing.md](./routing.md), [client.md](./client.md), [styling.md](./styling.md),
 [server.md](./server.md), [ssr.md](./ssr.md), [rpc.md](./rpc.md), [tiers.md](./tiers.md),
-[streams.md](./streams.md), [daemon.md](./daemon.md), [cli.md](./cli.md).
+[streams.md](./streams.md), [daemon.md](./daemon.md), [derive.md](./derive.md), [cli.md](./cli.md).
