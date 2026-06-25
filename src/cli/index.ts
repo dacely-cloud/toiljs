@@ -19,6 +19,7 @@ interface Flags {
     root?: string;
     port?: number;
     host?: string;
+    threads?: number;
     name?: string;
     template?: Template;
     preprocessor?: Preprocessor;
@@ -51,6 +52,12 @@ function parseArgs(argv: string[]): Flags {
             case '--host':
                 flags.host = argv[++i];
                 break;
+            case '--threads':
+            case '--workers': {
+                const threads = Number(argv[++i]);
+                if (!Number.isNaN(threads)) flags.threads = threads;
+                break;
+            }
             case '--template':
             case '-t': {
                 const t = argv[++i];
@@ -138,6 +145,7 @@ function printHelp(): void {
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
             cmd('--port <n>', 'dev server port'),
+            cmd('--threads <n>', 'start: production HTTP worker count'),
             cmd('-t, --template', 'create: app | minimal'),
             cmd('--style <name>', 'create/configure: css | sass | less | stylus'),
             cmd('--tailwind', 'create/configure: enable Tailwind (--no-tailwind to remove)'),
@@ -226,7 +234,12 @@ async function main(): Promise<void> {
         case 'start': {
             banner();
             process.stdout.write(dim('  self-hosting the built app…') + '\n\n');
-            const server = await start({ root: flags.root, port: flags.port, host: flags.host });
+            const server = await start({
+                root: flags.root,
+                port: flags.port,
+                host: flags.host,
+                threads: flags.threads,
+            });
             process.stdout.write(
                 accent('  ➜ ') +
                     bold(`http://localhost:${String(server.port)}`) +

@@ -4,6 +4,7 @@
  * into the example project's ToilScript-compiled server wasm.
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +16,7 @@ import {
     unpackHandleResult,
     WasmServerModule,
 } from '../src/devserver/index.js';
+import { resolveStaticFile } from '../src/devserver/http/runtime.js';
 
 const EXAMPLE_WASM = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -121,10 +123,7 @@ describe('response envelope decoding', () => {
             /status 0/,
         );
         // Claim a huge header name with too few bytes behind it.
-        const bad = Buffer.concat([
-            Buffer.from([200, 0, 1, 0, 255, 255, 0, 0]),
-            Buffer.from('hi'),
-        ]);
+        const bad = Buffer.concat([Buffer.from([200, 0, 1, 0, 255, 255, 0, 0]), Buffer.from('hi')]);
         expect(() => decodeResponseEnvelope(bad)).toThrow(/truncated/);
     });
 });
@@ -137,6 +136,23 @@ describe('handle() result unpacking', () => {
             ptr: 0xffffffff,
             len: 0xffffffff,
         });
+    });
+});
+
+describe('static file resolver', () => {
+    it('resolves absolute request paths inside the static root', () => {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'toil-static-'));
+        const file = path.join(root, 'assets', 'app.css');
+        try {
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, 'body{}');
+
+            expect(resolveStaticFile(root, '/assets/app.css')).toBe(file);
+            expect(resolveStaticFile(root, '/missing.css')).toBeNull();
+            expect(resolveStaticFile(root, '/../app.css')).toBeNull();
+        } finally {
+            fs.rmSync(root, { recursive: true, force: true });
+        }
     });
 });
 

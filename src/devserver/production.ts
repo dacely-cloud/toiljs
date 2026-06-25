@@ -3,8 +3,11 @@
  * SSR template assembly. This is the production counterpart to the dev front
  * server, except the fallback is the built client directory instead of Vite.
  */
+import { fork, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
+import { availableParallelism } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
     type MiddlewareNext,
@@ -17,23 +20,31 @@ import pc from 'picocolors';
 
 import type { EmailBackendConfig } from 'toiljs/shared';
 
+import type { ResolvedDaemonConfig } from './daemon/host.js';
+import { startDaemonRuntime } from './daemon/runtime.js';
 import { configureDbPersistence } from './db/index.js';
 import { initEmailService } from './email/index.js';
-import { applyCacheRule, lookupCache } from './http/cache.js';
-import { type EnvelopeRequest, METHOD_CODES } from './http/envelope.js';
-import { WasmServerModule } from './runtime/module.js';
 import {
-    assembleSsr,
-    buildSsrRoutes,
-    type DevSsrTemplate,
-    pathnameOf,
-    type SsrResult,
-} from './ssr.js';
-
-const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
-const MAX_BODY_BUFFER = 1024 * 32;
-const HTTP_IDLE_TIMEOUT = 60;
-const HTTP_RESPONSE_TIMEOUT = 120;
+    assembleRouteSsr,
+    dispatchEnvelopeRequest,
+    installRuntimeErrorHandler,
+    isDispatchableMethod,
+    prepareSsrResponse,
+    prepareWasmResponse,
+    resolveStaticFile,
+    runtimeServerOptions,
+    toEnvelopeRequest,
+} from './http/runtime.js';
+import {
+    decodeBody,
+    encodeBody,
+    isWorkerToPrimaryMessage,
+    type ThreadedReply,
+    type ThreadedRequest,
+    type WorkerToPrimaryMessage,
+} from './production-ipc.js';
+import { WasmServerModule } from './runtime/module.js';
+import { buildSsrRoutes, type DevSsrTemplate, pathnameOf, type SsrRoute } from './ssr.js';
 
 const WS_MAX_PAYLOAD_LENGTH = 1024 * 1024;
 const WS_IDLE_TIMEOUT = 120;
@@ -42,25 +53,6 @@ const WS_MAX_BACKPRESSURE = 1024 * 1024 * 2;
 const CORS_METHODS = 'GET, POST, OPTIONS, PUT, PATCH, DELETE';
 const CORS_HEADERS = 'X-Requested-With, content-type';
 
-const MIME: Readonly<Record<string, string>> = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.mjs': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-    '.txt': 'text/plain; charset=utf-8',
-    '.svg': 'image/svg+xml',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.avif': 'image/avif',
-    '.gif': 'image/gif',
-    '.ico': 'image/x-icon',
-    '.wasm': 'application/wasm',
-    '.woff2': 'font/woff2',
-};
-
 export interface BuiltServerOptions {
     /** Project root; wasm sendfile paths and local data resolve here. */
     readonly root: string;
@@ -68,6 +60,12 @@ export interface BuiltServerOptions {
     readonly staticRoot: string;
     /** Built server wasm, usually `<root>/build/server/release.wasm`. */
     readonly wasmFile?: string;
+    /** Built cold daemon wasm, usually `<root>/build/server/release-cold.wasm`. */
+    readonly coldWasmFile?: string;
+    /** Which layer the self-host process emulates. Default `all`. */
+    readonly nodeMode?: string;
+    /** Daemon (L4) config mirror used by the self-host daemon runtime. */
+    readonly daemon?: ResolvedDaemonConfig;
     /** Listening port. Default `3000`. */
     readonly port?: number;
     /** Bind host. Default `127.0.0.1`. */
@@ -82,6 +80,11 @@ export interface BuiltServerOptions {
     readonly maxBodyLength?: number;
     /** Optional self-host email config, secrets still come from env/.env.secrets. */
     readonly email?: EmailBackendConfig;
+    /**
+     * Number of production HTTP workers for `toiljs start`. Default `auto`
+     * (`os.availableParallelism()`). Set `1` to run a single in-process server.
+     */
+    readonly threads?: number | 'auto';
 }
 
 export interface RunningBuiltServer {
@@ -99,6 +102,102 @@ interface TemplateIndexEntry {
     hash?: string;
 }
 
+interface BuiltServerPaths {
+    readonly port: number;
+    readonly host: string;
+    readonly wsPath: string;
+    readonly cors: boolean;
+    readonly projectRoot: string;
+    readonly staticRoot: string;
+    readonly indexHtml: string;
+}
+
+interface BuiltRuntime {
+    readonly projectRoot: string;
+    readonly module: WasmServerModule | null;
+    readonly ssrRoutes: readonly SsrRoute[];
+}
+
+interface BuiltHttpRuntimeOptions {
+    readonly onClientCount?: (count: number) => void;
+}
+
+type DynamicHandler = (request: Request, response: Response) => Promise<boolean>;
+
+function resolveBuiltServerPaths(options: BuiltServerOptions): BuiltServerPaths {
+    const port = options.port ?? 3000;
+    const host = options.host ?? '127.0.0.1';
+    const wsPath = options.wsPath ?? '/_toil';
+    const staticRoot = path.resolve(options.staticRoot);
+    const indexHtml = path.join(staticRoot, 'index.html');
+    if (!fs.existsSync(indexHtml)) {
+        throw new Error(`No build found in ${staticRoot}. Run \`toiljs build\` first.`);
+    }
+    return {
+        port,
+        host,
+        wsPath,
+        cors: options.cors ?? true,
+        projectRoot: path.resolve(options.root),
+        staticRoot,
+        indexHtml,
+    };
+}
+
+function resolveThreadCount(threads: BuiltServerOptions['threads']): number {
+    const raw = process.env.TOILJS_THREADS ?? threads;
+    if (raw === undefined || raw === 'auto') return Math.max(1, availableParallelism());
+    const n = typeof raw === 'number' ? raw : Number.parseInt(raw, 10);
+    if (!Number.isFinite(n)) return Math.max(1, availableParallelism());
+    return Math.max(1, Math.min(128, Math.floor(n)));
+}
+
+function headerValue(
+    headers: readonly (readonly [string, string])[],
+    name: string,
+): string | undefined {
+    const lower = name.toLowerCase();
+    return headers.find(([k]) => k.toLowerCase() === lower)?.[1];
+}
+
+function textReply(status: number, body: string): ThreadedReply {
+    return {
+        kind: 'response',
+        status,
+        headers: [['content-type', 'text/plain; charset=utf-8']],
+        body: encodeBody(new TextEncoder().encode(body)),
+        sendfile: null,
+    };
+}
+
+function preparedReply(out: {
+    readonly status: number;
+    readonly headers: readonly (readonly [string, string])[];
+    readonly body: Uint8Array;
+    readonly sendfile: string | null;
+}): ThreadedReply {
+    return {
+        kind: 'response',
+        status: out.status,
+        headers: out.headers,
+        body: encodeBody(out.body),
+        sendfile: out.sendfile,
+    };
+}
+
+function sendThreadedReply(response: Response, reply: ThreadedReply): boolean {
+    if (reply.kind === 'fallback') return false;
+    response.status(reply.status);
+    for (const [name, value] of reply.headers) response.header(name, value);
+    if (reply.sendfile !== null) {
+        response.sendFile(reply.sendfile);
+        return true;
+    }
+    const body = decodeBody(reply.body);
+    response.send(Buffer.from(body.buffer, body.byteOffset, body.length));
+    return true;
+}
+
 function isWsOriginAllowed(
     origin: string | undefined,
     hostHeader: string | undefined,
@@ -111,96 +210,6 @@ function isWsOriginAllowed(
     } catch {
         return false;
     }
-}
-
-function resolveStaticFile(root: string, requestPath: string): string | null {
-    let decoded: string;
-    try {
-        decoded = decodeURIComponent(requestPath);
-    } catch {
-        return null;
-    }
-    const resolved = path.join(root, decoded);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
-    if (decoded === '/' || decoded === '') return null;
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) return resolved;
-    return null;
-}
-
-function resolveSendfile(root: string, file: string): string | null {
-    const resolved = path.resolve(root, file);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
-    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return null;
-    return resolved;
-}
-
-async function toEnvelopeRequest(request: Request): Promise<EnvelopeRequest> {
-    const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-    const body = hasBody ? new Uint8Array(await request.buffer()) : new Uint8Array(0);
-    const xff = request.headers['x-forwarded-for'];
-    const clientIp =
-        typeof xff === 'string' && xff.length > 0 ? xff.split(',')[0]!.trim() : '127.0.0.1';
-    return {
-        method: request.method,
-        path: request.url,
-        headers: Object.entries(request.headers),
-        body,
-        clientIp,
-    };
-}
-
-function sendWasmResponse(
-    response: Response,
-    root: string,
-    result: {
-        status: number;
-        headers: readonly (readonly [string, string])[];
-        body: Uint8Array;
-        sendfile: string | null;
-    },
-): void {
-    response.status(result.status);
-    let hasContentType = false;
-    for (const [name, value] of result.headers) {
-        if (name.toLowerCase() === 'content-type') hasContentType = true;
-        response.header(name, value);
-    }
-    response.header('server', 'toil');
-
-    if (result.sendfile !== null) {
-        const file = resolveSendfile(root, result.sendfile);
-        if (file === null) {
-            response.status(404).send('not found\n');
-            return;
-        }
-        if (!hasContentType) {
-            response.header(
-                'content-type',
-                MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
-            );
-        }
-        response.sendFile(file);
-        return;
-    }
-
-    if (!hasContentType) response.header('content-type', 'text/plain; charset=utf-8');
-    response.send(Buffer.from(result.body.buffer, result.body.byteOffset, result.body.length));
-}
-
-function sendSsr(response: Response, out: SsrResult, headOnly: boolean): void {
-    response.status(out.status);
-    let hasContentType = false;
-    for (const [name, value] of out.headers) {
-        if (name.toLowerCase() === 'content-type') hasContentType = true;
-        response.header(name, value);
-    }
-    if (!hasContentType) response.header('content-type', 'text/html; charset=utf-8');
-    response.header('server', 'toil');
-    if (headOnly) {
-        response.send('');
-        return;
-    }
-    response.send(Buffer.from(out.html.buffer, out.html.byteOffset, out.html.length));
 }
 
 function parseSlotsManifest(
@@ -259,26 +268,8 @@ export function loadBuiltSsrTemplates(staticRoot: string): DevSsrTemplate[] {
     return out;
 }
 
-/**
- * Starts a built toil app. Requests are served in this order:
- * 1. concrete static files from `staticRoot`,
- * 2. wasm `handle()` for API/server routes,
- * 3. wasm `render()` + `_ssr` template assembly for SSR routes,
- * 4. SPA fallback to `index.html`.
- */
-export async function startBuiltServer(options: BuiltServerOptions): Promise<RunningBuiltServer> {
-    const port = options.port ?? 3000;
-    const host = options.host ?? '127.0.0.1';
-    const wsPath = options.wsPath ?? '/_toil';
-    const cors = options.cors ?? true;
-    const projectRoot = path.resolve(options.root);
-    const staticRoot = path.resolve(options.staticRoot);
-    const indexHtml = path.join(staticRoot, 'index.html');
-    if (!fs.existsSync(indexHtml)) {
-        throw new Error(`No build found in ${staticRoot}. Run \`toiljs build\` first.`);
-    }
-
-    const emailInit = initEmailService(projectRoot, options.email);
+function createBuiltRuntime(options: BuiltServerOptions, paths: BuiltServerPaths): BuiltRuntime {
+    const emailInit = initEmailService(paths.projectRoot, options.email);
     if (emailInit.service !== null) {
         process.stdout.write(pc.dim(`  email enabled: ${emailInit.note}`) + '\n');
     } else if (emailInit.note !== null) {
@@ -297,31 +288,101 @@ export async function startBuiltServer(options: BuiltServerOptions): Promise<Run
         }
     }
 
-    const ssrRoutes = buildSsrRoutes(loadBuiltSsrTemplates(staticRoot));
+    const ssrRoutes = buildSsrRoutes(loadBuiltSsrTemplates(paths.staticRoot));
     if (ssrRoutes.length > 0) {
         process.stdout.write(
             pc.dim(`  edge SSR: ${String(ssrRoutes.length)} route(s) served server-side`) + '\n',
         );
     }
 
-    configureDbPersistence(path.join(projectRoot, '.toil', 'devdata.json'));
+    configureDbPersistence(path.join(paths.projectRoot, '.toil', 'devdata.json'));
+    return { projectRoot: paths.projectRoot, module, ssrRoutes };
+}
 
-    const app = new Server({
-        max_body_length: options.maxBodyLength ?? DEFAULT_MAX_BODY_LENGTH,
-        max_body_buffer: MAX_BODY_BUFFER,
-        fast_abort: true,
-        idle_timeout: HTTP_IDLE_TIMEOUT,
-        response_timeout: HTTP_RESPONSE_TIMEOUT,
+function startBuiltDaemon(
+    options: BuiltServerOptions,
+    paths: BuiltServerPaths,
+): { close(): void } | null {
+    configureDbPersistence(path.join(paths.projectRoot, '.toil', 'devdata.json'));
+    return startDaemonRuntime({
+        coldWasmFile: options.coldWasmFile,
+        nodeMode: options.nodeMode,
+        daemon: options.daemon,
     });
+}
+
+async function handleBuiltRuntimeRequest(
+    runtime: BuiltRuntime,
+    request: ThreadedRequest,
+): Promise<ThreadedReply> {
+    const envelopeReq = {
+        method: request.method,
+        path: request.url,
+        headers: request.headers,
+        body: decodeBody(request.body),
+        clientIp: request.clientIp,
+    };
+    const dispatchable = isDispatchableMethod(request.method);
+    if (dispatchable && runtime.module !== null && runtime.module.available) {
+        const hasAuth =
+            headerValue(request.headers, 'cookie') !== undefined ||
+            headerValue(request.headers, 'authorization') !== undefined;
+        try {
+            const dispatch = dispatchEnvelopeRequest({
+                module: runtime.module,
+                envelopeReq,
+                method: request.method,
+                url: request.url,
+                cacheHost: headerValue(request.headers, 'host') ?? 'self-host',
+                hasAuth,
+            });
+            if (dispatch.result !== null) {
+                return preparedReply(
+                    prepareWasmResponse(runtime.projectRoot, dispatch.result, 'toil'),
+                );
+            }
+        } catch (e) {
+            process.stdout.write(
+                pc.red(`  x ${request.method} ${request.path} server error: ${String(e)}`) + '\n',
+            );
+            return textReply(500, 'internal error\n');
+        }
+    }
+
+    if (request.method === 'GET' || request.method === 'HEAD') {
+        const route = runtime.ssrRoutes.find((r) => r.test(pathnameOf(request.url)));
+        if (route !== undefined) {
+            try {
+                const out = assembleRouteSsr(route, runtime.module, envelopeReq);
+                if (out !== null) {
+                    return preparedReply(
+                        prepareSsrResponse(out, request.method === 'HEAD', 'toil'),
+                    );
+                }
+            } catch (e) {
+                process.stdout.write(pc.red(`  x SSR ${request.path}: ${String(e)}`) + '\n');
+                return textReply(500, 'internal error\n');
+            }
+        }
+        return { kind: 'fallback' };
+    }
+
+    return textReply(404, 'not found\n');
+}
+
+async function startBuiltHttpServer(
+    options: BuiltServerOptions,
+    paths: BuiltServerPaths,
+    dynamicHandler: DynamicHandler,
+    runtimeOptions: BuiltHttpRuntimeOptions = {},
+): Promise<RunningBuiltServer> {
+    const cors = paths.cors;
+
+    const app = new Server(runtimeServerOptions(options));
 
     const clients = new Set<Websocket>();
 
-    app.set_error_handler((_request: Request, response: Response, error: Error) => {
-        if (response.completed) return;
-        response.atomic(() => {
-            response.status(500).send(`internal error: ${error.message}\n`);
-        });
-    });
+    installRuntimeErrorHandler(app);
 
     if (cors) {
         app.use((request: Request, response: Response, next: MiddlewareNext) => {
@@ -343,7 +404,7 @@ export async function startBuiltServer(options: BuiltServerOptions): Promise<Run
     }
 
     app.ws(
-        wsPath,
+        paths.wsPath,
         {
             message_type: 'String',
             max_payload_length: WS_MAX_PAYLOAD_LENGTH,
@@ -352,6 +413,7 @@ export async function startBuiltServer(options: BuiltServerOptions): Promise<Run
         },
         (ws) => {
             clients.add(ws);
+            runtimeOptions.onClientCount?.(clients.size);
             ws.send(JSON.stringify({ type: 'connected', clients: clients.size }));
             ws.on('message', (message: string) => {
                 for (const client of clients) client.send(message);
@@ -359,11 +421,12 @@ export async function startBuiltServer(options: BuiltServerOptions): Promise<Run
             ws.on('drain', () => {});
             ws.on('close', () => {
                 clients.delete(ws);
+                runtimeOptions.onClientCount?.(clients.size);
             });
         },
     );
 
-    app.upgrade(wsPath, (request: Request, response: Response) => {
+    app.upgrade(paths.wsPath, (request: Request, response: Response) => {
         if (
             !isWsOriginAllowed(request.headers.origin, request.headers.host, options.allowedOrigins)
         ) {
@@ -377,88 +440,29 @@ export async function startBuiltServer(options: BuiltServerOptions): Promise<Run
         response.removeHeader('uWebSockets');
 
         if (request.method === 'GET' || request.method === 'HEAD') {
-            const file = resolveStaticFile(staticRoot, request.path);
+            const file = resolveStaticFile(paths.staticRoot, request.path);
             if (file !== null) {
                 response.sendFile(file);
                 return;
             }
         }
 
-        let envelopeReq: EnvelopeRequest | null = null;
-        const envelope = async (): Promise<EnvelopeRequest> => {
-            envelopeReq ??= await toEnvelopeRequest(request);
-            return envelopeReq;
-        };
-
-        const dispatchable = METHOD_CODES[request.method] !== undefined;
-        if (dispatchable && module !== null && module.available) {
-            const req = await envelope();
-            const cacheHost = request.headers.host ?? 'self-host';
-            const hasAuth =
-                request.headers.cookie !== undefined || request.headers.authorization !== undefined;
-            const cached = lookupCache(cacheHost, request.method, request.url, req.body);
-            if (cached !== null) {
-                sendWasmResponse(response, projectRoot, cached);
-                return;
-            }
-            try {
-                const result = module.dispatch(req);
-                if (!result.unhandled) {
-                    const finalized = applyCacheRule(
-                        cacheHost,
-                        request.method,
-                        request.url,
-                        req.body,
-                        hasAuth,
-                        result,
-                    );
-                    sendWasmResponse(response, projectRoot, finalized);
-                    return;
-                }
-            } catch (e) {
-                process.stdout.write(
-                    pc.red(`  x ${request.method} ${request.path} server error: ${String(e)}`) +
-                        '\n',
-                );
-                response.status(500).send('internal error\n');
-                return;
-            }
-        }
+        if (await dynamicHandler(request, response)) return;
 
         if (request.method === 'GET' || request.method === 'HEAD') {
-            const route = ssrRoutes.find((r) => r.test(pathnameOf(request.url)));
-            if (route !== undefined) {
-                try {
-                    const out: SsrResult | null =
-                        route.entries.length === 0
-                            ? { status: 200, headers: [], html: route.tmpl }
-                            : module !== null && module.available
-                              ? assembleSsr(route, module.dispatchRender(await envelope()))
-                              : null;
-                    if (out !== null) {
-                        sendSsr(response, out, request.method === 'HEAD');
-                        return;
-                    }
-                } catch (e) {
-                    process.stdout.write(pc.red(`  x SSR ${request.path}: ${String(e)}`) + '\n');
-                    response.status(500).send('internal error\n');
-                    return;
-                }
-            }
-
-            response.sendFile(indexHtml);
+            response.sendFile(paths.indexHtml);
             return;
         }
 
         response.status(404).send('not found\n');
     });
 
-    await app.listen(port, host);
+    await app.listen(paths.port, paths.host);
 
     return {
-        port,
-        host,
-        wsPath,
+        port: paths.port,
+        host: paths.host,
+        wsPath: paths.wsPath,
         broadcast: (message: string): void => {
             for (const client of clients) client.send(message);
         },
@@ -467,4 +471,236 @@ export async function startBuiltServer(options: BuiltServerOptions): Promise<Run
             await app.shutdown();
         },
     };
+}
+
+async function toThreadedRequest(request: Request, id: number): Promise<ThreadedRequest> {
+    const envelopeReq = await toEnvelopeRequest(request);
+    return {
+        id,
+        method: request.method,
+        url: request.url,
+        path: request.path,
+        headers: envelopeReq.headers,
+        body: encodeBody(envelopeReq.body),
+        clientIp: envelopeReq.clientIp ?? '127.0.0.1',
+    };
+}
+
+async function startBuiltServerSingle(options: BuiltServerOptions): Promise<RunningBuiltServer> {
+    const paths = resolveBuiltServerPaths(options);
+    const runtime = createBuiltRuntime(options, paths);
+    const daemon = startBuiltDaemon(options, paths);
+    try {
+        const server = await startBuiltHttpServer(options, paths, async (request, response) => {
+            const reply = await handleBuiltRuntimeRequest(
+                runtime,
+                await toThreadedRequest(request, 0),
+            );
+            return sendThreadedReply(response, reply);
+        });
+        return {
+            ...server,
+            close: async (): Promise<void> => {
+                daemon?.close();
+                await server.close();
+            },
+        };
+    } catch (e) {
+        daemon?.close();
+        throw e;
+    }
+}
+
+export interface BuiltServerWorkerController {
+    request(request: ThreadedRequest): Promise<ThreadedReply>;
+    clientCount(count: number): void;
+}
+
+export async function startBuiltServerWorker(
+    options: BuiltServerOptions,
+    controller: BuiltServerWorkerController,
+): Promise<RunningBuiltServer> {
+    const paths = resolveBuiltServerPaths(options);
+    let nextRequestId = 1;
+    return startBuiltHttpServer(
+        { ...options, threads: 1 },
+        paths,
+        async (request, response) => {
+            const reply = await controller.request(
+                await toThreadedRequest(request, nextRequestId++),
+            );
+            return sendThreadedReply(response, reply);
+        },
+        { onClientCount: (count) => controller.clientCount(count) },
+    );
+}
+
+function sendToWorker(worker: ChildProcess, message: object): void {
+    try {
+        worker.send?.(message);
+    } catch {
+        // Worker is already gone; the exit handler will respawn or close it.
+    }
+}
+
+function stopWorker(worker: ChildProcess): Promise<void> {
+    return new Promise((resolve) => {
+        if (worker.exitCode !== null || worker.signalCode !== null) {
+            resolve();
+            return;
+        }
+        const hard = setTimeout(() => {
+            try {
+                worker.kill('SIGTERM');
+            } catch {
+                // already closed
+            }
+            resolve();
+        }, 1500);
+        hard.unref();
+        worker.once('exit', () => {
+            clearTimeout(hard);
+            resolve();
+        });
+        sendToWorker(worker, { toil: 'shutdown' });
+    });
+}
+
+async function startThreadedBuiltServer(
+    options: BuiltServerOptions,
+    threads: number,
+): Promise<RunningBuiltServer> {
+    const paths = resolveBuiltServerPaths(options);
+    const runtime = createBuiltRuntime(options, paths);
+    const daemon = startBuiltDaemon(options, paths);
+    const workerScript = fileURLToPath(new URL('./production-worker.js', import.meta.url));
+    const workers = new Map<number, ChildProcess>();
+    const clientCounts = new Map<number, number>();
+    let closing = false;
+
+    const handleMessage = (worker: ChildProcess, message: WorkerToPrimaryMessage): void => {
+        switch (message.toil) {
+            case 'clientCount':
+                clientCounts.set(message.workerId, message.count);
+                return;
+            case 'request':
+                void handleBuiltRuntimeRequest(runtime, message.request)
+                    .then((reply) =>
+                        sendToWorker(worker, {
+                            toil: 'reply',
+                            id: message.request.id,
+                            reply,
+                        }),
+                    )
+                    .catch((e: unknown) =>
+                        sendToWorker(worker, {
+                            toil: 'reply',
+                            id: message.request.id,
+                            reply: textReply(500, `internal error: ${String(e)}\n`),
+                        }),
+                    );
+                return;
+            case 'ready':
+                return;
+        }
+    };
+
+    const spawnWorker = (workerId: number, initial: boolean): Promise<void> =>
+        new Promise((resolve, reject) => {
+            const worker = fork(workerScript, [], {
+                stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+                env: process.env,
+            });
+            workers.set(workerId, worker);
+            clientCounts.set(workerId, 0);
+
+            let ready = false;
+            const failInitial = (error: Error): void => {
+                if (!initial || ready) return;
+                reject(error);
+            };
+
+            worker.on('message', (value: unknown) => {
+                if (!isWorkerToPrimaryMessage(value)) return;
+                if (value.toil === 'ready') {
+                    ready = true;
+                    resolve();
+                    return;
+                }
+                handleMessage(worker, value);
+            });
+            worker.once('error', (error) => {
+                failInitial(error);
+            });
+            worker.once('exit', (code, signal) => {
+                workers.delete(workerId);
+                clientCounts.delete(workerId);
+                if (closing) return;
+                if (!ready) {
+                    failInitial(
+                        new Error(
+                            `production worker ${String(workerId)} exited before listening (code ${String(code)}, signal ${String(signal)})`,
+                        ),
+                    );
+                    return;
+                }
+                void spawnWorker(workerId, false).catch((e: unknown) => {
+                    process.stdout.write(
+                        pc.red(
+                            `  x production worker ${String(workerId)} restart failed: ${String(e)}`,
+                        ) + '\n',
+                    );
+                });
+            });
+            sendToWorker(worker, {
+                toil: 'start',
+                workerId,
+                options: { ...options, threads: 1 },
+            });
+        });
+
+    try {
+        await Promise.all(Array.from({ length: threads }, (_, i) => spawnWorker(i + 1, true)));
+    } catch (e) {
+        closing = true;
+        daemon?.close();
+        await Promise.all([...workers.values()].map((worker) => stopWorker(worker)));
+        throw e;
+    }
+
+    process.stdout.write(pc.dim(`  production threads: ${String(threads)} HTTP workers`) + '\n');
+
+    return {
+        port: paths.port,
+        host: paths.host,
+        wsPath: paths.wsPath,
+        broadcast: (message: string): void => {
+            for (const worker of workers.values()) {
+                sendToWorker(worker, { toil: 'broadcast', message });
+            }
+        },
+        clientCount: (): number => {
+            let total = 0;
+            for (const count of clientCounts.values()) total += count;
+            return total;
+        },
+        close: async (): Promise<void> => {
+            closing = true;
+            daemon?.close();
+            await Promise.all([...workers.values()].map((worker) => stopWorker(worker)));
+        },
+    };
+}
+
+/**
+ * Starts a built toil app. Requests are served in this order:
+ * 1. concrete static files from `staticRoot`,
+ * 2. wasm `handle()` for API/server routes,
+ * 3. wasm `render()` + `_ssr` template assembly for SSR routes,
+ * 4. SPA fallback to `index.html`.
+ */
+export async function startBuiltServer(options: BuiltServerOptions): Promise<RunningBuiltServer> {
+    const threads = resolveThreadCount(options.threads);
+    if (threads <= 1) return startBuiltServerSingle(options);
+    return startThreadedBuiltServer(options, threads);
 }

@@ -142,6 +142,11 @@ export interface ServerConfig {
     readonly nodeMode?: DevNodeMode;
     /** Daemon (L4) config mirror (dev / self-host). */
     readonly daemon?: DaemonConfig;
+    /**
+     * Self-host HTTP worker count for `toiljs start`. Default `auto`
+     * (`os.availableParallelism()`). Set `1` to disable the worker pool.
+     */
+    readonly threads?: number | 'auto';
 }
 
 /** Fully-resolved {@link DaemonConfig}; every field non-optional, defaults applied. */
@@ -199,6 +204,8 @@ export interface ResolvedToilConfig {
     readonly nodeMode: DevNodeMode;
     /** Daemon (L4) config mirror (dev / self-host), every field resolved. */
     readonly daemon: ResolvedDaemonConfig;
+    /** Self-host HTTP worker count for `toiljs start`. */
+    readonly threads: number | 'auto';
     /** Absolute path to the framework client runtime (`toiljs/client`). */
     readonly runtimePath: string;
     readonly vite: InlineConfig;
@@ -273,18 +280,13 @@ export async function loadConfig(
         email: user.server?.email ?? null,
         nodeMode: resolveNodeMode(user.server?.nodeMode),
         daemon: resolveDaemonConfig(user.server?.daemon),
+        threads: resolveThreads(user.server?.threads),
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
     };
 }
 
-const DEV_NODE_MODES: readonly DevNodeMode[] = [
-    'hot',
-    'regional',
-    'continental',
-    'daemon',
-    'all',
-];
+const DEV_NODE_MODES: readonly DevNodeMode[] = ['hot', 'regional', 'continental', 'daemon', 'all'];
 
 /** A `nodeMode` outside the enum falls back to `all` with a warning (fail-soft:
  *  the authoritative role is the edge's TCF + plan, so dev never bricks on it). */
@@ -318,4 +320,10 @@ function resolveDaemonConfig(d: DaemonConfig | undefined): ResolvedDaemonConfig 
         gasTick: d?.gasTick ?? 0,
         maxTasks,
     };
+}
+
+function resolveThreads(threads: number | 'auto' | undefined): number | 'auto' {
+    if (threads === undefined || threads === 'auto') return 'auto';
+    if (!Number.isFinite(threads)) return 'auto';
+    return Math.max(1, Math.min(128, Math.floor(threads)));
 }

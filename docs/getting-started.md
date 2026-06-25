@@ -95,13 +95,13 @@ store reached through a host binding.
 
 The `toiljs` CLI drives both halves:
 
-| Command | What it does |
-| --- | --- |
-| `toiljs create [name]` | Scaffold a new app (templates, styling, options). |
-| `toiljs dev` | Dev server with hot reload: watches `server/`, rebuilds the wasm via toilscript, regenerates `shared/server.ts`, and runs Vite for the client. Flags: `--root <dir>`, `--port <n>`, `--host`. |
-| `toiljs build` | Production build: server wasm first (so `shared/server.ts` is fresh), then the Vite client + static prerender. Flags: `--root <dir>`, `--server` (server only). |
-| `toiljs start` | Self-host a built app. Flags: `--root`, `--port`, `--host`. |
-| `toiljs doctor` | Diagnose setup/deps (`--json`, `--fix`). |
+| Command                | What it does                                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `toiljs create [name]` | Scaffold a new app (templates, styling, options).                                                                                                                                             |
+| `toiljs dev`           | Dev server with hot reload: watches `server/`, rebuilds the wasm via toilscript, regenerates `shared/server.ts`, and runs Vite for the client. Flags: `--root <dir>`, `--port <n>`, `--host`. |
+| `toiljs build`         | Production build: server wasm first (so `shared/server.ts` is fresh), then the Vite client + static prerender. Flags: `--root <dir>`, `--server` (server only).                               |
+| `toiljs start`         | Self-host a built app with production uWS/static workers, no Vite. Flags: `--root`, `--port`, `--host`, `--threads`.                                                                          |
+| `toiljs doctor`        | Diagnose setup/deps (`--json`, `--fix`).                                                                                                                                                      |
 
 In dev, requests whose method matches a dispatchable verb go into the wasm
 first; if the guest reports "no route matched" (the `x-toil-unhandled` marker)

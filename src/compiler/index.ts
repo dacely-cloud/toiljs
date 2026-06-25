@@ -524,6 +524,8 @@ export interface ToilCommandOptions {
     readonly port?: number;
     /** Bind host for `start`. Defaults to loopback (`127.0.0.1`); pass `0.0.0.0` to expose. */
     readonly host?: string;
+    /** `start` only: production HTTP worker count. Defaults to `server.threads` / auto. */
+    readonly threads?: number;
     /** `build` only: build the server (regenerate `shared/server.ts` + the wasm) and skip the client. */
     readonly serverOnly?: boolean;
 }
@@ -794,19 +796,20 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
         throw new Error(`No build found in ${outDir}. Run \`toiljs build\` first.`);
     }
     const wasmFile = serverWasmFile(cfg.root);
-    if (fs.existsSync(wasmFile)) {
-        const { startBuiltServer } = await import('toiljs/devserver');
-        return startBuiltServer({
-            root: cfg.root,
-            staticRoot: outDir,
-            wasmFile,
-            port: cfg.port,
-            host: opts.host,
-            email: cfg.email ?? undefined,
-        });
-    }
-    const { startBackend } = await import('toiljs/backend');
-    return startBackend({ root: outDir, port: cfg.port, host: opts.host });
+    const { startBuiltServer } = await import('toiljs/devserver');
+    const artifacts = serverArtifacts(cfg.root);
+    return startBuiltServer({
+        root: cfg.root,
+        staticRoot: outDir,
+        wasmFile: fs.existsSync(wasmFile) ? wasmFile : undefined,
+        coldWasmFile: artifacts.cold,
+        nodeMode: cfg.nodeMode,
+        daemon: cfg.daemon,
+        threads: opts.threads ?? cfg.threads,
+        port: cfg.port,
+        host: opts.host,
+        email: cfg.email ?? undefined,
+    });
 }
 
 export { defineConfig, loadConfig, AiProvider } from './config.js';

@@ -19,33 +19,30 @@
  * surface, trap isolation) is identical so a server that runs here runs there.
  */
 
-import fs from 'node:fs';
 import path from 'node:path';
 
-import { type Request, type Response, Server } from '@dacely/hyper-express';
+import { Server } from '@dacely/hyper-express';
 import pc from 'picocolors';
 
 import type { EmailBackendConfig } from 'toiljs/shared';
 
-import { DaemonHost, daemonEmulationEnabled } from './daemon/index.js';
 import type { ResolvedDaemonConfig } from './daemon/host.js';
+import { startDaemonRuntime } from './daemon/runtime.js';
 import { configureDbPersistence } from './db/index.js';
 import { initEmailService } from './email/index.js';
-import { applyCacheRule, lookupCache } from './http/cache.js';
-import { type EnvelopeRequest, METHOD_CODES } from './http/envelope.js';
 import { proxyToVite, type ViteTarget, wireWebsocketProxy } from './http/proxy.js';
+import {
+    assembleRouteSsr,
+    dispatchWasmRequest,
+    installRuntimeErrorHandler,
+    isDispatchableMethod,
+    runtimeServerOptions,
+    sendSsr,
+} from './http/runtime.js';
 import { WasmServerModule } from './runtime/module.js';
 import { StreamRouter } from './stream/router.js';
 import { streamEmulationEnabled, wireStreams } from './stream/wire.js';
-import {
-    assembleSsr,
-    buildSsrRoutes,
-    type DevSsrTemplate,
-    pathnameOf,
-    type SsrResult,
-} from './ssr.js';
-
-const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
+import { buildSsrRoutes, type DevSsrTemplate, pathnameOf } from './ssr.js';
 
 /**
  * Paths that are Vite's own by construction; skipping the wasm round-trip for
@@ -53,26 +50,6 @@ const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
  * offered to the server first (it answers or yields via the unhandled marker).
  */
 const VITE_PREFIXES = ['/@', '/node_modules/', '/__toil/'];
-
-/** Minimal type map for `respond_file` bodies when the guest set no content-type. */
-const MIME: Readonly<Record<string, string>> = {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.mjs': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-    '.txt': 'text/plain; charset=utf-8',
-    '.svg': 'image/svg+xml',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.avif': 'image/avif',
-    '.gif': 'image/gif',
-    '.ico': 'image/x-icon',
-    '.wasm': 'application/wasm',
-    '.woff2': 'font/woff2',
-};
 
 /** Options for {@link startDevServer}. */
 export interface DevServerOptions {
@@ -130,92 +107,6 @@ export interface RunningDevServer {
 /** True for requests that belong to Vite by construction (never offered to the wasm). */
 function isViteInternal(url: string): boolean {
     return VITE_PREFIXES.some((p) => url.startsWith(p));
-}
-
-/** Resolves a guest `respond_file` path inside `root`, refusing traversal outside it. */
-function resolveSendfile(root: string, file: string): string | null {
-    const resolved = path.resolve(root, file);
-    if (resolved !== root && !resolved.startsWith(root + path.sep)) return null;
-    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) return null;
-    return resolved;
-}
-
-/** Builds the envelope request for one incoming HTTP request. */
-async function toEnvelopeRequest(request: Request): Promise<EnvelopeRequest> {
-    const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
-    const body = hasBody ? new Uint8Array(await request.buffer()) : new Uint8Array(0);
-    // Dev parity for `client_ip`: the edge keys on the unspoofable socket peer,
-    // but the dev server has no DPDK socket, so best-effort from a proxy's
-    // `x-forwarded-for`, else localhost, so `ctx.clientIp()` returns a value.
-    const xff = request.headers['x-forwarded-for'];
-    const clientIp =
-        typeof xff === 'string' && xff.length > 0 ? xff.split(',')[0]!.trim() : '127.0.0.1';
-    return {
-        method: request.method,
-        // `url` keeps the query string; the guest's RouteContext parses it off the path.
-        path: request.url,
-        headers: Object.entries(request.headers),
-        body,
-        clientIp,
-    };
-}
-
-/** Sends a shaped wasm response, mirroring the edge's response defaults. */
-function sendWasmResponse(
-    response: Response,
-    root: string,
-    result: {
-        status: number;
-        headers: readonly (readonly [string, string])[];
-        body: Uint8Array;
-        sendfile: string | null;
-    },
-): void {
-    response.status(result.status);
-    let hasContentType = false;
-    for (const [name, value] of result.headers) {
-        if (name.toLowerCase() === 'content-type') hasContentType = true;
-        response.header(name, value);
-    }
-    response.header('server', 'toil-dev');
-
-    if (result.sendfile !== null) {
-        const file = resolveSendfile(root, result.sendfile);
-        if (file === null) {
-            response.status(404).send('not found\n');
-            return;
-        }
-        if (!hasContentType) {
-            // The edge defaults file bodies to application/octet-stream; in dev we
-            // guess from the extension so a guest-served asset renders in the browser.
-            response.header(
-                'content-type',
-                MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
-            );
-        }
-        response.sendFile(file);
-        return;
-    }
-
-    if (!hasContentType) response.header('content-type', 'text/plain; charset=utf-8');
-    response.send(Buffer.from(result.body.buffer, result.body.byteOffset, result.body.length));
-}
-
-/** Sends a spliced edge-SSR response (the full server-rendered HTML document). */
-function sendSsr(response: Response, out: SsrResult, headOnly: boolean): void {
-    response.status(out.status);
-    let hasContentType = false;
-    for (const [name, value] of out.headers) {
-        if (name.toLowerCase() === 'content-type') hasContentType = true;
-        response.header(name, value);
-    }
-    if (!hasContentType) response.header('content-type', 'text/html; charset=utf-8');
-    response.header('server', 'toil-dev');
-    if (headOnly) {
-        response.send('');
-        return;
-    }
-    response.send(Buffer.from(out.html.buffer, out.html.byteOffset, out.html.length));
 }
 
 /**
@@ -277,18 +168,8 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
     };
     refresh();
 
-    const app = new Server({
-        max_body_length: options.maxBodyLength ?? DEFAULT_MAX_BODY_LENGTH,
-        max_body_buffer: 1024 * 32,
-        fast_abort: true,
-    });
-
-    app.set_error_handler((_request: Request, response: Response, error: Error) => {
-        if (response.completed) return;
-        response.atomic(() => {
-            response.status(500).send(`internal error: ${error.message}\n`);
-        });
-    });
+    const app = new Server(runtimeServerOptions(options));
+    installRuntimeErrorHandler(app);
 
     const nodeMode = options.nodeMode ?? 'all';
 
@@ -301,68 +182,29 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         wireWebsocketProxy(app, options.vite);
     }
 
-    // Dev DAEMON (L4) emulation: load `release-cold.wasm` once, run `daemon_start()`, and drive
-    // its `@scheduled` tasks. Only when `nodeMode` is daemon/all and a cold artifact path is given;
-    // the host stays idle until the cold artifact appears (a `@daemon` build). It has no request to
-    // hang a refresh off, so it polls its own mtime-watch on a low-frequency timer (section 9.3).
-    let daemonHost: DaemonHost | null = null;
-    let daemonTimer: NodeJS.Timeout | null = null;
-    if (options.coldWasmFile !== undefined && daemonEmulationEnabled(nodeMode) && options.daemon) {
-        daemonHost = new DaemonHost(options.coldWasmFile, options.daemon, nodeMode);
-        const pollDaemon = (): void => {
-            try {
-                daemonHost?.refresh();
-            } catch (e) {
-                process.stdout.write(pc.red(`  ✗ daemon reload failed: ${String(e)}`) + '\n');
-            }
-        };
-        pollDaemon();
-        daemonTimer = setInterval(pollDaemon, 500);
-        daemonTimer.unref?.();
-    }
+    const daemon = startDaemonRuntime({
+        coldWasmFile: options.coldWasmFile,
+        nodeMode,
+        daemon: options.daemon,
+    });
 
-    app.any('/*', async (request: Request, response: Response) => {
+    app.any('/*', async (request, response) => {
         response.removeHeader('uWebSockets');
 
-        const dispatchable =
-            !isViteInternal(request.url) && METHOD_CODES[request.method] !== undefined;
+        const dispatchable = !isViteInternal(request.url) && isDispatchableMethod(request.method);
         if (dispatchable) refresh();
 
         if (dispatchable && module.available) {
-            const envelopeReq = await toEnvelopeRequest(request);
-            // Honor the tenant cache directive locally, same rules as the
-            // edge: serve an identical request from the per-process cache,
-            // else dispatch and apply/strip the directive on the response.
-            const cacheHost = request.headers.host ?? 'dev';
-            const hasAuth =
-                request.headers.cookie !== undefined || request.headers.authorization !== undefined;
-            const cached = lookupCache(cacheHost, request.method, request.url, envelopeReq.body);
-            if (cached !== null) {
-                sendWasmResponse(response, root, cached);
-                return;
-            }
-            try {
-                const result = module.dispatch(envelopeReq);
-                if (!result.unhandled) {
-                    const finalized = applyCacheRule(
-                        cacheHost,
-                        request.method,
-                        request.url,
-                        envelopeReq.body,
-                        hasAuth,
-                        result,
-                    );
-                    sendWasmResponse(response, root, finalized);
-                    return;
-                }
-            } catch (e) {
-                // A trap (ToilScript abort, OOB, malformed envelope) is isolated to
-                // this request, exactly like the edge poisoning one instance.
-                process.stdout.write(
-                    pc.red(`  ✗ ${request.method} ${request.path} server error: ${String(e)}`) +
-                        '\n',
-                );
-                response.status(500).send('internal error\n');
+            const dispatch = await dispatchWasmRequest({
+                module,
+                request,
+                response,
+                root,
+                cacheHost: request.headers.host ?? 'dev',
+                serverHeader: 'toil-dev',
+                errorPrefix: '✗',
+            });
+            if (dispatch.handled) {
                 return;
             }
 
@@ -371,10 +213,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
             // serve the server-rendered HTML. A fail-safe envelope (no renderer
             // matched / malformed) returns null, so we fall through to Vite (the
             // route then client-renders, same as before).
-            if (
-                (request.method === 'GET' || request.method === 'HEAD') &&
-                ssrRoutes.length > 0
-            ) {
+            if ((request.method === 'GET' || request.method === 'HEAD') && ssrRoutes.length > 0) {
                 const route = ssrRoutes.find((r) => r.test(pathnameOf(request.url)));
                 if (route) {
                     try {
@@ -382,12 +221,9 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
                         // render: serve the prerendered template directly so it paints instantly
                         // instead of falling through to a (blank-until-JS) client render. Dynamic
                         // routes run the guest `render` and splice its values in.
-                        const out: SsrResult | null =
-                            route.entries.length === 0
-                                ? { status: 200, headers: [], html: route.tmpl }
-                                : assembleSsr(route, module.dispatchRender(envelopeReq));
+                        const out = assembleRouteSsr(route, module, dispatch.envelopeReq);
                         if (out !== null) {
-                            sendSsr(response, out, request.method === 'HEAD');
+                            sendSsr(response, out, request.method === 'HEAD', 'toil-dev');
                             return;
                         }
                     } catch (e) {
@@ -408,8 +244,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         port: options.port,
         host,
         close: async (): Promise<void> => {
-            if (daemonTimer !== null) clearInterval(daemonTimer);
-            daemonHost?.close();
+            daemon?.close();
             await app.shutdown();
         },
     };

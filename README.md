@@ -162,13 +162,13 @@ Toil's architecture is the scaling story. There is no monolith to keep warm and 
 
 That platform is not hypothetical. The Toil edge runtime is built and measured; this is the stack that runs your app at planetary scale:
 
-- **A purpose-built edge runtime** *(built, measured)*: engineered from scratch to serve compiled apps at line rate, not adapted from a general-purpose web server. Your compiled server runs as a long-lived, isolated, per-tenant WebAssembly instance, with static assets served at wire speed alongside it. Measured at **8 million requests/s with sub-ms p50** on a single modern box, and the dynamic WebAssembly path runs at the same network-bound ceiling as serving a static file.
-- **First-class WebTransport** *(endpoint live, client API landing)*: the runtime already terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport (multiplexed bidirectional streams and datagrams, no head-of-line blocking), wired into the same per-tenant instances as HTTP. The framework's channel API falls back to WebSocket automatically, so the same `useChannel` simply runs on the fastest transport available. WebSocket channels work today.
-- **Hyperscale security built in** *(built)*: every tenant is validated at deploy time and runs under a hard per-request CPU cap and a per-tenant memory budget, isolation is enforced below your code so nothing survives between requests or tenants, and a built-in firewall screens traffic before it ever reaches an app. Overload sheds gracefully instead of melting.
-- **ToilDB, edge-replicated typed data** *(next)*: typed collections where the method name tells you the cost, local-fast reads, CRDT writes that merge everywhere, owner-routed writes, and rare global claims that are explicitly slow. The async foundation it needs is already live in the runtime; the data layer itself is the next step.
-- **GPU hardware acceleration** *(coming)*: the Toil server will be able to tap GPU acceleration on the edge, so compute-heavy work (media, crypto, AI inference) runs on the hardware built for it instead of burning CPU, with a single box projected to reach **50-200 million requests/s** (moderate estimate).
-- **Post-quantum-ready transport** *(coming)*: forward-looking encryption on the QUIC layer that is already terminating TLS 1.3.
-- **Dacely Cloud** *(coming)*: managed hosting for the whole stack, push the app and the client goes to the edge while the server runs on the runtime.
+- **A purpose-built edge runtime** _(built, measured)_: engineered from scratch to serve compiled apps at line rate, not adapted from a general-purpose web server. Your compiled server runs as a long-lived, isolated, per-tenant WebAssembly instance, with static assets served at wire speed alongside it. Measured at **8 million requests/s with sub-ms p50** on a single modern box, and the dynamic WebAssembly path runs at the same network-bound ceiling as serving a static file.
+- **First-class WebTransport** _(endpoint live, client API landing)_: the runtime already terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport (multiplexed bidirectional streams and datagrams, no head-of-line blocking), wired into the same per-tenant instances as HTTP. The framework's channel API falls back to WebSocket automatically, so the same `useChannel` simply runs on the fastest transport available. WebSocket channels work today.
+- **Hyperscale security built in** _(built)_: every tenant is validated at deploy time and runs under a hard per-request CPU cap and a per-tenant memory budget, isolation is enforced below your code so nothing survives between requests or tenants, and a built-in firewall screens traffic before it ever reaches an app. Overload sheds gracefully instead of melting.
+- **ToilDB, edge-replicated typed data** _(next)_: typed collections where the method name tells you the cost, local-fast reads, CRDT writes that merge everywhere, owner-routed writes, and rare global claims that are explicitly slow. The async foundation it needs is already live in the runtime; the data layer itself is the next step.
+- **GPU hardware acceleration** _(coming)_: the Toil server will be able to tap GPU acceleration on the edge, so compute-heavy work (media, crypto, AI inference) runs on the hardware built for it instead of burning CPU, with a single box projected to reach **50-200 million requests/s** (moderate estimate).
+- **Post-quantum-ready transport** _(coming)_: forward-looking encryption on the QUIC layer that is already terminating TLS 1.3.
+- **Dacely Cloud** _(coming)_: managed hosting for the whole stack, push the app and the client goes to the edge while the server runs on the runtime.
 
 The same app runs on your laptop and is shaped, from the first commit, to fan out across the edge without a rewrite. Full architecture and status in [The road to hyperscale](#the-road-to-hyperscale).
 
@@ -176,42 +176,42 @@ The same app runs on your laptop and is shaped, from the first commit, to fan ou
 
 This is the full surface area. Every row works the moment `create` finishes, no plugins to install, no config to write.
 
-|  |  |
-| --- | --- |
-| **Zero config** | One command scaffolds a working app. You never write an `index.html`, a `main.tsx`, a router, or a Vite / build config. The framework generates and owns all of it. |
-| **Routing** | File-based. Dynamic, catch-all, optional catch-all, route groups, nested layouts, templates, loading and error boundaries, parallel slots, and intercepting routes. Every `href` and `params` is typed against your real files. |
-| **Navigation** | `Link` / `NavLink`, programmatic `navigate` / `back` / `forward` / `refresh`, hover and viewport prefetch, scroll restoration, instant back/forward, and animated view transitions. |
-| **Data** | A `loader` resolves before render. `useAction` / `<Form>` write then revalidate. An LRU loader cache with per-route `revalidate`. No fetch waterfalls, no `useEffect` data fetching. |
-| **Rendering + SEO** | Per-route `<head>` baked into static HTML at build, plus `sitemap.xml`, `robots.txt`, `llms.txt`, OpenGraph, Twitter, JSON-LD, canonical, theme-color, early hints. SSG via `generateStaticParams`. |
-| **Search** | Built-in site search over a compiler-baked metadata index, ranked, with a `usePageSearch` hook. Plus `llms.txt` so AI crawlers can read your site. |
-| **Assets** | Imported images compressed to webp and resized via Vite + sharp. Fonts preloaded. React split into its own long-lived chunk. The build logs what it saved. |
-| **Components** | Drop-in `Image` (no layout shift, lazy, blur), `Script` (load strategies, dedupe), `Form`, `Slot`, `Head`, all on a typed `Toil` global, zero imports. |
-| **Realtime** | Typed channels: `connectChannel` / `useChannel`, reconnect built in, text or binary frames. WebSocket today, with first-class WebTransport over HTTP/3 coming (automatic WebSocket fallback). |
-| **Server** | A typed ToilScript server compiled to a portable, native-speed module. `Request` / `Response` REST handlers, binary IO on both sides, and a typed RPC surface generated from your server. |
-| **Agentic DX** | A dev toolbar with a live AI tab (hand off page context to Claude or ChatGPT), a Cmd+K palette, and scaffolded agent files (CLAUDE.md, AGENTS.md, Cursor, Copilot). |
-| **Toolkit** | Strict TypeScript, ESLint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away. |
-| **CLI** | `create`, `dev`, `build`, `start`, `configure`, `doctor` (with `--json` for CI), and `update`. |
+|                     |                                                                                                                                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Zero config**     | One command scaffolds a working app. You never write an `index.html`, a `main.tsx`, a router, or a Vite / build config. The framework generates and owns all of it.                                                             |
+| **Routing**         | File-based. Dynamic, catch-all, optional catch-all, route groups, nested layouts, templates, loading and error boundaries, parallel slots, and intercepting routes. Every `href` and `params` is typed against your real files. |
+| **Navigation**      | `Link` / `NavLink`, programmatic `navigate` / `back` / `forward` / `refresh`, hover and viewport prefetch, scroll restoration, instant back/forward, and animated view transitions.                                             |
+| **Data**            | A `loader` resolves before render. `useAction` / `<Form>` write then revalidate. An LRU loader cache with per-route `revalidate`. No fetch waterfalls, no `useEffect` data fetching.                                            |
+| **Rendering + SEO** | Per-route `<head>` baked into static HTML at build, plus `sitemap.xml`, `robots.txt`, `llms.txt`, OpenGraph, Twitter, JSON-LD, canonical, theme-color, early hints. SSG via `generateStaticParams`.                             |
+| **Search**          | Built-in site search over a compiler-baked metadata index, ranked, with a `usePageSearch` hook. Plus `llms.txt` so AI crawlers can read your site.                                                                              |
+| **Assets**          | Imported images compressed to webp and resized via Vite + sharp. Fonts preloaded. React split into its own long-lived chunk. The build logs what it saved.                                                                      |
+| **Components**      | Drop-in `Image` (no layout shift, lazy, blur), `Script` (load strategies, dedupe), `Form`, `Slot`, `Head`, all on a typed `Toil` global, zero imports.                                                                          |
+| **Realtime**        | Typed channels: `connectChannel` / `useChannel`, reconnect built in, text or binary frames. WebSocket today, with first-class WebTransport over HTTP/3 coming (automatic WebSocket fallback).                                   |
+| **Server**          | A typed ToilScript server compiled to a portable, native-speed module. `Request` / `Response` REST handlers, binary IO on both sides, and a typed RPC surface generated from your server.                                       |
+| **Agentic DX**      | A dev toolbar with a live AI tab (hand off page context to Claude or ChatGPT), a Cmd+K palette, and scaffolded agent files (CLAUDE.md, AGENTS.md, Cursor, Copilot).                                                             |
+| **Toolkit**         | Strict TypeScript, ESLint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away.                                                                                            |
+| **CLI**             | `create`, `dev`, `build`, `start`, `configure`, `doctor` (with `--json` for CI), and `update`.                                                                                                                                  |
 
 ## Routing
 
 The filesystem is the router. Every convention below is implemented.
 
-| File or folder | Route |
-| --- | --- |
-| `index.tsx` | `/` |
-| `about.tsx` | `/about` |
-| `blog/[id].tsx` | `/blog/:id` |
-| `docs/[...slug].tsx` | catch-all |
-| `docs/[[...slug]].tsx` | optional catch-all |
-| `(marketing)/about.tsx` | route group, adds no URL segment |
-| `layout.tsx` | wraps the segment, persists across navigation |
-| `template.tsx` | a layout that re-mounts on every navigation |
-| `loading.tsx` | Suspense fallback while the route and its data load |
-| `error.tsx` | error boundary for the segment |
-| `global-error.tsx` | catches errors in the root layout itself |
-| `404.tsx` | not-found page |
-| `@modal/...` | parallel slot, placed with `<Toil.Slot name="modal" />` |
-| `@modal/(.)photo/[id]` | intercepting route: modal on soft nav, full page on reload |
+| File or folder          | Route                                                      |
+| ----------------------- | ---------------------------------------------------------- |
+| `index.tsx`             | `/`                                                        |
+| `about.tsx`             | `/about`                                                   |
+| `blog/[id].tsx`         | `/blog/:id`                                                |
+| `docs/[...slug].tsx`    | catch-all                                                  |
+| `docs/[[...slug]].tsx`  | optional catch-all                                         |
+| `(marketing)/about.tsx` | route group, adds no URL segment                           |
+| `layout.tsx`            | wraps the segment, persists across navigation              |
+| `template.tsx`          | a layout that re-mounts on every navigation                |
+| `loading.tsx`           | Suspense fallback while the route and its data load        |
+| `error.tsx`             | error boundary for the segment                             |
+| `global-error.tsx`      | catches errors in the root layout itself                   |
+| `404.tsx`               | not-found page                                             |
+| `@modal/...`            | parallel slot, placed with `<Toil.Slot name="modal" />`    |
+| `@modal/(.)photo/[id]`  | intercepting route: modal on soft nav, full page on reload |
 
 Navigation comes with it:
 
@@ -233,7 +233,9 @@ export const revalidate: Toil.Revalidate = 10; // reuse for 10s, false = forever
 function SaveButton({ title }: { title: string }) {
     const save = Toil.useAction((t: string) => api.save(t), { revalidate: true });
     return (
-        <button disabled={save.pending} onClick={() => void save.run(title)}>
+        <button
+            disabled={save.pending}
+            onClick={() => void save.run(title)}>
             {save.pending ? 'Saving' : 'Save'}
         </button>
     );
@@ -342,7 +344,7 @@ export class HelloHandler extends ToilHandler {
 - **Typed RPC (preview)**: tag a server function and the compiler generates a typed `Server.*` surface on the client, end to end, no hand-written glue. The typed pipeline is in place today; the network transport is landing next.
 - **Cookies**: a complete RFC 6265bis layer as a global (no import). Read with `req.cookie('sid')`, write with `resp.setCookie(Cookie.create('sid', token).httpOnly().secure().sameSite(SameSite.Lax))`, and reach for `SecureCookies` when you need HMAC-signed or AES-256-GCM-encrypted values.
 
-`toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. At scale, that same `.wasm` is exactly what the Toil edge runtime serves: one hot instance per tenant, called directly with your request and wiped clean between requests, so there is no cold start and isolation is enforced below your code rather than by trust. See [The road to hyperscale](#the-road-to-hyperscale).
+`toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. It runs production static/SSR output only, never Vite, and starts a production HTTP worker pool by default (`--threads 1` disables it). At scale, that same `.wasm` is exactly what the Toil edge runtime serves: one hot instance per tenant, called directly with your request and wiped clean between requests, so there is no cold start and isolation is enforced below your code rather than by trust. See [The road to hyperscale](#the-road-to-hyperscale).
 
 ## Agentic tooling
 
@@ -381,15 +383,15 @@ import { defineConfig } from 'toiljs/compiler';
 
 export default defineConfig({
     client: {
-        srcDir: 'client',          // source root             (default: client)
-        routesDir: 'routes',       // route folder            (default: routes)
-        base: '/',                 // base path               (default: /)
-        port: 3000,                // dev / start port        (default: 3000)
-        images: true,              // webp + resize pipeline  (default: true)
-        fonts: true,               // preload bundled fonts   (default: true)
-        viewTransitions: false,    // animated navigation     (default: false)
-        transitions: false,        // keep page during load   (default: false)
-        devtools: true,            // dev toolbar, or { ai }  (default: true)
+        srcDir: 'client', // source root             (default: client)
+        routesDir: 'routes', // route folder            (default: routes)
+        base: '/', // base path               (default: /)
+        port: 3000, // dev / start port        (default: 3000)
+        images: true, // webp + resize pipeline  (default: true)
+        fonts: true, // preload bundled fonts   (default: true)
+        viewTransitions: false, // animated navigation     (default: false)
+        transitions: false, // keep page during load   (default: false)
+        devtools: true, // dev toolbar, or { ai }  (default: true)
         seo: {
             // url, title, openGraph, twitter, jsonLd, robots, themeColor, ...
         },
@@ -417,7 +419,7 @@ toiljs update          check for and apply dependency updates
 - **`create [name]`** runs an interactive wizard: template (`app` or `minimal`), CSS flavor (`css` / `sass` / `less` / `stylus`), Tailwind, which AI assistant files to scaffold, image optimization, git init, and package manager (`npm` / `pnpm` / `yarn` / `bun`). Every prompt has a flag (`--template`, `--style`, `--tailwind`, `--ai`, `--images`, `--git`, `--install`, `--pm`), and `--yes` runs it non-interactively.
 - **`dev`** starts the Vite dev server with HMR and regenerates the route table as you add or remove files. `--port` to override.
 - **`build`** produces the optimized static client: prerendered HTML, `sitemap.xml`, `robots.txt`, `llms.txt`, and compressed images and fonts.
-- **`start`** self-hosts the build and a realtime channel at `/_toil` on hyper-express. `--port` (default 3000), `--host` (pass `0.0.0.0` to expose on the network).
+- **`start`** self-hosts the build and a realtime channel at `/_toil` on hyper-express/uWS. `--port` (default 3000), `--host` (pass `0.0.0.0` to expose on the network), `--threads` (default auto, `1` disables the worker pool).
 - **`configure`** edits an existing app: switch CSS preprocessor, toggle Tailwind or image optimization, and sync dependencies.
 - **`doctor`** runs read-only checks across environment, routing, config, assets, and the server build, with a fix hint on each. `--json` for CI; it exits non-zero when a check fails.
 - **`update`** checks the registry and groups available updates by major / minor / patch; pick what to apply or pass `-y` for all (`--target` sets the strategy).
@@ -432,19 +434,19 @@ interface Post {
     title: string;
 }
 
-export const metadata: Toil.Metadata = { title: 'Post' };       // SEO, baked into the HTML at build
+export const metadata: Toil.Metadata = { title: 'Post' }; // SEO, baked into the HTML at build
 
 export const loader = async ({ params }: Toil.LoaderArgs): Promise<Post> => {
-    const res = await fetch(`/api/posts/${params.id}`);         // runs before render, no useEffect
+    const res = await fetch(`/api/posts/${params.id}`); // runs before render, no useEffect
     return res.json();
 };
 
 export default function PostPage() {
-    const post = Toil.useLoaderData(loader);                    // typed Post, no generics
+    const post = Toil.useLoaderData(loader); // typed Post, no generics
     return (
         <article>
             <h1>{post.title}</h1>
-            <Toil.Link href="/posts">All posts</Toil.Link>      {/* href is type-checked */}
+            <Toil.Link href="/posts">All posts</Toil.Link> {/* href is type-checked */}
         </article>
     );
 }
@@ -578,13 +580,13 @@ The reason the client is static and the server is WebAssembly is that the WebAss
 
 </div>
 
-- **A purpose-built WebAssembly edge runtime** *(built, measured)*. Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process. On a single modern box it sustains **8 million requests/s at sub-millisecond p50** across thousands of concurrent connections, the dynamic WebAssembly path runs as fast as serving a static file, deploys hot-swap with no restart, and there are no cold starts.
-- **HTTP/3 and WebTransport** *(endpoint live)*. The runtime terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport: bidirectional streams and datagrams for interactive, multiplexed realtime, beyond the WebSocket channel that ships today.
-- **Hardened multi-tenancy** *(built)*. Tenants are validated at deploy time, every request runs under a hard CPU cap and memory budget, nothing survives between requests or tenants, traffic is screened before it reaches an app, and overload sheds gracefully. The isolation model is security-audited and soak-tested.
-- **ToilDB, an edge-replicated data layer** *(next)*. Typed collections declared in ToilScript, where the method name tells you the cost: local reads are fast, appends and CRDT counters/sets merge everywhere, owned writes are fast at the owner, and rare global claims are explicitly slow. Hyperscale data, without a per-query consistency knob to get wrong. The async foundation it needs is already live in the runtime.
-- **GPU hardware acceleration** *(coming)*. Compute-heavy workloads in your server (media, crypto, AI inference) will offload to GPU hardware on the edge, scaling past what CPU cores alone can do, a single box is projected to reach **50-200 million requests/s** (moderate estimate).
-- **Post-quantum-ready transport** *(coming)*. Forward-looking encryption on the QUIC layer that already terminates TLS 1.3.
-- **Dacely Cloud** *(coming)*. Managed hosting for the whole stack: push your app, the static client goes to the edge and your WebAssembly server runs on the runtime above.
+- **A purpose-built WebAssembly edge runtime** _(built, measured)_. Your server runs as an isolated WebAssembly tenant on a runtime engineered for line-rate, multi-gigabit throughput and per-tenant isolation, not on a general-purpose Node process. On a single modern box it sustains **8 million requests/s at sub-millisecond p50** across thousands of concurrent connections, the dynamic WebAssembly path runs as fast as serving a static file, deploys hot-swap with no restart, and there are no cold starts.
+- **HTTP/3 and WebTransport** _(endpoint live)_. The runtime terminates QUIC + TLS 1.3 and speaks HTTP/3 and WebTransport: bidirectional streams and datagrams for interactive, multiplexed realtime, beyond the WebSocket channel that ships today.
+- **Hardened multi-tenancy** _(built)_. Tenants are validated at deploy time, every request runs under a hard CPU cap and memory budget, nothing survives between requests or tenants, traffic is screened before it reaches an app, and overload sheds gracefully. The isolation model is security-audited and soak-tested.
+- **ToilDB, an edge-replicated data layer** _(next)_. Typed collections declared in ToilScript, where the method name tells you the cost: local reads are fast, appends and CRDT counters/sets merge everywhere, owned writes are fast at the owner, and rare global claims are explicitly slow. Hyperscale data, without a per-query consistency knob to get wrong. The async foundation it needs is already live in the runtime.
+- **GPU hardware acceleration** _(coming)_. Compute-heavy workloads in your server (media, crypto, AI inference) will offload to GPU hardware on the edge, scaling past what CPU cores alone can do, a single box is projected to reach **50-200 million requests/s** (moderate estimate).
+- **Post-quantum-ready transport** _(coming)_. Forward-looking encryption on the QUIC layer that already terminates TLS 1.3.
+- **Dacely Cloud** _(coming)_. Managed hosting for the whole stack: push your app, the static client goes to the edge and your WebAssembly server runs on the runtime above.
 
 This is the spine the framework was shaped around. Today you write a typed, file-based React app with a WebAssembly server; the platform that runs it at planetary scale is already standing in the lab.
 
