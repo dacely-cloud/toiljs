@@ -45,10 +45,13 @@ function connectStream<TSend = Uint8Array>(
         let opened = false;
         let messageCb: ((data: Uint8Array) => void) | undefined;
         let closeCb: ((code: number) => void) | undefined;
+        const pending: Uint8Array[] = [];
 
         const channel: StreamChannel<TSend> = {
             onMessage: (cb): void => {
                 messageCb = cb;
+                for (const m of pending) cb(m);
+                pending.length = 0;
             },
             onClose: (cb): void => {
                 closeCb = cb;
@@ -57,7 +60,11 @@ function connectStream<TSend = Uint8Array>(
                 if (ws.readyState !== WebSocket.OPEN) return;
                 // A typed channel encodes the @data message; a raw channel sends the bytes as-is.
                 const bytes = encode ? encode(data as never) : (data as unknown as Uint8Array);
-                ws.send(bytes as BufferSource);
+                try {
+                    ws.send(bytes as BufferSource);
+                } catch {
+                    /* socket transitioned OPEN -> CLOSING between the readyState check and send */
+                }
             },
             close: (): void => {
                 ws.close();
@@ -69,7 +76,12 @@ function connectStream<TSend = Uint8Array>(
             resolve(channel);
         });
         ws.addEventListener('message', (event: MessageEvent) => {
-            if (event.data instanceof ArrayBuffer) messageCb?.(new Uint8Array(event.data));
+            if (!(event.data instanceof ArrayBuffer)) return;
+            const bytes = new Uint8Array(event.data);
+            // Buffer a reply that arrives before onMessage() registers (mirror the WebTransport path),
+            // so an eager server reply is not silently dropped.
+            if (messageCb) messageCb(bytes);
+            else pending.push(bytes);
         });
         ws.addEventListener('close', (event: CloseEvent) => {
             if (!opened) reject(new Error(`stream connect failed (closed ${String(event.code)})`));
@@ -121,7 +133,9 @@ function connectStreamWT<TSend = Uint8Array>(
             send: (data): void => {
                 if (!writer) return;
                 const bytes = encode ? encode(data as never) : (data as unknown as Uint8Array);
-                void writer.write(bytes);
+                // Fire-and-forget; a write that rejects (transport closing / backpressure) is surfaced
+                // via onClose, so swallow it here to avoid an unhandled promise rejection.
+                void writer.write(bytes).catch(() => {});
             },
             close: (): void => {
                 try {

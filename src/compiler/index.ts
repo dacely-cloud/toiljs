@@ -929,7 +929,7 @@ function readStreamCatalog(wasm: Buffer): CatalogStream[] {
             if (!need(8)) break;
             const name = str();
             const route = str();
-            if (o > sec.length || !need(19)) break;
+            if (o > sec.length || !need(21)) break; // the per-record tail is 3*u8 + 4*u32 + u16 = 21
             u8(); // hook_presence_bitmask
             u8(); // declared_scope
             u8(); // message_mode
@@ -1034,7 +1034,10 @@ function emitStreamClientSurface(
     // The ambient `Server.Stream` type - only when toilscript has not already declared `Server` (a
     // @rest surface). For a @rest project, teaching toilscript the @stream surface is the follow-up;
     // the runtime attach above works regardless of the type.
-    const declareType = !/declare global[\s\S]*?const Server\b/.test(existing);
+    // Strip comments first so a commented-out `declare global { const Server }` does not suppress the
+    // real type emit.
+    const uncommented = existing.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    const declareType = !/declare global[\s\S]*?const Server\b/.test(uncommented);
     const typeBlock = declareType
         ? 'declare global {\n' +
           '    /** The client-callable server surface (generated from the @stream catalog). */\n' +
