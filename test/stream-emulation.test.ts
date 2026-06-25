@@ -357,4 +357,38 @@ describe('Server.Stream client (doc 08 8.2 makeStreamClient)', () => {
             app.close();
         }
     });
+
+    it('encodes a typed @data message on send (doc 03 2.5)', async () => {
+        const router = new StreamRouter(ECHO_PATH);
+        const route = [...parseStreamCatalog(ECHO).keys()][0];
+        const app = new Server();
+        wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
+
+        const PORT = 49319;
+        await app.listen(PORT);
+        try {
+            // A typed class: the encoder serializes { text } -> bytes (stands in for ChatMsg.encode()).
+            const encode = (m: { text: string }): Uint8Array => new TextEncoder().encode(m.text);
+            const stream = makeStreamClient({ Echo: route }, `ws://127.0.0.1:${String(PORT)}`, {
+                Echo: encode,
+            });
+            const channel = await stream.Echo.connect();
+            const echoed = await new Promise<Uint8Array>((resolve, reject) => {
+                const timer = setTimeout(() => {
+                    reject(new Error('no echo within 3s'));
+                }, 3000);
+                channel.onMessage((d) => {
+                    clearTimeout(timer);
+                    resolve(d);
+                });
+                // Send a TYPED message; the channel must encode it before the raw WS send.
+                (channel.send as unknown as (m: { text: string }) => void)({ text: 'typed' });
+            });
+            // The echo server returns the raw bytes it received -> proves the encoder ran on send.
+            expect(Buffer.from(echoed)).toEqual(Buffer.from('typed'));
+            channel.close();
+        } finally {
+            app.close();
+        }
+    });
 });
