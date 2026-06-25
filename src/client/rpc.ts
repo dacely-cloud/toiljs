@@ -3,14 +3,12 @@
  * the toilscript server build into the project's `shared/server.ts`
  * (`declare global { const Server }`); this module is the runtime behind it.
  *
- * Two surfaces live under `Server`:
- *   - `Server.REST.<controller>.<route>(args)` is a WORKING fetch client. The
- *     generated `shared/server.ts` attaches it to `globalThis.__toilRest` when
- *     imported; the proxy below surfaces it under `Server.REST`.
- *   - `Server.<service>.<method>()` (RPC) is not wired yet, so any call throws.
- *     The pipeline (tags -> generated types -> proxy) is in place; only the
- *     network dispatch is a TODO. Build the server (`npm run build:server`) to
- *     (re)generate the typed surface.
+ * Three surfaces live under `Server`, all attached by the generated `shared/server.ts` on import:
+ *   - `Server.REST.<controller>.<route>(args)` - a fetch client (`globalThis.__toilRest`).
+ *   - `Server.Stream.<class>.connect()` - the stream client (`globalThis.__toilStream`).
+ *   - `Server.<service>.<method>(args)` and a free `Server.<remote>(args)` - the RPC client
+ *     (`globalThis.__toilRpc`): each POSTs to `/__toil_rpc` with a method id and @data-encoded args.
+ * Build the server (`npm run build:server`) to (re)generate the typed surface + attach the clients.
  */
 
 /** A recursive proxy that throws on call, used when the REST client hasn't loaded. */
@@ -55,8 +53,8 @@ function streamMissingStub(path: string): unknown {
 function rpcStub(path: string): unknown {
     const call = (): never => {
         throw new Error(
-            `toiljs RPC: ${path}() is not available yet. The client<->server transport ` +
-                `is not wired; this is a generated stub. Remote calls will work once transport lands.`,
+            `toiljs RPC: ${path}() is unavailable. The generated RPC client has not loaded - ` +
+                `import a type from your 'shared/server' (so the client attaches), or run 'npm run build:server'.`,
         );
     };
     return new Proxy(call, {
@@ -72,6 +70,12 @@ function rpcStub(path: string): unknown {
             if (path === 'Server' && prop === 'Stream') {
                 const stream = (globalThis as { __toilStream?: unknown }).__toilStream;
                 return stream !== undefined ? stream : streamMissingStub('Server.Stream');
+            }
+            // `Server.<service>` / `Server.<remote>` surface the generated RPC client. Its top-level
+            // keys are the @service names (-> a `{ method }` object) and free @remote functions.
+            if (path === 'Server') {
+                const rpc = (globalThis as { __toilRpc?: Record<string, unknown> }).__toilRpc;
+                if (rpc !== undefined && prop in rpc) return rpc[prop];
             }
             return rpcStub(`${path}.${prop}`);
         },

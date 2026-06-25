@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { Server } from '../src/client/rpc';
 
-// `Server` is the runtime behind the generated typed surface. Until the transport
-// is wired, it is a recursive proxy that throws on call.
-describe('Server RPC stub', () => {
+// `Server` is the runtime behind the generated typed surface. The RPC branch surfaces
+// `globalThis.__toilRpc` (attached by the generated `shared/server.ts`); when that client has
+// not loaded, the proxy throws a helpful "client has not loaded" error naming the path.
+describe('Server RPC stub (client not loaded)', () => {
+    afterEach(() => {
+        delete (globalThis as { __toilRpc?: unknown }).__toilRpc;
+    });
+
     it('throws on a direct call, naming the path', () => {
         const s = Server as { ping: () => unknown };
         expect(() => s.ping()).toThrow(/Server\.ping\(\)/);
@@ -13,7 +18,18 @@ describe('Server RPC stub', () => {
     it('throws on a nested service.method call', () => {
         const s = Server as { accounts: { getUser: () => unknown } };
         expect(() => s.accounts.getUser()).toThrow(/Server\.accounts\.getUser\(\)/);
-        expect(() => s.accounts.getUser()).toThrow(/not available yet/);
+        expect(() => s.accounts.getUser()).toThrow(/has not loaded/);
+    });
+
+    it('surfaces the attached RPC client (service method + free remote) once loaded', async () => {
+        const fake = { stats: { playerCount: async () => 3 }, ping: async (n: number) => n + 1 };
+        (globalThis as { __toilRpc?: unknown }).__toilRpc = fake;
+        const s = Server as {
+            stats: { playerCount: () => Promise<number> };
+            ping: (n: number) => Promise<number>;
+        };
+        expect(await s.stats.playerCount()).toBe(3);
+        expect(await s.ping(41)).toBe(42);
     });
 
     it('is not thenable (so it is not mistaken for a promise)', () => {

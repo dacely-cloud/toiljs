@@ -16,6 +16,7 @@
 import { Server } from '../env/Server';
 import { decodeRequest, encodeResponse } from '../envelope';
 import { Response } from '../response';
+import { Rpc } from '../rpc/Rpc';
 
 // Ensure the cookie library is in every build so its `@global` types
 // (`Cookie`, `Cookies`, `SecureCookies`, ...) register as ambient globals,
@@ -56,10 +57,18 @@ export function handle(req_ofs: i32, req_len: i32): i64 {
         // Publish the request ambiently so AuthService.getUser()/hasSession()
         // can read its cookies with no argument. Cleared in resetCurrentHandler.
         Server.currentRequest = req;
-        const handler = Server.currentHandler();
-        handler.onRequestStarted(req);
-        resp = handler.handle(req);
-        handler.onRequestCompleted(req, resp);
+        // Reserved RPC endpoint: a `POST /__toil_rpc` carrying a `toil-rpc` method id is dispatched to
+        // the registered @service/@remote method BEFORE the user handler sees it; any other request
+        // returns null here and falls through to the normal handler path.
+        const rpcHit = Rpc.dispatch(req);
+        if (rpcHit != null) {
+            resp = rpcHit;
+        } else {
+            const handler = Server.currentHandler();
+            handler.onRequestStarted(req);
+            resp = handler.handle(req);
+            handler.onRequestCompleted(req, resp);
+        }
     }
 
     // Lay out the response envelope IMMEDIATELY AFTER the live heap, not at a

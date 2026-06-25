@@ -20,8 +20,6 @@ class Account {
     ids: u256[] = [];
 }
 
-// A free @remote so buildServerModule emits a surface (it returns null otherwise).
-@remote
-function touch(n: i32): i32 {
-    return n;
-}
+// The two @data classes above ARE the surface: buildServerModule emits their codec + the bignum
+// helpers for any @data. (No @remote here - a @remote injects a server-side Rpc registration that
+// needs the full server runtime, which this `--runtime stub` fixture deliberately does not link.)

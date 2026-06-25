@@ -29,6 +29,7 @@ export { SlotValues, SlotValue, HtmlBuilder } from './ssr/slots';
 
 // HTTP layer (`@rest` / `@route`).
 export { Rest, RestRegistry, RouteFn } from './rest/Rest';
+export { Rpc, RpcRegistry, RpcFn, RPC_PATH, RPC_HEADER } from './rpc/Rpc';
 export { RouteContext } from './rest/RouteContext';
 export { matchRoute } from './rest/match';
 export { RestHandler } from './rest/RestHandler';
