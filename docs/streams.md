@@ -117,30 +117,62 @@ build/server/release-cold.wasm     # L4 daemon     (exports: daemon_start, sched
 
 See [Tiers](./tiers.md) for how the three artifacts map to the deployment tiers.
 
-## What runs today
+## Reading and replying to messages
 
-The stream lifecycle hooks (`@connect` / `@message` / `@close` / `@disconnect`)
-run **today**, and this proves a resident box keeps state across events - that is
-exactly what the `Echo` example demonstrates by counting frames.
-
-Reading the inbound frame **bytes** and replying is the **next increment**, not
-yet available. That bridge is the `StreamPacket` / `StreamOutbound` API and the
-typed `Server.STREAM.echo.connect()` client. The intended shape, once it lands:
+`@message` receives the inbound frame as a `StreamPacket` and returns a
+`StreamOutbound`. `StreamPacket.bytes()` is the raw frame payload;
+`StreamOutbound.reply(bytes)` stages one frame back to the client (return an empty
+`StreamOutbound` to accept the frame without replying). The same resident box
+handles every frame, so state on its fields persists across messages.
 
 ```ts
-@message reply(packet: StreamPacket): StreamOutbound {
+@message
+reply(packet: StreamPacket): StreamOutbound {
   return StreamOutbound.reply(packet.bytes());   // echo the bytes back
 }
 ```
 
+## Typed messages
+
+By default a `@message` payload is **raw bytes**. Opt into a decoded `@data` value
+with `@stream({ message: T })`: the `@message` hook then receives the named `@data`
+class, decoded from the frame for you. The reply stays raw (`StreamOutbound`).
+
 ```ts
-const stream = await Server.STREAM.echo.connect();
-stream.send(new TextEncoder().encode('hello'));
+@data
+class ChatMsg { text: string = ''; }
+
+@stream({ message: ChatMsg })
+class Chat {
+  @message
+  onMessage(msg: ChatMsg): StreamOutbound {       // decoded @data, not raw bytes
+    return StreamOutbound.reply(new TextEncoder().encode(msg.text));
+  }
+}
 ```
 
-Until then, the hooks run on the connection lifecycle and you observe state
-through fields, as `Echo` does. See the comments in
-`examples/streams/server/streams/Echo.ts` for the authoritative note.
+## The client
+
+A `@stream` class is reachable from the browser as `Server.Stream.<ClassName>`. The
+typed client is generated into `shared/server.ts` (the same place `Server.REST`
+lands), so no manual wiring is needed. `connect()` opens a WebSocket to the class's
+route and resolves a channel:
+
+```ts
+const chat = await Server.Stream.Chat.connect();
+chat.onMessage((bytes) => { /* a reply frame, always raw bytes */ });
+chat.send(new ChatMsg('hello'));   // a typed stream: send() encodes the @data for you
+chat.onClose((code) => { /* a 0x02xx stream close code */ });
+chat.close();
+```
+
+- The channel key is the **class name** (`Server.Stream.Chat`); it connects to the
+  class's mount route (`/Chat`).
+- A **raw** `@stream` channel sends `Uint8Array`; a **typed** `@stream({ message: T })`
+  channel sends the `@data` class and encodes it on the wire for you.
+- The inbound reply is **always raw bytes** - the server's `StreamOutbound` is raw.
+- `connect()` resolves once the upgrade completes; a `@connect` reject (or any
+  later server close) surfaces through `onClose(code)`.
 
 ---
 
