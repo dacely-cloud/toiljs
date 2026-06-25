@@ -1,9 +1,11 @@
 /**
  * Client runtime for the typed `@stream` channel (doc 08 section 8.2). `Server.Stream.<Class>.connect(path?)`
  * opens a browser `WebSocket` to the class's `route` (same origin) and returns a channel:
- * `onMessage` / `send` / `onClose` / `close`. RAW byte mode (the default `@message` bridge); the typed
- * `@data` codec (`messageMode = 'data'`) is a follow-up. The generated `shared/server.ts` (toilscript
- * hot pass) attaches `makeStreamClient(routes)` to `globalThis.__toilStream`, and `Server.Stream`
+ * `onMessage` / `send` / `onClose` / `close`. A raw `@stream` channel sends `Uint8Array`; a typed
+ * `@stream({ message: T })` channel sends the `@data` class and encodes it on send (the per-class
+ * encoder the generated module passes). The inbound reply is always raw bytes. The generated
+ * `shared/server.ts` (toilscript hot pass) attaches `makeStreamClient(routes, undefined, encoders)` to
+ * `globalThis.__toilStream`, and `Server.Stream`
  * (`rpc.ts`) surfaces it - the same wiring the REST client uses via `globalThis.__toilRest`.
  */
 
