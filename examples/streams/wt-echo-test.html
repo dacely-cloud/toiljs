@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!--
+  Minimal native-WebTransport echo tester for the live Toil @stream edge.
+
+  This is the de-risk for the browser client loop: it uses the browser's built-in WebTransport API
+  (no toiljs runtime, no codegen) to open a session to wt.<tenant>/<path>, send a datagram, and print
+  the echo the resident @stream box returns. If this echoes, the browser<->edge transport is proven and
+  the rest (swapping src/client/stream/client.ts to WebTransport + emitting Server.Stream.Echo) is wiring.
+
+  Requirements:
+    - A Chromium-based browser (WebTransport is enabled by default in Chrome/Edge).
+    - wt.dacely.com must resolve to the node's reachable IP with UDP/443 open and present the
+      wt.dacely.com Let's Encrypt cert. A Cloudflare *tunnel* will NOT pass HTTP/3 datagrams — point
+      DNS (or an /etc/hosts entry on this machine) straight at the node, e.g.:
+          192.168.50.99   wt.dacely.com
+    - Serve this file from a secure context (localhost counts):
+          cd examples/streams && python3 -m http.server 8088
+      then open http://localhost:8088/wt-echo-test.html
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Toil @stream WebTransport echo test</title>
+<style>
+  body { font: 14px/1.5 ui-monospace, monospace; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 18px; }
+  label { display: inline-block; width: 90px; }
+  input { font: inherit; padding: 4px 6px; width: 320px; }
+  button { font: inherit; padding: 5px 12px; cursor: pointer; }
+  #log { background: #111; color: #ddd; padding: 12px; border-radius: 6px; white-space: pre-wrap;
+         min-height: 220px; margin-top: 16px; }
+  .ok { color: #7ee787; } .err { color: #ff7b72; } .tx { color: #79c0ff; } .rx { color: #d2a8ff; }
+</style>
+</head>
+<body>
+<h1>Toil <code>@stream</code> WebTransport echo test</h1>
+<p><label>authority</label><input id="authority" value="wt.dacely.com" /></p>
+<p><label>path</label><input id="path" value="/echo" /></p>
+<p><label>message</label><input id="msg" value="hello from the browser" /></p>
+<p>
+  <button id="connect">Connect</button>
+  <button id="send" disabled>Send</button>
+  <button id="close" disabled>Close</button>
+</p>
+<div id="log"></div>
+
+<script>
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  const line = document.createElement('span');
+  if (cls) line.className = cls;
+  line.textContent = msg + '\n';
+  logEl.appendChild(line);
+}
+
+let transport = null;
+let writer = null;
+
+const btnConnect = document.getElementById('connect');
+const btnSend = document.getElementById('send');
+const btnClose = document.getElementById('close');
+
+btnConnect.addEventListener('click', async () => {
+  if (!('WebTransport' in window)) {
+    log('WebTransport is not available in this browser.', 'err');
+    return;
+  }
+  const authority = document.getElementById('authority').value.trim();
+  const path = document.getElementById('path').value.trim();
+  const url = `https://${authority}${path}`;
+  log(`connecting -> ${url}`);
+  try {
+    transport = new WebTransport(url);
+    transport.closed
+      .then((info) => log(`session closed: ${JSON.stringify(info)}`))
+      .catch((e) => log(`session closed (error): ${e}`, 'err'));
+    await transport.ready;
+    log('session READY (QUIC + H3 Extended-CONNECT + :status 200)', 'ok');
+
+    // Datagram read loop: the browser strips the RFC 9297 Quarter-Stream-ID prefix for us, so each
+    // chunk is the raw @message reply the server's StreamOutbound emitted.
+    const reader = transport.datagrams.readable.getReader();
+    (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          log(`<- echo: ${new TextDecoder().decode(value)}`, 'rx');
+        }
+      } catch (e) { log(`read loop ended: ${e}`); }
+    })();
+
+    writer = transport.datagrams.writable.getWriter();
+    btnSend.disabled = false;
+    btnClose.disabled = false;
+    btnConnect.disabled = true;
+  } catch (e) {
+    log(`connect failed: ${e}`, 'err');
+    log('  (if this is an opening/handshake error: check DNS points at the node, UDP/443 is open, ' +
+        'and you are NOT going through a Cloudflare tunnel)', 'err');
+  }
+});
+
+btnSend.addEventListener('click', async () => {
+  if (!writer) return;
+  const msg = document.getElementById('msg').value;
+  try {
+    await writer.write(new TextEncoder().encode(msg));
+    log(`-> sent: ${msg}`, 'tx');
+  } catch (e) { log(`send failed: ${e}`, 'err'); }
+});
+
+btnClose.addEventListener('click', () => {
+  if (transport) transport.close();
+  btnSend.disabled = true;
+  btnClose.disabled = true;
+  btnConnect.disabled = false;
+  writer = null;
+});
+</script>
+</body>
+</html>

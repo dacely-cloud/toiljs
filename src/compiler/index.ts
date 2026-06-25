@@ -177,6 +177,11 @@ export async function buildServer(root: string): Promise<void> {
                 outFile: serverWasmFile(root),
                 withRpc: true,
             });
+        // The stream pass carries no client RPC surface (withRpc:false), so toilscript never emits the
+        // `Server.Stream` client into shared/server.ts. Append it here from the compiled stream
+        // artifact's `toilstream.catalog` (the origin stays runtime-resolved, so this is origin-agnostic).
+        if (split.hasStream && split.stream.length > 0)
+            emitStreamClientSurface(root, artifacts.stream);
         return;
     }
 
@@ -827,3 +832,158 @@ export type {
     DevtoolsAiConfig,
 } from './config.js';
 export type { RunningBackend, BackendOptions } from 'toiljs/backend';
+
+// --- @stream client-surface emission ---------------------------------------------------------------
+// The stream compile pass runs with `withRpc:false`, so toilscript never emits `Server.Stream` into
+// `shared/server.ts`. We append it after the request pass by reading the compiled stream artifact's
+// `toilstream.catalog`. Self-contained (the compiler tsconfig does not include the devserver walker).
+
+/** A LEB128 unsigned int from `buf` at `pos`; `[value, nextPos]`. Throws on overrun. */
+function lebU(buf: Buffer, pos: number): [number, number] {
+    let result = 0;
+    let shift = 0;
+    let p = pos;
+    for (;;) {
+        if (p >= buf.length) throw new RangeError('leb128 past end');
+        const b = buf[p++] as number;
+        result |= (b & 0x7f) << shift;
+        if ((b & 0x80) === 0) break;
+        shift += 7;
+        if (shift > 35) throw new RangeError('leb128 too long');
+    }
+    return [result >>> 0, p];
+}
+
+/** The bytes of the named wasm custom section, or `null` if absent/truncated. */
+function customSectionBytes(wasm: Buffer, want: string): Buffer | null {
+    if (wasm.length < 8 || wasm[0] !== 0x00 || wasm[1] !== 0x61 || wasm[2] !== 0x73 || wasm[3] !== 0x6d)
+        return null;
+    let pos = 8;
+    try {
+        while (pos < wasm.length) {
+            const id = wasm[pos++] as number;
+            let size: number;
+            [size, pos] = lebU(wasm, pos);
+            const end = pos + size;
+            if (end > wasm.length || end < pos) return null;
+            if (id === 0) {
+                const [nameLen, namePos] = lebU(wasm, pos);
+                if (
+                    namePos + nameLen <= end &&
+                    wasm.toString('latin1', namePos, namePos + nameLen) === want
+                )
+                    return wasm.subarray(namePos + nameLen, end);
+            }
+            pos = end;
+        }
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+/** One `@stream` class from `toilstream.catalog`: the client key (class name) + its mount route. */
+interface CatalogStream {
+    name: string;
+    route: string;
+}
+
+/** Parse `toilstream.catalog` (doc 08 3.1; all little-endian) into `{ name, route }[]`, bounds-checked:
+ *  a short read mid-record yields the cleanly decoded prefix. */
+function readStreamCatalog(wasm: Buffer): CatalogStream[] {
+    const sec = customSectionBytes(wasm, 'toilstream.catalog');
+    if (sec === null) return [];
+    const out: CatalogStream[] = [];
+    let o = 0;
+    const need = (n: number): boolean => o + n <= sec.length;
+    const u8 = (): number => {
+        const v = sec.readUInt8(o);
+        o += 1;
+        return v;
+    };
+    const u16 = (): number => {
+        const v = sec.readUInt16LE(o);
+        o += 2;
+        return v;
+    };
+    const u32 = (): number => {
+        const v = sec.readUInt32LE(o);
+        o += 4;
+        return v;
+    };
+    const str = (): string => {
+        const len = u32();
+        if (!need(len)) {
+            o = sec.length + 1; // overrun: stop the loop on the next bounds check
+            return '';
+        }
+        const s = sec.toString('utf8', o, o + len);
+        o += len;
+        return s;
+    };
+    try {
+        if (!need(4)) return out;
+        u16(); // format_version
+        const n = u16();
+        for (let i = 0; i < n; i++) {
+            if (!need(8)) break;
+            const name = str();
+            const route = str();
+            if (o > sec.length || !need(19)) break;
+            u8(); // hook_presence_bitmask
+            u8(); // declared_scope
+            u8(); // message_mode
+            u32(); // max_frame_bytes
+            u32(); // ingress_ring_bytes
+            u32(); // message_value_data_id
+            u32(); // message_schema_version
+            u16(); // stream_index
+            if (name.length > 0 && route.length > 0) out.push({ name, route });
+        }
+    } catch {
+        /* truncated section: return the decoded prefix */
+    }
+    return out;
+}
+
+/** Append the `Server.Stream` client surface to `shared/server.ts` from the stream artifact's catalog.
+ *  The origin is omitted, so the runtime resolves it (`__TOIL_STREAM_ORIGIN__` deploy override -> the WT
+ *  edge; else same-origin dev WebSocket). Idempotent: a file that already wires `__toilStream` is left
+ *  untouched (so a future toilscript that emits it directly wins). */
+function emitStreamClientSurface(root: string, streamWasmPath: string | undefined): void {
+    if (streamWasmPath === undefined) return;
+    let wasm: Buffer;
+    try {
+        const abs = path.isAbsolute(streamWasmPath)
+            ? streamWasmPath
+            : path.join(root, streamWasmPath);
+        wasm = fs.readFileSync(abs);
+    } catch {
+        return; // no stream artifact: nothing to wire
+    }
+    const streams = readStreamCatalog(wasm);
+    if (streams.length === 0) return;
+
+    const rpcModule = path.join(root, 'shared', 'server.ts');
+    let existing = '';
+    try {
+        existing = fs.readFileSync(rpcModule, 'utf8');
+    } catch {
+        /* absent (a stream-only project, or no @rest surface): create it */
+    }
+    if (existing.includes('__toilStream')) return; // already wired
+
+    const routes = streams
+        .map((s) => `        ${JSON.stringify(s.name)}: ${JSON.stringify(s.route)},`)
+        .join('\n');
+    const hasImport = /from ['"]toiljs\/client['"]/.test(existing);
+    const out =
+        (hasImport ? '' : 'import { makeStreamClient } from "toiljs/client";\n') +
+        existing +
+        '\n// --- @stream client surface (auto-generated from toilstream.catalog) ---\n' +
+        'if (typeof globalThis !== "undefined")\n' +
+        `    (globalThis as Record<string, unknown>).__toilStream = makeStreamClient({\n${routes}\n    });\n`;
+
+    fs.mkdirSync(path.dirname(rpcModule), { recursive: true });
+    fs.writeFileSync(rpcModule, out);
+}
