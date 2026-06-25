@@ -10,9 +10,9 @@
  *   - `daemon.is_leader()` / `current_epoch()` / `task_count()` stubs answer.
  *   - the epoch bumps on a cold-artifact reload (the fencing token).
  *
- * The fixture records its activity into the shared dev MemoryStore (the real
- * `mstore.*` host import path), which the test reads back through
- * `devMemoryStore`. Interval ticks are driven with vitest fake timers.
+ * The fixture records its activity into resident daemon wasm memory and exports
+ * scalar accessors for the test. Interval ticks are driven with vitest fake
+ * timers.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -25,7 +25,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 
 import { DaemonHost } from '../src/devserver/daemon/index.js';
 import type { ResolvedDaemonConfig } from '../src/devserver/daemon/host.js';
-import { devMemoryStore } from '../src/devserver/mstore/store.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, 'fixtures', 'daemon-app.ts');
@@ -50,7 +49,10 @@ function compileCold(src: string, outWasm: string): { ok: boolean; output: strin
         [LOCAL_TOILSCRIPT_BIN, src, '-o', outWasm, '--runtime', 'stub', '--targetMode', 'cold'],
         { encoding: 'utf8' },
     );
-    return { ok: r.status === 0 && existsSync(outWasm), output: (r.stdout ?? '') + (r.stderr ?? '') };
+    return {
+        ok: r.status === 0 && existsSync(outWasm),
+        output: (r.stdout ?? '') + (r.stderr ?? ''),
+    };
 }
 
 let tmp: string;
@@ -72,13 +74,9 @@ afterAll(() => {
 
 afterEach(() => {
     vi.useRealTimers();
-    devMemoryStore.__reset();
 });
 
-const counter = (key: string): number => {
-    const v = devMemoryStore.get(key);
-    return v === null ? 0 : Number(v.toString('utf8'));
-};
+const counter = (host: DaemonHost, name: string): number => host.callI32Export(`${name}Count`) ?? 0;
 
 // Needs the local toilscript dev build (with --targetMode); skip where the
 // sibling repo is absent (e.g. CI, which has only the published dep).
@@ -86,9 +84,10 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
     it('compiles the @daemon fixture to a cold artifact', () => {
         // Guard: every assertion below depends on the local toilscript link. A hard
         // failure here (rather than a silent skip) surfaces the cross-repo break.
-        expect(existsSync(LOCAL_TOILSCRIPT_BIN), `local toilscript not found at ${LOCAL_TOILSCRIPT_BIN}`).toBe(
-            true,
-        );
+        expect(
+            existsSync(LOCAL_TOILSCRIPT_BIN),
+            `local toilscript not found at ${LOCAL_TOILSCRIPT_BIN}`,
+        ).toBe(true);
         expect(toilscriptAvailable, 'cold compile of the @daemon fixture failed').toBe(true);
     });
 
@@ -98,14 +97,14 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
         try {
             expect(host.active).toBe(true);
             // onStart ran once -> "started" counter is exactly 1.
-            expect(counter('started')).toBe(1);
+            expect(counter(host, 'started')).toBe(1);
             // The leader / epoch / task_count stubs all answered during onStart.
-            expect(counter('leader')).toBe(1);
-            expect(counter('epoch:nonneg')).toBe(1);
-            expect(counter('taskcount:2')).toBe(1);
+            expect(counter(host, 'leader')).toBe(1);
+            expect(counter(host, 'epochNonneg')).toBe(1);
+            expect(counter(host, 'taskcount2')).toBe(1);
             // refresh() with no mtime change is a no-op -> daemon_start does NOT re-run.
             expect(host.refresh()).toBe(false);
-            expect(counter('started')).toBe(1);
+            expect(counter(host, 'started')).toBe(1);
         } finally {
             host.close();
         }
@@ -116,13 +115,13 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
         const host = new DaemonHost(coldWasm, DAEMON_CFG, 'all', () => {});
         host.refresh();
         try {
-            expect(counter('tick:fast')).toBe(0); // not fired yet
+            expect(counter(host, 'tickFast')).toBe(0); // not fired yet
             vi.advanceTimersByTime(1000);
-            expect(counter('tick:fast')).toBe(1); // one interval elapsed -> one tick
+            expect(counter(host, 'tickFast')).toBe(1); // one interval elapsed -> one tick
             vi.advanceTimersByTime(3000);
-            expect(counter('tick:fast')).toBe(4); // three more ticks
+            expect(counter(host, 'tickFast')).toBe(4); // three more ticks
             // The cron task ("0 */6 * * *") must NOT have fired in 4 simulated seconds.
-            expect(counter('tick:cron')).toBe(0);
+            expect(counter(host, 'tickCron')).toBe(0);
         } finally {
             host.close();
         }
@@ -135,13 +134,13 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
         const host = new DaemonHost(coldWasm, DAEMON_CFG, 'all', () => {});
         host.refresh();
         try {
-            expect(counter('tick:cron')).toBe(0);
+            expect(counter(host, 'tickCron')).toBe(0);
             // Advance to 06:00:00 (30s) -> the cron one-shot fires exactly once.
             vi.advanceTimersByTime(30_000);
-            expect(counter('tick:cron')).toBe(1);
+            expect(counter(host, 'tickCron')).toBe(1);
             // It dispatched task_index 1 (sixHourly), NOT the interval task body.
             // (tick:fast also advanced on its own 1s timer; assert cron fired once.)
-            expect(counter('tick:cron')).toBe(1);
+            expect(counter(host, 'tickCron')).toBe(1);
         } finally {
             host.close();
         }
@@ -152,7 +151,7 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
         host.refresh();
         try {
             expect(host.active).toBe(false);
-            expect(counter('started')).toBe(0);
+            expect(counter(host, 'started')).toBe(0);
         } finally {
             host.close();
         }
@@ -170,9 +169,8 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
             const reloaded = host.refresh();
             expect(reloaded).toBe(true);
             expect(host.epoch()).toBe(e1 + 1n);
-            // A reload is a full restart -> daemon_start ran again on fresh memory.
-            // (devMemoryStore is shared/persistent, so "started" accumulates.)
-            expect(counter('started')).toBe(2);
+            // A reload is a full restart -> the new resident daemon memory starts fresh.
+            expect(counter(host, 'started')).toBe(1);
         } finally {
             host.close();
         }

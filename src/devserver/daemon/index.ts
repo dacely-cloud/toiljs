@@ -22,7 +22,6 @@ import fs from 'node:fs';
 import pc from 'picocolors';
 
 import { type MemoryRef } from '../runtime/host.js';
-import { devMemoryStore } from '../mstore/store.js';
 import { parseSurface } from '../wasm/surface.js';
 import {
     type CronMasks,
@@ -98,6 +97,14 @@ export class DaemonHost implements DaemonRuntime {
 
     get tasks(): readonly ScheduledTask[] {
         return this.catalog?.tasks ?? [];
+    }
+
+    /** Test/dev introspection for fixtures that export scalar counters. */
+    callI32Export(name: string): number | null {
+        const fn = (this.exports as unknown as Record<string, unknown> | null)?.[name];
+        if (typeof fn !== 'function') return null;
+        const value = (fn as () => number)();
+        return Number.isFinite(value) ? value : null;
     }
 
     // --- DaemonRuntime (the daemon.* host imports read these) ---
@@ -179,11 +186,11 @@ export class DaemonHost implements DaemonRuntime {
         if (this.module === null || this.catalog === null) return;
         const ref: MemoryRef = { memory: null };
         this.state = freshDaemonState();
-        const imports = buildDaemonImports(ref, this.state, this, devMemoryStore);
+        const imports = buildDaemonImports(ref, this.state, this);
 
         // Fail-closed up front, with names, when the cold box imports anything outside its allowed
-        // surface (the request env subset + crypto + @data + daemon.* + mstore.*; NO response/
-        // stream functions). Mirrors `WasmServerModule.assertImportSurface` (section 7.1).
+        // surface (the request env subset + crypto + @data + daemon.*; NO response/stream
+        // functions). Mirrors `WasmServerModule.assertImportSurface` (section 7.1).
         const provided = new Set(Object.keys((imports as { env: Record<string, unknown> }).env));
         const missing = WebAssembly.Module.imports(this.module)
             .filter((i) => i.kind === 'function' && (i.module !== 'env' || !provided.has(i.name)))

@@ -41,4 +41,3 @@ export { cronMatches, cronNeverFires, nextCronFireMs } from './daemon/cron.js';
 export { parseSurface } from './wasm/surface.js';
 export type { Surface, SurfaceFlags } from './wasm/surface.js';
 export { customSection } from './wasm/sections.js';
-export { DevMemoryStore, devMemoryStore } from './mstore/store.js';

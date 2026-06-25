@@ -102,7 +102,7 @@ export function readBytes(ref: MemoryRef, ptr: number, len: number): Buffer {
  * Bounds-checked write of a variable-length result into a guest out-buffer, with
  * the edge's inline-drain return protocol: the byte length on success, or `-1`
  * (STATUS_TOO_SMALL) when `outCap` is too small (the guest retries with a bigger
- * buffer). Used by the handleless `mstore.*` imports (RECONCILIATION Part 4 F2).
+ * buffer).
  */
 export function writeBytesOut(
     ref: MemoryRef,
@@ -217,12 +217,8 @@ export function buildEnvImports(
         // the buffer is too small (the guest retries bigger), -2 if absent.
         env_get: (keyPtr: number, keyLen: number, outPtr: number, outCap: number): number =>
             envLookup(ref, keyPtr, keyLen, outPtr, outCap, false),
-        env_get_secure: (
-            keyPtr: number,
-            keyLen: number,
-            outPtr: number,
-            outCap: number,
-        ): number => envLookup(ref, keyPtr, keyLen, outPtr, outCap, true),
+        env_get_secure: (keyPtr: number, keyLen: number, outPtr: number, outCap: number): number =>
+            envLookup(ref, keyPtr, keyLen, outPtr, outCap, true),
 
         thread_spawn: (_startArg: number): number => -1,
 
