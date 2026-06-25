@@ -699,6 +699,10 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         // The daemon (cold) emulator drives `release-cold.wasm` per `nodeMode`; absent for a
         // project with no `@daemon` (the cold artifact never gets built, so the host stays idle).
         coldWasmFile: serverArtifacts(cfg.root).cold,
+        // The stream router serves `@stream`-route WebSocket upgrades from `release-stream.wasm` per
+        // `nodeMode`; the path points at the (maybe-not-yet-built) stream artifact, mtime-reloaded so
+        // a `@stream` build activates it, and harmless for a project with no `@stream` (no routes).
+        streamWasmFile: serverArtifacts(cfg.root).stream,
         nodeMode: cfg.nodeMode,
         daemon: cfg.daemon,
         vite: { host: '127.0.0.1', port: vitePort },
@@ -779,15 +783,27 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
 }
 
 /**
- * Self-hosts the built client over the high-performance hyper-express backend (uWebSockets.js),
- * serving the configured `outDir` with an SPA fallback plus a WebSocket channel. Requires a prior
- * `build`. Returns the running backend.
+ * Self-hosts the built app over the high-performance hyper-express backend (uWebSockets.js).
+ * Server projects use the built wasm + SSR templates before the SPA fallback; client-only projects
+ * use the static backend. Requires a prior `build`. Returns the running backend.
  */
 export async function start(opts: ToilCommandOptions = {}): Promise<RunningBackend> {
     const cfg = await loadConfig(opts);
     const outDir = path.resolve(cfg.root, cfg.outDir);
     if (!fs.existsSync(path.join(outDir, 'index.html'))) {
         throw new Error(`No build found in ${outDir}. Run \`toiljs build\` first.`);
+    }
+    const wasmFile = serverWasmFile(cfg.root);
+    if (fs.existsSync(wasmFile)) {
+        const { startBuiltServer } = await import('toiljs/devserver');
+        return startBuiltServer({
+            root: cfg.root,
+            staticRoot: outDir,
+            wasmFile,
+            port: cfg.port,
+            host: opts.host,
+            email: cfg.email ?? undefined,
+        });
     }
     const { startBackend } = await import('toiljs/backend');
     return startBackend({ root: outDir, port: cfg.port, host: opts.host });
