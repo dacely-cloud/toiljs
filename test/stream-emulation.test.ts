@@ -18,6 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { makeStreamClient } from '../src/client/stream/client.js';
 import { matchStreamRoute, parseStreamCatalog } from '../src/devserver/stream/catalog.js';
+import { buildStreamImports, freshStreamBoxState } from '../src/devserver/stream/host.js';
 import { wireStreams } from '../src/devserver/stream/wire.js';
 import { DevStreamBox } from '../src/devserver/stream/index.js';
 import { StreamDevHost } from '../src/devserver/stream/manager.js';
@@ -38,6 +39,7 @@ let GATE_PATH: string;
 let TRAP_PATH: string;
 let ECHO: Buffer;
 let GATE: Buffer;
+let TYPED: Buffer;
 
 function compile(srcName: string): { path: string; wasm: Buffer } {
     const src = join(here, 'fixtures', srcName);
@@ -62,10 +64,47 @@ beforeAll(() => {
     GATE_PATH = gate.path;
     GATE = gate.wasm;
     TRAP_PATH = compile('stream-trap.ts').path;
+    TYPED = compile('stream-typed.ts').wasm;
 });
 
 afterAll(() => {
     if (tmp) rmSync(tmp, { recursive: true, force: true });
+});
+
+describe('dev stream box: typed @data @message decode (doc 03 2.5)', () => {
+    it('decodes a guest-seeded @data payload at runtime and replies with the decoded field', () => {
+        // Seed a real ChatMsg.encode() from a raw instance (deterministic), so the host feeds VALID
+        // @data bytes without hand-crafting the wire format.
+        const ref: { memory: WebAssembly.Memory | null } = { memory: null };
+        const state = freshStreamBoxState();
+        const seedInst = new WebAssembly.Instance(
+            new WebAssembly.Module(new Uint8Array(TYPED)),
+            buildStreamImports(ref, state),
+        );
+        const sx = seedInst.exports as unknown as {
+            memory: WebAssembly.Memory;
+            seedHi: () => void;
+            seedOffset: () => number;
+            seedLength: () => number;
+        };
+        ref.memory = sx.memory;
+        sx.seedHi();
+        const off = sx.seedOffset() >>> 0;
+        const len = sx.seedLength() >>> 0;
+        expect(len).toBeGreaterThan(0);
+        const payload = Buffer.from(new Uint8Array(sx.memory.buffer, off, len));
+
+        // Drive the typed @message: the guest DECODES ChatMsg{text:"hi"} and replies with text.length.
+        const box = DevStreamBox.load(TYPED);
+        const tid = 0x0000_0000_0000_0011n;
+        expect(box.onConnect(tid, 'localhost', '/').kind).toBe('accept');
+        const out = box.onMessage(tid, payload);
+        expect(out.kind).toBe('reply');
+        if (out.kind === 'reply') {
+            expect(out.frames.length).toBe(1);
+            expect(out.frames[0][0]).toBe(2); // decoded "hi" -> text.length 2
+        }
+    });
 });
 
 describe('dev stream box: the @message ring bridge', () => {
