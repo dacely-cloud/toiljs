@@ -11,7 +11,9 @@ import {
     __setDbCatalogForTests,
     buildDatabaseImports,
     configureDbPersistence,
+    derivesForWrites,
     freshDbState,
+    parseDerives,
     persistDb,
     setDbCatalog,
 } from '../src/devserver/db/index.js';
@@ -88,6 +90,24 @@ function routeKindsSection(routes: readonly (readonly [number, number, string])[
         header.writeUInt8(kind, 1);
         header.writeUInt32LE(p.length, 2);
         chunks.push(header, p);
+    }
+    return Buffer.concat(chunks);
+}
+
+function derivesSection(entries: readonly (readonly [number, string, string])[]): Buffer {
+    const chunks: Buffer[] = [Buffer.alloc(4)];
+    chunks[0].writeUInt16LE(1, 0); // format_version
+    chunks[0].writeUInt16LE(entries.length, 2); // n_derives
+    for (const [id, db, method] of entries) {
+        const head = Buffer.alloc(2);
+        head.writeUInt16LE(id, 0);
+        chunks.push(head);
+        for (const s of [db, method]) {
+            const b = Buffer.from(s, 'utf8');
+            const len = Buffer.alloc(4);
+            len.writeUInt32LE(b.length, 0);
+            chunks.push(len, b);
+        }
     }
     return Buffer.concat(chunks);
 }
@@ -761,6 +781,20 @@ describe('toildb dev emulator (migration + persistence)', () => {
         expect(rsv(imports)).toBe(0x1234n); // the woven decoder dispatches on this
     });
 
+    it('patch surfaces the current catalog schema_version (regression: was -1)', () => {
+        const { imports, buf } = setup();
+        __setDbCatalogForTests({ 'App/users': 0x1234 });
+        const h = resolve(imports, buf, 'App/users');
+        const [kPtr, kLen] = put(buf, 32, 'u1');
+        const [vPtr, vLen] = put(buf, 64, 'orig');
+        imports['data.create'](h, kPtr, kLen, vPtr, vLen, 0);
+        const [pPtr, pLen] = put(buf, 96, 'patched');
+        // patch stashes the patched record + its schema_version; the guest's woven
+        // decoder dispatches on that version, so it MUST be the current one, not -1.
+        imports['data.patch'](h, kPtr, kLen, pPtr, pLen, 0);
+        expect(rsv(imports)).toBe(0x1234n);
+    });
+
     it('an evolved @data type leaves old rows stamped with the OLD version', () => {
         const { imports, buf } = setup();
         __setDbCatalogForTests({ 'App/users': 100 }); // version A
@@ -892,5 +926,64 @@ describe('toildb dev emulator (migration + persistence)', () => {
         } finally {
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+});
+
+describe('toildb dev derives (toildb.derives parser + write routing)', () => {
+    const id = (d: { deriveId: number }) => d.deriveId;
+
+    it('parses a valid toildb.derives section in declaration order', () => {
+        const wasm = wasmWithSection(
+            'toildb.derives',
+            derivesSection([
+                [0, 'App', 'rebuild'],
+                [1, 'App', 'refresh'],
+                [2, 'Other', 'rollup'],
+            ]),
+        );
+        expect(parseDerives(wasm).map((d) => `${d.deriveId}:${d.dbName}.${d.methodName}`)).toEqual([
+            '0:App.rebuild',
+            '1:App.refresh',
+            '2:Other.rollup',
+        ]);
+    });
+
+    it('returns [] when there is no toildb.derives section', () => {
+        expect(parseDerives(wasmWithSection('toildb.other', Buffer.from([1, 2, 3])))).toEqual([]);
+    });
+
+    it('fails closed on a bad version, trailing bytes, or an empty db name', () => {
+        const badVersion = derivesSection([[0, 'App', 'r']]);
+        badVersion.writeUInt16LE(2, 0); // unknown format_version
+        expect(parseDerives(wasmWithSection('toildb.derives', badVersion))).toEqual([]);
+
+        const trailing = Buffer.concat([derivesSection([[0, 'App', 'r']]), Buffer.from([0])]);
+        expect(parseDerives(wasmWithSection('toildb.derives', trailing))).toEqual([]);
+
+        const emptyDb = derivesSection([[0, '', 'r']]);
+        expect(parseDerives(wasmWithSection('toildb.derives', emptyDb))).toEqual([]);
+    });
+
+    it('routes a source-collection write to its database derives, coalesced', () => {
+        const derives = parseDerives(
+            wasmWithSection(
+                'toildb.derives',
+                derivesSection([
+                    [0, 'App', 'rebuild'],
+                    [1, 'App', 'refresh'],
+                    [2, 'Other', 'rollup'],
+                ]),
+            ),
+        );
+        // two App collections written in one dispatch -> App's two derives, once each
+        expect(derivesForWrites(derives, new Set(['App/users', 'App/posts'])).map(id)).toEqual([
+            0, 1,
+        ]);
+        // a write to the other database -> only its derive
+        expect(derivesForWrites(derives, new Set(['Other/log'])).map(id)).toEqual([2]);
+        // a write to an unrelated database -> nothing runs
+        expect(derivesForWrites(derives, new Set(['Nope/x'])).map(id)).toEqual([]);
+        // no writes -> nothing runs
+        expect(derivesForWrites(derives, new Set<string>()).map(id)).toEqual([]);
     });
 });

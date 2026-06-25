@@ -728,7 +728,7 @@ export class DevDatabase {
             return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
         const sk = storeKey(coll.name, key);
         const outcome: RecordOutcome = this.store.has(sk)
-            ? { kind: 'value', value: v, schemaVersion: -1 }
+            ? { kind: 'value', value: v, schemaVersion: this.currentSchemaVersion(coll) }
             : { kind: 'not_found' };
         if (outcome.kind === 'value') {
             this.store.set(sk, v);
