@@ -79,6 +79,8 @@ export { matchRoute } from './routing/match.js';
 export type { RouteParams } from './routing/match.js';
 export { connectChannel, useChannel, resolveChannelUrl } from './channel/channel.js';
 export type { Channel, ChannelOptions, ChannelHook, ChannelData } from './channel/channel.js';
+export { makeStreamClient } from './stream/client.js';
+export type { StreamChannel, StreamConnectable, StreamClient } from './stream/client.js';
 export { useHead, useTitle, Head, mergeHead } from './head/head.js';
 export type { HeadSpec, MetaTag, LinkTag, ResolvedHead } from './head/head.js';
 export { resolveMetadata, useMetadata, Metadata } from './head/metadata.js';
