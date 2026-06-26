@@ -16,7 +16,7 @@ function restMissingStub(path: string): unknown {
     const call = (): never => {
         throw new Error(
             `toiljs REST: ${path}() is unavailable. The generated REST client has not loaded - ` +
-                `import a type from your 'shared/server' (so the client attaches), or run 'npm run build:server'.`,
+                `run 'npm run build:server' to generate shared/server.ts; the client then attaches automatically.`,
         );
     };
     return new Proxy(call, {
@@ -35,7 +35,7 @@ function streamMissingStub(path: string): unknown {
     const call = (): never => {
         throw new Error(
             `toiljs Stream: ${path}() is unavailable. The generated stream client has not loaded - ` +
-                `import a type from your 'shared/server' (so the client attaches), or run 'npm run build:server'.`,
+                `run 'npm run build:server' to generate shared/server.ts; the client then attaches automatically.`,
         );
     };
     return new Proxy(call, {
@@ -54,7 +54,7 @@ function rpcStub(path: string): unknown {
     const call = (): never => {
         throw new Error(
             `toiljs RPC: ${path}() is unavailable. The generated RPC client has not loaded - ` +
-                `import a type from your 'shared/server' (so the client attaches), or run 'npm run build:server'.`,
+                `run 'npm run build:server' to generate shared/server.ts; the client then attaches automatically.`,
         );
     };
     return new Proxy(call, {

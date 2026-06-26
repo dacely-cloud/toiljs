@@ -51,6 +51,8 @@ const FONT_EXT = /^(woff|woff2|eot|ttf|otf)$/i;
  */
 function sharedResolverPlugin(cfg: ResolvedToilConfig): PluginOption {
     const sharedDir = path.join(cfg.root, 'shared');
+    const serverModule = path.join(sharedDir, 'server.ts');
+    const routesModule = path.join(cfg.toilDir, 'routes.ts');
     return {
         name: 'toiljs:shared-resolver',
         enforce: 'pre',
@@ -67,6 +69,18 @@ function sharedResolverPlugin(cfg: ResolvedToilConfig): PluginOption {
                         'Run the server build first (it emits shared/server.ts from your @data/@remote code): ' +
                         '`npm run build:server`  (toilscript --target release --rpcModule shared/server.ts).',
                 );
+            }
+            return null;
+        },
+        transform(code: string, id: string) {
+            // Guarantee the generated client surface (shared/server.ts: __toilRest/__toilRpc/__toilStream
+            // + globalThis.Server) is EVALUATED. Otherwise it is dead unless some route happens to
+            // value-import a @data type - a type-only import is erased and never attaches, so
+            // `Server.<rpc>()` / `Server.REST` / `Server.Stream` would throw "client not loaded". Inject a
+            // side-effect import from the always-loaded route manifest; idempotent and a no-op for a
+            // client-only project (no shared/server.ts).
+            if ((id.split('?')[0] ?? id) === routesModule && fs.existsSync(serverModule)) {
+                return { code: `import 'shared/server';\n${code}`, map: null };
             }
             return null;
         },
