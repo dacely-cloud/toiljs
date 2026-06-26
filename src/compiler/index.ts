@@ -1028,16 +1028,14 @@ function emitStreamClientSurface(
         /* absent (a stream-only project, or no @rest surface): create it */
     }
     if (existing.includes('__toilStream')) {
-        // toilscript already emitted the Server.Stream surface + ambient type (via --rpcSurfaceFiles).
-        // It does NOT wire `globalThis.Server` (the runtime backing for the `declare global const
-        // Server`), so add that here. Importing the proxy also keeps it from being tree-shaken out of
-        // the bundle. Idempotent: skip if a `Server =` assignment is already present.
-        if (!/\bServer\s*=/.test(existing)) {
-            const wiring =
-                'import { Server as __toilServer } from "toiljs/client";\n' +
-                'if (typeof globalThis !== "undefined") (globalThis as Record<string, unknown>).Server = __toilServer;\n';
+        // toilscript already emitted the Server.Stream surface + ambient type (via --rpcSurfaceFiles),
+        // but imports only toiljs/io, so it never evaluates the client proxy. Prepend a bare side-effect
+        // import of toiljs/client so rpc.ts attaches `globalThis.Server`. (globalThis.Server is also set
+        // unconditionally by .toil/globals.ts; this is belt-and-suspenders, and a bare side-effect import
+        // is never tree-shaken, even under a future `sideEffects: false`.) Skip if it is already imported.
+        if (!existing.includes('toiljs/client')) {
             fs.mkdirSync(path.dirname(rpcModule), { recursive: true });
-            fs.writeFileSync(rpcModule, wiring + existing);
+            fs.writeFileSync(rpcModule, 'import "toiljs/client";\n' + existing);
         }
         return;
     }
@@ -1048,10 +1046,6 @@ function emitStreamClientSurface(
     const attach =
         'if (typeof globalThis !== "undefined") {\n' +
         `    (globalThis as Record<string, unknown>).__toilStream = __mkStream({\n${routes}\n    });\n` +
-        '    // Back the `declare global { const Server }` below with a runtime value (the proxy reads\n' +
-        '    // __toilStream), so the app reaches `Server.Stream.<Name>` via the global. Importing the\n' +
-        '    // proxy here also keeps it from being tree-shaken out of the bundle.\n' +
-        '    (globalThis as Record<string, unknown>).Server = __toilServer;\n' +
         '}\n';
 
     // The ambient `Server.Stream` type - only when toilscript has not already declared `Server` (a
@@ -1073,7 +1067,7 @@ function emitStreamClientSurface(
         : '';
 
     const out =
-        'import { makeStreamClient as __mkStream, Server as __toilServer } from "toiljs/client";\n' +
+        'import { makeStreamClient as __mkStream } from "toiljs/client";\n' +
         existing +
         '\n// --- @stream client surface (auto-generated from toilstream.catalog) ---\n' +
         attach +
