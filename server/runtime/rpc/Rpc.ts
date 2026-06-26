@@ -17,8 +17,10 @@ export const RPC_PATH: string = '/__toil_rpc';
 /** The request header carrying the decimal `u32` method id. */
 export const RPC_HEADER: string = 'toil-rpc';
 
-/** A registered RPC method: takes the encoded-args body, returns the encoded result. */
-export type RpcFn = (body: Uint8Array) => Uint8Array;
+/** A registered RPC method: takes the encoded-args body and returns a `Response` - the encoded result
+ *  (`Response.bytes`) on success, or a guard's `401`/`429` when the method carries `@auth`/`@ratelimit`.
+ *  The compiler injects these (see toilscript injectService/injectRemote). */
+export type RpcFn = (body: Uint8Array) => Response;
 
 export class RpcRegistry {
     private ids: Array<u32> = new Array<u32>();
@@ -46,7 +48,9 @@ export class RpcRegistry {
         const id = U32.parseInt(raw, 10);
         for (let i = 0, n = this.ids.length; i < n; i++) {
             if (this.ids[i] == id) {
-                return Response.bytes(this.fns[i](req.body));
+                // The injected dispatcher returns the full Response (encoded result, or a 401/429 from
+                // its @auth/@ratelimit guard).
+                return this.fns[i](req.body);
             }
         }
         return Response.badRequest('unknown rpc method');

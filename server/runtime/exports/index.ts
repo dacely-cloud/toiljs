@@ -57,18 +57,16 @@ export function handle(req_ofs: i32, req_len: i32): i64 {
         // Publish the request ambiently so AuthService.getUser()/hasSession()
         // can read its cookies with no argument. Cleared in resetCurrentHandler.
         Server.currentRequest = req;
-        // Reserved RPC endpoint: a `POST /__toil_rpc` carrying a `toil-rpc` method id is dispatched to
-        // the registered @service/@remote method BEFORE the user handler sees it; any other request
-        // returns null here and falls through to the normal handler path.
+        const handler = Server.currentHandler();
+        // Run the handler lifecycle hooks around BOTH the RPC and the normal path, so an app that does
+        // central bookkeeping/auth in onRequestStarted is not silently bypassed for /__toil_rpc.
+        handler.onRequestStarted(req);
+        // Reserved RPC endpoint: a `POST /__toil_rpc` carrying a `toil-rpc` method id dispatches to the
+        // registered @service/@remote method (which applies its own @auth/@ratelimit guards); any other
+        // request returns null here and falls through to the normal handler.
         const rpcHit = Rpc.dispatch(req);
-        if (rpcHit != null) {
-            resp = rpcHit;
-        } else {
-            const handler = Server.currentHandler();
-            handler.onRequestStarted(req);
-            resp = handler.handle(req);
-            handler.onRequestCompleted(req, resp);
-        }
+        resp = rpcHit != null ? rpcHit : handler.handle(req);
+        handler.onRequestCompleted(req, resp);
     }
 
     // Lay out the response envelope IMMEDIATELY AFTER the live heap, not at a

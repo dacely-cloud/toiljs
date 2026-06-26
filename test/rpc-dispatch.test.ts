@@ -64,6 +64,51 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('@service RPC dispatch', () => {
         expect(dv.getInt32(0, true)).toBe(42); // ping(41) = 42
     });
 
+    it('round-trips a Uint8Array[] arg + result (writeBytes/readBytes loop, the #5 fix)', () => {
+        const id = fnv1a('echoParts');
+        const parts = [Uint8Array.from([1, 2]), Uint8Array.from([3, 4, 5])];
+        const buf: number[] = [];
+        const pushU32 = (v: number) => buf.push(v & 255, (v >> 8) & 255, (v >> 16) & 255, (v >>> 24) & 255);
+        pushU32(parts.length); // u32 count, then per part: u32 len + bytes (DataWriter.writeBytes)
+        for (const p of parts) {
+            pushU32(p.length);
+            for (const b of p) buf.push(b);
+        }
+        const r = load().dispatch({
+            method: 'POST',
+            path: '/__toil_rpc',
+            headers: [['toil-rpc', String(id)]],
+            body: Uint8Array.from(buf),
+        });
+        expect(r.status).toBe(200);
+        const dv = new DataView(r.body.buffer, r.body.byteOffset, r.body.length);
+        let off = 0;
+        const count = dv.getUint32(off, true);
+        off += 4;
+        const out: number[][] = [];
+        for (let i = 0; i < count; i++) {
+            const len = dv.getUint32(off, true);
+            off += 4;
+            out.push([...r.body.subarray(off, off + len)]);
+            off += len;
+        }
+        expect(out).toEqual([
+            [1, 2],
+            [3, 4, 5],
+        ]);
+    });
+
+    it('rejects an @auth @remote with 401 when there is no session', () => {
+        const id = fnv1a('Stats.secretCount');
+        const r = load().dispatch({
+            method: 'POST',
+            path: '/__toil_rpc',
+            headers: [['toil-rpc', String(id)]],
+            body: new Uint8Array(0),
+        });
+        expect(r.status).toBe(401);
+    });
+
     it('returns 400 for an unknown method id', () => {
         const r = load().dispatch({
             method: 'POST',
