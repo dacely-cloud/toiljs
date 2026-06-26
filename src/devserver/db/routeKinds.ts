@@ -7,7 +7,13 @@ export interface RouteKindEntry {
     readonly pattern: string;
 }
 
+export interface RpcKindEntry {
+    readonly methodId: number;
+    readonly kind: DbFunctionKind;
+}
+
 const SECTION = 'toildb.route_kinds';
+const RPC_SECTION = 'toildb.rpc_kinds';
 const VERSION = 1;
 const MAX_SECTION_BYTES = 128 * 1024;
 const MAX_ROUTES = 2048;
@@ -65,6 +71,44 @@ export function routeKindForRequest(
         if (route.method === methodCode && routeMatches(route.pattern, path)) return route.kind;
     }
     return null;
+}
+
+export function parseRpcKinds(wasm: Buffer): readonly RpcKindEntry[] {
+    let section: Buffer | null;
+    try {
+        section = customSection(wasm, RPC_SECTION);
+    } catch {
+        return [];
+    }
+    if (section === null) return [];
+    if (section.length > MAX_SECTION_BYTES) return [];
+
+    const r = new Reader(section);
+    const version = r.u16();
+    if (!r.ok || version !== VERSION) return [];
+    const count = r.u16();
+    if (!r.ok || count > MAX_ROUTES) return [];
+
+    const methods: RpcKindEntry[] = [];
+    for (let i = 0; i < count && r.ok; i++) {
+        const methodId = r.u32();
+        const kindByte = r.u8();
+        const kind =
+            kindByte === 0 ? DbFunctionKind.Query : kindByte === 1 ? DbFunctionKind.Action : null;
+        if (!r.ok || kind === null) return [];
+        methods.push({ methodId, kind });
+    }
+    if (!r.ok || r.remaining() !== 0) return [];
+    return methods;
+}
+
+/** DB kind for an RPC method id (the `toil-rpc` header). An id absent from rpc_kinds is read-only
+ *  (Query) - the safe default for RPC, matching the host gate. */
+export function rpcKindForId(methods: readonly RpcKindEntry[], methodId: number): DbFunctionKind {
+    for (const m of methods) {
+        if (m.methodId === methodId) return m.kind;
+    }
+    return DbFunctionKind.Query;
 }
 
 function validPattern(pattern: string): boolean {

@@ -21,7 +21,14 @@ import {
     persistDb,
     setDbCatalog,
 } from '../db/index.js';
-import { parseRouteKinds, routeKindForRequest, type RouteKindEntry } from '../db/routeKinds.js';
+import {
+    parseRouteKinds,
+    parseRpcKinds,
+    routeKindForRequest,
+    rpcKindForId,
+    type RouteKindEntry,
+    type RpcKindEntry,
+} from '../db/routeKinds.js';
 import {
     decodeResponseEnvelope,
     encodeRequestEnvelope,
@@ -157,6 +164,7 @@ export class WasmServerModule {
     private module: WebAssembly.Module | null = null;
     private loadedMtimeMs = -1;
     private routeKinds: readonly RouteKindEntry[] = [];
+    private rpcKinds: readonly RpcKindEntry[] = [];
     private derives: readonly DeriveEntry[] = [];
     // Set when a (re)compile loaded a module with @derive methods; the first
     // dispatch afterward rebuilds every materialized view from its sources.
@@ -182,6 +190,7 @@ export class WasmServerModule {
         } catch {
             this.module = null;
             this.routeKinds = [];
+            this.rpcKinds = [];
             this.derives = [];
             this.derivesDirty = false;
             this.loadedMtimeMs = -1;
@@ -197,6 +206,7 @@ export class WasmServerModule {
         // after a @data type evolves + rebuild, old on-disk rows now look out of date.
         setDbCatalog(bytes);
         this.routeKinds = parseRouteKinds(bytes);
+        this.rpcKinds = parseRpcKinds(bytes);
         this.derives = parseDerives(bytes);
         this.module = module;
         this.loadedMtimeMs = mtimeMs;
@@ -224,9 +234,19 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
-        // Match the edge DB gate: the HTTP method is the baseline authority,
-        // and `toildb.route_kinds` can only tighten a mutating route to query.
-        state.db.functionKind = dbFunctionKindForRequest(this.routeKinds, req.method, req.path);
+        // Match the edge DB gate: the HTTP method is the baseline authority, and `toildb.route_kinds`
+        // can only tighten a mutating route to query. The reserved /__toil_rpc endpoint is the inverse -
+        // a @remote defaults to read-only (Query); only an @action @remote (in rpc_kinds) may write.
+        const rpcPath = req.path.split('?')[0] ?? req.path;
+        if (rpcPath === '/__toil_rpc' && req.method.toUpperCase() === 'POST') {
+            const idHeader = req.headers.find(([n]) => n.toLowerCase() === 'toil-rpc')?.[1];
+            const id = idHeader === undefined ? NaN : Number.parseInt(idHeader, 10);
+            state.db.functionKind = Number.isFinite(id)
+                ? rpcKindForId(this.rpcKinds, id)
+                : DbFunctionKind.Query;
+        } else {
+            state.db.functionKind = dbFunctionKindForRequest(this.routeKinds, req.method, req.path);
+        }
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
