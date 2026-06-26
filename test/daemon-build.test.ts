@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+    assertNoStreamInRequestTier,
     buildServer,
     serverArtifacts,
     splitSurfaceFiles,
@@ -182,6 +183,36 @@ describe('splitSurfaceFiles per-pass classification', () => {
         expect(split.cold).toContain('server/both.ts');
         expect(split.request).toContain('server/both.ts');
         expect(split.stream).not.toContain('server/both.ts');
+    });
+
+    it('exposes the actual @stream modules in streamModules (not @rest or shared helpers)', () => {
+        const rels = lay({
+            'server/chat.ts': "@stream('chat')\nclass C {}\n",
+            'server/api.ts': '@rest\nclass A {}\n',
+            'server/util.ts': 'export function helper(): i32 { return 1; }\n',
+        });
+        const split = splitSurfaceFiles(tmp, rels);
+        expect(split.streamModules).toEqual(['server/chat.ts']);
+    });
+
+    it('REJECTS a request-tier file that imports a @stream module, allows a clean split (audit #17)', () => {
+        const rels = lay({
+            'server/main.ts': "import { A } from './api';\n", // request-tier (shared) entry
+            'server/api.ts': '@rest\nclass A {}\n',
+            'server/chat.ts': "@stream('chat')\nclass C {}\n",
+        });
+        // main imports only the @rest surface -> no stream code leaks into release.wasm.
+        expect(() => assertNoStreamInRequestTier(tmp, rels, splitSurfaceFiles(tmp, rels))).not.toThrow();
+
+        // The footgun: a request-tier file imports the @stream module -> stream_dispatch would compile in.
+        writeFileSync(join(tmp, 'server', 'main.ts'), "import { C } from './chat';\nvoid C;\n");
+        expect(() => assertNoStreamInRequestTier(tmp, rels, splitSurfaceFiles(tmp, rels))).toThrow(
+            /@stream class would be compiled into the REQUEST tier/,
+        );
+
+        // A type-only import is erased and never compiles the @stream code -> allowed.
+        writeFileSync(join(tmp, 'server', 'main.ts'), "import type { C } from './chat';\n");
+        expect(() => assertNoStreamInRequestTier(tmp, rels, splitSurfaceFiles(tmp, rels))).not.toThrow();
     });
 });
 

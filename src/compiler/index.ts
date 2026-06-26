@@ -149,6 +149,7 @@ export async function buildServer(root: string): Promise<void> {
     // SHARED into every pass). The request pass runs LAST because it (re)writes shared/server.ts via
     // --rpcModule, which the downstream client build imports.
     const split = splitSurfaceFiles(root, files);
+    assertNoStreamInRequestTier(root, files, split);
     if (split.hasDaemon || split.hasStream) {
         const artifacts = serverArtifacts(root);
         // DAEMON (cold) pass: --targetMode cold, no client RPC surface.
@@ -224,6 +225,9 @@ interface SurfaceSplit {
     readonly stream: string[];
     /** Files for the REQUEST pass: `@rest`/`@service`/`@remote` surfaces + the request entry + shared helpers. */
     readonly request: string[];
+    /** The `@stream` / `*.stream.ts` modules (NOT the shared helpers). If a request-tier file imports one,
+     *  `stream_dispatch` + its ring buffers would compile into release.wasm (audit #17). */
+    readonly streamModules: string[];
 }
 
 /** A `@daemon`/`@scheduled` decorator at line start (the L4 cold/daemon surface). */
@@ -266,6 +270,7 @@ export function splitSurfaceFiles(root: string, files: string[]): SurfaceSplit {
     const cold: string[] = [];
     const stream: string[] = [];
     const request: string[] = [];
+    const streamModules: string[] = [];
     for (const rel of files) {
         let src = '';
         try {
@@ -283,14 +288,109 @@ export function splitSurfaceFiles(root: string, files: string[]): SurfaceSplit {
             REQUEST_DECORATOR.test(src) ||
             (RUNTIME_ENTRY.test(src) && !isStreamEntryFile(rel) && !isDaemonEntryFile(rel));
         if (isCold) hasDaemon ||= /^[ \t]*@daemon\b/m.test(src) || isDaemonEntryFile(rel);
-        if (isStream) hasStream = true;
+        if (isStream) {
+            hasStream = true;
+            streamModules.push(rel);
+        }
         // A file with no tier-specific surface is a SHARED helper, compiled into every pass.
         const shared = !isCold && !isStream && !isRequest;
         if (isCold || shared) cold.push(rel);
         if (isStream || shared) stream.push(rel);
         if (isRequest || shared) request.push(rel);
     }
-    return { hasDaemon, hasStream, cold, stream, request };
+    return { hasDaemon, hasStream, cold, stream, request, streamModules };
+}
+
+/** The module specifiers a source statically imports / re-exports / dynamically imports. `import type` /
+ *  `export type` are skipped: they are erased and never compile the target (so they cannot leak code). */
+function* importSpecifiers(src: string): Generator<string> {
+    const fromRe = /\b(import|export)(\s+type)?\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
+    let m: RegExpExecArray | null;
+    while ((m = fromRe.exec(src)) !== null) {
+        if (m[2]) continue; // `import type` / `export type` - erased
+        yield m[3];
+    }
+    const bareRe = /\bimport\s+['"]([^'"]+)['"]/g; // bare side-effect `import '...'`
+    while ((m = bareRe.exec(src)) !== null) yield m[1];
+    const dynRe = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g; // dynamic `import('...')`
+    while ((m = dynRe.exec(src)) !== null) yield m[1];
+}
+
+/** Resolve a RELATIVE import specifier to one of the project's server files (`rel` paths under `root`),
+ *  or null for a bare/external/alias import (never a direct sibling-file leak). */
+function resolveServerImport(fromRel: string, spec: string, fileSet: ReadonlySet<string>): string | null {
+    if (!spec.startsWith('.')) return null;
+    const base = path
+        .normalize(path.join(path.dirname(fromRel), spec))
+        .replace(/\\/g, '/')
+        .replace(/\.(js|mjs|jsx|ts|tsx)$/, '');
+    for (const cand of [
+        base,
+        `${base}.ts`,
+        `${base}.tsx`,
+        `${base}.js`,
+        `${base}.mjs`,
+        `${base}/index.ts`,
+        `${base}/index.tsx`,
+        `${base}/index.js`,
+    ]) {
+        if (fileSet.has(cand)) return cand;
+    }
+    return null;
+}
+
+/**
+ * Fail closed (audit #17): a `@stream` class compiled into the REQUEST tier would bake `stream_dispatch`
+ * + its 128 KiB ring buffers into release.wasm. `splitSurfaceFiles` keeps `@stream` files out of the
+ * request SET, but a stray import from a request-tier file still pulls one into release.wasm's compile
+ * graph - the tier boundary is otherwise only structural. Reject any request-tier file that (transitively)
+ * reaches a `@stream`/`*.stream.ts` module. The `Server.Stream` TYPE surface arrives via `--rpcSurfaceFiles`,
+ * NOT an import, so legitimate stream typing is unaffected; `import type` is likewise erased and ignored.
+ */
+export function assertNoStreamInRequestTier(
+    root: string,
+    files: readonly string[],
+    split: SurfaceSplit,
+): void {
+    const streamSet = new Set(split.streamModules);
+    if (streamSet.size === 0) return;
+    const fileSet = new Set(files);
+    const offenders = new Set<string>();
+    const seen = new Set<string>();
+    const queue = [...split.request];
+    while (queue.length > 0) {
+        const rel = queue.pop()!;
+        if (seen.has(rel)) continue;
+        seen.add(rel);
+        if (streamSet.has(rel)) {
+            // A @stream module sits directly in the request compile set (a file mixing @stream with
+            // request-tier code).
+            offenders.add(rel);
+            continue;
+        }
+        let src: string;
+        try {
+            src = fs.readFileSync(path.join(root, rel), 'utf8');
+        } catch {
+            continue;
+        }
+        for (const spec of importSpecifiers(src)) {
+            const target = resolveServerImport(rel, spec, fileSet);
+            if (target === null) continue;
+            if (streamSet.has(target)) offenders.add(`${rel} -> ${target}`);
+            else if (!seen.has(target)) queue.push(target);
+        }
+    }
+    if (offenders.size > 0) {
+        throw new Error(
+            'toiljs: a @stream class would be compiled into the REQUEST tier (release.wasm). @stream ' +
+                'handlers (stream_dispatch + ring buffers) belong only in the stream tier ' +
+                '(release-stream.wasm), driven by server/main.stream.ts. A request-tier file reaches a ' +
+                '@stream module:\n  ' +
+                [...offenders].join('\n  ') +
+                '\nRemove the import, or move the code into a *.stream.ts module.',
+        );
+    }
 }
 
 interface PassOptions {
