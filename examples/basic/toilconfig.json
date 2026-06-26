@@ -1,5 +1,5 @@
 {
-    "entries": ["server/main.ts"],
+    "entries": ["server/main.ts", "server/main.stream.ts"],
     "targets": {
         "release": {
             "outFile": "build/server/release.wasm",

@@ -79,8 +79,22 @@ const groups: { heading: string; items: { href: Toil.Href; label: string; note: 
     {
         heading: 'Components and runtime',
         items: [
-            { href: '/features/script', label: 'Script', note: 'Toil.Script with a load strategy' },
-            { href: '/features/realtime', label: 'WebSocket channel', note: 'Toil.useChannel against /_toil' }
+            { href: '/features/script', label: 'Script', note: 'Toil.Script with a load strategy' }
+        ]
+    },
+    {
+        heading: 'Realtime and streams',
+        items: [
+            {
+                href: '/features/realtime',
+                label: 'Realtime socket',
+                note: 'Toil.useChannel -> a resident @stream box at /echo'
+            },
+            {
+                href: '/features/stream',
+                label: 'Typed @stream',
+                note: 'Server.Stream.Echo.connect(), a resident per-connection box'
+            }
         ]
     }
 ];
