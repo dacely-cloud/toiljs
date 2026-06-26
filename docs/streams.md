@@ -52,7 +52,6 @@ optional - declare only the ones you need; a missing hook is a no-op.
 | `@message` | an inbound frame arrives. |
 | `@close` | the connection closes gracefully (the box is torn down after this hook). |
 | `@disconnect` | the transport is lost abruptly. |
-| `@channel` | an opt-in distributed channel delivers a message (advanced; see below). |
 
 The `Echo` example above shows why state survives: `count` is set to `0` in
 `@connect`, incremented on every `@message`, and the increments **accumulate**.
@@ -60,9 +59,9 @@ That is only possible because the same resident box handles every event for the
 connection. A `@rest` handler's fields would reset on each request, since a
 fresh handler is constructed per request.
 
-`@channel` is an opt-in **distributed** channel (advanced) - a way for boxes to
-exchange messages beyond a single connection. It is mentioned here for
-completeness; most streams use only the four connection-lifecycle hooks.
+Distributed stream channels are not part of the live v1 ABI. The edge rejects
+stream artifacts that declare a channel hook until the channel fan-out runtime
+exists.
 
 ## Placement
 
