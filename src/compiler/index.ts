@@ -149,7 +149,7 @@ export async function buildServer(root: string): Promise<void> {
     // SHARED into every pass). The request pass runs LAST because it (re)writes shared/server.ts via
     // --rpcModule, which the downstream client build imports.
     const split = splitSurfaceFiles(root, files);
-    assertNoStreamInRequestTier(root, files, split);
+    assertNoStreamInRequestTier(root, split);
     if (split.hasDaemon || split.hasStream) {
         const artifacts = serverArtifacts(root);
         // DAEMON (cold) pass: --targetMode cold, no client RPC surface.
@@ -303,7 +303,11 @@ export function splitSurfaceFiles(root: string, files: string[]): SurfaceSplit {
 
 /** The module specifiers a source statically imports / re-exports / dynamically imports. `import type` /
  *  `export type` are skipped: they are erased and never compile the target (so they cannot leak code). */
-function* importSpecifiers(src: string): Generator<string> {
+function* importSpecifiers(rawSrc: string): Generator<string> {
+    // Strip comments first, so a commented-out `// import { X } from './streams/...'` cannot trip the
+    // guard (mirrors emitStreamClientSurface's comment strip). A string literal containing import-like
+    // text is a rarer case this does not cover; the realistic dev-time scenario is a commented import.
+    const src = rawSrc.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
     const fromRe = /\b(import|export)(\s+type)?\b[^'";]*?\bfrom\s*['"]([^'"]+)['"]/g;
     let m: RegExpExecArray | null;
     while ((m = fromRe.exec(src)) !== null) {
@@ -316,9 +320,11 @@ function* importSpecifiers(src: string): Generator<string> {
     while ((m = dynRe.exec(src)) !== null) yield m[1];
 }
 
-/** Resolve a RELATIVE import specifier to one of the project's server files (`rel` paths under `root`),
- *  or null for a bare/external/alias import (never a direct sibling-file leak). */
-function resolveServerImport(fromRel: string, spec: string, fileSet: ReadonlySet<string>): string | null {
+/** Resolve a RELATIVE import specifier to a real file under `root` (a repo-relative posix path), or null
+ *  for a bare/external/alias import or an unresolved path. Resolves against the FILESYSTEM (not just the
+ *  entry+surface file list) so the guard's import graph also traverses plain UNDECORATED helper modules:
+ *  a @stream reached transitively through one (main.ts -> util.ts -> Echo.ts) must still be caught (#6). */
+function resolveServerImport(root: string, fromRel: string, spec: string): string | null {
     if (!spec.startsWith('.')) return null;
     const base = path
         .normalize(path.join(path.dirname(fromRel), spec))
@@ -334,7 +340,7 @@ function resolveServerImport(fromRel: string, spec: string, fileSet: ReadonlySet
         `${base}/index.tsx`,
         `${base}/index.js`,
     ]) {
-        if (fileSet.has(cand)) return cand;
+        if (fs.existsSync(path.join(root, cand))) return cand;
     }
     return null;
 }
@@ -347,14 +353,9 @@ function resolveServerImport(fromRel: string, spec: string, fileSet: ReadonlySet
  * reaches a `@stream`/`*.stream.ts` module. The `Server.Stream` TYPE surface arrives via `--rpcSurfaceFiles`,
  * NOT an import, so legitimate stream typing is unaffected; `import type` is likewise erased and ignored.
  */
-export function assertNoStreamInRequestTier(
-    root: string,
-    files: readonly string[],
-    split: SurfaceSplit,
-): void {
+export function assertNoStreamInRequestTier(root: string, split: SurfaceSplit): void {
     const streamSet = new Set(split.streamModules);
     if (streamSet.size === 0) return;
-    const fileSet = new Set(files);
     const offenders = new Set<string>();
     const seen = new Set<string>();
     const queue = [...split.request];
@@ -375,7 +376,7 @@ export function assertNoStreamInRequestTier(
             continue;
         }
         for (const spec of importSpecifiers(src)) {
-            const target = resolveServerImport(rel, spec, fileSet);
+            const target = resolveServerImport(root, rel, spec);
             if (target === null) continue;
             if (streamSet.has(target)) offenders.add(`${rel} -> ${target}`);
             else if (!seen.has(target)) queue.push(target);

@@ -238,12 +238,18 @@ export class WasmServerModule {
         // can only tighten a mutating route to query. The reserved /__toil_rpc endpoint is the inverse -
         // a @remote defaults to read-only (Query); only an @action @remote (in rpc_kinds) may write.
         const rpcPath = req.path.split('?')[0] ?? req.path;
-        if (rpcPath === '/__toil_rpc' && req.method.toUpperCase() === 'POST') {
+        const rpcMethod = req.method.toUpperCase();
+        const rpcMutating =
+            rpcMethod === 'POST' || rpcMethod === 'PUT' || rpcMethod === 'PATCH' || rpcMethod === 'DELETE';
+        if (rpcPath === '/__toil_rpc' && rpcMutating) {
             const idHeader = req.headers.find(([n]) => n.toLowerCase() === 'toil-rpc')?.[1];
-            const id = idHeader === undefined ? NaN : Number.parseInt(idHeader, 10);
-            state.db.functionKind = Number.isFinite(id)
-                ? rpcKindForId(this.rpcKinds, id)
-                : DbFunctionKind.Query;
+            // Strict u32 parse, mirroring the host's `v.parse::<u32>()`: reject trailing garbage/whitespace
+            // and out-of-range ids so a malformed header falls through to read-only Query, exactly as prod.
+            const id = idHeader !== undefined && /^\d+$/.test(idHeader) ? Number(idHeader) : NaN;
+            state.db.functionKind =
+                Number.isInteger(id) && id <= 0xffffffff
+                    ? rpcKindForId(this.rpcKinds, id)
+                    : DbFunctionKind.Query;
         } else {
             state.db.functionKind = dbFunctionKindForRequest(this.routeKinds, req.method, req.path);
         }

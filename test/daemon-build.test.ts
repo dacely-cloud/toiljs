@@ -195,24 +195,46 @@ describe('splitSurfaceFiles per-pass classification', () => {
         expect(split.streamModules).toEqual(['server/chat.ts']);
     });
 
-    it('REJECTS a request-tier file that imports a @stream module, allows a clean split (audit #17)', () => {
+    it('REJECTS a value-import of a @stream module; allows clean/type-only/commented (audit #17/#7)', () => {
         const rels = lay({
             'server/main.ts': "import { A } from './api';\n", // request-tier (shared) entry
             'server/api.ts': '@rest\nclass A {}\n',
             'server/chat.ts': "@stream('chat')\nclass C {}\n",
         });
-        // main imports only the @rest surface -> no stream code leaks into release.wasm.
-        expect(() => assertNoStreamInRequestTier(tmp, rels, splitSurfaceFiles(tmp, rels))).not.toThrow();
+        const check = () => assertNoStreamInRequestTier(tmp, splitSurfaceFiles(tmp, rels));
 
-        // The footgun: a request-tier file imports the @stream module -> stream_dispatch would compile in.
+        // main imports only the @rest surface -> no stream code leaks into release.wasm.
+        expect(check).not.toThrow();
+
+        // The footgun: a request-tier file value-imports the @stream module.
         writeFileSync(join(tmp, 'server', 'main.ts'), "import { C } from './chat';\nvoid C;\n");
-        expect(() => assertNoStreamInRequestTier(tmp, rels, splitSurfaceFiles(tmp, rels))).toThrow(
+        expect(check).toThrow(/@stream class would be compiled into the REQUEST tier/);
+
+        // A type-only import is erased and never compiles @stream code -> allowed.
+        writeFileSync(join(tmp, 'server', 'main.ts'), "import type { C } from './chat';\n");
+        expect(check).not.toThrow();
+
+        // A COMMENTED-OUT import is dead code and must not false-positive (audit #7).
+        writeFileSync(
+            join(tmp, 'server', 'main.ts'),
+            "// import { C } from './chat';\nimport { A } from './api';\n",
+        );
+        expect(check).not.toThrow();
+    });
+
+    it('catches a @stream reached transitively through a plain helper NOT in the surface list (audit #6)', () => {
+        // util.ts is an UNDECORATED helper -> not in serverEntryFiles, so production hands splitSurfaceFiles
+        // only the entries+surfaces. The filesystem-resolving BFS must still traverse util.ts to reach the
+        // @stream module behind it.
+        lay({
+            'server/main.ts': "import './util';\n",
+            'server/util.ts': "import { C } from './chat';\nexport const x = 1;\n",
+            'server/chat.ts': "@stream('chat')\nclass C {}\n",
+        });
+        const surfacesOnly = ['server/main.ts', 'server/chat.ts']; // no plain util.ts, as in production
+        expect(() => assertNoStreamInRequestTier(tmp, splitSurfaceFiles(tmp, surfacesOnly))).toThrow(
             /@stream class would be compiled into the REQUEST tier/,
         );
-
-        // A type-only import is erased and never compiles the @stream code -> allowed.
-        writeFileSync(join(tmp, 'server', 'main.ts'), "import type { C } from './chat';\n");
-        expect(() => assertNoStreamInRequestTier(tmp, rels, splitSurfaceFiles(tmp, rels))).not.toThrow();
     });
 });
 

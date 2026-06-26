@@ -52,7 +52,9 @@ const FONT_EXT = /^(woff|woff2|eot|ttf|otf)$/i;
 function sharedResolverPlugin(cfg: ResolvedToilConfig): PluginOption {
     const sharedDir = path.join(cfg.root, 'shared');
     const serverModule = path.join(sharedDir, 'server.ts');
-    const routesModule = path.join(cfg.toilDir, 'routes.ts');
+    // Posix-normalized: Vite hands `transform` forward-slash module ids while path.join is OS-native, so a
+    // raw `===` would silently never match on Windows (the surface would regress to "client not loaded").
+    const routesModule = path.join(cfg.toilDir, 'routes.ts').replace(/\\/g, '/');
     return {
         name: 'toiljs:shared-resolver',
         enforce: 'pre',
@@ -79,7 +81,7 @@ function sharedResolverPlugin(cfg: ResolvedToilConfig): PluginOption {
             // `Server.<rpc>()` / `Server.REST` / `Server.Stream` would throw "client not loaded". Inject a
             // side-effect import from the always-loaded route manifest; idempotent and a no-op for a
             // client-only project (no shared/server.ts).
-            if ((id.split('?')[0] ?? id) === routesModule && fs.existsSync(serverModule)) {
+            if ((id.split('?')[0] ?? id).replace(/\\/g, '/') === routesModule && fs.existsSync(serverModule)) {
                 return { code: `import 'shared/server';\n${code}`, map: null };
             }
             return null;
