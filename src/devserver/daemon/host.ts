@@ -4,7 +4,7 @@
  *
  * Per RECONCILIATION:
  *   - Part 4 `daemon.*`: is_leader / current_epoch / yield / sleep_ms / task_count
- *     / next_fire_ms / http_call / remote_call. In a single dev process the leader
+ *     / next_fire_ms / http_call. In a single dev process the leader
  *     stub is always true and the lease never expires (section 5.2). Fenced DB
  *     writes are TRANSPARENT (no `daemon.db_write_fenced` import).
  *   - Part 3 error bridge: a u16 subsystem code `c` is returned as `-(0x10000 + c)`;
@@ -81,16 +81,9 @@ export function buildDaemonNamespace(rt: DaemonRuntime): HostFnMap {
                 ? BigInt(encodeAbiError(AbiError.DaemonScheduleRejected))
                 : BigInt(at);
         },
-        // Outbound call stubs: dev returns a "call failed" sentinel rather than
+        // Outbound HTTP call stub: dev returns a "call failed" sentinel rather than
         // performing real network I/O from a synchronous wasm import (section 5.4).
         'daemon.http_call': (
-            _reqPtr: number,
-            _reqLen: number,
-            _outPtr: number,
-            _outCap: number,
-        ): bigint => BigInt(encodeAbiError(AbiError.DaemonCallFailed)),
-        'daemon.remote_call': (
-            _svcId: number,
             _reqPtr: number,
             _reqLen: number,
             _outPtr: number,
