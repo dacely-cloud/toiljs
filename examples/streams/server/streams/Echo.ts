@@ -1,51 +1,46 @@
 /**
  * A `@stream` protocol handler mounted at `/echo`.
  *
- * Unlike a `@rest` route (a fresh handler per request), a `@stream` runs as a
- * RESIDENT wasm box per WebTransport connection on the Toil edge: it is created
- * when the connection opens, lives for the connection's lifetime, and is torn
- * down on close. It is distributed across the eligible L2/L3 stream nodes and
- * pinned to ONE worker for the whole connection via QUIC connection-id steering,
- * so its in-box state survives every event.
+ * A `@stream` box is RESIDENT for the life of ONE connection: created on `@connect`, it handles every
+ * `@message` on that connection (on the Toil edge pinned to one worker for the connection's life via
+ * QUIC connection-id steering), and is DESTROYED on `@close`. In-box state persists across the messages
+ * of a SINGLE connection, but NOT beyond it: the next connection (and a reconnect) gets a brand-new box
+ * that starts clean, and a box is never reused across connections, so one connection's state can never
+ * leak into another. For state that must outlive the connection, use `@data` / the DB, not a class field.
  *
- * That residency is the whole point: the `count` field below persists across
- * every `@message` because the box is never reset between events (a `@rest`
- * handler's fields would reset each request).
- *
- * On the client, the typed client is generated as `Server.Stream.Echo` (into
- * `shared/server.ts`, alongside `Server.REST`):
+ * On the client, the typed client is generated as `Server.Stream.Echo` (into `shared/server.ts`):
  *
  *   const echo = await Server.Stream.Echo.connect();
  *   echo.onMessage((bytes) => { ... });             // the echoed reply frame
  *   echo.send(new TextEncoder().encode('hello'));
  *
- * Lifecycle hooks: `@connect` (open), `@message` (an inbound frame - here read
- * via `StreamPacket` and echoed back via `StreamOutbound`), `@close` (graceful
- * close), `@disconnect` (abrupt transport loss). This example also counts frames
- * to show the resident box keeps its state across them.
+ * Lifecycle hooks: `@connect` (open), `@message` (an inbound frame - here read via `StreamPacket` and
+ * echoed back via `StreamOutbound`), `@close` (graceful close), `@disconnect` (abrupt transport loss).
+ * `count` is per-connection scratch: it advances across this connection's frames and resets to 0 on the
+ * next connection.
  */
 @stream('echo')
 class Echo {
-    // Resident per-connection state: survives across events (the box is never reset).
+    // Per-CONNECTION scratch: persists across this connection's messages, reset to 0 on the next
+    // connection (the box is destroyed on close). NOT durable - use @data to survive a reconnect.
     private count: i32 = 0;
 
     @connect
     onConnect(): void {
-        // A fresh connection: its dedicated box starts the counter at 0.
+        // A fresh connection gets its OWN new box; the counter starts at 0.
         this.count = 0;
     }
 
     @message
     onMessage(packet: StreamPacket): StreamOutbound {
-        // Increments on every inbound frame - and PERSISTS across them, because
-        // this is the same resident box for the whole connection - then echoes
-        // the inbound bytes straight back to the client.
+        // Advances on every frame of THIS connection - persists across them because it is the same
+        // resident box for the connection's life - then echoes the inbound bytes straight back.
         this.count = this.count + 1;
         return StreamOutbound.reply(packet.bytes());
     }
 
     @close
     onClose(): void {
-        // Graceful close: the per-connection box is torn down after this hook.
+        // Graceful close: the box is DESTROYED after this hook (the next connection starts clean).
     }
 }
