@@ -6192,11 +6192,9 @@ const obj = Object.freeze({ a: 1 });
 
 ### 2.3.5 Type-Safe Dynamic Dispatch
 
-The OPNet contract pattern demonstrates Proxy for type-safe dynamic method dispatch:
+A typed contract-client pattern demonstrates Proxy for type-safe dynamic method dispatch:
 
 ```typescript
-const internal = Symbol.for('_btc_internal');
-
 interface ContractMethods {
     balanceOf(address: Address): Promise<bigint>;
     transfer(to: Address, amount: bigint): Promise<boolean>;
