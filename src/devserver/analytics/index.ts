@@ -95,6 +95,13 @@ function encodeSiteList(names: string[], hasMore: boolean): Buffer {
     return Buffer.concat(parts);
 }
 
+// Mirror the edge ABI bounds (analytics.rs) so dev exercises the SAME negative-status paths as prod.
+const MAX_DOMAIN_LEN = 256;
+const MAX_CURSOR_LEN = 256;
+const ABSENT = -2; // the edge's ABSENT sentinel; the guest maps a negative status to empty stats/list.
+// Pre-sorted so cursor pagination is deterministic and matches the edge's sorted enumeration.
+const SITE_SAMPLE = ['demo.dacely.com', 'example.com', 'shop.test'];
+
 /** The `env.analytics_read` + `env.analytics_list_sites` dev imports. Mirrors `buildDatabaseImports`. */
 export function buildAnalyticsImports(
     ref: MemoryRef,
@@ -102,7 +109,9 @@ export function buildAnalyticsImports(
 ): Record<string, (...args: number[]) => number> {
     return {
         analytics_read: (domainPtr: number, domainLen: number): number => {
-            // Bounds-check the domain read to mirror the edge ABI (the stub ignores the value).
+            // Over-long domain -> ABSENT, mirroring the edge (which returns a negative status, not a
+            // trap); the guest maps it to empty stats. domainLen 0 = the caller's own stats.
+            if (domainLen > MAX_DOMAIN_LEN) return ABSENT;
             if (domainLen > 0) {
                 if (!ref.memory) throw new Error('analytics_read called before memory was bound');
                 const m = Buffer.from(ref.memory.buffer);
@@ -116,19 +125,31 @@ export function buildAnalyticsImports(
             return frame.length;
         },
 
-        // The dacely dashboard enumerate-all-sites stub. Dev returns a fixed sample page for
-        // ANY caller (the real dacely.com-only authz is the edge); honors `limit`, never `has_more`.
+        // The dacely dashboard enumerate-all-sites stub. Dev returns a fixed SORTED sample for any
+        // caller (the real dacely.com-only authz is the edge), but mirrors the edge ABI exactly:
+        // over-long/non-utf8 cursor -> ABSENT, cursor = strictly-after, limit cap, and a REAL has_more.
         analytics_list_sites: (cursorPtr: number, cursorLen: number, limit: number): number => {
+            if (cursorLen > MAX_CURSOR_LEN) return ABSENT;
+            let cursor = '';
             if (cursorLen > 0) {
                 if (!ref.memory) throw new Error('analytics_list_sites called before memory was bound');
                 const m = Buffer.from(ref.memory.buffer);
                 if (cursorPtr < 0 || cursorPtr + cursorLen > m.length) {
                     throw new Error('analytics_list_sites: cursor out of bounds');
                 }
+                const cb = m.subarray(cursorPtr, cursorPtr + cursorLen);
+                try {
+                    cursor = new TextDecoder('utf-8', { fatal: true }).decode(cb);
+                } catch {
+                    return ABSENT; // non-utf8 cursor -> empty page, mirroring the edge
+                }
             }
-            const sample = ['example.com', 'demo.dacely.com', 'shop.test'];
-            const page = sample.slice(0, limit > 0 ? limit : sample.length);
-            const frame = encodeSiteList(page, false);
+            const start = SITE_SAMPLE.findIndex((n) => n > cursor); // strictly after the cursor
+            const from = start < 0 ? SITE_SAMPLE.length : start;
+            const lim = limit > 0 ? Math.min(limit, 256) : 256;
+            const page = SITE_SAMPLE.slice(from, from + lim);
+            const hasMore = from + page.length < SITE_SAMPLE.length;
+            const frame = encodeSiteList(page, hasMore);
             db.lastResult = frame;
             db.lastResultVersion = -1;
             return frame.length;
