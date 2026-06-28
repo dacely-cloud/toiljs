@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.74] - 2026-06-28
+
+- Add the dev-server analytics runtime: `env.analytics_read` + `env.analytics_list_sites` stubs, so toilscript 0.1.49's `Analytics` API works under `toiljs dev` (mirrors the edge ABI: bounds, UTF-8, cursor pagination).
+- Fix the production server (`npm start`) to serve each route's prerendered `<route>/index.html` instead of the root shell, so per-page metadata shows in view-source.
+- Keep the dev toolbar/overlay out of production builds.
+- Make `Link` inert for a missing `href` instead of throwing (#204).
+
 ## [v0.0.73] - 2026-06-26
 
 - No changes
