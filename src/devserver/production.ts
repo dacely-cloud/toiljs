@@ -450,7 +450,13 @@ async function startBuiltHttpServer(
         if (await dynamicHandler(request, response)) return;
 
         if (request.method === 'GET' || request.method === 'HEAD') {
-            response.sendFile(paths.indexHtml);
+            // Serve the route's OWN prerendered HTML if the build baked one
+            // (`<route>/index.html`, written by prerender.ts/ssg.ts with that route's metadata);
+            // otherwise fall back to the root shell for client-side routing. Without this per-route
+            // lookup EVERY route served the root index.html, so view-source on e.g. /login showed
+            // the home page's <head> (title/description/canonical/og) instead of the page's own.
+            const routeHtml = resolveStaticFile(paths.staticRoot, `${request.path}/index.html`);
+            response.sendFile(routeHtml ?? paths.indexHtml);
             return;
         }
 
