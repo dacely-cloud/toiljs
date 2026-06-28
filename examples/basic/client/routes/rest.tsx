@@ -132,7 +132,7 @@ export default function RestDemo() {
                     </li>
                 ))}
             </ul>
-            <Toil.Link href="/">Back home</Toil.Link>
+            <Toil.Link href="/analytics">See the Analytics demo</Toil.Link>, <Toil.Link href="/">Back home</Toil.Link>
         </main>
     );
 }

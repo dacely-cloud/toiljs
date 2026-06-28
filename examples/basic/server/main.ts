@@ -12,6 +12,7 @@ import './routes/Leaderboard';
 import './routes/Guestbook';
 import './routes/Session';
 import './routes/EnvDemo';
+import './routes/Analytics';
 import './services/Stats';
 import './services/remotes';
 
