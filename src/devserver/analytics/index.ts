@@ -76,7 +76,26 @@ function encodeStats(s: DevTenantStats): Buffer {
     return Buffer.concat(parts);
 }
 
-/** The `env.analytics_read` dev import. Mirrors `buildDatabaseImports`. */
+/**
+ * Encode a site page BYTE-FOR-BYTE like the edge (analytics.rs `encode_site_list`):
+ *   count u32 | (u32 nameLen, name bytes)* | has_more u8, all little-endian.
+ */
+function encodeSiteList(names: string[], hasMore: boolean): Buffer {
+    const parts: Buffer[] = [];
+    const head = Buffer.alloc(4);
+    head.writeUInt32LE(names.length, 0);
+    parts.push(head);
+    for (const name of names) {
+        const nb = Buffer.from(name, 'utf8');
+        const nl = Buffer.alloc(4);
+        nl.writeUInt32LE(nb.length, 0);
+        parts.push(nl, nb);
+    }
+    parts.push(Buffer.from([hasMore ? 1 : 0]));
+    return Buffer.concat(parts);
+}
+
+/** The `env.analytics_read` + `env.analytics_list_sites` dev imports. Mirrors `buildDatabaseImports`. */
 export function buildAnalyticsImports(
     ref: MemoryRef,
     db: DbDevState,
@@ -92,6 +111,24 @@ export function buildAnalyticsImports(
                 }
             }
             const frame = encodeStats(devStats());
+            db.lastResult = frame;
+            db.lastResultVersion = -1;
+            return frame.length;
+        },
+
+        // The dacely dashboard enumerate-all-sites stub. Dev returns a fixed sample page for
+        // ANY caller (the real dacely.com-only authz is the edge); honors `limit`, never `has_more`.
+        analytics_list_sites: (cursorPtr: number, cursorLen: number, limit: number): number => {
+            if (cursorLen > 0) {
+                if (!ref.memory) throw new Error('analytics_list_sites called before memory was bound');
+                const m = Buffer.from(ref.memory.buffer);
+                if (cursorPtr < 0 || cursorPtr + cursorLen > m.length) {
+                    throw new Error('analytics_list_sites: cursor out of bounds');
+                }
+            }
+            const sample = ['example.com', 'demo.dacely.com', 'shop.test'];
+            const page = sample.slice(0, limit > 0 ? limit : sample.length);
+            const frame = encodeSiteList(page, false);
             db.lastResult = frame;
             db.lastResultVersion = -1;
             return frame.length;
