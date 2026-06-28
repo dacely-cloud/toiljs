@@ -5,6 +5,7 @@
 // as-pect compiler does not ship. `SecureCookies`
 // is exercised end-to-end against the real toilscript-compiled wasm in
 // `test/devserver.test.ts`.
+import { describe, it, expect } from './aspect-shim';
 import { Method, Request, Header } from '../../server/runtime/request';
 import { Response } from '../../server/runtime/response';
 import { Cookie, SameSite, CookieEncoding } from '../../server/runtime/http/cookie';

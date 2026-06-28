@@ -3,6 +3,7 @@
 // (escaping + buffer building + linear-memory encode), so they run under
 // as-pect; the full `render` export is exercised via the example wasm in
 // test/devserver.test.ts.
+import { describe, it, expect } from './aspect-shim';
 import { escapeHtml, escapeJsonForScript } from '../../server/runtime/ssr/escape';
 import { HASH_LEN, HtmlBuilder, SlotKind, SlotValues } from '../../server/runtime/ssr/slots';
 import { encodeValues } from '../../server/runtime/ssr/encode';
