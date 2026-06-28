@@ -30,6 +30,17 @@ function isExternalHref(href: string): boolean {
 }
 
 /**
+ * Whether `href` is a usable client-navigation target. A data-driven href (`` `routeMap[key]` ``)
+ * can resolve to `undefined` / `null` / `''` at runtime when the target page doesn't exist; the
+ * resulting anchor is inert, so we must not intercept its click, calling `href.startsWith` /
+ * `navigate` on a missing href would throw. `Href` is always a string at the type level, hence the
+ * `unknown` parameter, the guard is purely a runtime safety net.
+ */
+function isNavigableHref(href: unknown): href is string {
+    return typeof href === 'string' && href !== '';
+}
+
+/**
  * Client-side navigation link. Forwards all anchor attributes to the underlying `<a>`, and
  * prefetches the target route's chunk on hover/focus. Intercepts only plain same-origin clicks ,
  * modified clicks, `target=_blank`, `download`, in-page `#hash`, and external URLs fall through to
@@ -52,6 +63,9 @@ export function Link(props: LinkProps): ReactNode {
         onClick?.(event);
         if (
             event.defaultPrevented ||
+            // A missing href (the target page doesn't exist) makes the anchor inert: leave the click
+            // to the browser instead of intercepting it. Checked before `startsWith` so it can't throw.
+            !isNavigableHref(href) ||
             event.button !== 0 ||
             event.metaKey ||
             event.ctrlKey ||
@@ -69,7 +83,7 @@ export function Link(props: LinkProps): ReactNode {
     };
 
     const warm = (): void => {
-        if (prefetchProp) prefetch(href);
+        if (prefetchProp && isNavigableHref(href)) prefetch(href);
     };
     const handlePointerEnter = (event: PointerEvent<HTMLAnchorElement>): void => {
         onPointerEnter?.(event);

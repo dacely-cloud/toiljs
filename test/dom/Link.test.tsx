@@ -31,6 +31,26 @@ describe('Link', () => {
         expect(window.location.pathname).toBe('/');
     });
 
+    it('ignores a click when href is missing (data-driven href to a page that does not exist)', () => {
+        // A runtime-undefined href (e.g. `routeMap[missingKey]`) used to throw on `href.startsWith`
+        // inside the click handler. React reports a handler throw as an uncaught *window* error (what
+        // the dev overlay surfaces), not a synchronous throw, so assert no such error fires. The anchor
+        // is inert now: the click is left to the browser, the page stays put.
+        const errors: string[] = [];
+        const onError = (e: ErrorEvent): void => {
+            errors.push(e.message || String(e.error));
+        };
+        window.addEventListener('error', onError);
+        try {
+            const { getByText } = render(<Link href={undefined as unknown as string as never}>x</Link>);
+            fireEvent.click(getByText('x'));
+        } finally {
+            window.removeEventListener('error', onError);
+        }
+        expect(errors).toEqual([]);
+        expect(window.location.pathname).toBe('/');
+    });
+
     it('forwards anchor attributes (rel, target)', () => {
         const { getByText } = render(
             <Link
