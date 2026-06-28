@@ -45,10 +45,12 @@ export class StreamWsSession {
     onOpen(): boolean {
         const up = this.host.acceptUpgrade(this.connId, this.authority, this.path);
         if (up.kind === 'rejected') {
+            for (const frame of up.initialEgress) this.transport.send(frame);
             this.transport.close(up.code);
             return false;
         }
         this.open = true;
+        for (const frame of up.initialEgress) this.transport.send(frame);
         return true;
     }
 

@@ -81,10 +81,10 @@ export type StreamMessageOutcome =
     | { readonly kind: 'reply'; readonly frames: Buffer[] }
     | { readonly kind: 'reject'; readonly code: number };
 
-/** A `@connect` outcome: the guest accepted (the box is usable) or rejected with a `0x02xx` code. */
+/** A `@connect` outcome: accepted/rejected plus any immediate frames staged during the hook. */
 export type StreamConnectOutcome =
-    | { readonly kind: 'accept' }
-    | { readonly kind: 'reject'; readonly code: number };
+    | { readonly kind: 'accept'; readonly initialEgress: Buffer[] }
+    | { readonly kind: 'reject'; readonly code: number; readonly initialEgress: Buffer[] };
 
 export class DevStreamBox {
     private constructor(
@@ -132,17 +132,16 @@ export class DevStreamBox {
 
     /**
      * Fire `@connect`: write the connect-info block (stream id + transport + authority + path) into the
-     * guest's info region, dispatch `EVENT_CONNECT`, and decode the `StreamOutbound` accept/reject. On
-     * accept, clear any `@connect`-staged egress (initial-egress is deferred, like the edge) so it does
-     * not contaminate the first `@message` reply. A box without the bridge runs `@connect` context-free
+     * guest's info region, dispatch `EVENT_CONNECT`, decode the `StreamOutbound` accept/reject, and
+     * drain any staged egress as initial frames. A box without the bridge runs `@connect` context-free
      * (the write is a no-op) and always accepts unless it returns a negative code.
      */
     onConnect(streamId: bigint, authority: string, path: string): StreamConnectOutcome {
         this.writeConnectInfo(streamId, authority, path);
         const rc = this.dispatch(EVENT_CONNECT, streamId);
-        if (rc < 0n) return { kind: 'reject', code: decodeRejectCode(rc) };
-        this.resetEgressRing();
-        return { kind: 'accept' };
+        const initialEgress = this.egressDrain();
+        if (rc < 0n) return { kind: 'reject', code: decodeRejectCode(rc), initialEgress };
+        return { kind: 'accept', initialEgress };
     }
 
     /** Fire `@close` (graceful close). */
@@ -239,16 +238,6 @@ export class DevStreamBox {
         const memU8 = new Uint8Array(this.exports.memory.buffer);
         if (authLen > 0) memU8.set(authBytes.subarray(0, authLen), base + SI_BODY);
         if (pathLen > 0) memU8.set(pathBytes.subarray(0, pathLen), base + SI_BODY + authLen);
-    }
-
-    /** Zero the egress ring cursors, discarding any staged frames. Safe between dispatches (the guest,
-     *  the sole egress producer, is idle). */
-    private resetEgressRing(): void {
-        const rings = this.rings;
-        if (!rings) return;
-        const dv = new DataView(this.exports.memory.buffer);
-        dv.setUint32(rings.egressOff + RC_WRITE, 0, true);
-        dv.setUint32(rings.egressOff + RC_READ, 0, true);
     }
 
     /** Host (producer) writes ONE inbound RingFrame into the ingress ring with the drained-reset

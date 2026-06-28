@@ -50,7 +50,9 @@ function compile(srcName: string): { path: string; wasm: Buffer } {
         { encoding: 'utf8' },
     );
     if (r.status !== 0) {
-        throw new Error(`toilscript compile ${srcName} failed (${String(r.status)}):\n${r.stderr}${r.stdout}`);
+        throw new Error(
+            `toilscript compile ${srcName} failed (${String(r.status)}):\n${r.stderr}${r.stdout}`,
+        );
     }
     return { path: out, wasm: readFileSync(out) };
 }
@@ -140,10 +142,17 @@ describe('dev stream box: the @connect info-block bridge', () => {
     it('reads the connect path and rejects /blocked while accepting others', () => {
         const box = DevStreamBox.load(GATE);
         expect(box.hasConnectBridge).toBe(true);
-        expect(box.onConnect(id, 'acme.toil', '/blocked')).toEqual({ kind: 'reject', code: 0x0211 });
+        expect(box.onConnect(id, 'acme.toil', '/blocked')).toEqual({
+            kind: 'reject',
+            code: 0x0211,
+            initialEgress: [],
+        });
 
         const ok = DevStreamBox.load(GATE);
-        expect(ok.onConnect(id, 'acme.toil', '/room/42')).toEqual({ kind: 'accept' });
+        expect(ok.onConnect(id, 'acme.toil', '/room/42')).toEqual({
+            kind: 'accept',
+            initialEgress: [],
+        });
         // An accepted connection is usable: its @message echoes.
         expect(ok.onMessage(id, Buffer.from('hi'))).toEqual({
             kind: 'reply',
@@ -151,11 +160,14 @@ describe('dev stream box: the @connect info-block bridge', () => {
         });
     });
 
-    it('clears @connect-staged egress so the first @message reply is clean', () => {
+    it('returns @connect-staged egress and keeps the first @message reply clean', () => {
         const box = DevStreamBox.load(GATE);
-        // /greet stages "GHI" during @connect; the host clears it on accept.
-        expect(box.onConnect(id, 'acme.toil', '/greet')).toEqual({ kind: 'accept' });
-        // The first @message must see ONLY its own reply, never the stale "GHI".
+        // /greet stages "GHI" during @connect; the host returns it as initial egress.
+        expect(box.onConnect(id, 'acme.toil', '/greet')).toEqual({
+            kind: 'accept',
+            initialEgress: [Buffer.from('GHI')],
+        });
+        // The first @message must see ONLY its own reply, never the drained initial "GHI".
         expect(box.onMessage(id, Buffer.from('hi'))).toEqual({
             kind: 'reply',
             frames: [Buffer.from('hi')],
@@ -185,6 +197,7 @@ describe('dev stream session driver (StreamDevHost)', () => {
         expect(host.acceptUpgrade('c1', 'acme.toil', '/blocked')).toEqual({
             kind: 'rejected',
             code: 0x0211,
+            initialEgress: [],
         });
         expect(host.activeConnections).toBe(0);
         expect(host.acceptUpgrade('c2', 'acme.toil', '/ok').kind).toBe('accepted');
@@ -211,6 +224,18 @@ describe('dev stream session driver (StreamDevHost)', () => {
         host.acceptUpgrade('c1', 'acme.toil', '/');
         expect(() => host.acceptUpgrade('c1', 'acme.toil', '/')).toThrow();
     });
+
+    it('returns initial egress from @connect while keeping dispatch clean', () => {
+        const host = new StreamDevHost(GATE_PATH);
+        expect(host.acceptUpgrade('c1', 'acme.toil', '/greet')).toMatchObject({
+            kind: 'accepted',
+            initialEgress: [Buffer.from('GHI')],
+        });
+        expect(host.dispatch('c1', Buffer.from('hi'))).toEqual({
+            kind: 'reply',
+            frames: [Buffer.from('hi')],
+        });
+    });
 });
 
 describe('dev stream WS session adapter (StreamWsSession)', () => {
@@ -233,6 +258,20 @@ describe('dev stream WS session adapter (StreamWsSession)', () => {
         s.onMessage(Buffer.from('hi'));
         expect(sent).toEqual([Buffer.from('hi')]);
         expect(closed).toEqual([]);
+        s.onClose();
+        expect(host.activeConnections).toBe(0);
+    });
+
+    it('sends @connect initial egress on open', () => {
+        const host = new StreamDevHost(GATE_PATH);
+        const { sent, closed, t } = makeTransport();
+        const s = new StreamWsSession(host, 'ws1', 'acme.toil', '/greet', t);
+        expect(s.onOpen()).toBe(true);
+        expect(s.isOpen).toBe(true);
+        expect(sent).toEqual([Buffer.from('GHI')]);
+        expect(closed).toEqual([]);
+        s.onMessage(Buffer.from('hi'));
+        expect(sent).toEqual([Buffer.from('GHI'), Buffer.from('hi')]);
         s.onClose();
         expect(host.activeConnections).toBe(0);
     });
@@ -310,7 +349,12 @@ describe('dev stream router (doc 08 4.1/4.2)', () => {
         expect(router.matchRoute('/not-a-stream')).toBeNull(); // -> proxied to Vite
 
         const ws = new MockWs();
-        const ctx: StreamUpgradeContext = { kind: 'stream', route, url: route, authority: 'acme.toil' };
+        const ctx: StreamUpgradeContext = {
+            kind: 'stream',
+            route,
+            url: route,
+            authority: 'acme.toil',
+        };
         router.onUpgrade(ws, ctx);
         expect(router.activeConnections).toBe(1);
         ws.emitMessage(Buffer.from('hi'));

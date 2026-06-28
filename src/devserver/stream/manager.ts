@@ -32,8 +32,8 @@ export const STREAM_HOOK_TRAPPED = 0x0200;
 
 /** The outcome of an upgrade accept attempt (mirrors the edge `StreamUpgradeOutcome`). */
 export type StreamUpgradeOutcome =
-    | { readonly kind: 'accepted'; readonly streamId: bigint }
-    | { readonly kind: 'rejected'; readonly code: number };
+    | { readonly kind: 'accepted'; readonly streamId: bigint; readonly initialEgress: Buffer[] }
+    | { readonly kind: 'rejected'; readonly code: number; readonly initialEgress: Buffer[] };
 
 /** The outcome of driving one inbound frame (mirrors the edge `StreamDatagramOutcome`). */
 export type StreamDispatchResult =
@@ -69,30 +69,34 @@ export class StreamDevHost {
      * Accept (or reject) an upgrade for `authority` + `path`, mirroring `StreamWorker::accept_upgrade`:
      * (re)load the artifact on mtime change, instantiate a resident box, fire `@connect` WITH the
      * connect context, and HONOR the guest's accept/reject. Returns the host-assigned stream id on
-     * accept, or a `0x02xx` reject code. Fails closed (no connection registered, box dropped) on a
-     * missing/unreadable artifact (`0x0208`), a `@connect` reject (the guest's code), or a load/connect
-     * trap (`0x0200`). Throws only on a duplicate `connId`.
+     * accept, plus any initial egress staged by `@connect`, or a `0x02xx` reject code. Fails closed
+     * (no connection registered, box dropped) on a missing/unreadable artifact (`0x0208`), a
+     * `@connect` reject (the guest's code), or a load/connect trap (`0x0200`). Throws only on a
+     * duplicate `connId`.
      */
     acceptUpgrade(connId: string, authority: string, path: string): StreamUpgradeOutcome {
-        if (this.conns.has(connId)) throw new Error(`stream connection '${connId}' is already open`);
+        if (this.conns.has(connId))
+            throw new Error(`stream connection '${connId}' is already open`);
         this.refresh();
-        if (!this.bytes) return { kind: 'rejected', code: STREAM_REJECTED };
+        if (!this.bytes) return { kind: 'rejected', code: STREAM_REJECTED, initialEgress: [] };
         let box: DevStreamBox;
         try {
             box = DevStreamBox.load(this.bytes);
         } catch {
-            return { kind: 'rejected', code: STREAM_REJECTED };
+            return { kind: 'rejected', code: STREAM_REJECTED, initialEgress: [] };
         }
         const streamId = this.allocStreamId();
         let outcome;
         try {
             outcome = box.onConnect(streamId, authority, path);
         } catch {
-            return { kind: 'rejected', code: STREAM_HOOK_TRAPPED }; // @connect trapped
+            return { kind: 'rejected', code: STREAM_HOOK_TRAPPED, initialEgress: [] }; // @connect trapped
         }
-        if (outcome.kind === 'reject') return { kind: 'rejected', code: outcome.code };
+        if (outcome.kind === 'reject') {
+            return { kind: 'rejected', code: outcome.code, initialEgress: outcome.initialEgress };
+        }
         this.conns.set(connId, { box, streamId });
-        return { kind: 'accepted', streamId };
+        return { kind: 'accepted', streamId, initialEgress: outcome.initialEgress };
     }
 
     /**
