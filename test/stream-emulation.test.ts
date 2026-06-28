@@ -30,8 +30,10 @@ import {
 import { StreamWsSession, type StreamWsTransport } from '../src/devserver/stream/ws.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-// The LOCAL toilscript build (the @message + @connect bridge codegen); the published dep predates it.
-const LOCAL_TOILSCRIPT_BIN = join(here, '..', '..', 'toilscript', 'bin', 'toilscript.js');
+// The toilscript build with the @message + @connect bridge codegen (it ships in the dep now).
+// Resolved from node_modules so this works both locally (the symlinked repo) and in CI (the npm
+// dep), not from a sibling checkout that CI does not have.
+const LOCAL_TOILSCRIPT_BIN = join(here, '..', 'node_modules', 'toilscript', 'bin', 'toilscript.js');
 
 let tmp: string;
 let ECHO_PATH: string;
