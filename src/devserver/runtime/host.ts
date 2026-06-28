@@ -19,6 +19,7 @@
 
 import { devEnvGet, devEnvGetSecure } from '../config/env.js';
 import { ratelimitCheck } from '../config/ratelimit.js';
+import { buildAnalyticsImports } from '../analytics/index.js';
 import { buildDatabaseImports, type DbDevState, freshDbState } from '../db/index.js';
 import { EmailStatus, getEmailService } from '../email/index.js';
 import { parseEmailBlob } from '../email/wire.js';
@@ -405,6 +406,11 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
             // challenges so register/login spans requests under `toiljs dev`;
             // the production edge backs the SAME imports with ScyllaDB.
             ...buildDatabaseImports(ref, state.db),
+
+            // `env.analytics_read`: the per-domain analytics import, emulated in process (see
+            // ../analytics/index.js). Stashes a sample TenantStats frame into the same `db.lastResult`
+            // the data.* ops use; the production edge backs it with the real metering counters.
+            ...buildAnalyticsImports(ref, state.db),
         },
     };
 }
