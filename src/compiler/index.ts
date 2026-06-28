@@ -880,7 +880,20 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
         process.stdout.write(
             pc.green('  ✓ ') + pc.dim('server built; building the client (vite)…') + '\n',
         );
-    await viteBuild(await createViteConfig(cfg));
+    // Keep dev-only tooling (the dev toolbar + error overlay mounted in `mount`) OUT of the production
+    // bundle. It lives behind `import.meta.env.DEV`, which Vite derives from NODE_ENV - and with NODE_ENV
+    // unset a `vite build` here still resolves to a DEV build (even with mode:'production'), leaving that
+    // branch live so the devtools ship in `build`. Force NODE_ENV=production for the client build so the
+    // branch is dead-code-eliminated, then restore NODE_ENV so a later in-process `dev()` (which must
+    // stay a development build, devtools on) is unaffected. `createViteConfig` is shared with `dev`.
+    const prevNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+        await viteBuild(mergeConfig(await createViteConfig(cfg), { mode: 'production' }));
+    } finally {
+        if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+        else process.env.NODE_ENV = prevNodeEnv;
+    }
     // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
     await prerenderStaticParams(cfg);
     // Edge SSR: render `export const ssr = true` routes to template-with-holes
