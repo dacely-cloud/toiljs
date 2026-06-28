@@ -110,6 +110,9 @@ const PROVIDED_IMPORTS = new Set([
     'email_send',
     'env_get',
     'env_get_secure',
+    // Per-domain analytics (see ./analytics/index.ts).
+    'analytics_read',
+    'analytics_list_sites',
     // Web Crypto host functions (see ./crypto.ts).
     'crypto.fill_random',
     'crypto.random_uuid',
