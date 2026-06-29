@@ -2,6 +2,11 @@
 
 ## [v0.0.75] - 2026-06-29
 
+- No changes
+
+
+## [v0.0.75] - 2026-06-29
+
 - Fix the dev-server module validator to accept the `analytics_read` + `analytics_list_sites` host imports, so an app using toilscript's `Analytics` API loads under `toiljs dev` SSR (0.0.74 shipped the runtime stubs but the validator still rejected the imports).
 - Stream the `@connect`-staged egress as the connection's initial frames.
 
