@@ -2,6 +2,11 @@
 
 ## [v0.0.81] - 2026-06-29
 
+- No changes
+
+
+## [v0.0.81] - 2026-06-29
+
 - `Image` `placeholder="blur"` now works without manual setup. Importing with the `?toil` flag (`import hero from './hero.webp?toil'`) runs a build-time `sharp` step that generates a tiny resized + blurred base64 LQIP plus the intrinsic dimensions, and `Image` consumes that object to auto-fill the blur placeholder and aspect-ratio (the Next.js static-import model).
 - A plain string `src` with no `blurDataURL` now falls back to a neutral skeleton shimmer instead of rendering nothing.
 - `width`+`height` (or the `?toil` dimensions) emit an explicit `aspect-ratio`, so the image reserves space and can't shift layout on load — for both the plain and `fill` paths. Rebuild to pick up the updated shell CSS.
