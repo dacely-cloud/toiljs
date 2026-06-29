@@ -404,6 +404,15 @@ const DEFAULT_HTML =
 /** The module entry that boots the app, injected into the HTML (resolved relative to `.toil`). */
 const ENTRY_SCRIPT = `<script type="module" src="./entry.tsx"></script>`;
 
+/** Toil's component base CSS, baked into the shell `<head>` so built-in components (the `Image`
+ * `fill`/blur layout) style via overridable classes instead of forced-inline styles, and stay
+ * SSR-safe (present before JS). The app can restyle `.toil-img-*` freely. */
+const TOIL_BASE_STYLE =
+    `<style id="toil-base">` +
+    `.toil-img-fill{position:absolute;inset:0;width:100%;height:100%}` +
+    `.toil-img-blur{background-size:cover;background-position:center;filter:blur(20px)}` +
+    `</style>`;
+
 /**
  * Produces the `.toil/index.html` Vite entry from the project's `public/index.html` template (or
  * the built-in default if absent), ensuring the generated module entry script is present. Users
@@ -418,6 +427,13 @@ function buildHtml(cfg: ResolvedToilConfig): string {
         html = html.includes('</body>')
             ? html.replace('</body>', `    ${ENTRY_SCRIPT}\n  </body>`)
             : `${html}\n${ENTRY_SCRIPT}\n`;
+    }
+    // Ship toil's component base CSS once, so `Image` `fill`/blur lay out via overridable classes
+    // instead of inline styles. Idempotent (keyed on the `toil-base` id).
+    if (!html.includes('id="toil-base"')) {
+        html = html.includes('</head>')
+            ? html.replace('</head>', `    ${TOIL_BASE_STYLE}\n  </head>`)
+            : `${TOIL_BASE_STYLE}\n${html}`;
     }
     return html;
 }
