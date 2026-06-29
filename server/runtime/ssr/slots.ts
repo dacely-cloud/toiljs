@@ -131,6 +131,14 @@ export class SlotValues {
         return this;
     }
 
+    /** Set the document `<title>` for THIS request, overriding the template's baked title. Use for
+     * data-driven titles on SSR routes (e.g. a blog post's title from its loader). React-escaped.
+     * Carried as an internal `x-toil-ssr-title` header the host consumes — it replaces the `<title>`
+     * and strips the header, so it never reaches the client. */
+    setTitle(title: string): SlotValues {
+        return this.setHeader('x-toil-ssr-title', escapeHtml(title));
+    }
+
     setStatus(status: u16): SlotValues {
         this.status = status;
         return this;

@@ -169,6 +169,19 @@ export interface SsrResult {
     html: Uint8Array;
 }
 
+/** The internal header a guest's `SlotValues.setTitle` rides in: the host splices its value into the
+ * document `<title>` and strips it, so a per-request title never reaches the client as a real header. */
+const SSR_TITLE_HEADER = 'x-toil-ssr-title';
+
+/** Replace the document `<title>` content (the guest set a per-request title; the value is already
+ * React-escaped). Mirrors the host `assemble` so dev and prod agree. */
+function replaceTitle(html: Uint8Array, title: string): Uint8Array {
+    const out = new TextDecoder()
+        .decode(html)
+        .replace(/<title>[\s\S]*?<\/title>/i, `<title>${title}</title>`);
+    return new TextEncoder().encode(out);
+}
+
 /**
  * Decode the guest envelope and splice it into `route`'s template. Returns null
  * to fall back to client rendering: a fail-safe envelope (status >= 500, e.g. no
@@ -182,5 +195,14 @@ export function assembleSsr(route: SsrRoute, envelope: Uint8Array): SsrResult | 
     const inserts = route.entries
         .map((e) => ({ offset: e.offset, value: decoded.values.get(e.id) ?? new Uint8Array(0) }))
         .sort((a, b) => a.offset - b.offset);
-    return { status: decoded.status, headers: decoded.headers, html: splice(route.tmpl, inserts) };
+    let html = splice(route.tmpl, inserts);
+    // A guest-set per-request <title> (SlotValues.setTitle) rides in an internal header: splice it into
+    // the <title> and strip the header so it never reaches the client.
+    let headers = decoded.headers;
+    const ti = headers.findIndex(([k]) => k.toLowerCase() === SSR_TITLE_HEADER);
+    if (ti >= 0) {
+        html = replaceTitle(html, headers[ti][1]);
+        headers = headers.filter((_, i) => i !== ti);
+    }
+    return { status: decoded.status, headers, html };
 }
