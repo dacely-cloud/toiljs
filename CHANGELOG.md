@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.76] - 2026-06-29
+
+- SSR routes now render their per-page SEO in the served `<head>`: each `ssr=true` route bakes its resolved metadata (title, description, canonical, og:* incl `og:image`, twitter, jsonLd) into the template head, at parity with the static prerendered page. Previously every SSR route served the generic shell `<head>`, so per-route titles/descriptions and social-preview images were missing server-side.
+- `Image`'s `fill` and blur placeholder now lay out via overridable CSS classes (`toil-img-fill` / `toil-img-blur`, shipped in the shell `<head>`) instead of forced-inline styles, so they are SSR-safe and the app's own CSS can override them.
+
 ## [v0.0.75] - 2026-06-29
 
 - No changes
