@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.80] - 2026-06-29
+
+- Fix `Image` `fill`: it no longer absolutely-positions the image, which (without a positioned, sized ancestor) made it either fill the whole page or collapse to a zero-height box and vanish. `fill` now lays out in-block — it fills its box's width at natural height, or covers the box when sized via `width`/`height`/`aspectRatio` — so it can't escape or disappear. Rebuild to pick up the updated shell CSS.
+
 ## [v0.0.79] - 2026-06-29
 
 - No changes
