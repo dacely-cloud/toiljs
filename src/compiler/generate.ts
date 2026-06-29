@@ -36,6 +36,9 @@ const IMAGETOOLS_MODULES = [
     `declare module '*as=srcset' {\n    const src: string;\n    export default src;\n}`,
     `declare module '*as=url' {\n    const src: string;\n    export default src;\n}`,
     `declare module '*as=metadata' {\n    const metadata: { src: string; width?: number; height?: number; format?: string }[];\n    export default metadata;\n}`,
+    // `import hero from './hero.webp?toil'` -> a Toil.Image source carrying an auto-generated blur LQIP
+    // and intrinsic size (see compiler/image-blur.ts). Pass it straight to `<Toil.Image src={hero} />`.
+    `declare module '*?toil' {\n    const image: { src: string; width: number; height: number; blurDataURL: string };\n    export default image;\n}`,
 ].join('\n');
 
 export const TOIL_ENV_DTS =
@@ -412,6 +415,9 @@ const TOIL_BASE_STYLE =
     `.toil-img-fill-box{display:block;overflow:hidden}` +
     `.toil-img-fill{display:block;width:100%;height:100%;object-fit:cover}` +
     `.toil-img-blur{background-size:cover;background-position:center;filter:blur(20px)}` +
+    `.toil-img-skeleton{background:linear-gradient(90deg,#ececed 25%,#f4f4f5 37%,#ececed 63%);background-size:400% 100%;animation:toil-img-shimmer 1.4s ease infinite}` +
+    `@keyframes toil-img-shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}` +
+    `@media (prefers-reduced-motion:reduce){.toil-img-skeleton{animation:none}}` +
     `</style>`;
 
 /**

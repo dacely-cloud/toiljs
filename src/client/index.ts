@@ -96,7 +96,7 @@ export type {
 export { usePageSearch } from './search/use-page-search.js';
 export type { PageSearch } from './search/use-page-search.js';
 export { Image } from './components/Image.js';
-export type { ImageProps } from './components/Image.js';
+export type { ImageProps, ToilImageSource } from './components/Image.js';
 export { Script } from './components/Script.js';
 export type { ScriptProps, ScriptStrategy } from './components/Script.js';
 export { Form } from './components/Form.js';

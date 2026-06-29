@@ -12,6 +12,7 @@ import { createLogger, type InlineConfig, type Logger, mergeConfig, type PluginO
 import { type ResolvedToilConfig } from './config.js';
 import { fontPreloadPlugin } from './fonts.js';
 import { imageReportPlugin } from './image-report.js';
+import { imageBlurPlugin } from './image-blur.js';
 import { toilPlugin } from './plugin.js';
 import { prerenderPlugin } from './prerender.js';
 
@@ -166,6 +167,10 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
         customLogger: brandedLogger(),
         plugins: [
             tailwind,
+            // Auto-generate a tiny blurred base64 LQIP for `?toil` image imports (consumed by
+            // `Toil.Image` placeholder="blur"). Runs before imagetools (enforce:'pre') so it owns the
+            // `?toil` query; the bare re-imported src still flows through imagetools below.
+            cfg.images ? imageBlurPlugin() : undefined,
             // Build-time image resize/optimization. Every *imported* raster image is compressed to
             // webp by default (so a plain `<img src={imported}>` is optimized too, not just
             // `Toil.Image`); add `?w=400;800&format=…` to resize or pick a format. `public/` assets

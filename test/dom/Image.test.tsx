@@ -23,8 +23,8 @@ describe('Image', () => {
         expect(img.getAttribute('width')).toBe('200');
         expect(img.getAttribute('height')).toBe('100');
         expect(img.getAttribute('fetchpriority')).toBe('auto');
-        // A plain image adds no inline style and no toil class (nothing to lay out).
-        expect(img.getAttribute('style')).toBe(null);
+        // width+height reserve space via an explicit aspect-ratio (survives responsive `width:100%`).
+        expect(img.style.aspectRatio).toBe('200 / 100');
         expect(img.className).toBe('');
     });
 
@@ -104,5 +104,41 @@ describe('Image', () => {
         fireEvent.load(img);
         expect(img.style.backgroundImage).toBe('');
         expect(img.classList.contains('toil-img-blur')).toBe(false);
+    });
+
+    it('falls back to a skeleton shimmer when placeholder="blur" has no blurDataURL', () => {
+        const { getByAltText } = render(
+            <Image src="/s.png" alt="s" width={10} height={10} placeholder="blur" />,
+        );
+        const img = getByAltText('s') as HTMLImageElement;
+        // never a silent no-op: a neutral skeleton paints (not the blur class, no background image)
+        expect(img.classList.contains('toil-img-skeleton')).toBe(true);
+        expect(img.classList.contains('toil-img-blur')).toBe(false);
+        expect(img.style.backgroundImage).toBe('');
+        fireEvent.load(img);
+        expect(img.classList.contains('toil-img-skeleton')).toBe(false);
+    });
+
+    it('reserves space with an aspect-ratio derived from width+height', () => {
+        const { getByAltText } = render(<Image src="/a.png" alt="a" width={400} height={300} />);
+        const img = getByAltText('a') as HTMLImageElement;
+        expect(img.style.aspectRatio).toBe('400 / 300');
+        expect(img.getAttribute('width')).toBe('400');
+        expect(img.getAttribute('height')).toBe('300');
+    });
+
+    it('reads src/dimensions/blur from a ?toil import object', () => {
+        const { getByAltText } = render(
+            <Image
+                src={{ src: '/hero.webp', width: 40, height: 30, blurDataURL: 'data:image/blur' }}
+                alt="h"
+                placeholder="blur"
+            />,
+        );
+        const img = getByAltText('h') as HTMLImageElement;
+        expect(img.getAttribute('src')).toBe('/hero.webp');
+        expect(img.style.aspectRatio).toBe('40 / 30');
+        expect(img.classList.contains('toil-img-blur')).toBe(true);
+        expect(img.style.backgroundImage).toContain('data:image/blur');
     });
 });
