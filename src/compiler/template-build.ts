@@ -380,6 +380,22 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                     metadata,
                     pattern: r.pattern,
                 });
+                // An imported image asset is resolved through the dev SSR server to a dev-only URL
+                // (/@imagetools/..., /@fs/..., /src/...) that has no production path, so baking it into
+                // a frozen .tmpl would 404 in the built app. Rather than ship a broken template, skip
+                // the route (it client-renders, where the asset resolves correctly) and tell the author
+                // to use a public/ string path for images on SSR routes.
+                const devAsset = /(?:src|href)="\/(?:@imagetools|@fs|@id|src)\//.exec(
+                    art.tmpl.toString('utf8'),
+                );
+                if (devAsset) {
+                    warn(
+                        `skipped ${r.pattern}: an imported asset resolves to a dev-only URL ` +
+                            `("${devAsset[0]}…") with no production path — reference images on SSR routes ` +
+                            `via a public/ string path (e.g. src="/images/x.webp") — falling back to client rendering`,
+                    );
+                    continue;
+                }
                 rendered.push({ pattern: r.pattern, art });
             } catch (err) {
                 warn(
