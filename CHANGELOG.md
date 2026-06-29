@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.79] - 2026-06-29
+
+- Add `SlotValues.setTitle(s)`: a guest `render` can set a per-request SSR `<title>` (e.g. a data-driven blog or profile title). The host splices it into the document title and strips the internal carrier header so it never reaches the client. Build-time titles (static metadata / the component head) are unchanged; `setTitle` only overrides when the guest opts in.
+
 ## [v0.0.78] - 2026-06-29
 
 - No changes
