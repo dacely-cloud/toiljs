@@ -45,6 +45,8 @@ import {
     extractFromHtml,
 } from './template.js';
 import { createViteConfig } from './vite.js';
+import { extractStaticMetadata, loadTypeScript } from './prerender.js';
+import { injectSeoHtml, routeSeo, type SeoConfig } from './seo.js';
 
 /** Marker element the client `mount` looks for to switch to `hydrateRoot`. */
 const SSR_MARKER = '<template id="__toil_ssr"></template>';
@@ -78,6 +80,14 @@ export interface RouteRenderInput {
     /** React's `Suspense` from the SAME instance as {@link createElement}, so the
      * Suspense dehydration markers (`<!--$-->`) emitted match the client's. */
     Suspense?: typeof Suspense;
+    /** Site SEO config. When set, this route's resolved SEO (site defaults overlaid with the
+     * route's static `metadata`) is baked into the template `<head>`, so an SSR route serves the
+     * same per-page title/description/og (incl og:image) a crawler gets from `<route>/index.html`. */
+    seo?: SeoConfig | null;
+    /** The route's static `export const metadata` (extracted at build), overlaid on the site SEO. */
+    metadata?: Record<string, unknown> | null;
+    /** The route pattern, used for the canonical / `og:url`. */
+    pattern?: string;
 }
 
 export interface TemplateArtifacts {
@@ -162,7 +172,16 @@ export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts
     } finally {
         input.setSsrBuild(false);
     }
-    const full = injectIntoShell(input.shell, stripHoistedResourceTags(routeHtml));
+    let full = injectIntoShell(input.shell, stripHoistedResourceTags(routeHtml));
+    // Bake the route's resolved SEO into the template <head>, mirroring the static prerender
+    // (prerender.ts / ssg.ts) so an `ssr=true` route serves the SAME per-page metadata (title,
+    // description, canonical, og:* incl og:image, twitter, jsonLd) a crawler gets from the static
+    // <route>/index.html — which the dynamic SSR template otherwise shadows at request time. Runs on
+    // the FULL spliced document (injectSeoHtml's <title>/</head> regexes need the shell head, not the
+    // stripped fragment) and BEFORE extractFromHtml so the coherence hash covers the baked head.
+    if (input.seo) {
+        full = injectSeoHtml(full, routeSeo(input.seo, input.metadata ?? null, input.pattern ?? '/'));
+    }
     const extracted: Extracted = extractFromHtml(full);
     const ids = assignSlotIds(extracted.slots);
     const hash = coherenceHash(extracted.tmpl, extracted.slots);
@@ -259,6 +278,10 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
     const routes = scanRoutes(cfg.routesAbsDir).filter((r) => r.slot === undefined && !r.intercept);
     if (routes.length === 0) return [];
 
+    // Load TypeScript once (same as prerender.ts) to read each route's static `metadata` for the
+    // SSR <head>. Only needed when the project configures SEO.
+    const ts = cfg.seo ? await loadTypeScript(cfg.root) : null;
+
     const warn = (msg: string): void => {
         process.stderr.write(`  toil: SSR ${msg}\n`);
     };
@@ -332,6 +355,11 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                     layouts.push(lm.default);
                 }
 
+                // The route's static `metadata` export (same static-AST read prerender.ts uses, so
+                // the SSR head matches the static <route>/index.html exactly). generateMetadata is
+                // dynamic and skipped here, as in prerender/ssg.
+                const metadata = ts ? extractStaticMetadata(ts, r.file) : null;
+
                 const name = routeTemplateName(r.pattern);
                 // Tell location hooks which URL this template is for, so a NavLink's active
                 // class / aria-current render as they will on the client at this route (else
@@ -348,6 +376,9 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                     createElement: react.createElement,
                     renderToString: reactDomServer.renderToString,
                     Suspense: react.Suspense,
+                    seo: cfg.seo,
+                    metadata,
+                    pattern: r.pattern,
                 });
                 rendered.push({ pattern: r.pattern, art });
             } catch (err) {

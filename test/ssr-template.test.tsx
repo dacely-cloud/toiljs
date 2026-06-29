@@ -392,4 +392,58 @@ describe('ssr build orchestration', () => {
             fs.rmSync(dir, { recursive: true, force: true });
         }
     });
+
+    it('bakes the route SEO (title/description/og incl og:image) into the template <head>', () => {
+        const art = extractRouteTemplate({
+            name: 'profile',
+            Page: ProfilePage,
+            layouts: [Layout],
+            loaderData: sample,
+            loaderContext: LoaderDataContext,
+            setSsrBuild: __setSsrBuild,
+            shell: SHELL,
+            seo: {
+                url: 'https://ex.com',
+                title: 'Site',
+                openGraph: { siteName: 'Site', image: 'https://ex.com/og.png' },
+            },
+            metadata: {
+                title: 'Profile',
+                description: 'A user profile',
+                openGraph: { title: 'Profile OG' },
+            },
+            pattern: '/u/ada',
+        });
+        const tmpl = art.tmpl.toString('utf8');
+        // The route's own title replaces the shell's, and its metadata + the site SEO are in <head>,
+        // so an SSR route serves the same per-page tags a crawler would get from <route>/index.html.
+        expect(tmpl).toContain('<title>Profile</title>');
+        expect(tmpl).not.toContain('<title>t</title>');
+        expect(tmpl).toContain('<meta name="description" content="A user profile" />');
+        expect(tmpl).toContain('<meta property="og:title" content="Profile OG" />');
+        expect(tmpl).toContain('<meta property="og:image" content="https://ex.com/og.png" />');
+        // Per-route canonical / og:url point at THIS route, not the site root.
+        expect(tmpl).toContain('<link rel="canonical" href="https://ex.com/u/ada" />');
+        expect(tmpl).toContain('<meta property="og:url" content="https://ex.com/u/ada" />');
+        // The baked head is inside art.tmpl, so it is covered by the coherence hash.
+        expect(art.hash).toHaveLength(32);
+        // Holes are unaffected (still body-only).
+        expect(art.slotCount).toBe(3);
+    });
+
+    it('skips SEO injection when no seo config is passed (head unchanged)', () => {
+        const art = extractRouteTemplate({
+            name: 'p',
+            Page: ProfilePage,
+            layouts: [Layout],
+            loaderData: sample,
+            loaderContext: LoaderDataContext,
+            setSsrBuild: __setSsrBuild,
+            shell: SHELL,
+        });
+        const tmpl = art.tmpl.toString('utf8');
+        expect(tmpl).toContain('<title>t</title>'); // shell title untouched
+        expect(tmpl).not.toContain('og:image');
+        expect(tmpl).not.toContain('rel="canonical"');
+    });
 });

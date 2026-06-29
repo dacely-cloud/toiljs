@@ -11,7 +11,11 @@ export default defineConfig({
             url: 'https://toil.example',
             title: 'ToilJS',
             description: 'Planet-scale apps from a single repo.',
-            openGraph: { type: 'website', siteName: 'ToilJS' },
+            openGraph: {
+                type: 'website',
+                siteName: 'ToilJS',
+                image: 'https://toil.example/images/logo.svg',
+            },
             jsonLd: { '@context': 'https://schema.org', '@type': 'WebSite', name: 'ToilJS' },
             robots: { ai: 'allow' },
             llms: { instructions: 'ToilJS is a full-stack TypeScript framework. Docs live at /get-started.' }
