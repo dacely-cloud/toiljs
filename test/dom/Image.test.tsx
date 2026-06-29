@@ -41,7 +41,7 @@ describe('Image', () => {
         expect(img.getAttribute('fetchpriority')).toBe('high');
     });
 
-    it('fill drops width/height and lays out via the toil-img-fill class, not inline styles', () => {
+    it('fill wraps the image in a positioned box; the image lays out via a class, not inline styles', () => {
         const { getByAltText } = render(
             <Image
                 src="/bg.png"
@@ -58,21 +58,33 @@ describe('Image', () => {
         expect(img.style.position).toBe('');
         // objectFit is genuinely per-instance, so it stays inline.
         expect(img.style.objectFit).toBe('cover');
+        // The image is wrapped in a relatively-positioned <span> box, so it can only fill THAT box.
+        const box = img.parentElement as HTMLElement;
+        expect(box.tagName).toBe('SPAN');
+        expect(box.classList.contains('toil-img-fill-box')).toBe(true);
     });
 
-    it('preserves the caller className alongside the fill class', () => {
+    it('puts the caller className/size on the fill box, the fill class on the image', () => {
         const { getByAltText } = render(
             <Image
                 src="/bg.png"
                 alt="bg2"
                 fill
+                width={400}
+                height={300}
                 className="hero"
             />,
         );
         const img = getByAltText('bg2') as HTMLImageElement;
-        expect(img.classList.contains('hero')).toBe(true);
+        const box = img.parentElement as HTMLElement;
+        // The caller's className + size land on the box (what they size); the image just fills it.
+        expect(box.classList.contains('hero')).toBe(true);
+        expect(box.classList.contains('toil-img-fill-box')).toBe(true);
+        expect(box.style.width).toBe('400px');
+        expect(box.style.height).toBe('300px');
         expect(img.classList.contains('toil-img-fill')).toBe(true);
         expect(img.getAttribute('style')).toBe(null);
+        expect(img.hasAttribute('width')).toBe(false);
     });
 
     it('shows a blur placeholder until the image loads', () => {

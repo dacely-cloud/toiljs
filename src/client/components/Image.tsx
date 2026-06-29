@@ -16,9 +16,10 @@ export interface ImageProps extends Omit<
     /** Intrinsic height in px. Set together with `width` to reserve space (avoids layout shift). */
     height?: number;
     /**
-     * Fill the nearest positioned ancestor (the parent must be `position: relative|absolute|fixed`).
-     * The image is absolutely positioned at 100% × 100%; `width`/`height` are ignored. Pair with
-     * `objectFit` to control cropping.
+     * Fill a box toil wraps around the image (a relatively-positioned, block-level `<span>`), so the
+     * image can never escape to fill the page. Size the box via `width`/`height` or `style` (e.g.
+     * `style={{ aspectRatio: '16/9' }}`); `className`/`style` apply to the box, not the `<img>`. Pair
+     * with `objectFit` to control cropping.
      */
     fill?: boolean;
     /** `object-fit` for the rendered image (handy with `fill`). */
@@ -28,7 +29,11 @@ export interface ImageProps extends Omit<
      * loading. Use for above-the-fold hero images; everything else stays lazy. Default `false`.
      */
     priority?: boolean;
-    /** Placeholder shown until the image loads: `'empty'` (default) or `'blur'` (needs `blurDataURL`). */
+    /**
+     * Placeholder shown until the image loads: `'empty'` (default) or `'blur'`. `'blur'` needs
+     * `blurDataURL` AND a reserved size (`width`+`height`, or `fill`) — without a box there's nothing
+     * to paint it in. Layout shift is prevented by the reserved size, not by the placeholder.
+     */
     placeholder?: 'empty' | 'blur';
     /** A tiny (base64) image shown blurred behind the image while it loads, when `placeholder="blur"`. */
     blurDataURL?: string;
@@ -60,25 +65,25 @@ export function Image(props: ImageProps): ReactNode {
     const [loaded, setLoaded] = useState(false);
     const showBlur = placeholder === 'blur' && blurDataURL !== undefined && !loaded;
 
-    // `fill` and the blur placeholder are applied via toil's shipped CSS classes (see `buildHtml`'s
-    // `<style id="toil-base">`) rather than inline styles: the layout is then SSR-safe (it's in the
-    // document, not injected by JS) AND the app can override it with its own CSS, which an inline
-    // `style` would block. Only the genuinely per-instance bits that can't be a static class stay
-    // inline — `objectFit` and the blur image URL — and the caller's own `style` still wins.
-    const className =
-        [userClassName, fill ? 'toil-img-fill' : undefined, showBlur ? 'toil-img-blur' : undefined]
+    // Layout + the blur placeholder come from toil's shipped CSS classes (see `buildHtml`'s
+    // `<style id="toil-base">`) rather than inline styles, so they're SSR-safe AND overridable by the
+    // app's CSS. Only genuinely per-instance bits stay inline: `objectFit` and the blur image URL. For
+    // a non-`fill` image the caller's `className`/`style` ride on the <img>; for `fill` they go on the
+    // wrapper box (below) instead, since that box is what the caller sizes.
+    const imgClass =
+        [fill ? 'toil-img-fill' : userClassName, showBlur ? 'toil-img-blur' : undefined]
             .filter(Boolean)
             .join(' ') || undefined;
-    const dynamicStyle: CSSProperties = {
+    const imgStyle: CSSProperties = {
         ...(objectFit !== undefined ? { objectFit } : {}),
         ...(showBlur ? { backgroundImage: `url(${blurDataURL})` } : {}),
-        ...style,
+        ...(fill ? {} : style),
     };
 
-    return (
+    const img = (
         <img
             {...rest}
-            className={className}
+            className={imgClass}
             src={src}
             alt={alt}
             width={fill ? undefined : width}
@@ -90,7 +95,27 @@ export function Image(props: ImageProps): ReactNode {
                 setLoaded(true);
                 onLoad?.(event);
             }}
-            style={Object.keys(dynamicStyle).length > 0 ? dynamicStyle : undefined}
+            style={Object.keys(imgStyle).length > 0 ? imgStyle : undefined}
         />
+    );
+
+    if (!fill) return img;
+
+    // `fill`: the image is absolutely positioned, so without a positioned ancestor it escapes to fill
+    // the nearest positioned one (often the whole page). Wrap it in our OWN relatively-positioned,
+    // block-level box so it can only ever fill THIS box, which the caller sizes via `width`/`height`
+    // or `style` (e.g. `<Image fill width={400} height={300} />` or `style={{ aspectRatio: '16/9' }}`).
+    const boxStyle: CSSProperties = {
+        ...(width !== undefined ? { width } : {}),
+        ...(height !== undefined ? { height } : {}),
+        ...style,
+    };
+    return (
+        <span
+            className={[userClassName, 'toil-img-fill-box'].filter(Boolean).join(' ') || undefined}
+            style={Object.keys(boxStyle).length > 0 ? boxStyle : undefined}
+        >
+            {img}
+        </span>
     );
 }

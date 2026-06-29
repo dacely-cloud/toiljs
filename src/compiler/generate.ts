@@ -409,6 +409,7 @@ const ENTRY_SCRIPT = `<script type="module" src="./entry.tsx"></script>`;
  * SSR-safe (present before JS). The app can restyle `.toil-img-*` freely. */
 const TOIL_BASE_STYLE =
     `<style id="toil-base">` +
+    `.toil-img-fill-box{position:relative;display:block;overflow:hidden}` +
     `.toil-img-fill{position:absolute;inset:0;width:100%;height:100%}` +
     `.toil-img-blur{background-size:cover;background-position:center;filter:blur(20px)}` +
     `</style>`;
