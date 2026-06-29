@@ -11,7 +11,10 @@ export default function Layout({ children }: { children?: ReactNode }) {
                 A route's own `metadata` / `<Head>` overrides these. */}
             <Toil.Head
                 title="ToilJS"
-                meta={[{ name: 'description', content: 'Planet-scale apps from a single repo.' }]}
+                meta={[
+                    { name: 'description', content: 'Planet-scale apps from a single repo.' },
+                    { name: 'generator', content: 'ToilJS' },
+                ]}
             />
             <Header />
 

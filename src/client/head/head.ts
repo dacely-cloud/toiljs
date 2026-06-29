@@ -6,6 +6,8 @@
  */
 import { useEffect, useLayoutEffect } from 'react';
 
+import { __isSsrBuild } from '../ssr/markers';
+
 /** A `<meta>` tag. Use `name` or `property` (OpenGraph) as the dedup key; extra attrs pass through. */
 export interface MetaTag {
     readonly name?: string;
@@ -68,6 +70,12 @@ let baseTitle: string | null = null;
 // via `setRouteHead` on each navigation.
 let routeHead: HeadSpec | null = null;
 
+// Component-level head (`useHead`/`useTitle`/<Head>) collected during the build's SSR extraction.
+// renderToString doesn't run effects, so specs are pushed during render (see `useHead`); the template
+// extractor drains them with `__drainSsrHead` after each route renders, to bake the route's
+// component-level head into the server HTML (not just its static `metadata` export).
+let ssrHeadSink: HeadSpec[] = [];
+
 function setAttrs(el: Element, attrs: Record<string, string | undefined>): void {
     el.setAttribute('data-toil-head', '');
     for (const [key, value] of Object.entries(attrs)) {
@@ -117,6 +125,9 @@ function removeHead(id: number): void {
  * Reverts on unmount. Compose freely, a root layout can set defaults a page overrides.
  */
 export function useHead(spec: HeadSpec): void {
+    // During the build's SSR extraction (no document, effects don't run), collect the spec so the
+    // route's component-level head reaches the server HTML. A no-op in the browser bundle.
+    if (__isSsrBuild()) ssrHeadSink.push(spec);
     const json = JSON.stringify(spec);
     useEffect(() => {
         const id = addHead(JSON.parse(json) as HeadSpec);
@@ -156,4 +167,16 @@ export function useRouteHead(spec: HeadSpec | undefined): void {
             setRouteHead(null);
         };
     }, [json]);
+}
+
+/**
+ * Drains the component-level head (`useHead`/`useTitle`/<Head>) collected during ONE route's SSR-build
+ * render and resolves it, then resets the sink for the next route. Called by the build's template
+ * extractor right after `renderToString`, so the server HTML carries the same component head the client
+ * computes — not just the route's static `metadata` export. (Build-only; unused in the browser.)
+ */
+export function __drainSsrHead(): ResolvedHead {
+    const resolved = mergeHead(ssrHeadSink);
+    ssrHeadSink = [];
+    return resolved;
 }

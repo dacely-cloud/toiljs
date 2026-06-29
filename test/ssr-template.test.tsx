@@ -446,4 +446,37 @@ describe('ssr build orchestration', () => {
         expect(tmpl).not.toContain('og:image');
         expect(tmpl).not.toContain('rel="canonical"');
     });
+
+    it('bakes the component-level head (useHead/<Head>) the static metadata did not set', () => {
+        const componentHead = {
+            title: 'Layout Title',
+            meta: [
+                { name: 'author', content: 'me' },
+                { name: 'description', content: 'layout desc' },
+            ],
+            link: [{ rel: 'me', href: 'https://x.test' }],
+        };
+        const art = extractRouteTemplate({
+            name: 'p',
+            Page: ProfilePage,
+            layouts: [Layout],
+            loaderData: sample,
+            loaderContext: LoaderDataContext,
+            setSsrBuild: __setSsrBuild,
+            shell: SHELL,
+            seo: { title: 'Site', description: 'site desc' },
+            metadata: { description: 'route desc' }, // route sets a description but NO title
+            pattern: '/p',
+            drainSsrHead: () => componentHead,
+        });
+        const tmpl = art.tmpl.toString('utf8');
+        // Component title wins because the route's static metadata set no title of its own.
+        expect(tmpl).toContain('<title>Layout Title</title>');
+        // A component meta the route SEO didn't carry is added, owned by the client (data-toil-head).
+        expect(tmpl).toContain('<meta data-toil-head name="author" content="me" />');
+        // The component description is deduped (the route SEO already baked one).
+        expect(tmpl.match(/name="description"/g)?.length).toBe(1);
+        // A component link is added too.
+        expect(tmpl).toContain('<link data-toil-head rel="me" href="https://x.test" />');
+    });
 });

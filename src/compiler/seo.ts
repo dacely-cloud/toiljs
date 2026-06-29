@@ -123,7 +123,7 @@ const AI_CRAWLERS: readonly string[] = [
 ];
 
 /** Escapes a value for use inside a double-quoted HTML attribute (prevents attribute-breakout XSS). */
-function escapeAttr(value: string): string {
+export function escapeAttr(value: string): string {
     return value
         .replace(/&/g, '&amp;')
         .replace(/"/g, '&quot;')

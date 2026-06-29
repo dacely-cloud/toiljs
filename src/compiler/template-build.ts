@@ -46,7 +46,7 @@ import {
 } from './template.js';
 import { createViteConfig } from './vite.js';
 import { extractStaticMetadata, loadTypeScript } from './prerender.js';
-import { injectSeoHtml, routeSeo, type SeoConfig } from './seo.js';
+import { escapeAttr, escapeHtml, injectSeoHtml, routeSeo, type SeoConfig } from './seo.js';
 
 /** Marker element the client `mount` looks for to switch to `hydrateRoot`. */
 const SSR_MARKER = '<template id="__toil_ssr"></template>';
@@ -88,6 +88,9 @@ export interface RouteRenderInput {
     metadata?: Record<string, unknown> | null;
     /** The route pattern, used for the canonical / `og:url`. */
     pattern?: string;
+    /** Drains the component-level head (`useHead`/`useTitle`/`<Head>`) collected during this route's
+     * render, so it's baked into the SSR `<head>` too. From `toiljs/client`'s `__drainSsrHead`. */
+    drainSsrHead?: () => SsrHead;
 }
 
 export interface TemplateArtifacts {
@@ -152,6 +155,65 @@ function stripHoistedResourceTags(html: string): string {
         .replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi, '');
 }
 
+/** The resolved component-level head drained from the client head manager during an SSR-build render
+ * (structurally `ResolvedHead` from `toiljs/client`). */
+interface SsrHead {
+    title?: string;
+    meta: { name?: string; property?: string; content: string; [attr: string]: string | undefined }[];
+    link: { rel: string; href: string; [attr: string]: string | undefined }[];
+}
+
+/** Render one head `<meta>`/`<link>` to an HTML tag, marked `data-toil-head` so the client head
+ * manager owns it on hydration (it removes + re-emits `[data-toil-head]` tags on every navigation,
+ * exactly as it does for the tags it adds at runtime — so there's no duplication or stale leak). */
+function headTag(tag: 'meta' | 'link', attrs: Record<string, string | undefined>): string {
+    const pairs = Object.entries(attrs)
+        .filter((e): e is [string, string] => e[1] !== undefined)
+        .map(([k, v]) => `${k}="${escapeAttr(v)}"`);
+    return `    <${tag} data-toil-head ${pairs.join(' ')} />`;
+}
+
+/**
+ * Bake the route's component-level head (layout `<Head>` + a page's `useHead`/`useTitle`, collected
+ * during render) into the document head: the title when the route's static `metadata` set none (the
+ * component title outranks the site default), plus any `<meta>`/`<link>` the route SEO didn't already
+ * carry — so the server HTML reflects the SAME head the client computes, not just the static metadata.
+ */
+function injectComponentHead(
+    html: string,
+    head: SsrHead,
+    routeMetadata: Record<string, unknown> | null,
+): string {
+    let out = html;
+    if (head.title !== undefined && (routeMetadata === null || routeMetadata.title === undefined)) {
+        const tag = `<title>${escapeHtml(head.title)}</title>`;
+        out = /<title>[\s\S]*?<\/title>/i.test(out)
+            ? out.replace(/<title>[\s\S]*?<\/title>/i, tag)
+            : out.replace(/<\/head>/i, `    ${tag}\n  </head>`);
+    }
+    const tags: string[] = [];
+    for (const m of head.meta) {
+        const key =
+            m.name !== undefined
+                ? `name="${m.name}"`
+                : m.property !== undefined
+                  ? `property="${m.property}"`
+                  : null;
+        if (key === null || out.includes(key)) continue; // already covered by the route SEO
+        tags.push(headTag('meta', m));
+    }
+    for (const l of head.link) {
+        if (out.includes(`href="${l.href}"`)) continue;
+        tags.push(headTag('link', l));
+    }
+    if (tags.length > 0) {
+        out = out.includes('</head>')
+            ? out.replace(/<\/head>/i, `${tags.join('\n')}\n  </head>`)
+            : `${tags.join('\n')}\n${out}`;
+    }
+    return out;
+}
+
 /** Render one route to its template artifacts (pure given its inputs). */
 export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts {
     const h = input.createElement ?? createElement;
@@ -165,6 +227,8 @@ export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts
         h,
         SuspenseComp,
     );
+    // Clear any specs leaked from a previously-failed route render before collecting this route's.
+    input.drainSsrHead?.();
     input.setSsrBuild(true);
     let routeHtml: string;
     try {
@@ -172,6 +236,9 @@ export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts
     } finally {
         input.setSsrBuild(false);
     }
+    // The component-level head (layout <Head> + page useHead/useTitle) was collected during the render
+    // above; drain it now, per route, so it can be baked alongside the static SEO.
+    const componentHead: SsrHead = input.drainSsrHead?.() ?? { meta: [], link: [] };
     let full = injectIntoShell(input.shell, stripHoistedResourceTags(routeHtml));
     // Bake the route's resolved SEO into the template <head>, mirroring the static prerender
     // (prerender.ts / ssg.ts) so an `ssr=true` route serves the SAME per-page metadata (title,
@@ -182,6 +249,10 @@ export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts
     if (input.seo) {
         full = injectSeoHtml(full, routeSeo(input.seo, input.metadata ?? null, input.pattern ?? '/'));
     }
+    // Then add the component-level head (a layout's <Head>, a page's useHead/useTitle) that the static
+    // metadata export + site SEO didn't already cover, so the server HTML carries the same head the
+    // client computes.
+    full = injectComponentHead(full, componentHead, input.metadata ?? null);
     const extracted: Extracted = extractFromHtml(full);
     const ids = assignSlotIds(extracted.slots);
     const hash = coherenceHash(extracted.tmpl, extracted.slots);
@@ -295,6 +366,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
     const client = (await server.ssrLoadModule('toiljs/client')) as unknown as {
         __setSsrBuild: (on: boolean) => void;
         __setSsrLocation: (path: string | null) => void;
+        __drainSsrHead: () => SsrHead;
         LoaderDataContext: Context<unknown>;
     };
 
@@ -372,6 +444,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                     loaderData,
                     loaderContext: client.LoaderDataContext,
                     setSsrBuild: client.__setSsrBuild,
+                    drainSsrHead: client.__drainSsrHead,
                     shell,
                     createElement: react.createElement,
                     renderToString: reactDomServer.renderToString,
