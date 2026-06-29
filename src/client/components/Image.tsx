@@ -16,10 +16,11 @@ export interface ImageProps extends Omit<
     /** Intrinsic height in px. Set together with `width` to reserve space (avoids layout shift). */
     height?: number;
     /**
-     * Fill a box toil wraps around the image (a relatively-positioned, block-level `<span>`), so the
-     * image can never escape to fill the page. Size the box via `width`/`height` or `style` (e.g.
-     * `style={{ aspectRatio: '16/9' }}`); `className`/`style` apply to the box, not the `<img>`. Pair
-     * with `objectFit` to control cropping.
+     * Make the image fill the width of a box toil wraps around it (a block-level `<span>`), scaling to
+     * its natural height — or, if you size the box (`width`/`height`, or `style` like
+     * `aspectRatio: '16/9'`), the image covers that box, cropped per `objectFit` (default `cover`).
+     * The image flows in-block (never absolutely positioned), so it can't escape to fill the page or
+     * collapse to nothing. `className`/`style` apply to the box, not the `<img>`.
      */
     fill?: boolean;
     /** `object-fit` for the rendered image (handy with `fill`). */
@@ -101,10 +102,10 @@ export function Image(props: ImageProps): ReactNode {
 
     if (!fill) return img;
 
-    // `fill`: the image is absolutely positioned, so without a positioned ancestor it escapes to fill
-    // the nearest positioned one (often the whole page). Wrap it in our OWN relatively-positioned,
-    // block-level box so it can only ever fill THIS box, which the caller sizes via `width`/`height`
-    // or `style` (e.g. `<Image fill width={400} height={300} />` or `style={{ aspectRatio: '16/9' }}`).
+    // `fill`: the image flows in-block at 100% of its box's width (scaling to natural height), or
+    // covers the box if the caller sizes it (`width`/`height`, or `style` like `aspectRatio`). It is
+    // NEVER absolutely positioned, so it can't escape to fill the page nor collapse to a zero-height
+    // box. We still wrap it so the caller's `width`/`height`/`style` size the box, not the raw `<img>`.
     const boxStyle: CSSProperties = {
         ...(width !== undefined ? { width } : {}),
         ...(height !== undefined ? { height } : {}),

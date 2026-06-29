@@ -41,7 +41,7 @@ describe('Image', () => {
         expect(img.getAttribute('fetchpriority')).toBe('high');
     });
 
-    it('fill wraps the image in a positioned box; the image lays out via a class, not inline styles', () => {
+    it('fill wraps the image in a box; the image lays out via a class, not inline styles', () => {
         const { getByAltText } = render(
             <Image
                 src="/bg.png"
@@ -58,7 +58,7 @@ describe('Image', () => {
         expect(img.style.position).toBe('');
         // objectFit is genuinely per-instance, so it stays inline.
         expect(img.style.objectFit).toBe('cover');
-        // The image is wrapped in a relatively-positioned <span> box, so it can only fill THAT box.
+        // The image is wrapped in a <span> box the caller sizes, so it fills the box, not the page.
         const box = img.parentElement as HTMLElement;
         expect(box.tagName).toBe('SPAN');
         expect(box.classList.contains('toil-img-fill-box')).toBe(true);
