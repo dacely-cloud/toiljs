@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.77] - 2026-06-29
+
+- Remove `titleTemplate` from the head/metadata API. It only applied client-side (never in the SSR HTML) and confusingly diverged the server vs client `<title>`. Set a route's full title directly; a layout's `<Head title>` is still the fallback for routes that set none.
+- SSR routes referencing an imported image asset (which resolves to a dev-only URL) now fall back to client rendering with a clear warning instead of baking a URL that 404s in production. Reference images on SSR routes via a public/ string path (`src="/images/x.webp"`) for full SSR.
+- `Image` `fill` now wraps the image in its own positioned, block-level box (sized via `width`/`height` or `style`), so it can only ever fill that box — never the whole page; `className`/`style` apply to the box.
+
 ## [v0.0.76] - 2026-06-29
 
 - SSR routes now render their per-page SEO in the served `<head>`: each `ssr=true` route bakes its resolved metadata (title, description, canonical, og:* incl `og:image`, twitter, jsonLd) into the template head, at parity with the static prerendered page. Previously every SSR route served the generic shell `<head>`, so per-route titles/descriptions and social-preview images were missing server-side.
