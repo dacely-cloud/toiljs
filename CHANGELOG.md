@@ -2,6 +2,11 @@
 
 ## [v0.0.78] - 2026-06-29
 
+- No changes
+
+
+## [v0.0.78] - 2026-06-29
+
 - Render component-level head server-side: `useHead`/`useTitle`/`<Head>` set in a layout or page (not just a route's static `metadata`) now appear in the SSR HTML, deduped against the route's SEO and owned by the client head manager on hydration.
 
 ## [v0.0.77] - 2026-06-29
