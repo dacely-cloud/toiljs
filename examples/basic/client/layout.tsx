@@ -7,11 +7,9 @@ export default function Layout({ children }: { children?: ReactNode }) {
     return (
         <div className="app">
             <HoneycombBackground />
-            {/* Site-wide head defaults. `titleTemplate` wraps each route's own title (a route metadata
-                title of "About" renders as "About | ToilJS"); a route opts out by setting its own
-                `titleTemplate: '%s'`. `title` is the fallback for routes that set none. */}
+            {/* Site-wide head defaults: a fallback title + description for any route that sets none.
+                A route's own `metadata` / `<Head>` overrides these. */}
             <Toil.Head
-                titleTemplate="%s | ToilJS"
                 title="ToilJS"
                 meta={[{ name: 'description', content: 'Planet-scale apps from a single repo.' }]}
             />

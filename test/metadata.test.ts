@@ -6,7 +6,6 @@ describe('resolveMetadata', () => {
     it('expands convenience fields into meta/link tags', () => {
         const head = resolveMetadata({
             title: 'About',
-            titleTemplate: '%s · toiljs',
             description: 'desc',
             keywords: ['a', 'b'],
             robots: 'noindex',
@@ -16,7 +15,6 @@ describe('resolveMetadata', () => {
         });
 
         expect(head.title).toBe('About');
-        expect(head.titleTemplate).toBe('%s · toiljs');
         const byName = (name: string) => head.meta?.find((m) => m.name === name)?.content;
         const byProp = (property: string) =>
             head.meta?.find((m) => m.property === property)?.content;

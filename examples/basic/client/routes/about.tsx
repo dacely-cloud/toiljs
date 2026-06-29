@@ -1,6 +1,6 @@
 // Declarative per-route SEO, resolved by the router into <title> + <meta>/<link> tags, and baked
-// into static HTML at build (see build/client/about/index.html). The layout's titleTemplate wraps
-// this title, so the tab reads "About | ToilJS"; component-level useHead/<Head> can override.
+// into static HTML at build (see build/client/about/index.html). Component-level useHead/<Head>
+// can override it.
 export const metadata: Toil.Metadata = {
     title: 'About',
     description: 'About the ToilJS example app.',

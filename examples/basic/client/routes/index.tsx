@@ -1,8 +1,6 @@
-// The home page sets its own title with an absolute template (`%s`), so the tab reads exactly this
-// rather than being suffixed by the layout's "%s | ToilJS".
+// The home page's own title + description.
 export const metadata: Toil.Metadata = {
     title: 'ToilJS, the modern React framework',
-    titleTemplate: '%s',
     description: 'File-based routing, instant HMR, build-time SEO, and a WebAssembly backend. Zero config.',
     openGraph: { title: 'ToilJS', type: 'website' }
 };

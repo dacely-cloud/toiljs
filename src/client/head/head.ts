@@ -25,8 +25,6 @@ export interface LinkTag {
 export interface HeadSpec {
     /** Document title. */
     readonly title?: string;
-    /** Template applied to a child's title, `%s` = the title (e.g. `'%s, toiljs'`). */
-    readonly titleTemplate?: string;
     readonly meta?: readonly MetaTag[];
     readonly link?: readonly LinkTag[];
 }
@@ -45,25 +43,19 @@ function metaKey(m: MetaTag): string {
 }
 
 /**
- * Merges head specs in order: the last `title`/`titleTemplate` wins, `meta` dedupes by name/property
- * and `link` by rel+href (last wins). A `titleTemplate` formats the resolved title via `%s`.
+ * Merges head specs in order: the last `title` wins, `meta` dedupes by name/property and `link` by
+ * rel+href (last wins).
  */
 export function mergeHead(specs: readonly HeadSpec[]): ResolvedHead {
     let title: string | undefined;
-    let titleTemplate: string | undefined;
     const meta = new Map<string, MetaTag>();
     const link = new Map<string, LinkTag>();
     for (const spec of specs) {
         if (spec.title !== undefined) title = spec.title;
-        if (spec.titleTemplate !== undefined) titleTemplate = spec.titleTemplate;
         for (const m of spec.meta ?? []) meta.set(metaKey(m), m);
         for (const l of spec.link ?? []) link.set(`${l.rel}:${l.href}`, l);
     }
-    const resolvedTitle =
-        title !== undefined && titleTemplate !== undefined
-            ? titleTemplate.replace('%s', title)
-            : title;
-    return { title: resolvedTitle, meta: [...meta.values()], link: [...link.values()] };
+    return { title, meta: [...meta.values()], link: [...link.values()] };
 }
 
 const entries = new Map<number, HeadSpec>();
@@ -71,7 +63,7 @@ let order: number[] = [];
 let seq = 0;
 let baseTitle: string | null = null;
 // The current route's resolved `metadata` export. Merged LAST (highest priority), so a route's
-// metadata wins over a layout's `useHead`/`<Head>` defaults (e.g. a site-wide title/titleTemplate) for
+// metadata wins over a layout's `useHead`/`<Head>` defaults (e.g. a site-wide title) for
 // the keys it sets, while the layout still fills everything the route leaves unset. Set by the router
 // via `setRouteHead` on each navigation.
 let routeHead: HeadSpec | null = null;

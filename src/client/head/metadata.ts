@@ -21,8 +21,6 @@ export interface OpenGraph {
 export interface Metadata {
     /** Document title. */
     readonly title?: string;
-    /** Template applied to the title (`%s` = the title), e.g. `'%s, toiljs'`. */
-    readonly titleTemplate?: string;
     /** `<meta name="description">`. */
     readonly description?: string;
     /** `<meta name="keywords">`, joined with `, ` if an array. */
@@ -90,7 +88,7 @@ export function resolveMetadata(metadata: Metadata): HeadSpec {
     if (metadata.canonical !== undefined) link.push({ rel: 'canonical', href: metadata.canonical });
     if (metadata.link) link.push(...metadata.link);
 
-    return { title: metadata.title, titleTemplate: metadata.titleTemplate, meta, link };
+    return { title: metadata.title, meta, link };
 }
 
 /**

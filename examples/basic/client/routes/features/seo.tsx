@@ -1,12 +1,7 @@
 // Route metadata: the declarative way to set this page's <title>, description, OpenGraph, and more.
 // The router applies it before paint and the build bakes it into static HTML for crawlers.
-//
-// This route sets its OWN `titleTemplate: '%s'`, which overrides the layout's "%s | ToilJS" template,
-// so the tab reads exactly "useReducer | React Hooks" with no site suffix. Drop the titleTemplate
-// line and the same title renders as "useReducer | React Hooks | ToilJS".
 export const metadata: Toil.Metadata = {
     title: 'useReducer | React Hooks',
-    titleTemplate: '%s',
     description: 'Manage complex state transitions with a reducer function using the useReducer hook.',
     keywords: ['react', 'hooks', 'useReducer', 'state'],
     canonical: 'https://toil.example/features/seo',

@@ -34,7 +34,6 @@ Toil.mount(routes, layout, notFound);
 ```tsx
 Toil.useHead({
     title: "Blog",
-    titleTemplate: "%s, MyApp",
     meta: [{ name: "description", content: "..." }],
 });
 ```

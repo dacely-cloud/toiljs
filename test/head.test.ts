@@ -3,12 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { mergeHead } from '../src/client/head/head';
 
 describe('mergeHead', () => {
-    it('takes the last title and applies a titleTemplate', () => {
+    it('takes the last title', () => {
         expect(mergeHead([{ title: 'Home' }]).title).toBe('Home');
         expect(mergeHead([{ title: 'A' }, { title: 'B' }]).title).toBe('B');
-        expect(mergeHead([{ titleTemplate: '%s · toiljs' }, { title: 'About' }]).title).toBe(
-            'About · toiljs',
-        );
     });
 
     it('leaves title undefined when nothing sets it', () => {
