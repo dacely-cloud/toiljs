@@ -31,6 +31,7 @@ import {
     isDispatchableMethod,
     prepareSsrResponse,
     prepareWasmResponse,
+    resolveDynamicFile,
     resolveStaticFile,
     runtimeServerOptions,
     toEnvelopeRequest,
@@ -456,7 +457,12 @@ async function startBuiltHttpServer(
             // lookup EVERY route served the root index.html, so view-source on e.g. /login showed
             // the home page's <head> (title/description/canonical/og) instead of the page's own.
             const routeHtml = resolveStaticFile(paths.staticRoot, `${request.path}/index.html`);
-            response.sendFile(routeHtml ?? paths.indexHtml);
+            // A dynamic route with no baked concrete page is served by its bracket template
+            // (`blog/[id].html`) matched the way the client router matches, mirroring the edge; the
+            // client then hydrates it for the concrete URL. Falls back to the root shell if none.
+            const dynHtml =
+                routeHtml === null ? resolveDynamicFile(paths.staticRoot, request.path) : null;
+            response.sendFile(routeHtml ?? dynHtml ?? paths.indexHtml);
             return;
         }
 

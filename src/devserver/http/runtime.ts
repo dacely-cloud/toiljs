@@ -84,6 +84,106 @@ export function resolveStaticFile(root: string, requestPath: string): string | n
     return resolveFileInside(root, decoded.replace(/^\/+/, ''));
 }
 
+// --- Dynamic bracket-template routing (mirrors the toil-backend edge) ---------
+//
+// The build emits a dynamic route `blog/[id].tsx` as a literal `blog/[id].html`
+// template that boots the SPA for any concrete `/blog/<x>`. When no exact file
+// matches, walk the URL segments and, at each directory, serve a bracket sibling
+// using the client router's precedence: a real subdir wins (static > dynamic),
+// then `[x].html` (one segment), then `[x]/` (descend), then `[...x].html` (1+),
+// then `[[...x]].html` (0+). Directory scans are memoized.
+
+interface DirDynamic {
+    singleFile: string | null;
+    singleDir: string | null;
+    catchall: string | null;
+    optCatchall: string | null;
+}
+
+const dynDirCache = new Map<string, DirDynamic>();
+
+function classifyBracket(name: string, isDir: boolean): keyof DirDynamic | null {
+    if (isDir) {
+        if (name.startsWith('[') && name.endsWith(']') && !name.includes('...') && name.length > 2)
+            return 'singleDir';
+        return null;
+    }
+    if (!name.endsWith('.html')) return null;
+    const stem = name.slice(0, -'.html'.length);
+    if (stem.startsWith('[[...') && stem.endsWith(']]') && stem.length > 7) return 'optCatchall';
+    if (stem.startsWith('[...') && stem.endsWith(']') && stem.length > 5) return 'catchall';
+    if (stem.startsWith('[') && stem.endsWith(']') && !stem.startsWith('[..') && stem.length > 2)
+        return 'singleFile';
+    return null;
+}
+
+function scanDirDynamic(absDir: string): DirDynamic {
+    const cached = dynDirCache.get(absDir);
+    if (cached) return cached;
+    const d: DirDynamic = { singleFile: null, singleDir: null, catchall: null, optCatchall: null };
+    try {
+        for (const e of fs.readdirSync(absDir, { withFileTypes: true })) {
+            const kind = classifyBracket(e.name, e.isDirectory());
+            if (kind === null) continue;
+            const cur = d[kind];
+            if (cur === null || e.name < cur) d[kind] = e.name;
+        }
+    } catch {
+        // missing/unreadable directory: no templates
+    }
+    dynDirCache.set(absDir, d);
+    return d;
+}
+
+const joinRel = (dir: string, name: string): string => (dir === '' ? name : `${dir}/${name}`);
+
+function isDirInside(root: string, rel: string): boolean {
+    const resolved = path.resolve(root, rel);
+    if (resolved !== root && !resolved.startsWith(root + path.sep)) return false;
+    try {
+        return fs.statSync(resolved).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+function resolveDynamicWalk(root: string, dir: string, segs: string[], i: number): string | null {
+    if (i >= segs.length) {
+        // Nothing left: only an optional catch-all (0 segments) serves the bare dir.
+        const oc = scanDirDynamic(path.join(root, dir)).optCatchall;
+        return oc === null ? null : joinRel(dir, oc);
+    }
+    const isLast = i + 1 === segs.length;
+    // A real static subdirectory wins over any dynamic template at this level.
+    const child = joinRel(dir, segs[i]);
+    if (isDirInside(root, child)) {
+        const r = resolveDynamicWalk(root, child, segs, i + 1);
+        if (r !== null) return r;
+    }
+    const d = scanDirDynamic(path.join(root, dir));
+    if (isLast && d.singleFile !== null) return joinRel(dir, d.singleFile);
+    if (d.singleDir !== null) {
+        const r = resolveDynamicWalk(root, joinRel(dir, d.singleDir), segs, i + 1);
+        if (r !== null) return r;
+    }
+    if (d.catchall !== null) return joinRel(dir, d.catchall);
+    if (d.optCatchall !== null) return joinRel(dir, d.optCatchall);
+    return null;
+}
+
+/** Resolve a request path to a bracket-template file (`blog/[id].html`) if one matches, else null. */
+export function resolveDynamicFile(root: string, requestPath: string): string | null {
+    let decoded: string;
+    try {
+        decoded = decodeURIComponent(requestPath);
+    } catch {
+        return null;
+    }
+    const segs = decoded.split('/').filter(Boolean);
+    const rel = resolveDynamicWalk(root, '', segs, 0);
+    return rel === null ? null : resolveFileInside(root, rel);
+}
+
 export interface PreparedHttpResponse {
     readonly status: number;
     readonly headers: readonly (readonly [string, string])[];

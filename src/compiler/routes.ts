@@ -34,6 +34,44 @@ function toUrlSegment(segment: string): string {
         .replace(/^\[(.+)\]$/, ':$1');
 }
 
+/** Inverse of {@link toUrlSegment}: turns a URL pattern segment back into its on-disk bracket
+ *  form (`:id`→`[id]`, `*x`→`[...x]`, `**x`→`[[...x]]`). Static segments pass through unchanged. */
+function bracketSegment(segment: string): string {
+    if (segment.startsWith('**')) return `[[...${segment.slice(2)}]]`;
+    if (segment.startsWith('*')) return `[...${segment.slice(1)}]`;
+    if (segment.startsWith(':')) return `[${segment.slice(1)}]`;
+    return segment;
+}
+
+/**
+ * The on-disk HTML filename (relative to the build output dir) a DYNAMIC route pattern bakes to:
+ * the inverse of the scan mapping, with the last segment as the file and the rest as directories.
+ * This is the literal bracket template the static server serves for any matching URL and the client
+ * router hydrates, so it must not become a `<seg>/index.html` folder (which would shadow siblings).
+ *   /blog/:id      -> blog/[id].html
+ *   /docs/*slug    -> docs/[...slug].html
+ *   /docs/**slug   -> docs/[[...slug]].html
+ *   /:category/:id -> [category]/[id].html
+ */
+export function patternToBracketFile(pattern: string): string {
+    return pattern.split('/').filter(Boolean).map(bracketSegment).join('/') + '.html';
+}
+
+/**
+ * The static "section" of a pattern: the same pattern with every dynamic (`:`/`*`) segment dropped.
+ * Used as the canonical/OG base URL when baking a dynamic route's build-time SEO (the concrete
+ * per-value URL is unknown at build; the client sets it on hydration).
+ *   /blog/:id      -> /blog
+ *   /:category/:id -> /
+ */
+export function staticSectionPattern(pattern: string): string {
+    const kept = pattern
+        .split('/')
+        .filter(Boolean)
+        .filter((s) => !s.startsWith(':') && !s.startsWith('*'));
+    return '/' + kept.join('/');
+}
+
 /** Interception markers: `(.)` same level, `(..)` up one, `(...)` from the routes root. */
 const INTERCEPT_RE = /^\((\.{1,3})\)(.+)$/;
 

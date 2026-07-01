@@ -7,7 +7,7 @@ import type * as TS from 'typescript';
 import type { Plugin } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
-import { scanRoutes } from './routes.js';
+import { patternToBracketFile, scanRoutes, staticSectionPattern } from './routes.js';
 import { injectSeoHtml, routeSeo } from './seo.js';
 
 type Ts = typeof TS;
@@ -116,11 +116,50 @@ export function extractStaticMetadata(ts: Ts, filePath: string): Record<string, 
 }
 
 /**
+ * True when the route file has a literal `export const <name> = true`. Used to detect the edge-SSR
+ * opt-in (`export const ssr = true`) without spinning up a Vite SSR server, so the static prerender
+ * can leave SSR routes to the SSR path.
+ */
+export function exportsTrue(ts: Ts, filePath: string, name: string): boolean {
+    let source: string;
+    try {
+        source = fs.readFileSync(filePath, 'utf8');
+    } catch {
+        return false;
+    }
+    const sf = ts.createSourceFile(
+        filePath,
+        source,
+        ts.ScriptTarget.Latest,
+        true,
+        ts.ScriptKind.TSX,
+    );
+    for (const stmt of sf.statements) {
+        if (!ts.isVariableStatement(stmt)) continue;
+        if (!stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
+        for (const decl of stmt.declarationList.declarations) {
+            if (
+                ts.isIdentifier(decl.name) &&
+                decl.name.text === name &&
+                decl.initializer?.kind === ts.SyntaxKind.TrueKeyword
+            ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
  * Build-only plugin that statically pre-renders per-route HTML for SEO. After the bundle is written,
- * it takes the built shell (`index.html`), and for each static route bakes that route's
- * `metadata` (merged over the site-wide `seo` defaults) into a `<route>/index.html` so a JS-less
- * crawler hitting the route gets correct per-page tags. Dynamic (`generateMetadata`) and `:param`
- * routes are skipped (no data at build) and fall back to the client-rendered shell.
+ * it takes the built shell (`index.html`), and for each route bakes that route's `metadata` (merged
+ * over the site-wide `seo` defaults) into a browsable HTML file so a JS-less crawler gets correct
+ * per-page tags:
+ *   - a STATIC route (`/about`) -> `<route>/index.html`;
+ *   - a DYNAMIC route (`/blog/:id`) -> a literal bracket template `blog/[id].html` that the static
+ *     server serves for any concrete `/blog/<x>` and the client router hydrates. Its canonical points
+ *     at the route's static section (`/blog`); the client sets the exact per-value URL on hydration.
+ * A dynamic template is a file, never a `<seg>/index.html` folder, so it never shadows a sibling.
  */
 export function prerenderPlugin(cfg: ResolvedToilConfig): Plugin {
     return {
@@ -139,15 +178,29 @@ export function prerenderPlugin(cfg: ResolvedToilConfig): Plugin {
             const ts = await loadTypeScript(cfg.root);
 
             const routes = scanRoutes(cfg.routesAbsDir).filter(
-                (r) => r.slot === undefined && !r.intercept && !/[:*]/.test(r.pattern),
+                (r) => r.slot === undefined && !r.intercept,
             );
             for (const route of routes) {
+                const isDynamic = /[:*]/.test(route.pattern);
+                // A dynamic route that opts into edge SSR (`export const ssr = true`) is rendered by
+                // the SSR template path. Baking a static bracket template would let the edge's
+                // static-first serving shadow it, so leave SSR routes to SSR. (When `ts` is null the
+                // check is skipped and we bake anyway: fail-OPEN deliberately favors the common
+                // non-SSR dynamic route, which would 404 without a template; typescript is always
+                // present in a real toiljs project, so this branch is effectively unreachable.)
+                if (isDynamic && ts && exportsTrue(ts, route.file, 'ssr')) continue;
                 const metadata = ts ? extractStaticMetadata(ts, route.file) : null;
-                const html = injectSeoHtml(shell, routeSeo(cfg.seo, metadata, route.pattern));
-                const target =
-                    route.pattern === '/'
-                        ? shellPath
-                        : path.join(outDir, route.pattern.replace(/^\//, ''), 'index.html');
+                // A dynamic route's concrete URL is unknown at build, so its canonical/OG URL points
+                // at the static section (`/blog/:id` -> `/blog`); the client refines it on hydration.
+                const seoPattern = isDynamic ? staticSectionPattern(route.pattern) : route.pattern;
+                const html = injectSeoHtml(shell, routeSeo(cfg.seo, metadata, seoPattern));
+                // Dynamic -> a literal bracket template (`blog/[id].html`); static -> `<route>/index.html`
+                // (the `/` route is the shell itself). The bracket file is never a folder+index.html.
+                const target = isDynamic
+                    ? path.join(outDir, patternToBracketFile(route.pattern))
+                    : route.pattern === '/'
+                      ? shellPath
+                      : path.join(outDir, route.pattern.replace(/^\//, ''), 'index.html');
                 fs.mkdirSync(path.dirname(target), { recursive: true });
                 fs.writeFileSync(target, html);
             }
