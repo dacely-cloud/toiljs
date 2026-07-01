@@ -15,6 +15,7 @@ import { imageReportPlugin } from './image-report.js';
 import { imageBlurPlugin } from './image-blur.js';
 import { toilPlugin } from './plugin.js';
 import { prerenderPlugin } from './prerender.js';
+import { sriPlugin } from './sri.js';
 
 // `vite-plugin-node-polyfills` rewrites react/react-dom to import its `vite-plugin-node-polyfills/
 // shims/*` modules. When a consumer links toiljs by symlink (`file:`/workspace), that package lives
@@ -182,6 +183,11 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
                   })
                 : undefined,
             cfg.images ? imageReportPlugin(cfg.root, cfg.toilDir) : undefined,
+            // Subresource Integrity (build only): adds integrity="sha384-…" + crossorigin to every
+            // local script/stylesheet/modulepreload in the shell. MUST precede prerenderPlugin so the
+            // per-route/bracket/SSR pages baked from the shell inherit it (and the SSR .tmpl coherence
+            // hash covers it).
+            sriPlugin(cfg),
             // Static per-route SEO prerender (build only): bakes each route's metadata into its HTML.
             cfg.seo ? prerenderPlugin(cfg) : undefined,
             // Preload bundled fonts (build only). Disabled by `client.fonts: false`.
