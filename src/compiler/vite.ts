@@ -91,12 +91,17 @@ function sharedResolverPlugin(cfg: ResolvedToilConfig): PluginOption {
     };
 }
 
-/** Routes a built asset to a typed sub-folder (`images/`, `fonts/`, `css/`, else `assets/`). */
+/** Routes a built asset to a typed sub-folder (`images/`, `fonts/`, `css/`, else `assets/`). CSS is
+ *  content-hashed (`[name]-[hash]`) because we put Subresource Integrity on `<link rel=stylesheet>`:
+ *  a stable URL whose bytes change across deploys would make a client holding stale HTML fail the
+ *  integrity check and BLOCK the stylesheet. Hashing pins the URL to its bytes, so the baked integrity
+ *  can never falsely mismatch (identical to how JS chunks are hashed). Images/fonts stay stable-named:
+ *  they carry no SRI and are commonly referenced by fixed path. */
 function assetFileName(name: string): string {
     const ext = name.split('.').pop() ?? '';
     if (IMAGE_EXT.test(ext)) return 'images/[name][extname]';
     if (FONT_EXT.test(ext)) return 'fonts/[name][extname]';
-    if (/^css$/i.test(ext)) return 'css/[name][extname]';
+    if (/^css$/i.test(ext)) return 'css/[name]-[hash][extname]';
     return 'assets/[name][extname]';
 }
 

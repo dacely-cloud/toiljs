@@ -46,33 +46,84 @@ function toLocalAsset(url: string, base: string): string | null {
 export function injectSri(html: string, outDir: string, base: string): string {
     const cache = new Map<string, string | null>();
     return html.replace(/<(script|link)\b([^>]*)>/gi, (full, tag: string, rawAttrs: string) => {
-        if (/\bintegrity\s*=/i.test(rawAttrs)) return full; // already integrity-tagged
+        // `(?<![\w-])` (not `\b`) so a hyphenated decoy attr never counts as the real one: `\bintegrity`
+        // matches inside `data-integrity` (would wrongly skip us), `\bsrc` inside `data-src` (would hash
+        // the wrong URL). The guard requires the attr name to start at a real attribute boundary.
+        if (/(?<![\w-])integrity\s*=/i.test(rawAttrs)) return full; // already integrity-tagged
         const selfClose = /\/\s*$/.test(rawAttrs);
         const attrs = rawAttrs.replace(/\s*\/\s*$/, '');
         const isScript = tag.toLowerCase() === 'script';
         if (!isScript) {
-            const rel = /\brel\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1]?.toLowerCase();
+            const rel = /(?<![\w-])rel\s*=\s*["']?([^"'\s>]+)/i.exec(attrs)?.[1]?.toLowerCase();
             if (rel !== 'stylesheet' && rel !== 'modulepreload') return full;
         }
         const attr = isScript ? 'src' : 'href';
-        const url = new RegExp(`\\b${attr}\\s*=\\s*["']([^"']+)["']`, 'i').exec(attrs)?.[1];
+        const url = new RegExp(`(?<![\\w-])${attr}\\s*=\\s*["']([^"']+)["']`, 'i').exec(attrs)?.[1];
         if (url === undefined) return full; // inline script or no url
         const rel = toLocalAsset(url, base);
         if (rel === null) return full;
         const sri = computeSri(path.join(outDir, rel), cache);
         if (sri === null) return full;
-        const cross = /\bcrossorigin\b/i.test(attrs) ? '' : ' crossorigin="anonymous"';
+        const cross = /(?<![\w-])crossorigin(?![\w-])/i.test(attrs) ? '' : ' crossorigin="anonymous"';
         return `<${tag}${attrs} integrity="${sri}"${cross}${selfClose ? ' /' : ''}>`;
     });
 }
 
 /**
+ * Build an `<script type="importmap">` tag whose `integrity` section maps every emitted JS chunk
+ * (`assets/*.js`) to its sha384. Tag-level SRI only protects the ENTRY script: the rest of the
+ * module graph -- static imports (the react vendor chunk) and lazily `import()`ed route chunks --
+ * is fetched by the module loader, which does NOT inherit the tag's integrity. The import map's
+ * `integrity` field is the platform mechanism that extends verification to those fetches; browsers
+ * without support ignore the key (progressive enhancement, nothing breaks). Returns `null` when
+ * there are no chunks.
+ */
+export function buildImportMapIntegrity(
+    outDir: string,
+    base: string,
+    cache: Map<string, string | null> = new Map(),
+): string | null {
+    const assetsDir = path.join(outDir, 'assets');
+    let names: string[];
+    try {
+        names = fs.readdirSync(assetsDir).filter((n) => n.endsWith('.js'));
+    } catch {
+        return null;
+    }
+    const prefix = base.endsWith('/') ? base : `${base}/`;
+    const integrity: Record<string, string> = {};
+    for (const name of names.sort()) {
+        const sri = computeSri(path.join(assetsDir, name), cache);
+        if (sri !== null) integrity[`${prefix}assets/${name}`] = sri;
+    }
+    if (Object.keys(integrity).length === 0) return null;
+    return `<script type="importmap">${JSON.stringify({ integrity })}</script>`;
+}
+
+/** Insert the import-map tag where it takes effect: right after `<head>` (an import map must be
+ *  parsed before any module load). Falls back to prepending before the first `<script`. No-op if
+ *  an integrity import map is already present (idempotent on an already-processed shell). */
+export function injectImportMap(html: string, importMapTag: string): string {
+    if (html.includes('<script type="importmap">{"integrity"')) return html;
+    const head = /<head[^>]*>/i.exec(html);
+    if (head !== null) {
+        const at = head.index + head[0].length;
+        return `${html.slice(0, at)}\n    ${importMapTag}${html.slice(at)}`;
+    }
+    const script = html.indexOf('<script');
+    if (script !== -1) return `${html.slice(0, script)}${importMapTag}\n${html.slice(script)}`;
+    return html;
+}
+
+/**
  * Build-only plugin: after the bundle is written, rewrites the built shell (`outDir/index.html`) so
- * every local script/stylesheet/modulepreload carries an `integrity`. It runs in `closeBundle`
- * (assets are on disk, so real bytes are hashed) and is registered BEFORE the prerender / SSR-
- * template passes, which bake per-route HTML, bracket templates, and the SSR `.tmpl` FROM this
- * shell -- so every emitted page inherits SRI and the `.tmpl` coherence hash covers it. Build-only:
- * the dev server serves un-hashed modules straight from Vite, where SRI would be meaningless.
+ * (a) every local script/stylesheet/modulepreload TAG carries an `integrity`, and (b) an import map
+ * `integrity` section covers every emitted JS chunk, so the FULL module graph -- the entry's static
+ * imports and every dynamically `import()`ed route chunk -- is verified, not just the entry tag. It
+ * runs in `closeBundle` (assets are on disk, so real bytes are hashed) and is registered BEFORE the
+ * prerender / SSR-template passes, which bake per-route HTML, bracket templates, and the SSR `.tmpl`
+ * FROM this shell -- so every emitted page inherits both and the `.tmpl` coherence hash covers them.
+ * Build-only: the dev server serves un-hashed modules straight from Vite, where SRI is meaningless.
  */
 export function sriPlugin(cfg: ResolvedToilConfig): Plugin {
     return {
@@ -83,7 +134,10 @@ export function sriPlugin(cfg: ResolvedToilConfig): Plugin {
             const shell = path.join(outDir, 'index.html');
             if (!fs.existsSync(shell)) return;
             const html = fs.readFileSync(shell, 'utf8');
-            const out = injectSri(html, outDir, cfg.base);
+            const cache = new Map<string, string | null>();
+            let out = injectSri(html, outDir, cfg.base);
+            const importMap = buildImportMapIntegrity(outDir, cfg.base, cache);
+            if (importMap !== null) out = injectImportMap(out, importMap);
             if (out !== html) fs.writeFileSync(shell, out);
         },
     };

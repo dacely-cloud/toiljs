@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { injectSri } from '../src/compiler/sri';
+import { buildImportMapIntegrity, injectImportMap, injectSri } from '../src/compiler/sri';
 
 describe('injectSri', () => {
     const dirs: string[] = [];
@@ -69,5 +69,61 @@ describe('injectSri', () => {
         const root = outDir({ 'assets/x.js': 'x' });
         const html = injectSri('<script src="/sub/assets/x.js"></script>', root, '/sub/');
         expect(html).toMatch(/integrity="sha384-/);
+    });
+});
+
+describe('buildImportMapIntegrity + injectImportMap (module-graph coverage)', () => {
+    const dirs: string[] = [];
+    function outDir(files: Record<string, string>): string {
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'toil-srimap-'));
+        dirs.push(root);
+        for (const [rel, body] of Object.entries(files)) {
+            const full = path.join(root, rel);
+            fs.mkdirSync(path.dirname(full), { recursive: true });
+            fs.writeFileSync(full, body);
+        }
+        return root;
+    }
+    afterEach(() => {
+        for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true });
+    });
+
+    it('maps every emitted chunk (incl. ones no HTML tag references) with sha384', () => {
+        const root = outDir({
+            'assets/index-abc.js': 'entry',
+            'assets/layout-def.js': 'lazy route chunk', // loaded via import(), never in a tag
+            'assets/react-ghi.js': 'vendor',
+            'assets/style-x.css': 'body{}', // not a module: excluded
+        });
+        const tag = buildImportMapIntegrity(root, '/');
+        expect(tag).not.toBeNull();
+        const map = JSON.parse((tag as string).replace(/^<script type="importmap">|<\/script>$/g, ''));
+        expect(Object.keys(map.integrity).sort()).toEqual([
+            '/assets/index-abc.js',
+            '/assets/layout-def.js',
+            '/assets/react-ghi.js',
+        ]);
+        for (const v of Object.values(map.integrity)) expect(v).toMatch(/^sha384-/);
+    });
+
+    it('prefixes a non-root base and returns null with no chunks', () => {
+        const root = outDir({ 'assets/a.js': 'a' });
+        const tag = buildImportMapIntegrity(root, '/sub/') as string;
+        expect(tag).toContain('"/sub/assets/a.js"');
+        const empty = outDir({ 'index.html': '<html></html>' });
+        expect(buildImportMapIntegrity(empty, '/')).toBeNull();
+    });
+
+    it('injects after <head>, before any module script, and is idempotent', () => {
+        const html = '<html><head><meta x></head><body><script type="module" src="/a.js"></script></body></html>';
+        const tag = '<script type="importmap">{"integrity":{"/assets/a.js":"sha384-zzz"}}</script>';
+        const out = injectImportMap(html, tag);
+        expect(out.indexOf('importmap')).toBeGreaterThan(out.indexOf('<head>'));
+        expect(out.indexOf('importmap')).toBeLessThan(out.indexOf('type="module"'));
+        // Idempotent: a second pass does not duplicate the map.
+        expect(injectImportMap(out, tag)).toBe(out);
+        // No <head>: falls back to before the first <script>.
+        const headless = injectImportMap('<script src="/x.js"></script>', tag);
+        expect(headless.indexOf('importmap')).toBeLessThan(headless.indexOf('src="/x.js"'));
     });
 });
