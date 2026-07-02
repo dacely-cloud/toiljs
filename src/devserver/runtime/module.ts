@@ -245,7 +245,7 @@ export class WasmServerModule {
         const rpcMutating =
             rpcMethod === 'POST' || rpcMethod === 'PUT' || rpcMethod === 'PATCH' || rpcMethod === 'DELETE';
         if (rpcPath === '/__toil_rpc' && rpcMutating) {
-            const idHeader = req.headers.find(([n]) => n.toLowerCase() === 'toil-rpc')?.[1];
+            const idHeader = req.headers.find(([n]) => n.toLowerCase() === 'dacely-rpc')?.[1];
             // Strict u32 parse, mirroring the host's `v.parse::<u32>()`: reject trailing garbage/whitespace
             // and out-of-range ids so a malformed header falls through to read-only Query, exactly as prod.
             const id = idHeader !== undefined && /^\d+$/.test(idHeader) ? Number(idHeader) : NaN;

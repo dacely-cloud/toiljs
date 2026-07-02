@@ -3,7 +3,7 @@
  * function self-registers here at module init (compiler-injected), keyed by a
  * deterministic method id (FNV-1a of `"Service.method"` / `"fnName"` — the same
  * hash the generated client sends). The wasm `handle` export dispatches a
- * reserved `POST /__toil_rpc` (method id in the `toil-rpc` header, `@data`-encoded
+ * reserved `POST /__toil_rpc` (method id in the `dacely-rpc` header, `@data`-encoded
  * args in the body) to the matching method and returns its `@data`-encoded
  * result. Mirrors `Rest` (../rest/Rest.ts); calls are STATELESS — a fresh service
  * instance per call, exactly like a `@rest` controller.
@@ -15,7 +15,7 @@ import { Response } from '../response';
 /** The reserved path a generated RPC client POSTs to. */
 export const RPC_PATH: string = '/__toil_rpc';
 /** The request header carrying the decimal `u32` method id. */
-export const RPC_HEADER: string = 'toil-rpc';
+export const RPC_HEADER: string = 'dacely-rpc';
 
 /** A registered RPC method: takes the encoded-args body and returns a `Response` - the encoded result
  *  (`Response.bytes`) on success, or a guard's `401`/`429` when the method carries `@auth`/`@ratelimit`.

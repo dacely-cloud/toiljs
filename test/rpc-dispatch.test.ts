@@ -1,6 +1,6 @@
 /**
  * @service / @remote RPC: a real round trip into the example project's toilscript-compiled server
- * wasm. A `POST /__toil_rpc` carrying the FNV method id in the `toil-rpc` header is dispatched by the
+ * wasm. A `POST /__toil_rpc` carrying the FNV method id in the `dacely-rpc` header is dispatched by the
  * runtime `Rpc` registry (compiler-injected `__rpcDispatch` + `Rpc.register`) to the @remote method,
  * and the @data/scalar result comes back encoded with the same DataWriter codec the client decodes.
  */
@@ -37,7 +37,7 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('@service RPC dispatch', () => {
         const r = load().dispatch({
             method: 'POST',
             path: '/__toil_rpc',
-            headers: [['toil-rpc', String(id)]],
+            headers: [['dacely-rpc', String(id)]],
             body: new Uint8Array(0),
         });
         expect(r.unhandled).toBe(false);
@@ -55,7 +55,7 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('@service RPC dispatch', () => {
         const r = load().dispatch({
             method: 'POST',
             path: '/__toil_rpc',
-            headers: [['toil-rpc', String(id)]],
+            headers: [['dacely-rpc', String(id)]],
             body,
         });
         expect(r.status).toBe(200);
@@ -77,7 +77,7 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('@service RPC dispatch', () => {
         const r = load().dispatch({
             method: 'POST',
             path: '/__toil_rpc',
-            headers: [['toil-rpc', String(id)]],
+            headers: [['dacely-rpc', String(id)]],
             body: Uint8Array.from(buf),
         });
         expect(r.status).toBe(200);
@@ -103,7 +103,7 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('@service RPC dispatch', () => {
         const r = load().dispatch({
             method: 'POST',
             path: '/__toil_rpc',
-            headers: [['toil-rpc', String(id)]],
+            headers: [['dacely-rpc', String(id)]],
             body: new Uint8Array(0),
         });
         expect(r.status).toBe(401);
@@ -113,13 +113,13 @@ describe.skipIf(!fs.existsSync(EXAMPLE_WASM))('@service RPC dispatch', () => {
         const r = load().dispatch({
             method: 'POST',
             path: '/__toil_rpc',
-            headers: [['toil-rpc', '999999']],
+            headers: [['dacely-rpc', '999999']],
             body: new Uint8Array(0),
         });
         expect(r.status).toBe(400);
     });
 
-    it('does not intercept a non-RPC request (no toil-rpc header)', () => {
+    it('does not intercept a non-RPC request (no dacely-rpc header)', () => {
         const r = load().dispatch({
             method: 'GET',
             path: '/json',

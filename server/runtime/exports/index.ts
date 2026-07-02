@@ -61,7 +61,7 @@ export function handle(req_ofs: i32, req_len: i32): i64 {
         // Run the handler lifecycle hooks around BOTH the RPC and the normal path, so an app that does
         // central bookkeeping/auth in onRequestStarted is not silently bypassed for /__toil_rpc.
         handler.onRequestStarted(req);
-        // Reserved RPC endpoint: a `POST /__toil_rpc` carrying a `toil-rpc` method id dispatches to the
+        // Reserved RPC endpoint: a `POST /__toil_rpc` carrying a `dacely-rpc` method id dispatches to the
         // registered @service/@remote method (which applies its own @auth/@ratelimit guards); any other
         // request returns null here and falls through to the normal handler.
         const rpcHit = Rpc.dispatch(req);

@@ -102,7 +102,7 @@ export function parseRpcKinds(wasm: Buffer): readonly RpcKindEntry[] {
     return methods;
 }
 
-/** DB kind for an RPC method id (the `toil-rpc` header). An id absent from rpc_kinds is read-only
+/** DB kind for an RPC method id (the `dacely-rpc` header). An id absent from rpc_kinds is read-only
  *  (Query) - the safe default for RPC, matching the host gate. */
 export function rpcKindForId(methods: readonly RpcKindEntry[], methodId: number): DbFunctionKind {
     for (const m of methods) {

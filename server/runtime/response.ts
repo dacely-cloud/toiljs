@@ -178,7 +178,7 @@ export class Response {
             v += 'auth=1';
         }
         if (v.length > 0) {
-            this.setHeader('toil-cache-control', v);
+            this.setHeader('dacely-cache-control', v);
         }
 
         return this;

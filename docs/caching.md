@@ -74,7 +74,7 @@ Because `@auth` guards and body-decode run before the cache directive is applied
 an unauthorized request is rejected with 401 before anything is cached, and a
 cached entry is only ever produced from a handler that actually ran.
 
-Caching is **always opt-in.** A response with no `Toil-Cache-Control` directive
+Caching is **always opt-in.** A response with no `Dacely-Cache-Control` directive
 (i.e. no `@cache` / `Response.cache(...)`) is never stored, there is no blind
 "cache every GET" mode, because an automatic window cannot tell a personalized
 response from a public one and would key it without a per-user component.
@@ -96,10 +96,10 @@ It has two tiers:
   offloaded to a sibling thread so they never stall the request path; a separate
   per-core disk budget caps total spilled bytes, with the same expiry + eviction.
   If spill is not enabled, a big response is simply not cached (reported as not
-  stored by the `Toil-Cache` tag).
+  stored by the `Dacely-Cache` tag).
 
 From a tenant's point of view nothing changes: you still just set a
-`Toil-Cache-Control` directive (via `@cache` / `Response.cache(...)`). The edge
+`Dacely-Cache-Control` directive (via `@cache` / `Response.cache(...)`). The edge
 decides RAM vs disk; both honor the same TTL and the same safety rails above.
 Expiry is enforced on read (a past-TTL entry is a miss) and reclaimed on the next
 insert that needs room. Nothing persists across a process restart.
