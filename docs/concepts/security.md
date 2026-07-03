@@ -21,7 +21,7 @@ Every site (every tenant) on toil runs inside a **sandbox**: a walled-off compar
 That isolation is backed by **hard per-host limits**, enforced by the host and not by your code:
 
 - **A committed-memory cap.** Each tenant may commit only a bounded amount of real memory (on the order of tens of MiB). A tenant cannot grow without bound and starve its neighbors.
-- **A gas meter.** "Gas" is a per-request compute budget: every unit of work costs gas, and when a request runs out, the host stops it. A tenant cannot spin forever on the request path.
+- **A compute cap.** Each request gets a bounded compute budget, and when a request exceeds it, the host stops it. A tenant cannot spin forever on the request path.
 - **Rate limits.** How often one client may call a route is capped (see [Transport and rate limiting](#transport-and-rate-limiting) below).
 - **Hostile-wasm containment.** The runtime is hardened to run untrusted, even deliberately malicious, wasm without letting it escape.
 

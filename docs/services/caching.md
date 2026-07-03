@@ -151,9 +151,9 @@ The precedence follows the HTTP spec (RFC 7232): if the request has `If-None-Mat
 
 You do not need this to use caching, but it explains the limits you may hit.
 
-The edge response cache is per-core and hard-capped so it can never exhaust a node's memory:
+The edge response cache is bounded and hard-capped so it can never exhaust a node's memory:
 
-- **RAM tier**: small, short-lived responses live in memory. Each core holds at most ~128 MB, plus a cap on the number of entries. A single response over ~256 KB does not go in RAM.
+- **RAM tier**: small, short-lived responses live in memory, within a bounded budget (on the order of ~128 MB) plus a cap on the number of entries. A single response over ~256 KB does not go in RAM.
 - **Disk tier (optional)**: when the operator enables an on-disk spill directory, a **big** response (over ~256 KB) or a **long-lived** one (TTL of 10 minutes or more) is written to disk and served back with near-zero RAM, the same way static files are. If disk spill is not enabled, a big response is simply not cached (you will see `Dacely-Cache: DYNAMIC`).
 
 Expired entries are dropped on read (a stale entry is treated as a miss) and reclaimed when the cache needs room. Nothing survives a process restart.

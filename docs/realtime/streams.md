@@ -338,20 +338,19 @@ The client is keyed by the **class name** (`Server.Stream.Echo`) and connects to
 
 ## How placement works (you do not manage it)
 
-On the production edge, your box is pinned to **one worker** for the connection's whole life, using a QUIC feature called connection-id steering. In plain terms: every message from that connection is routed to the exact machine and process holding your box, so its in-memory state is always there. You never configure this; the edge does it automatically. In `toiljs dev` there is only one process, so this is a non-issue.
+On the production edge, your box lives in **one place** for the connection's whole life. Every message from that connection is routed to the exact instance holding your box, so its in-memory state is always there. You never configure this; the edge does it automatically. In `toiljs dev` there is only one process, so this is a non-issue.
 
 ## Why this scales
 
-A `@stream` box is deliberately cheap to run at scale, and the edge is built to spread a very large number of them across many cores and cities. Four design choices do the heavy lifting:
+A `@stream` box is deliberately cheap to run at scale, and the edge is built to spread a very large number of them across many machines and cities. Three design choices do the heavy lifting:
 
-- **One core per connection, chosen by the connection id (CID-steering).** The edge encodes the owning worker core's id directly into the QUIC connection id (the label QUIC stamps on every packet), and authenticates it with a keyed tag so it cannot be forged. Every packet for your connection is routed to the one core holding your box. Connections spread across all cores, and there is no shared lock on the hot path: each core owns its own boxes in a plain per-core map. Adding cores adds capacity.
-- **Kernel-bypass, multi-queue networking (DPDK).** The edge pulls packets from the network card in userspace, one worker per hardware queue, and the card fans arriving packets across those queues. Many cores handle traffic at once, in parallel, with no kernel socket in the middle to bottleneck on.
-- **The connection survives network changes.** If a client's network changes (Wi-Fi to cellular, or a NAT rebind), a packet can arrive on the wrong core. The edge re-steers it to the owning core over a small lock-free per-core queue, and moves the box's key in lockstep so the box is never orphaned. The user keeps their session and their in-memory state.
-- **Each box is isolated and bounded.** Every connection gets its own sandboxed box with its own linear memory. One tenant's boxes are capped to a slice of the node's RAM (a noisy-neighbor guard), and a single box is hard-capped (64 MiB) so a runaway connection can only fill itself, then it traps. Each lifecycle hook also runs under a per-event gas budget (a cap on how much work one event may do), so a hook that loops forever is stopped instead of hogging its core. (A finer per-packet gas policy is still being refined.)
+- **Connections spread across the fleet in parallel.** Each connection is handled on its own, with no shared lock in the middle for connections to fight over. There is no central bottleneck every connection has to pass through, so adding machines adds capacity in a straight line.
+- **The connection survives network changes.** If a client's network changes (Wi-Fi to cellular, or a NAT rebind), the edge keeps the connection attached to the same box. The user keeps their session and their in-memory state; the box is never orphaned.
+- **Each box is isolated and bounded.** Every connection gets its own sandboxed box with its own linear memory. One tenant's boxes are capped to a slice of the node's RAM (a noisy-neighbor guard), and a single box is hard-capped (64 MiB) so a runaway connection can only fill itself, then it traps. Each lifecycle hook also runs under a hard compute cap, so a hook that loops forever is stopped instead of hogging the machine.
 
-Put together: connections spread across every core, cores run in parallel, the session sticks to its core even when the network moves, and each box is walled off from the others. That is what lets one deployment hold a very large number of live connections at once. How large depends on your hardware and message sizes; these docs do not publish a benchmarked number.
+Put together: connections spread across the fleet, run in parallel, the session sticks to its box even when the network moves, and each box is walled off from the others. That is what lets one deployment hold a very large number of live connections at once. How large depends on your hardware and message sizes; these docs do not publish a benchmarked number.
 
-> **The wider picture.** For how CID-steering, the per-core re-steer queues, and the edge mesh add up to world-wide fan-out, see [Built for massive fan-out and world-wide sync](./README.md#built-for-massive-fan-out-and-world-wide-sync) in the overview.
+> **The wider picture.** For how the edge spreads connections across the fleet and the mesh adds up to world-wide fan-out, see [Built for massive fan-out and world-wide sync](./README.md#built-for-massive-fan-out-and-world-wide-sync) in the overview.
 
 ## Gotchas
 

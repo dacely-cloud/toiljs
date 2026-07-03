@@ -475,7 +475,7 @@ flowchart TB
     subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, built + measured, pre-GA"]
         direction LR
         SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images, fonts, css<br/>served from CDN / edge"]
-        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-core tenant at line rate<br/>8M req/s measured, sub-ms p50<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
+        RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-tenant instance at line rate<br/>8M req/s measured, sub-ms p50<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
         SC <-->|"typed RPC&nbsp; Server.*"| RT
     end
 
@@ -532,7 +532,7 @@ flowchart TB
 ║   │  STATIC CLIENT          │        │  WASM EDGE RUNTIME              │ ║
 ║   │  React SPA + baked HTML │        │  your ToilScript server as one │ ║
 ║   │  images   fonts   css   │   typed│  .wasm, run as an isolated      │ ║
-║   │  served from CDN / edge │◀──RPC─▶│  per-core tenant at line rate   │ ║
+║   │  served from CDN / edge │◀──RPC─▶│  per-tenant at line rate        │ ║
 ║   │                         │ Server.*  Request ▶ handler ▶ Response   │ ║
 ║   │  llms robots sitemap    │        │  realtime channels   binary IO  │ ║
 ║   └─────────────────────────┘        └───────────────┬─────────────────┘ ║

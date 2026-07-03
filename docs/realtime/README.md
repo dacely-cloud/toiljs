@@ -78,15 +78,15 @@ flowchart TB
 
 ### Why it can go so wide
 
-Three real mechanisms make massive scale possible. None of them is magic: each is plain engineering you can read in the edge source.
+Three design choices make massive scale possible, without any single machine or single lock becoming the ceiling.
 
-1. **Every connection lands on a worker core, in parallel.** The edge runs many worker cores per machine, each pulling packets straight from the network card in userspace (a technique called kernel-bypass, or DPDK). A connection is pinned to one core by writing that core's id **into the QUIC connection id**, a trick called **CID-steering** (a connection id is the label QUIC puts on every packet of a connection; QUIC is the fast, modern transport under HTTP/3). New connections spread evenly across all the cores, and there is no shared lock in the middle for them to fight over. Adding cores adds capacity.
-2. **The session follows the user.** Because the core id travels inside the connection id, a phone that switches from Wi-Fi to cellular keeps its exact session on the exact same core, in-memory game state and all. The edge re-routes the moved connection for you, so a network change does not drop the session.
+1. **Connections spread across the fleet in parallel.** Every new connection is handled on its own, with no shared lock in the middle for connections to fight over. There is no central bottleneck that every connection has to pass through, so adding machines adds capacity in a straight line.
+2. **The session follows the user.** A phone that switches from Wi-Fi to cellular keeps its exact session, in-memory game state and all. A network change does not drop the connection or reset the box.
 3. **The session sits near the user.** The edge is a fleet of servers in many cities. A `@stream` runs at a regional or continental node (see [Compute tiers](../concepts/tiers.md)), so the round trip to a player stays short no matter where on the map they are.
 
 ### An honest word on numbers
 
-The framework is **designed** for very large live audiences, aiming at the scale of millions of concurrent connections in a single live session as its ambition. That is the target the architecture is built toward, not a number measured in these docs. Real capacity depends entirely on your deployment: how many machines and cores you run, how big each message is, how often it is sent, and where your users are. We do not publish a benchmarked figure here. What we can say honestly is **why** it scales (the three mechanisms above), and that the design removes the usual single-machine and single-lock ceilings that cap other realtime stacks.
+The framework is **designed** for very large live audiences, aiming at the scale of millions of concurrent connections in a single live session as its ambition. That is the target the architecture is built toward, not a number measured in these docs. Real capacity depends entirely on your deployment: how many machines and cores you run, how big each message is, how often it is sent, and where your users are. We do not publish a benchmarked figure here. What we can say honestly is **why** it scales (the three design choices above), and that the design removes the usual single-machine and single-lock ceilings that cap other realtime stacks.
 
 One more honest note. Fanning a single message out to **other** users' connections (true one-to-many broadcast, the arrows in the diagram above) is the job of `@channel`. The client side of that (`useChannel`, `Server.Stream`) is live today. The server-side broadcast that reaches every subscriber across the mesh is **planned, not shipped yet**. See [Channels](./channels.md) for exactly what works now and what is coming, so you can build on solid ground.
 

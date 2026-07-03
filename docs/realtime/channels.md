@@ -191,7 +191,7 @@ flowchart TB
     Mesh --> D["...every other subscriber, at once"]
 ```
 
-The mechanism meant to make this fast is the same one that already spreads plain connections across the edge: every subscriber's connection is pinned to a known worker core by its connection id (**CID-steering**), so a broadcast is a fan-out to a set of known cores, not a search for who is listening. For how that pinning works, see [Built for massive fan-out and world-wide sync](./README.md#built-for-massive-fan-out-and-world-wide-sync) in the overview.
+The mechanism meant to make this fast is the same one that already spreads plain connections across the edge: because the edge always knows where each subscriber's connection lives, a broadcast is a direct fan-out to a known set of destinations, not a search for who is listening. For the wider picture, see [Built for massive fan-out and world-wide sync](./README.md#built-for-massive-fan-out-and-world-wide-sync) in the overview.
 
 Keep the status in mind: the diagram above is the **intended shape**. The delivery runtime is not shipped yet, so treat it as the plan, not an API you can call today.
 

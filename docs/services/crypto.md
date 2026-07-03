@@ -195,7 +195,7 @@ const ok: bool = crypto.subtle.verify(new HmacParams(), key, mac, message); // t
 - **No on-host key generation.** Keys are always **imported**, never generated on the server. Generate them elsewhere and import the bytes.
 - **No P-521.** `CURVE_P256` and `CURVE_P384` are supported.
 - **Keys do not survive the request.** A `CryptoKey` is a per-request handle; re-import each request.
-- **Every call is metered.** Crypto operations cost compute gas (charged up front from the sizes involved), so an over-budget call fails cleanly instead of burning CPU.
+- **Every call is metered.** Crypto operations cost compute (charged up front from the sizes involved), so an over-budget call fails cleanly instead of burning CPU.
 
 ### Post-quantum signature verify
 
