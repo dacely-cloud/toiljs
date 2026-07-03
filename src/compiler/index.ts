@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import net from 'node:net';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import pc from 'picocolors';
 import { build as viteBuild, createServer, mergeConfig, type ViteDevServer } from 'vite';
@@ -107,6 +108,56 @@ function serverEntryFiles(root: string): string[] {
 }
 
 /**
+ * The framework-shipped built-in-auth entry files (root-relative), appended to the toilscript entry
+ * set when `server.auth` is on. `AuthUser.ts` (the `@user` shape) is FIRST because `AuthController.ts`
+ * (the `@rest('auth')` controller) imports it. Primary lookup is the conventional install location
+ * under the app's `node_modules/toiljs` (which transparently follows a symlinked/linked toiljs); the
+ * fallback resolves the running toiljs package (`…/build/compiler/index.js` -> package root) for a
+ * hoisted install. Throws a clear error if the shipped files are missing.
+ */
+function authEntryFiles(root: string): string[] {
+    const names = ['AuthUser.ts', 'AuthController.ts'];
+    const primary = names.map((n) => path.posix.join('node_modules/toiljs/server/auth', n));
+    if (primary.every((rel) => fs.existsSync(path.join(root, rel)))) return primary;
+    // Fallback: locate this running toiljs package dir and make the paths root-relative.
+    try {
+        const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+        const abs = names.map((n) => path.join(pkgDir, 'server', 'auth', n));
+        if (abs.every((p) => fs.existsSync(p)))
+            return abs.map((p) => path.relative(root, p).replace(/\\/g, '/'));
+    } catch {
+        // fall through to the error below
+    }
+    throw new Error(
+        'toiljs: server.auth is enabled but the built-in auth controller ' +
+            '(server/auth/AuthController.ts) was not found under node_modules/toiljs. ' +
+            'Reinstall toiljs (npm i toiljs), or remove server.auth from toil.config.ts.',
+    );
+}
+
+/**
+ * Whether any server entry declares the escape-hatch `import 'toiljs/server/auth'` (a bare side-effect
+ * import) — the lighter opt-in that turns on the built-in auth surface without the `server.auth` config
+ * flag. Framework-shipped decorator sources under node_modules only WEAVE as explicit toilscript entries
+ * (a transitive import lands them under the `~lib/` LIBRARY prefix, where `@data`/`@rest`/`@user` do not
+ * weave), so the bare import is only a SIGNAL: it triggers the same entry injection as the flag. `import
+ * type` is skipped (erased). The marker module `server/auth/index.ts` is intentionally empty so it never
+ * pulls a conflicting `~lib/` copy of the controller into the compile.
+ */
+function serverImportsAuth(root: string, files: string[]): boolean {
+    // Bare side-effect import only (`import 'toiljs/server/auth'`); not `import type`, not a subpath.
+    const re = /(^|[^.\w])import\s+['"]toiljs\/server\/auth['"]/m;
+    for (const rel of files) {
+        try {
+            if (re.test(fs.readFileSync(path.join(root, rel), 'utf8'))) return true;
+        } catch {
+            // unreadable: skip
+        }
+    }
+    return false;
+}
+
+/**
  * Builds the toilscript server target (which also regenerates `shared/server.ts` via
  * `--rpcModule`) when the project has one, signalled by a `toilconfig.json` at the root. This
  * runs before the client build/dev so the generated `@data` + `Server` module the client
@@ -115,7 +166,7 @@ function serverEntryFiles(root: string): string[] {
  * toilconfig entries) so dropped-in `@data`/`@rest` files are picked up. Runs the locally
  * installed `toilscript`, resolved + invoked via Node (no `.bin` shim / PATH assumptions).
  */
-export async function buildServer(root: string): Promise<void> {
+export async function buildServer(root: string, auth: boolean = false): Promise<void> {
     if (!fs.existsSync(path.join(root, 'toilconfig.json'))) return;
 
     // Regenerate the editor-only server-globals d.ts each build (the same way
@@ -136,6 +187,24 @@ export async function buildServer(root: string): Promise<void> {
     // Explicit entries (every server file) override the toilconfig entries; the target options
     // (optimization, features, runtime) still come from the toilconfig's `release` target.
     const files = serverEntryFiles(root);
+
+    // Built-in auth opt-in: APPEND the framework-shipped auth surface to the entry set BEFORE the tier
+    // split, so its `@user`/`@data`/`@database`/`@rest('auth')` decorators weave (a source under the
+    // `server/globals` LIB set — or transitively imported from node_modules under the `~lib/` prefix —
+    // would NOT weave) and the controller self-mounts at `/auth/*` with no hand-written boilerplate.
+    // AuthUser is ordered first (the controller imports it); AuthController lands in the REQUEST tier (it
+    // declares `@rest`) and AuthUser is shared into every pass (only `@user`/`@data`). They live under
+    // node_modules, so serverEntryFiles never scanned them. Opt-in is either the `server.auth` config flag
+    // OR the escape-hatch `import 'toiljs/server/auth'` in a server entry (which only MARKS the intent —
+    // it cannot weave on its own, being a `~lib/` import — so the build turns it into the same injection).
+    if (auth || serverImportsAuth(root, files)) {
+        const authFiles = authEntryFiles(root);
+        const authSet = new Set(authFiles);
+        files.unshift(...authFiles);
+        for (let i = files.length - 1; i >= authFiles.length; i--) {
+            if (authSet.has(files[i])) files.splice(i, 1); // defensive dedup (normally none)
+        }
+    }
 
     // A project that declares a `@daemon` (L4 cold surface) and/or a `@stream` (L2/L3 stream
     // surface) compiles the ONE source tree into SEPARATE artifacts, one per deployment tier, via
@@ -473,7 +542,7 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
         // Recompile emails/*.tsx -> the generated module before the server build,
         // so editing an email template hot-reloads like any other server change.
         renderEmails(cfg)
-            .then(() => buildServer(root))
+            .then(() => buildServer(root, cfg.auth))
             .then(() => process.stdout.write(pc.green('  ✓ ') + pc.dim('server rebuilt') + '\n'))
             .catch((e: unknown) =>
                 process.stdout.write(pc.red(`  ✗ server rebuild failed: ${String(e)}`) + '\n'),
@@ -751,7 +820,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     // documented fail-safe 500 until the next full `build`. A no-op without an `ssr = true` route.
     generate(cfg);
     if (hasServer) await extractServerSlots(cfg);
-    await buildServer(cfg.root);
+    await buildServer(cfg.root, cfg.auth);
     if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
 
     if (!hasServer) {
@@ -874,7 +943,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     // server compiles. (The `HASH` is finalized by the post-Vite `extractTemplates` below, which
     // recompiles the server only if it rotated.) A no-op for a project with no `ssr = true` route.
     const priorServerSlots = hasServer ? await extractServerSlots(cfg) : new Map<string, string>();
-    await buildServer(cfg.root);
+    await buildServer(cfg.root, cfg.auth);
     if (opts.serverOnly) return;
     if (hasServer)
         process.stdout.write(
@@ -909,7 +978,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
         process.stdout.write(
             pc.dim('  SSR template changed; recompiling the server with the new hash…') + '\n',
         );
-        await buildServer(cfg.root);
+        await buildServer(cfg.root, cfg.auth);
     }
 }
 

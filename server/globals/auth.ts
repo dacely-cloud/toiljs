@@ -279,6 +279,37 @@ export namespace AuthService {
     }
 
     /**
+     * The stable, tenant-scoped {@link ToilUserId} of the current request's
+     * authenticated user, or `null` if there is no valid session. Recovered from
+     * the session codec directly (the built-in `server.auth` `@user` shape puts
+     * the 32-byte id FIRST, see `server/auth/AuthUser.ts`), so this stays generic
+     * — it does NOT depend on the app's injected `@user` type carrying a
+     * `toilUserId` field — while matching the built-in layout. An app whose custom
+     * `@user` does not lead with the id should read `getUser()` instead.
+     *
+     * NULL CHECK: `ToilUserId` overloads `==` for value equality, so `userId() ==
+     * null` does NOT type-check. Gate on {@link hasSession} first (then the result
+     * is non-null), e.g. `if (AuthService.hasSession()) { const id =
+     * AuthService.userId()!; ... }`.
+     */
+    export function userId(): ToilUserId | null {
+        const bytes = getSessionBytes();
+        if (bytes == null) return null;
+        return ToilUserId.fromBytes(new DataReader(bytes).readBytes());
+    }
+
+    /**
+     * A no-op discoverability marker for the built-in auth surface. The REAL
+     * opt-in is `server: { auth: true }` in `toil.config.ts` (or a bare
+     * `import 'toiljs/server/auth'`), which appends the shipped `@user` shape +
+     * `@rest('auth')` controller to the build's toilscript entry set so they weave
+     * and self-mount at `/auth/*`. `enable()` exists so `AuthService.enable()` in
+     * `main.ts` type-checks and the surface is discoverable via this namespace; it
+     * mounts nothing on its own.
+     */
+    export function enable(): void {}
+
+    /**
      * Mint a signed session cookie carrying `userData` (the `@user` codec bytes,
      * i.e. `myUser.encode()`), valid for `ttlSecs`. Set it on the response with
      * `Response.setCookie(...)`. HMAC-signed, HttpOnly, Secure, SameSite=Lax,

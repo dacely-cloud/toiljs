@@ -140,6 +140,16 @@ export interface ServerConfig {
     readonly email?: EmailBackendConfig;
     /** Which layer the dev process emulates. Default `all`. */
     readonly nodeMode?: DevNodeMode;
+    /**
+     * Built-in auth. `true` opts into the framework's post-quantum login: the
+     * build appends a shipped `@rest('auth')` controller + its `@user` shape to
+     * the toilscript entry set, so the app gets the full `/auth/register|login`
+     * API + sessions (`/auth/me`, `/auth/logout`) with no hand-written boilerplate.
+     * Default `false`. (The escape hatch `import 'toiljs/server/auth'` in
+     * `server/main.ts` does the same without this flag.) An app that opts in must
+     * NOT declare its own `@user` — the built-in owns the single per-program one.
+     */
+    readonly auth?: boolean;
     /** Daemon (L4) config mirror (dev / self-host). */
     readonly daemon?: DaemonConfig;
     /**
@@ -202,6 +212,8 @@ export interface ResolvedToilConfig {
     readonly email: EmailBackendConfig | null;
     /** Which layer the dev process emulates (dev / self-host). Default `all`. */
     readonly nodeMode: DevNodeMode;
+    /** Whether the built-in `/auth/*` PQ-login controller is compiled + mounted. */
+    readonly auth: boolean;
     /** Daemon (L4) config mirror (dev / self-host), every field resolved. */
     readonly daemon: ResolvedDaemonConfig;
     /** Self-host HTTP worker count for `toiljs start`. */
@@ -279,6 +291,7 @@ export async function loadConfig(
         seo: client.seo ?? null,
         email: user.server?.email ?? null,
         nodeMode: resolveNodeMode(user.server?.nodeMode),
+        auth: user.server?.auth === true,
         daemon: resolveDaemonConfig(user.server?.daemon),
         threads: resolveThreads(user.server?.threads),
         runtimePath: resolveRuntimePath(),

@@ -67,6 +67,10 @@
             "types": "./server/runtime/*.ts",
             "default": "./server/runtime/*.ts"
         },
+        "./server/auth": {
+            "types": "./server/auth/index.ts",
+            "default": "./server/auth/index.ts"
+        },
         "./tsconfig": "./presets/tsconfig.json",
         "./eslint": "./presets/eslint.js",
         "./prettier": "./presets/prettier.json",
