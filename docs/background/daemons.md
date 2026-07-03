@@ -139,6 +139,12 @@ A daemon has a small set of host abilities beyond ordinary computation:
 
 > **Note:** In `toiljs dev` (the single-process local emulator), the daemon is always the leader (there is nothing to fail over to), and `http_call` is stubbed to return a "call failed" result rather than make real network requests. Everything else, including the schedule and your database writes, runs exactly as it does on the edge.
 
+### `http_call` is not callable from your code yet
+
+An honest caveat, because it is easy to assume otherwise: **there is no guest-callable `http_call` API in toiljs today.** The capability itself is fully built on the *host* side (the edge implements the leader-only, SSRF-bounded, metered outbound call as a low-level host import, `daemon.http_call(reqPtr, reqLen, outPtr, outCap) -> i64`, and the dev emulator reserves the same name), but toiljs does **not** ship a friendly TypeScript wrapper you can call from a `@scheduled` method. There is no `daemon.httpCall(...)` (or similarly named) function in the standard library, so your daemon code cannot make an outbound HTTP request at the moment.
+
+Treat outbound HTTP from a daemon as **planned, not yet available**. When the guest binding lands it will behave exactly as described above (leader-fenced, SSRF-bounded, and metered, and its usage will show up in the `Analytics` counters `daemonHttpCallAttempts` / `daemonHttpCallFailures`). Until then, if a daemon needs data from an outside service, have that service write into [ToilDB](../database/README.md) some other way, and let the daemon read it from there.
+
 ## The `main.daemon.ts` file (a separate tier)
 
 Like streams, daemons live in their **own entry file**, `server/main.daemon.ts`, and compile into their **own artifact**, `build/server/release-cold.wasm`. Importing your `@daemon` module there pulls it into that artifact.

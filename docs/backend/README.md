@@ -97,6 +97,36 @@ export class AppHandler extends ToilHandler {
 
 RPC calls (to the reserved path `/__toil_rpc`) are handled by the framework before your `handle` runs, so you do not dispatch them yourself.
 
+### Per-request hooks: `onRequestStarted` and `onRequestCompleted`
+
+`ToilHandler` gives you two optional hooks that run around every request, so you can add cross-cutting logic (logging, timing, metrics) once instead of repeating it in every route, and without re-implementing `handle`:
+
+- **`onRequestStarted(req: Request): void`** runs just **before** `handle(req)`. Override it for per-request setup: start a timer, log the incoming method and path, read a header you need everywhere.
+- **`onRequestCompleted(req: Request, resp: Response): void`** runs just **after** `handle` returns, and it is handed the `Response` that is about to go out. It **also runs when your handler throws**, after the runtime has turned that throw into a `500`, so it is the right place for teardown you always want to happen (record the outcome, stop the timer, emit a metric).
+
+Both are empty by default, so override only the one you need. The framework calls them around every request; you never call them yourself.
+
+```ts
+import { Request, Response, Rest, ToilHandler } from 'toiljs/server/runtime';
+
+export class AppHandler extends ToilHandler {
+    public handle(req: Request): Response {
+        const hit = Rest.dispatch(req);
+        return hit != null ? hit : Response.unhandled();
+    }
+
+    // Runs before every handle().
+    public onRequestStarted(req: Request): void {
+        // per-request setup, e.g. note the path you are about to serve
+    }
+
+    // Runs after every handle(), including after a throw became a 500.
+    public onRequestCompleted(req: Request, resp: Response): void {
+        // always-run teardown: record the outcome, stop a timer, emit a metric
+    }
+}
+```
+
 If your project is REST-only, you do not even need a custom handler; toiljs ships a ready-made one. See [REST](./rest.md#dispatch-and-the-404-fallback).
 
 ## Compute tiers

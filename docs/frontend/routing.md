@@ -252,6 +252,54 @@ export default function Login() {
 
 `useRouter()` returns a handle with `push`, `replace`, `back`, `forward`, `refresh` (re-run the current page's data loader), `revalidate` (refetch data), and `prefetch`.
 
+If you just need to jump to a URL and nothing else, `Toil.useNavigate()` returns the bare `navigate(href, options)` function:
+
+```tsx
+export default function Login() {
+  const navigate = Toil.useNavigate();
+  return (
+    <button onClick={() => navigate('/dashboard', { replace: true })}>
+      Continue
+    </button>
+  );
+}
+```
+
+The options are `{ replace?: boolean; scroll?: boolean }`, the same two controls `Toil.Link` exposes above. The same function is also available free of any hook as `Toil.navigate(href, options)`, which is handy in code that is not a React component (a plain event handler, a utility module).
+
+### Typed hrefs and the `href()` escape hatch
+
+Every href you pass to `Toil.Link`, `navigate`, or `router.push` is type-checked against your project's real routes. The compiler scans `client/routes/` and generates a file called `toil-routes.d.ts` that registers the union of your route paths (it fills in the `Href` type). So a typo is a compile error before you ever run the app:
+
+```tsx
+<Toil.Link href="/abuot">About</Toil.Link>
+// ^ Type error: "/abuot" is not assignable to type 'Href'. (No such route.)
+```
+
+Dynamic routes show up in that union as template-literal types. A file at `client/routes/blog/[id].tsx` contributes the type `` `/blog/${string}` ``, so a link built with one interpolation usually still checks:
+
+```tsx
+<Toil.Link href={`/blog/${post.id}`}>Read</Toil.Link>   // fine: matches `/blog/${string}`
+```
+
+The catch is a URL assembled from several data pieces (or one TypeScript cannot prove the shape of): it is typed as a plain `string`, and `string` is not assignable to `Href`, so you get a type error:
+
+```tsx
+const cat = product.category;   // string
+const slug = product.slug;      // string
+navigate(`/${cat}/${slug}`);
+// ^ Argument of type 'string' is not assignable to parameter of type 'Href'.
+```
+
+The escape hatch is `Toil.href()`. It takes a `string` and asserts it is a valid href, returning the `Href` type the navigation APIs expect. Use it right at the call site once you are sure the path is a real route:
+
+```tsx
+navigate(Toil.href(`/${cat}/${slug}`));                 // asserted valid
+<Toil.Link href={Toil.href(`/${cat}/${slug}`)}>Open</Toil.Link>;
+```
+
+`href()` is a pure type assertion (it returns the string unchanged), so reach for it only when the type-check is in your way, not to paper over a genuine typo. Before the routes are generated (a fresh project, the first build), `Href` is just `string`, so nothing complains until `toil-routes.d.ts` exists.
+
 ### Reading the current location
 
 A handful of hooks let a component read where it is:
@@ -260,6 +308,7 @@ A handful of hooks let a component read where it is:
 | --- | --- |
 | `Toil.useParams()` | The dynamic route params, e.g. `{ id }`. |
 | `Toil.usePathname()` | The current path, e.g. `"/blog/42"`. |
+| `Toil.useLocation()` | The current path, e.g. `"/blog/42"` (an alias of `usePathname()`). |
 | `Toil.useSearchParams()` | The query string as a `URLSearchParams`. |
 | `Toil.useNavigationPending()` | `true` while a navigation is in flight (for a loading bar). |
 

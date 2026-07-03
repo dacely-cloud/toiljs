@@ -107,6 +107,23 @@ router.revalidate();            // refetch the active route's loader
 
 `router.refresh()` re-runs the current loader and clears the cache; `router.revalidate(href)` invalidates a specific route.
 
+### Invalidating loader data by hand
+
+`revalidate()` and the `<Toil.Form>` `revalidate` prop are both built on one lower-level primitive: `Toil.invalidateLoaderData(href?)`. It drops cached loader data so the next render refetches it, but it does **not** trigger the re-render itself (that is the difference from `revalidate()`, which does both):
+
+- `invalidateLoaderData()` with no argument clears every route's cached data.
+- `invalidateLoaderData('/posts')` clears just that one route's entry.
+
+You rarely need it directly; `revalidate()` (which pairs it with a re-render) is what you usually want. Reach for the primitive when you want to mark data stale *now* but let a later navigation do the actual refetch:
+
+```tsx
+// After a background sync finished, mark the dashboard stale so its
+// next visit refetches, without disturbing the page the user is on.
+Toil.invalidateLoaderData('/dashboard');
+```
+
+Signature: `invalidateLoaderData(href?: string): void`.
+
 ## Forms
 
 For the common "submit a form, then refresh the page's data" loop, use `Toil.Form`. It runs an async action on submit (no page reload), tracks pending and error state, and revalidates the route's loader data on success:
@@ -147,6 +164,47 @@ Key `Toil.Form` props:
 | `onSuccess` / `onError` | | Callbacks for the two outcomes. |
 
 Passing a **render function** as `children` gives you live submit state (`pending`, `error`), so you can disable the button while the request is in flight. On success, `Form` revalidates the loader, so the page's data updates automatically without a manual refetch.
+
+## Mutations without a form: `useAction`
+
+`Toil.Form` is convenient sugar over a more general primitive, `Toil.useAction`. Use `useAction` for any write that is not a form submit: a delete button, a "like" toggle, a "mark as read" action. It runs your async function on demand and tracks the whole lifecycle (`pending`, `error`, `data`), then revalidates the affected loader data on success so the page reflects the change, exactly like `Form` does.
+
+You call it with the function to run and an optional options object, and it hands back a handle:
+
+```tsx
+export default function PostRow({ id }: { id: number }) {
+  const del = Toil.useAction(
+    (postId: number) => Server.REST.posts.remove({ params: { id: postId } }),
+    { revalidate: true, onError: (e) => alert(parseError(e)) },
+  );
+
+  return (
+    <button disabled={del.pending} onClick={() => void del.run(id)}>
+      {del.pending ? 'Deleting...' : 'Delete'}
+    </button>
+  );
+}
+```
+
+The handle it returns:
+
+| Field | What it is |
+| --- | --- |
+| `run(input)` | Runs the action. Resolves to the result, or `undefined` if it threw. The error is captured in `error` rather than rejected, so a fire-and-forget `onClick` cannot leak an unhandled rejection. |
+| `pending` | `true` while a run is in flight. Drive a spinner or a disabled button off this. |
+| `error` | The error from the last failed run, or `undefined`. |
+| `data` | The value the last successful run returned, or `undefined`. |
+| `reset()` | Clear `pending` / `error` / `data` back to idle. |
+
+The options mirror `Toil.Form`:
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `revalidate` | `true` (current route) | Which loader data to refetch after a successful run: `true` (the active route), an `href` or array of hrefs (those routes), or `false` (none). |
+| `onSuccess` | | Called with the action's return value after a successful run. |
+| `onError` | | Called with the thrown value when the action fails. |
+
+`Toil.Form` is just this hook wired to a `<form>`'s submit event, with the form's `FormData` passed as the input. Anything a form does, you can do by hand with `useAction`.
 
 ## Reading who is logged in
 

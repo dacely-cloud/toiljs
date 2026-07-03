@@ -7,6 +7,7 @@ This is the canonical documentation, organized by section. Each link points to a
 ## Getting started
 - [Getting started](getting-started/README.md): toiljs is a full-stack web framework: you write a React frontend and a TypeScript backend in one project, and toiljs ships both together.
 - [Create a project](getting-started/create-project.md): Scaffold a brand-new toiljs app with one command.
+- [Deploying a toiljs app](getting-started/deploy.md): This page is an honest look at how you get a toiljs app in front of real users.
 - [Your first app](getting-started/first-app.md): Build a tiny feature end to end: a page with a "Like" button that reads and writes a real number in ToilDB, so the count survives page reloads and restarts.
 - [Installation](getting-started/installation.md): Install the toiljs command-line tool (CLI) so you can create and run projects.
 - [Migrating an existing React app](getting-started/migrating.md): How to bring a React app you already have into toiljs.
@@ -22,6 +23,8 @@ This is the canonical documentation, organized by section. Each link points to a
 - [Metadata and SEO](frontend/metadata.md): Metadata is the information in a page's `<head>`: its title, its description, and the tags that control how it looks when shared on social media or listed by a search engine.
 - [Rendering and SSR](frontend/rendering.md): This page explains where your pages are built: in the browser, ahead of time at build, or on the server for each request.
 - [Routing](frontend/routing.md): toiljs uses file-based routing: every file under `client/routes/` becomes a page, and its path on disk becomes its URL.
+- [Scripts](frontend/scripts.md): `Toil.Script` loads an external or inline `<script>` for you, with control over *when* it runs and a guarantee it runs only *once* across your whole app.
+- [Page search](frontend/search.md): toiljs ships a built-in search over your own pages: at build time it indexes every route's metadata (title, description, keywords, Open Graph), and at runtime you query that index to build a search box or a command palette that jumps straight to a page.
 - [Styling](frontend/styling.md): toiljs does not force a styling system on you.
 
 ## Backend

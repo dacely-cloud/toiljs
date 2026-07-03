@@ -41,7 +41,7 @@ Here is every operation, its shape, and what it gives back. `K` is your key type
 | `exists` | `exists(key: K): bool` | `true` if the record is present | check presence without reading the value |
 | `create` | `create(key: K, value: V): bool` | `true` if inserted, `false` if the key was already taken | add a **new** record without overwriting |
 | `patch` | `patch(key: K, value: V): V` | the newly stored value; **traps** if the record is absent | replace an **existing** record's value |
-| `enqueue` | `enqueue(key: K, value: V): bool` | `true` if accepted, `false` if absent or rejected | a high-throughput update where you do not need the value back |
+| `enqueue` | `enqueue(key: K, value: V): bool` | `true` if applied, `false` if a concurrent write won first or the record is absent | a version-checked (compare-and-swap) overwrite of an existing record |
 | `delete` | `delete(key: K): void` | nothing (idempotent) | remove a record |
 | `getDelete` | `getDelete(key: K): V \| null` | the value that was there, or `null`; removes it atomically | consume a record exactly once |
 
@@ -87,9 +87,9 @@ These three all put a value under a key, but they differ in one important way ea
 flowchart TD
     START["I want to write a record"] --> Q1{"Is this a brand-new<br/>record that must not<br/>clobber an existing one?"}
     Q1 -->|Yes| CREATE["create<br/>(insert only; false if the key exists)"]
-    Q1 -->|No, it already exists| Q2{"Do I need the stored<br/>value back right now?"}
-    Q2 -->|Yes| PATCH["patch<br/>(overwrite; returns the new value)"]
-    Q2 -->|No, fire and forget| ENQUEUE["enqueue<br/>(overwrite; returns only accepted/not)"]
+    Q1 -->|"No, it already exists"| Q2{"Must the write fail if another<br/>request changed the record<br/>since I read it?"}
+    Q2 -->|"Yes, guard against a lost update"| ENQUEUE["enqueue<br/>(version-checked CAS; false if<br/>someone wrote first, then retry)"]
+    Q2 -->|"No, last write wins"| PATCH["patch<br/>(unconditional overwrite;<br/>returns the new value)"]
 ```
 
 **`create` inserts a new record.** It only writes if the key is free. If the key already has a record, `create` does nothing and returns `false`. This is your tool for "sign up a new user" or "claim this order id," where accidentally overwriting an existing record would be a bug. Because every key is serialized at its home (see [eventual consistency](./README.md#eventual-consistency-in-plain-words)), `create` is race-safe: if two requests create the same key at the same instant, exactly one gets `true` and the other gets `false`.
@@ -111,7 +111,26 @@ const saved: User = AppDb.users.patch(new UserId('u_123'), current);
 // saved is what is now stored
 ```
 
-**`enqueue` is `patch` without the round trip back.** It overwrites an existing record too, but it is **fire-and-forget**: it returns a `bool` (`true` accepted, `false` if the record was absent or the write was rejected), never the stored value, and you should not treat the new value as visible until a *later* read confirms it. Use it for high-throughput updates where you do not need to read the result immediately, for example bumping a "last seen" timestamp on every request. When you need the confirmed new value in the same handler, use `patch` instead.
+**`enqueue` is a version-checked overwrite (a compare-and-swap).** Like `patch`, it replaces the whole value of an **existing** record, but it does so *only if the record has not changed since you read it*. A **compare-and-swap** (CAS) is exactly that: "write my new value, but only if the current value is still the one I saw." It returns a `bool`: `true` means your write was applied; `false` means either a concurrent write changed the record first (someone else beat you to it) or the record is absent. A `false` is **not an error**; it is the signal to **re-read and try again**. This approach is called **optimistic concurrency**: rather than locking the record, you assume nobody else will touch it, and you simply re-run the update on the rare occasion someone did.
+
+Reach for `enqueue` when several requests may update the *same* record at once and you must not silently lose any of their changes. A plain `patch` cannot promise that: two overlapping patches clobber each other (the last writer wins and the earlier update just vanishes). The intended pattern for `enqueue` is always a read-modify-CAS **retry loop**:
+
+```ts
+const key = new UserId('u_123');
+for (let attempt = 0; attempt < 5; attempt++) {
+  const current = AppDb.users.get(key);      // 1. read the current value
+  if (current == null) return Response.notFound();
+  current.score = current.score + 10;        // 2. modify your copy
+  if (AppDb.users.enqueue(key, current)) {   // 3. try to commit it
+    return Response.text('ok');              //    true: applied, we are done
+  }
+  // false: someone wrote between our get and our enqueue.
+  // Loop: re-read the now-newer value and reapply the change on top of it.
+}
+return Response.text('too much contention, try again later', 409);
+```
+
+Because every retry re-reads the latest value, the two updates **compose** (both `+10`s land) instead of one silently overwriting the other. If you do not need this guard (only one writer touches the key, or last-write-wins is genuinely fine), a plain `patch` is simpler and also hands you the stored value back directly.
 
 > There is no single "create or overwrite" (upsert) call. To get that behavior, try `create` first and fall back to `patch` if the key was taken:
 >
@@ -217,13 +236,13 @@ Documents follows ToilDB's general model (see [the overview](./README.md#eventua
 
 - **Writes to one key are serialized at that key's home**, so `create` is race-safe and `patch`/`enqueue`/`getDelete` never corrupt a record under concurrency.
 - **Reads are eventually consistent across regions.** Right after a write, a read from a far-away region may briefly still see the old value (or, for a just-created record, not see it yet). The copies converge within moments.
-- Because `patch` replaces the whole value, two updates to *different* fields of the same record can clobber each other if they overlap (read-modify-write races). If you find yourself doing that a lot on one hot record, a counter or a set is often a better fit than a Documents value. See [Counters](./counters.md) and [Membership](./membership.md).
+- Because `patch` replaces the whole value, two updates to *different* fields of the same record can clobber each other if they overlap (read-modify-write races). `enqueue`'s version check is exactly the guard against that: use the read-modify-CAS retry loop shown above so a lost update turns into a retry instead of silent data loss. If you find yourself contending on one hot record a lot, a counter or a set is often a better fit than a Documents value. See [Counters](./counters.md) and [Membership](./membership.md).
 
 ## Gotchas
 
 - **`patch` requires an existing record.** Calling it on a missing key traps the request. Use `create` for new records, or the `create`-then-`patch` upsert pattern above.
 - **`patch` replaces the whole value.** There is no field-level merge; read, modify, and write back the full value.
-- **`enqueue` does not return the value and is not instantly visible.** Do not read back the same key expecting the enqueued value right away; use `patch` when you need the confirmed result.
+- **`enqueue` returning `false` is not a failure.** It means a concurrent write beat you to the record (or the record is absent), so re-read and retry in a loop; never ignore the return value or treat `false` as a hard error. `enqueue` also does not hand back the stored value; use `patch` when you want the value returned and last-write-wins is acceptable.
 - **No "get all."** There is no scan on the request path. Use `getMany` for known keys, and [Events](./events.md) or a [View](./views.md) for "the latest N."
 - **`getDelete`, not `get` + `delete`, for consume-once.** Only `getDelete` guarantees exactly one caller receives the value.
 

@@ -91,6 +91,7 @@ Declare your database schema. These carry no tier of their own; they are compile
 | `@database` | class | Marks a class as a ToilDB database; each `@collection` field becomes a typed handle (`App.users.get(...)`). |
 | `@collection` | field | Declares a field as a collection handle (`Documents` / `View` / `Unique` / `Counter` / `Events` / `Membership` / `Capacity`). |
 | `@data` | class | Marks a class serializable: the compiler generates a binary codec so it can cross the wire and the database. See [Data types](../backend/data.md). |
+| `@migrate` | function | Schema migration for a `@data` type: a free function that upgrades a record written under an old layout to the current shape (lives in `migrations/<Type>.migration.ts`). See [Data types](../backend/data.md). |
 
 ## Database function kinds (data-access policy)
 

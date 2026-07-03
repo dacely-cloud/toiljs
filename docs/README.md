@@ -57,12 +57,14 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 - [Getting started](./getting-started/README.md): install, create a project, project structure, your first
   app, and migrating an existing React app.
 - [The CLI](./cli/README.md): `dev`, `build`, `create`, `doctor`, and every flag.
+- [Deploy](./getting-started/deploy.md): build for production, self-host it, and how the managed edge fits in.
 
 **Build the frontend**
 - [Frontend overview](./frontend/README.md), [Routing](./frontend/routing.md),
   [Rendering and SSR](./frontend/rendering.md), [Styling](./frontend/styling.md),
   [Images](./frontend/images.md), [Metadata and SEO](./frontend/metadata.md),
-  [Fetching data](./frontend/data-fetching.md).
+  [Fetching data](./frontend/data-fetching.md), [Scripts](./frontend/scripts.md),
+  [Search](./frontend/search.md).
 
 **Build the backend**
 - [Backend overview](./backend/README.md), [HTTP routes (`@rest`)](./backend/rest.md),

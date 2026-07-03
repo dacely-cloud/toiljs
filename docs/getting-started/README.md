@@ -69,6 +69,7 @@ Work through these pages in order:
 3. **[Project structure](./project-structure.md)**: a tour of every folder and file, and where each one runs.
 4. **[Your first app](./first-app.md)**: build a tiny feature end to end, a page that calls a backend route and reads and writes one piece of ToilDB data.
 5. **[Migrating an existing app](./migrating.md)**: bring a React app you already have into toiljs.
+6. **[Deploy](./deploy.md)**: build for production and self-host it, and how the managed edge fits in.
 
 ## Related
 

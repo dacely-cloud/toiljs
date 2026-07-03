@@ -76,6 +76,12 @@ The scaffolded `package.json` includes these scripts:
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run format` | `prettier --write ...` |
 
+### Generated docs and AI-assistant pointers
+
+Every project carries a full copy of this documentation set at `.toil/docs/`. You do not maintain it: toiljs regenerates it from the installed toiljs version on every `toiljs dev` and `toiljs build`, so it always matches the version you are on. Do not edit those files by hand (your changes are overwritten on the next dev or build).
+
+Unless you opt out, `toiljs create` also writes small **pointer files** at the project root that tell AI coding assistants to read `.toil/docs/` before touching the project: `CLAUDE.md` (Claude Code), `AGENTS.md` (Codex and others), `.cursor/rules/toiljs.mdc` (Cursor), and `.github/copilot-instructions.md` (GitHub Copilot). These are written once, committed, and yours to edit. Control them with `--ai` / `--no-ai` (when you pass neither, `create` asks).
+
 ### create options
 
 | Flag | Meaning |

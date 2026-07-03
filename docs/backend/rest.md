@@ -281,8 +281,8 @@ You can stack extra decorators on a route (or a whole controller) to protect or 
 @rest('admin')
 class Admin {
     @get('/stats')
-    @auth                       // reject with 401 if there is no valid session
-    @ratelimit({ perMinute: 30 })
+    @auth                                       // reject with 401 if there is no valid session
+    @ratelimit(RateLimit.SlidingWindow, 30, 60) // at most 30 requests per 60 seconds
     public stats(): Stats { /* ... */ }
 }
 ```

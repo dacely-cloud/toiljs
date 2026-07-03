@@ -87,6 +87,31 @@ sequenceDiagram
 
 Runs once, right after the box is created. Use it to set up per-connection state (reset a counter, read the requested path, decide whether to accept the connection). It can return a `StreamOutbound` to accept or reject (see below). The Echo example uses it to zero its counter.
 
+**What it receives.** `@connect` is handed a `StreamInbound`, a small read-only object the host fills in with the details of the connection that just opened. It lets you look at *where* the connection came from before you decide to keep it.
+
+| Member        | Type     | What it gives you                                                       |
+| ------------- | -------- | ----------------------------------------------------------------------- |
+| `streamId`    | `u64`    | A unique id for this connection.                                        |
+| `transport`   | `i32`    | A numeric tag for the transport that carried the connection.           |
+| `authority()` | `string` | The host the browser connected to (for example `example.com`).         |
+| `path()`      | `string` | The path the browser opened (for example `/echo`).                     |
+
+Watch the shape: `authority()` and `path()` are **methods** (call them with `()`), while `streamId` and `transport` are plain properties (no parentheses).
+
+```ts
+@connect
+onConnect(info: StreamInbound): StreamOutbound {
+    // Inspect where the connection is headed, then decide whether to keep it.
+    if (info.path() != '/echo') {
+        return StreamOutbound.reject(1);   // refuse: any u16 reason code
+    }
+    this.count = 0;                        // fresh connection, fresh state
+    return StreamOutbound.accept();        // keep the connection open
+}
+```
+
+You do not have to take the argument. If the hook needs none of these details, declare it with no parameter (`onConnect(): void`), exactly like the Echo example above.
+
 ### `@message`
 
 Runs for every inbound frame. This is where most of your logic lives. It receives the frame and may reply. Details in [Reading and replying](#reading-and-replying-to-messages).
@@ -99,6 +124,33 @@ Both mean "the connection is over," and both are your chance to clean up. The di
 - `@disconnect` is an **abrupt** loss: the network dropped or the tab was killed with no goodbye.
 
 After either one, the box is destroyed.
+
+**What they receive.** Both hooks are handed a `StreamConnectionEvent`, a read-only summary of the connection that just ended.
+
+| Member         | Type  | What it gives you                                          |
+| -------------- | ----- | ---------------------------------------------------------- |
+| `connectionId` | `u64` | The id of the connection that ended.                       |
+| `reason`       | `u16` | A numeric close code explaining why it ended.              |
+| `durationMs`   | `u64` | How long the connection stayed open, in milliseconds.      |
+
+All three are plain properties (getters), so read them without `()`.
+
+```ts
+@close
+onClose(ev: StreamConnectionEvent): void {
+    // Last chance to clean up. `ev` tells you how the connection ended.
+    const heldSeconds = ev.durationMs / 1000;
+    // e.g. record the session length or flush a buffer here.
+}
+
+@disconnect
+onDisconnect(ev: StreamConnectionEvent): void {
+    // Same shape, but this fired because the connection dropped abruptly.
+    // ev.reason carries the close code the edge assigned to the drop.
+}
+```
+
+As with `@connect`, the argument is optional: declare `onClose(): void` if you do not need it.
 
 ## Per-connection state (and its limits)
 

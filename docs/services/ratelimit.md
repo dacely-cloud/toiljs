@@ -80,6 +80,54 @@ The count is **exact across all of the edge's workers**: a given IP always maps 
 
 Only routes that opt in with `@ratelimit` pay any cost; everything else runs on the untouched fast path.
 
+## Per-user limits with a custom key
+
+The `@ratelimit` decorator always keys on the client IP. Sometimes you want to limit by **account** instead: "at most 5 password changes per user per hour," no matter which IP the user comes from. The runtime supports this through a callable you invoke yourself, `RateLimitService.guardKeyed`. The decorator does not yet expose keyed limiting, so this callable is how you get it today.
+
+Like `crypto` and `AuthService`, `RateLimitService` and the `RateLimit` enum are **ambient globals**: use them with no import.
+
+```ts
+// Signature (ambient global; no import):
+RateLimitService.guardKeyed(
+    routeId: i32,    // a stable integer naming this limiter (see below)
+    strategy: i32,   // a RateLimit value: FixedWindow / SlidingWindow / TokenBucket
+    limit: i32,
+    window: i32,
+    key: string,     // the identity to limit by; an empty string falls back to the peer IP
+): Response | null
+```
+
+It returns `null` when the caller is under the limit (proceed), or a ready-made **`429`** `Response` (with a `Retry-After` header) when they are over it. You call it near the top of your handler and **early-return** the response when it is non-null:
+
+```ts
+import { Response, RouteContext } from 'toiljs/server/runtime';
+
+@rest('account')
+class Account {
+    @auth
+    @post('/change-password')
+    changePassword(ctx: RouteContext): Response {
+        // Key the limit on the logged-in user's stable id (hex form), so the
+        // budget follows the account across devices and IP addresses.
+        const key = AuthService.hasSession() ? AuthService.userId()!.toHex() : '';
+
+        // At most 5 attempts per user per hour. routeId 1001 names THIS limiter.
+        const limited = RateLimitService.guardKeyed(1001, RateLimit.SlidingWindow, 5, 3600, key);
+        if (limited != null) return limited; // over the limit: 429, the handler stops here
+
+        // ...under the limit and authenticated: do the work...
+        return Response.text('password changed\n');
+    }
+}
+```
+
+A few things to know:
+
+- **`routeId` names the counter.** Each distinct `routeId` is an **independent** limiter, scoped to your app (it never collides with another tenant's). Pick a stable integer per logical limiter and keep it constant, use a different value from any other keyed limiter you add, and avoid reusing a value the `@ratelimit` decorator already assigned to a route.
+- **An empty `key` falls back to the peer IP,** so `guardKeyed(..., '')` behaves like the decorator's default. Handle the not-logged-in case explicitly (as above) rather than passing a blank string by accident.
+- **You control the ordering.** Unlike the decorator (which the compiler always places before `@auth`), a manual `guardKeyed` runs wherever you put it. If you key on the user id, call it **after** `@auth` has established the session, as in the example.
+- **Same strategies and meanings** as the decorator: see [the three strategies](#the-three-strategies) for what `strategy`, `limit`, and `window` do.
+
 ## Worked example: protecting login and a write route
 
 Login is the classic case. This mirrors what the built-in auth system does for you (`register` and `login` already carry `@ratelimit(SlidingWindow, 5, 60)`), so you rarely have to add it there yourself. See [Using auth](../auth/usage.md).
@@ -114,7 +162,7 @@ The order is fixed and safe: rate limiting runs **first** (so even unauthenticat
 ## Gotchas and current limits
 
 - **Route-level only.** Put `@ratelimit` on each route you want limited. There is no controller-wide form yet (unlike `@auth`, which you can put on a whole class).
-- **Keyed on IP today.** The decorator keys on the client IP. Users behind a shared IP (a corporate network, a mobile carrier gateway) share a bucket, so do not set login limits so low that a busy office trips them. A per-user key (limiting by account instead of IP) exists in the runtime but is not yet exposed through the decorator.
+- **Keyed on IP today.** The decorator keys on the client IP. Users behind a shared IP (a corporate network, a mobile carrier gateway) share a bucket, so do not set login limits so low that a busy office trips them. A per-user key (limiting by account instead of IP) exists in the runtime but is not yet exposed through the decorator. You can still get per-user limiting today by calling [`RateLimitService.guardKeyed`](#per-user-limits-with-a-custom-key) directly.
 - **`TokenBucket`'s second number is a rate, not a duration.** For the bucket, `window` means "tokens refilled per second", not "seconds". Re-read the table if it surprises you.
 - **Same behavior in dev.** `toiljs dev` runs a single-process mirror of all three strategies, so a limited route behaves the same locally as on the edge.
 

@@ -169,6 +169,56 @@ One common mix-up. **Encoding** (the `CookieEncoding` on a `Cookie`, default per
 
 You do not manage login cookies by hand. The [auth system](../auth/usage.md) sets and reads its own hardened, `__Host-` prefixed, signed session cookie for you, and enforces access with the `@auth` decorator. This page is for **your own** cookies (preferences, flags, small bits of state). If you find yourself building a login cookie from scratch, use auth instead; it already does the hard, security-sensitive parts correctly.
 
+## Advanced reference: `Cookie` and `Cookies` helpers
+
+Most handlers only need the builders above. These extra members are here for lower-level work: validating a cookie before you send it, parsing a `Set-Cookie` header back into a `Cookie` (for a proxy or a test), or controlling the exact wire encoding.
+
+### More `Cookie` methods
+
+| Method | Returns | What it does |
+| --- | --- | --- |
+| `validate()` | `CookieValidation` | Check the cookie against RFC 6265bis (name is a token, name+value within the 4096-byte cap, `Path` form, prefix rules, `SameSite=None` / `Partitioned` imply `Secure`, the 400-day lifetime cap) **without** sending it. Never throws. |
+| `serialize(strict)` | `string` | Build the `Set-Cookie` value. Lenient by default (always emits a best-effort cookie); pass `serialize(true)` to **throw** on a hard violation instead. `setCookie(...)` calls this for you. |
+| `withEncoding(enc)` | `Cookie` | Choose how the value goes on the wire: `CookieEncoding.Percent` (default), `.Raw`, or `.Base64Url`. Chains like the other setters. |
+| `detectedPrefix()` | `CookiePrefix` | Report which special prefix the name carries (`CookiePrefix.Host`, `.Secure`, or `.None`), detected case-insensitively. |
+| `encodedValue()` | `string` | The value after the chosen encoding is applied, exactly as it will appear on the wire. |
+| `expiresRaw(date)` | `Cookie` | Set `Expires` to a verbatim date string (an escape hatch; it is **not** validated, unlike `expires(epochSeconds)`). |
+
+`validate()` returns a `CookieValidation`, a small result object:
+
+- `valid: bool` is `true` when there were no problems.
+- `errors: Array<string>` holds one human-readable message per problem (empty when valid).
+
+```ts
+// A __Host- cookie must be Secure with Path=/; here we forgot both.
+const c = Cookie.create('__Host-sid', 'abc');
+const check = c.validate();
+if (!check.valid) {
+    // check.errors includes "__Host- prefix requires the Secure attribute"
+    // (asHostPrefixed() would have set those attributes for you)
+}
+```
+
+### `Cookies` static helpers
+
+`Cookies` is the read side, plus a couple of codec shortcuts. Every method is static, so call them as `Cookies.xxx(...)`.
+
+| Call | Returns | What it does |
+| --- | --- | --- |
+| `Cookies.parse(header)` | `CookieMap` | Parse a request `Cookie` header (`a=1; b=2`) into a name-to-value map. Values are percent-decoded; malformed pairs are skipped, never thrown. |
+| `Cookies.get(header, name)` | `string \| null` | Shorthand: parse `header` and return one value (or `null`). |
+| `Cookies.serialize(name, value)` | `string` | One-shot `Set-Cookie` value for `name=value` with no attributes. For attributes, build a `Cookie` and call `serialize()`. |
+| `Cookies.parseSetCookie(header)` | `Cookie` | Parse a `Set-Cookie` field value back into a `Cookie` (handy for proxies or tests). The value is kept verbatim (`CookieEncoding.Raw`) so re-serializing reproduces the original. |
+| `Cookies.encodeValue(raw)` | `string` | Percent-encode a value the way the default `Cookie` encoding would. |
+| `Cookies.decodeValue(enc)` | `string` | Percent-decode a value (the inverse of `encodeValue`). |
+
+```ts
+// Round-trip a Set-Cookie header (for example, inspecting an upstream response in a proxy):
+const cookie = Cookies.parseSetCookie('sid=abc123; Path=/; HttpOnly; SameSite=Lax');
+cookie.name;          // "sid"
+cookie.serialize();   // "sid=abc123; Path=/; SameSite=Lax; HttpOnly"
+```
+
 ## Gotchas
 
 - **Read on the `Request`, write on the `Response`.** Setting a cookie does not change what `req.cookie(...)` returns for the current request; it takes effect on the browser's next request.

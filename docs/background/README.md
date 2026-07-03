@@ -54,6 +54,58 @@ A simple rule of thumb: if the trigger is **the clock**, use a `@daemon`. If the
 
 They also combine well. A `@daemon` might do a heavy nightly aggregation and write a summary row, while a `@derive` keeps a small live view fresh on every write. They are different tiers of the edge and are covered on their own pages.
 
+## `@job`: the widest database surface for background work
+
+`@daemon` and `@derive` decide **where and when** background code runs. `@job` answers a different question: **what a function is allowed to do to the database.** It is one of the ToilDB **function kinds** (the same family as `@query`, `@action`, and `@derive`), and it grants the **widest** data surface of them all.
+
+A **function kind** is a label the compiler puts on a backend function to gate which database operations it may issue. This is a safety rail: a read-only endpoint physically cannot write, and an expensive scan cannot run on the hot request path. The kinds line up from narrowest to widest:
+
+| Kind       | Typical trigger           | Point reads | **Scan** (`latest`, membership `list`) | Writes            | `publish` a View |
+| ---------- | ------------------------- | ----------- | -------------------------------------- | ----------------- | ---------------- |
+| `@query`   | a `@get` / plain `@remote`| yes         | no                                     | no                | no               |
+| `@action`  | a `@post` / `@action`     | yes         | no                                     | yes (bounded)     | no               |
+| `@derive`  | your data changed         | yes         | yes                                    | append / counter add only | yes      |
+| `@job`     | you drive it (background) | yes         | yes                                    | yes (all)         | yes              |
+
+A **scan** is a read that can fan out across many rows (like "the newest 50 events" via `events.latest`, or "every member of this set" via `membership.list`). Scans are **barred from request handlers** because a request must stay fast and bounded. `@derive` and `@job` run **off the request path**, so they are the only kinds allowed to scan.
+
+### When to reach for `@job`
+
+Use `@job` when a piece of background work needs **more** database power than the default:
+
+- it must **scan** (fold `events.latest`, walk `membership.list`), and/or
+- it must **publish a View** *while also* doing arbitrary writes (`create`, `patch`, `delete`). A `@derive` can publish a View but cannot `patch` or `delete` a record; a `@job` can do everything.
+
+The compiler accepts `@job` on a method, including a `@daemon`'s `@scheduled` method. Tag a scheduled task `@job` when it needs that full surface (say, a nightly repair that scans a log, fixes rows, and republishes a summary View). A plain, **untagged** `@scheduled` method runs with the **`@action`** surface instead: point reads plus bounded writes, which is all most rollups and cleanups need.
+
+```ts
+@daemon
+class Jobs {
+    // A plain scheduled method: point reads + bounded writes (the @action surface).
+    @scheduled('1h')
+    rollup(): void { /* get a counter, patch a summary row */ }
+
+    // A scheduled method that also needs SCANS and to PUBLISH a View: tag it @job.
+    @scheduled('1d')
+    @job
+    nightlyRepair(): void {
+        // @job unlocks scan-class reads (events.latest / membership.list)
+        // and publishing a View, on top of ordinary reads and writes.
+    }
+}
+```
+
+### `@job` versus `@derive`
+
+They overlap (both run off the request path, both may scan, both may publish a View), but they are triggered differently and sized differently:
+
+- **`@derive`** is **change-triggered**: it re-runs automatically whenever its source data changes, and its narrow job is to keep one **View** in sync. It cannot `create` / `patch` / `delete` records (only append, counter-add, and publish). Reach for it when a read is too slow and you want it kept fresh on every write.
+- **`@job`** is **you-drive-it** background work (typically a `@scheduled` daemon method) with the **full** write surface. Reach for it when the work is clock-driven or one-off and needs to both scan and mutate freely.
+
+> **Rule of thumb.** Clock-driven and needs the full database surface: a `@job` (usually inside a `@daemon`). Change-driven and only maintains a View: a `@derive`. Clock-driven with modest reads and writes: a plain `@scheduled` method (no `@job` needed).
+
+For the complete permission grid see the [function-kind matrix](../database/setup.md#how-access-is-gated-query-action-and-friends), and for the decorator itself see [every decorator](../concepts/decorators.md#database-function-kinds-data-access-policy).
+
 ## Related
 
 - [Daemons and scheduled jobs](./daemons.md): `@daemon`, `@scheduled`, interval vs cron, and how a single global worker fails over safely.

@@ -310,6 +310,92 @@ These two look almost the same and are easy to confuse. They are not the same fi
 
 If you ever need to change where your server source lives or what the compiled artifact is named, that is `toilconfig.json`, not `toil.config.ts`.
 
+## The `toilconfig.json` reference
+
+`toilconfig.json` is the **toilscript compiler** config. toilscript is the compiler that turns your `server/` TypeScript into a `.wasm` file (WebAssembly, the sandboxed binary your backend ships as). This file tells toilscript which server files to compile, where to write the output, and which low-level WebAssembly options to use.
+
+`toiljs create` scaffolds it for you and most projects never touch it. You only edit it if you want to rename the compiled artifact, move your server entry, or hand-tune the WebAssembly codegen. Its presence at the project root is also the signal toiljs uses to decide "this project has a server" (a project with no `toilconfig.json` is a client-only app).
+
+A scaffolded file looks like this:
+
+```json
+{
+    "entries": ["server/main.ts"],
+    "targets": {
+        "release": {
+            "outFile": "build/server/release.wasm",
+            "textFile": "build/server/release.wat"
+        }
+    },
+    "options": {
+        "sourceMap": false,
+        "optimizeLevel": 3,
+        "shrinkLevel": 1,
+        "converge": true,
+        "noAssert": false,
+        "enable": [
+            "sign-extension",
+            "mutable-globals",
+            "nontrapping-f2i",
+            "bulk-memory",
+            "simd",
+            "reference-types",
+            "multi-value"
+        ],
+        "runtime": "stub",
+        "lib": ["node_modules/toiljs/server/globals"],
+        "memoryBase": 65536,
+        "initialMemory": 4,
+        "debug": false,
+        "trapMode": "allow"
+    }
+}
+```
+
+### `entries`
+
+An array of your server entry files: the toilscript starting points for the compile. The scaffold lists just `server/main.ts`, and `main.ts` imports your other surface modules so they all get pulled in. (Under `toiljs build`, toiljs compiles every decorated server file it finds, not only the entries, so a `@rest` or `@data` file you drop in is picked up even if `main.ts` does not import it.)
+
+A project that also has a streams tier or a daemon tier lists their entry files here too, so each tier can compile into its own artifact:
+
+```json
+"entries": ["server/main.ts", "server/main.stream.ts", "server/main.daemon.ts"]
+```
+
+### `targets`
+
+A map of named build targets. Each target names its output files. The scaffold has one target, `release`.
+
+| Field | Type | What it does |
+| --- | --- | --- |
+| `outFile` | `string` | Where the compiled `.wasm` is written. The scaffold uses `build/server/release.wasm`. |
+| `textFile` | `string` | Where the `.wat` (WebAssembly **text** format, the human-readable text form of the same module) is written. Handy for inspecting the output; not needed at runtime. |
+
+### `options`
+
+Low-level WebAssembly codegen options passed straight to toilscript. The defaults are already tuned for production, so change these only if you know you need to.
+
+| Field | Type | Scaffold value | What it controls |
+| --- | --- | --- | --- |
+| `sourceMap` | `boolean` | `false` | Emit a source map alongside the `.wasm` so a debugger can map machine code back to your TypeScript. Off by default (it makes the build bigger). |
+| `optimizeLevel` | `number` | `3` | How hard the optimizer works on **speed**, from `0` (none) to `3` (most). `3` is a production release setting. |
+| `shrinkLevel` | `number` | `1` | How hard the optimizer works on **size**, from `0` to `2`. `1` trades a little speed for a smaller binary. |
+| `converge` | `boolean` | `true` | Re-run the optimizer until the output stops getting better. Squeezes out a bit more at the cost of a slower build. |
+| `noAssert` | `boolean` | `false` | Strip `assert(...)` checks from the output (replace them with just their value, no trap). `false` keeps the safety checks in. |
+| `enable` | `string[]` | (see below) | Which modern WebAssembly features the compiled module is allowed to use. |
+| `runtime` | `string` | `"stub"` | The memory-management runtime baked into the module. `"stub"` is a minimal runtime that never frees memory, which fits toiljs's model exactly: the edge runs one fresh instance per request and throws its whole memory away when the request ends, so there is nothing to garbage-collect. |
+| `lib` | `string[]` | `["node_modules/toiljs/server/globals"]` | Extra library paths whose top-level exports become **ambient globals** (usable with no `import`). This is what makes toiljs's server globals (like `crypto` and the auth primitives) available everywhere in `server/`. |
+| `memoryBase` | `number` | `65536` | The byte offset where your server's static data starts. toiljs reserves the first 64 KiB (`[0, 65536)`) for the **request envelope** the edge writes at offset 0, so a large request body can never overwrite your program's state. Raise it to accept larger request bodies (it costs a little more initial memory). |
+| `initialMemory` | `number` | `4` | How much linear memory the module starts with, in **pages**. One WebAssembly page is 64 KiB, so `4` is 256 KiB. It grows on demand past this. |
+| `debug` | `boolean` | `false` | Include debug information (names and the like) in the binary. Off for production. |
+| `trapMode` | `string` | `"allow"` | What happens on a trapping operation (like a bad float-to-int conversion). `"allow"` lets it trap (the default and correct choice); `"clamp"` replaces traps with clamping instead. |
+
+The `enable` array turns on WebAssembly features that are off by default in the compiler. The scaffold enables the modern set the compiled server relies on: `sign-extension`, `mutable-globals`, `nontrapping-f2i` (non-trapping float-to-int conversions), `bulk-memory` (fast `memory.copy` / `memory.fill`), `simd` (vector operations), `reference-types`, and `multi-value` (functions that return more than one value). Leave this list as scaffolded unless you have a specific reason to change it; removing an entry can make the module fail to compile or run.
+
+### The `--rpcModule` build flag
+
+One toilscript flag is worth knowing even though it lives in your npm scripts, not in `toilconfig.json`: `--rpcModule shared/server.ts`. It tells the compiler to also emit `shared/server.ts`, the fully typed client the browser imports to call your server (the `@data` codec plus the typed `Server` surface). toiljs adds this flag for you on the request build. If your `build:server` script is missing it (older projects predate it), `toiljs doctor --fix` injects it. See [the CLI reference](../cli/README.md#what---fix-repairs).
+
 ## Gotchas
 
 - **Wrap the config in `defineConfig`.** Without it you lose autocomplete and type errors on typos.

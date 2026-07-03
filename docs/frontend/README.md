@@ -78,6 +78,8 @@ Server.REST.*      // the typed fetch client for your backend
 
 `Server` is also global (it is the typed backend client, see [Fetching data](./data-fetching.md)). Everything on `Toil` is fully typed: your editor autocompletes it, because toiljs generates a `toil-env.d.ts` that maps `Toil` onto the `toiljs/client` package.
 
+The same fast data utilities your backend uses are available in client code too, as bare globals with no import: `FastMap` and `FastSet` (high-performance map and set collections), and `DataWriter` / `DataReader` (a compact binary codec for encoding and decoding buffers). They are handed to you the same way `Toil` and `Server` are, so you can write `new DataWriter()` straight in a component. See [Data types](../backend/data.md) for the codec and when to reach for it.
+
 ## The frontend pages
 
 Read them in roughly this order:
@@ -88,6 +90,8 @@ Read them in roughly this order:
 - **[Images](./images.md)**: the `Toil.Image` component, automatic blur placeholders, and how it stops layout shift.
 - **[Metadata and SEO](./metadata.md)**: set the page title, description, and social-share tags per route.
 - **[Fetching data](./data-fetching.md)**: call your backend with the generated typed clients, submit forms, and read who is logged in.
+- **[Scripts](./scripts.md)**: load external or inline `<script>` tags with a loading strategy, using `Toil.Script`.
+- **[Search](./search.md)**: the built-in, statically-baked page search and command palette (`usePageSearch`).
 
 ## Related
 
