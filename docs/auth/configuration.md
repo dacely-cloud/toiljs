@@ -1,6 +1,6 @@
 # Configuring auth for production
 
-Built-in auth runs locally with **zero configuration** — it falls back to published, insecure DEV secrets
+Built-in auth runs locally with **zero configuration**, it falls back to published, insecure DEV secrets
 so `toiljs dev` Just Works. **A deployment MUST replace all three secrets and pin its KEM key.** This page
 is the checklist.
 
@@ -11,7 +11,7 @@ secure env). They resolve **lazily** the first time auth runs, so no startup wir
 
 | Key | What it is | Dev fallback |
 | --- | --- | --- |
-| `AUTH_SESSION_SECRET` | HMAC-SHA256 key that signs the session cookie. Must be identical on every edge instance (a cookie minted anywhere must verify everywhere). | a public constant — **anyone can forge a session** |
+| `AUTH_SESSION_SECRET` | HMAC-SHA256 key that signs the session cookie. Must be identical on every edge instance (a cookie minted anywhere must verify everywhere). | a public constant, **anyone can forge a session** |
 | `AUTH_OPRF_SEED` | Master seed for the per-user OPRF salt key. Rotating it invalidates every password (users must re-register). | a hashed public constant |
 | `AUTH_KEM_SK` | The server's ML-KEM-768 **secret** key (hex). Its public half is what the client encapsulates to. | a pinned dev key pair |
 
@@ -30,7 +30,7 @@ AUTH_KEM_SK=…hex of an ML-KEM-768 secret key…
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-`AUTH_KEM_SK` is an ML-KEM-768 key pair. Generate it and keep BOTH halves — the secret goes in the env, the
+`AUTH_KEM_SK` is an ML-KEM-768 key pair. Generate it and keep BOTH halves, the secret goes in the env, the
 public half is pinned in the client (next section):
 
 ```ts
@@ -42,7 +42,7 @@ console.log('client serverKemPublicKey =', Buffer.from(publicKey).toString('hex'
 
 ## Pin the client's KEM public key
 
-The browser must know the server's genuine KEM public key to run the mutual-auth handshake — this is the
+The browser must know the server's genuine KEM public key to run the mutual-auth handshake, this is the
 anti-phishing anchor. The `toiljs/client` `Auth` helper ships with the **dev** key pinned, so a deployment
 MUST pass its own:
 
@@ -55,7 +55,7 @@ await Auth.login(username, password, { serverKemPublicKey: SERVER_KEM_PUBLIC_KEY
 await Auth.register(username, password, { serverKemPublicKey: SERVER_KEM_PUBLIC_KEY });
 ```
 
-Ship the public key with your client bundle (it's public — safe to embed). If it doesn't match the server's
+Ship the public key with your client bundle (it's public, safe to embed). If it doesn't match the server's
 `AUTH_KEM_SK`, login's `serverConfirm` check fails and the client aborts.
 
 ## Optional: audience & domain
@@ -67,7 +67,7 @@ Both are optional and have sensible defaults; set them for stability across host
 | `TOIL_AUTH_AUDIENCE` | The service audience bound into the signed login message. | `"toil"` |
 | `TOIL_AUTH_DOMAIN` | The `domain` input of the stable `ToilUserId` (`sha256(pubkey ‖ username ‖ domain)`). | the request `Host` header, else `localhost` |
 
-Set `TOIL_AUTH_DOMAIN` explicitly if your site answers on multiple hostnames — otherwise the same user could
+Set `TOIL_AUTH_DOMAIN` explicitly if your site answers on multiple hostnames, otherwise the same user could
 get different `ToilUserId`s from different aliases. Once users exist, changing it changes everyone's id, so
 pick it before launch.
 
@@ -91,4 +91,4 @@ knob lands you can raise them server-side with **no client change**.
 - [ ] `TOIL_AUTH_DOMAIN` set if you serve multiple hostnames (stable `ToilUserId`).
 - [ ] (Recommended) Argon2id params reviewed for your threat model.
 
-The CLI doctor warns when `server.auth` is on and the secrets are missing — run it before you ship.
+The CLI doctor warns when `server.auth` is on and the secrets are missing, run it before you ship.

@@ -1,30 +1,91 @@
 # toiljs
 
-A full-stack React framework: a Vite-bundled client SPA with file-based routing, plus a
-toilscript-to-WebAssembly server target.
+toiljs is a full-stack web framework. You write your **frontend in React** and your **backend in
+TypeScript**, and toiljs turns the backend into a tiny, fast **WebAssembly** program that runs at the edge
+(on servers close to your users, all over the world). One language, one project, one deploy.
 
-## Project layout
+If you have used Next.js, this will feel familiar: file-based routes, server code next to client code, a dev
+server with hot reload. The difference is what happens underneath. Your server code is compiled by
+**toilscript** (a TypeScript-to-WebAssembly compiler) into a sandboxed `.wasm` module, and it runs on the
+**Dacely edge** with a built-in worldwide database (**ToilDB**), streaming, background jobs, and auth all
+included.
 
-- `client/`, the app: `routes/` (file-based), `layout.tsx`, `components/`, `styles/`,
-  `public/`, and `toil.tsx` (the entry that calls `Toil.mount`).
-- `server/`, the toilscript → WASM target (`@main` entry), compiled by `toilscript`.
-  `@data`/`@remote`/`@service` here generate the typed client `Server` API (see [server.md](./server.md)).
-- `toil.config.ts`, configuration via `defineConfig` (`toiljs.config.ts` also works).
-- Generated, gitignored, do not edit: `.toil/` (working dir), `toil-env.d.ts` (ambient
-  globals), `toil-routes.d.ts` (typed routes), `shared/server.ts` (the typed RPC module,
-  emitted by the server build; import `@data` classes from `shared/server`).
+## The mental model
 
-## Key ideas
+```mermaid
+flowchart LR
+    A["Your project<br/>(TypeScript + React)"] -->|toiljs build| B["client bundle<br/>(React, runs in the browser)"]
+    A -->|toilscript compile| C["server.wasm<br/>(your backend, sandboxed)"]
+    B --> U["User's browser"]
+    C --> E["Dacely edge<br/>(worldwide)"]
+    E --> D[("ToilDB<br/>global database")]
+    U <-->|HTTP / WebTransport| E
+```
 
-- `Toil` is a native global (no import): `Toil.Link`, `Toil.useRouter`, `Toil.useLoaderData`,
-  etc. The IO classes (`FastMap`, `FastSet`, `DataWriter`, `DataReader`), `parseError`, and the
-  generated `Server` RPC surface are globals too.
-- Scripts: `npm run dev` (HMR), `npm run build` (→ `build/client` + `build/server`),
-  `npm start` (self-host the build).
-- Compute tiers: the server can span L1 request (`server/main.ts`, `@rest`/`@service`/`@remote`),
-  L2/L3 stream (`server/main.stream.ts`, `@stream`), and L4 daemon (`server/main.daemon.ts`,
-  `@daemon`/`@scheduled`); each tier compiles into its own artifact. See [tiers.md](./tiers.md).
+- **client/** is your React app (pages, components, styles). It runs in the browser.
+- **server/** is your backend (routes, database, auth). It compiles to WebAssembly and runs on the edge.
+- **shared/** is the typed bridge: toiljs generates a client here so the browser calls your server with full
+  type safety.
 
-See [routing.md](./routing.md), [client.md](./client.md), [styling.md](./styling.md),
-[server.md](./server.md), [ssr.md](./ssr.md), [rpc.md](./rpc.md), [tiers.md](./tiers.md),
-[streams.md](./streams.md), [daemon.md](./daemon.md), [derive.md](./derive.md), [cli.md](./cli.md).
+## Hello, toiljs
+
+```ts
+// server/routes/Hello.ts  (a backend HTTP route)
+import { Response } from 'toiljs/server/runtime';
+
+@rest('hello')
+class Hello {
+    @get('/')
+    public hi(): Response {
+        return Response.text('Hello from the edge!\n');
+    }
+}
+```
+
+```tsx
+// client/routes/index.tsx  (a frontend page)
+export default function Home() {
+    return <main><h1>Welcome</h1></main>;
+}
+```
+
+Run `toiljs dev`, open the browser, and both are live with hot reload. That is the whole loop.
+
+## Learn toiljs
+
+**Start here**
+- [Getting started](./getting-started/index.md): install, create a project, project structure, your first
+  app, and migrating an existing React app.
+- [The CLI](./cli/index.md): `dev`, `build`, `create`, `doctor`, and every flag.
+
+**Build the frontend**
+- [Frontend overview](./frontend/index.md), [Routing](./frontend/routing.md),
+  [Rendering and SSR](./frontend/rendering.md), [Styling](./frontend/styling.md),
+  [Images](./frontend/images.md), [Metadata and SEO](./frontend/metadata.md),
+  [Fetching data](./frontend/data-fetching.md).
+
+**Build the backend**
+- [Backend overview](./backend/index.md), [HTTP routes (`@rest`)](./backend/rest.md),
+  [Typed RPC (`@service`/`@remote`)](./backend/rpc.md), [Data types (`@data`)](./backend/data.md).
+
+**The database (ToilDB)**
+- [Database overview and choosing a family](./database/index.md), [Setup (`@database`)](./database/setup.md),
+  [Documents](./database/documents.md), [Unique](./database/unique.md), [Counters](./database/counters.md),
+  [Events](./database/events.md), [Views and `@derive`](./database/views.md),
+  [Membership](./database/membership.md), [Capacity](./database/capacity.md).
+
+**Auth**: [the full auth guide](./auth/index.md) covers post-quantum login, sessions, and `ToilUserId`.
+
+**Realtime and background**
+- [Streams](./realtime/index.md) and [channels](./realtime/channels.md), [Daemons and scheduled
+  jobs](./background/daemons.md), [Derived views (`@derive`)](./background/derive.md).
+
+**Platform services**
+- [Caching](./services/caching.md), [Rate limiting](./services/ratelimit.md),
+  [Environment and secrets](./services/environment.md), [Email and 2FA](./services/email.md),
+  [Analytics](./services/analytics.md), [Crypto](./services/crypto.md), [Cookies](./services/cookies.md),
+  [Time](./services/time.md).
+
+**Concepts and reference**
+- [Compute tiers (L1 to L4)](./concepts/tiers.md), [Types (u64, u256, and friends)](./concepts/types.md),
+  [Every decorator](./concepts/decorators.md), [Configuration](./concepts/config.md).

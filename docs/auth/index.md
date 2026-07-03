@@ -31,7 +31,7 @@ Plus, in your own code:
 - **`AuthService.getUser()`** → the typed logged-in user.
 - **`AuthService.userId()`** → the stable [`ToilUserId`](./extending.md#toiluserid) (a 256-bit id you can
   key your data on).
-- **The client** — `import { Auth } from 'toiljs/client'`, then `Auth.register(username, password)` /
+- **The client**: `import { Auth } from 'toiljs/client'`, then `Auth.register(username, password)` /
   `Auth.login(username, password)`. It does all the browser-side crypto and talks to `/auth/*` for you.
 
 ## A login page in full
@@ -47,7 +47,7 @@ export default function Login() {
     const [msg, setMsg] = useState('');
 
     const register = async () => {
-        try { await Auth.register(u, p); setMsg('registered — now log in'); }
+        try { await Auth.register(u, p); setMsg('registered, now log in'); }
         catch (e) { setMsg(parseError(e)); }
     };
     const login = async () => {
@@ -68,7 +68,7 @@ export default function Login() {
 ```
 
 ```ts
-// server/routes/Secret.ts — a route only a logged-in user can reach
+// server/routes/Secret.ts, a route only a logged-in user can reach
 import { Response } from 'toiljs/server/runtime';
 
 @rest('secret')
@@ -82,19 +82,19 @@ class Secret {
 }
 ```
 
-That's a real, production-grade auth system — the password is stretched with Argon2id in the browser into
+That's a real, production-grade auth system, the password is stretched with Argon2id in the browser into
 an ML-DSA-44 key pair, your server only ever stores a public key, and login is a mutually-authenticated
 ML-KEM-768 challenge. You didn't write any of it.
 
 ## Where to go next
 
-- **[How it works](./how-it-works.md)** — the protocol (OPRF + Argon2id + ML-DSA + ML-KEM), sessions,
+- **[How it works](./how-it-works.md)**: the protocol (OPRF + Argon2id + ML-DSA + ML-KEM), sessions,
   cookies, and the `ToilUserId`, with sequence diagrams.
-- **[Usage](./usage.md)** — enabling it, the client API, guarding routes, reading the user, the full wire
+- **[Usage](./usage.md)**: enabling it, the client API, guarding routes, reading the user, the full wire
   contract of each endpoint.
-- **[Configuration](./configuration.md)** — the secrets a deployment MUST set, the audience/domain, tuning
+- **[Configuration](./configuration.md)**: the secrets a deployment MUST set, the audience/domain, tuning
   Argon2id, and the deploy checklist.
-- **[Extending & integrating](./extending.md)** — `ToilUserId`, keying your own data on a user, a custom
+- **[Extending & integrating](./extending.md)**: `ToilUserId`, keying your own data on a user, a custom
   user shape / opting out, and the `AuthService` primitive reference.
 
 > **One rule before you ship:** built-in auth runs with **insecure DEV fallback secrets** so it Just Works

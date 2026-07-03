@@ -2,26 +2,26 @@
 
 ## 1. Enable it
 
-Either the config flag (canonical) or a one-line import — both do the same thing (the build appends the
+Either the config flag (canonical) or a one-line import, both do the same thing (the build appends the
 framework's auth controller + user shape to your server as compiled entries, so `/auth/*` self-mounts):
 
 ```ts
-// toil.config.ts  — canonical
+// toil.config.ts , canonical
 export default defineConfig({ server: { auth: true } });
 ```
 
 ```ts
-// server/main.ts  — escape hatch (equivalent)
+// server/main.ts , escape hatch (equivalent)
 import 'toiljs/server/auth';
 ```
 
 There is also an `AuthService.enable()` no-op you can call for discoverability, but enabling is done by the
-flag/import above (it happens at build time). Turn it off by removing the flag/import — with neither, no
+flag/import above (it happens at build time). Turn it off by removing the flag/import, with neither, no
 `/auth` routes and no accounts collection are generated. It is strictly opt-in.
 
 ## 2. The client
 
-`toiljs/client` ships the browser half — it runs the OPRF blinding, Argon2id, ML-DSA keygen, and ML-KEM
+`toiljs/client` ships the browser half, it runs the OPRF blinding, Argon2id, ML-DSA keygen, and ML-KEM
 encapsulation, and talks to `/auth/*`. You never touch the crypto.
 
 ```ts
@@ -40,7 +40,7 @@ Options (second argument, `AuthOptions`):
 ```ts
 await Auth.login(username, password, {
     baseUrl: '/auth',                 // default; change if you mount elsewhere
-    serverKemPublicKey: MY_KEM_PUB,   // REQUIRED in production — pin your deployment's KEM key
+    serverKemPublicKey: MY_KEM_PUB,   // REQUIRED in production, pin your deployment's KEM key
 });
 ```
 
@@ -51,7 +51,7 @@ await Auth.login(username, password, {
 
 `register`/`login` set the session cookies; to *render* login state on the client, use the generated
 `getUser()` (emitted from the built-in `@user`). It reads the **readable** `__Secure-toil_user` companion
-cookie and returns the typed user or `null` — instant, no network call. It is **display-only**; the server
+cookie and returns the typed user or `null`, instant, no network call. It is **display-only**; the server
 still enforces access via `@auth`, so never trust it for authorization.
 
 ```tsx
@@ -92,29 +92,29 @@ try {
     await Auth.register(username, password);
 } catch (e) {
     const m = String(e);
-    if (m.includes('already registered')) setError('That username is taken — log in instead.');
+    if (m.includes('already registered')) setError('That username is taken, log in instead.');
     else setError('Could not register, try again.');
 }
 
 try {
     await Auth.login(username, password);
 } catch {
-    // Wrong password OR unknown user both fail generically (anti-enumeration) — one message.
+    // Wrong password OR unknown user both fail generically (anti-enumeration), one message.
     setError('Incorrect username or password.');
 }
 ```
 
 - **Username taken** → `register` throws `auth: username already registered (log in instead)` (a
   distinguishable case so you can guide the user).
-- **Wrong password / unknown user** → `login` throws generically (`auth: request failed`) — by design,
+- **Wrong password / unknown user** → `login` throws generically (`auth: request failed`): by design,
   the two are indistinguishable, so use ONE "incorrect username or password" message.
 - **Rate limited** → after 5 attempts / 60s a `429` surfaces as the same generic throw; back off and tell
   the user to wait.
 
-## 3. Guard your routes — `@auth`
+## 3. Guard your routes: `@auth`
 
 Put `@auth` on a route method or a whole `@rest` class. The generated dispatcher checks for a valid signed
-session **before** your handler runs and returns `401` otherwise. `@auth` is unchanged by built-in auth —
+session **before** your handler runs and returns `401` otherwise. `@auth` is unchanged by built-in auth,
 it's the same decorator you'd use with hand-written auth.
 
 ```ts
@@ -142,10 +142,10 @@ Inside any handler:
 const user = AuthService.getUser();
 if (user != null) {
     user.username;    // string
-    user.toilUserId;  // Uint8Array(32) — the stable id bytes
+    user.toilUserId;  // Uint8Array(32), the stable id bytes
 }
 
-// The stable identity as a ToilUserId (gate on hasSession() first — see note).
+// The stable identity as a ToilUserId (gate on hasSession() first, see note).
 if (AuthService.hasSession()) {
     const id = AuthService.userId()!;   // ToilUserId
     // key your own data on id (see Extending)
@@ -163,11 +163,11 @@ JSON):
 | Route | Request body | Response |
 | --- | --- | --- |
 | `POST /auth/register/start` | `str(username) bytes(blinded)` | `u8(0) u32(mem) u32(iters) u32(par) bytes(salt) bytes(evaluated)` |
-| `POST /auth/register/finish` | `str(username) bytes(pubkey) bytes(proof)` | `u8(status)` — `0` ok, `1` username taken |
+| `POST /auth/register/finish` | `str(username) bytes(pubkey) bytes(proof)` | `u8(status)`, `0` ok, `1` username taken |
 | `POST /auth/login/start` | `str(username) bytes(blinded)` | `bytes(cid) str(aud) u32(mem) u32(iters) u32(par) bytes(salt) bytes(nonce) u64(iat) u64(exp) bytes(evaluated)` |
 | `POST /auth/login/finish` | `bytes(cid) bytes(ct) bytes(sig)` | `u8(0) bytes(sessionToken) bytes(serverConfirm)` + `Set-Cookie`, or `u8(≠0)` on failure |
-| `GET /auth/me` *(`@auth`)* | — | `bytes(toilUserId) str(username)` |
-| `POST /auth/logout` *(`@auth`)* | — | `200` + cookie-clearing `Set-Cookie` |
+| `GET /auth/me` *(`@auth`)* | (none) | `bytes(toilUserId) str(username)` |
+| `POST /auth/logout` *(`@auth`)* | (none) | `200` + cookie-clearing `Set-Cookie` |
 
 Rate limiting: every register/login POST carries `@ratelimit(SlidingWindow, 5, 60)` (5 requests / 60s per
 client) out of the box, so brute-force is throttled before it reaches the crypto.
@@ -177,12 +177,12 @@ client) out of the box, so brute-force is throttled before it reaches the crypto
 Everything runs locally with **zero setup**: the dev server emulates the ToilDB account/challenge storage
 and the ML-DSA/ML-KEM/OPRF host functions in process, and the auth secrets fall back to insecure DEV
 values. Register and login span requests (the accounts persist for the dev session). You'll see a warning
-that `AUTH_SESSION_SECRET` is unset — that's expected in dev; set it before you deploy (see
+that `AUTH_SESSION_SECRET` is unset, that's expected in dev; set it before you deploy (see
 [Configuration](./configuration.md)).
 
 ## 7. `Server.REST.auth.*`
 
 Because the controller is a normal `@rest('auth')` class, a typed `Server.REST.auth.*` fetch client is
 generated for free (`me`, `logout`, and the register/login methods). Use it for `/me` and `/logout`; but
-**drive register/login through `toiljs/client` `Auth`**, not the generated client — only the `Auth` helper
+**drive register/login through `toiljs/client` `Auth`**, not the generated client, only the `Auth` helper
 runs the required browser-side OPRF/Argon2id/ML-DSA/ML-KEM crypto.
