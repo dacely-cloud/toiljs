@@ -55,6 +55,9 @@ export interface DbDevState {
      *  Only populated for non-Derive dispatches (a derive's own writes must not
      *  re-trigger it - see `database.ts` `recordWrite`). */
     writtenCollections: Set<string>;
+    /** The derive index currently running (set by `runDerive`), so `events.since` keys its resumable
+     *  checkpoint per (derive, source key). 0 outside a derive. */
+    deriveId: number;
 }
 
 export function freshDbState(): DbDevState {
@@ -64,6 +67,7 @@ export function freshDbState(): DbDevState {
         lastResultVersion: -1,
         functionKind: DbFunctionKind.Job,
         writtenCollections: new Set<string>(),
+        deriveId: 0,
     };
 }
 

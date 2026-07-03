@@ -208,6 +208,7 @@ enum DbOp {
     ViewGet,
     ViewPublish,
     CapacitySetTotal,
+    EventsSince,
 }
 
 function isReadOp(op: DbOp): boolean {
@@ -221,12 +222,13 @@ function isReadOp(op: DbOp): boolean {
         op === DbOp.MembershipList ||
         op === DbOp.UniqueLookup ||
         op === DbOp.Latest ||
+        op === DbOp.EventsSince ||
         op === DbOp.CapacityAvailable
     );
 }
 
 function isScanOp(op: DbOp): boolean {
-    return op === DbOp.Latest || op === DbOp.MembershipList;
+    return op === DbOp.Latest || op === DbOp.MembershipList || op === DbOp.EventsSince;
 }
 
 function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
@@ -303,6 +305,10 @@ export class DevDatabase {
     private readonly counterIdem = new Map<string, bigint>();
     /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
     private readonly events = new Map<string, Buffer[]>();
+    /** Resumable `events.since` cursors, keyed `"<deriveId>\0<storeKey>"` -> count of events folded. The
+     *  dev store is single-threaded and crash-free, so `since` advances and persists this immediately
+     *  (no publish-then-persist window to worry about, unlike the edge). */
+    private readonly deriveCheckpoints = new Map<string, number>();
     /** append_once dedup: `"collection\0key"` -> set of eventIds already appended. */
     private readonly eventDedup = new Map<string, Set<string>>();
     /** Capacity family: `"collection\0key"` -> an escrow ledger (ceiling + reservations). */
@@ -1207,6 +1213,39 @@ export class DevDatabase {
         return db.lastResult.length;
     }
 
+    // `events.since(handle, keyPtr, keyLen, limit)`: the DERIVE-path incremental read. Returns the next
+    // batch of events for the key PAST this derive's checkpoint, OLDEST first, then advances + persists the
+    // checkpoint immediately (the dev store is crash-free, so there is no publish-then-persist window like
+    // the edge). Same wire frame as `latest`. Repeated calls drain the log; empty once caught up.
+    since(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        keyPtr: number,
+        keyLen: number,
+        limit: number,
+    ): number {
+        const coll = collForOp(db, handle, DbOp.EventsSince, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
+        const ckKey = `${db.deriveId} ${sk}`;
+        const log = this.events.get(sk) ?? [];
+        const vers = this.eventVersions.get(sk) ?? [];
+        const cursor = this.deriveCheckpoints.get(ckKey) ?? 0;
+        const n = Math.max(0, Math.min(limit, 0xffff));
+        const end = Math.min(log.length, cursor + n);
+        const batch = log.slice(cursor, end); // oldest-first
+        const batchVers = vers.slice(cursor, end);
+        this.deriveCheckpoints.set(ckKey, end);
+        const w = new DataWriter();
+        w.writeU32(batch.length);
+        for (let i = 0; i < batch.length; i++) {
+            w.writeU32(batchVers[i] ?? 0).writeBytes(batch[i]);
+        }
+        db.lastResult = Buffer.from(w.toBytes());
+        return db.lastResult.length;
+    }
+
     // --- capacity family (escrow: set_total / available / reserve / confirm / cancel) ---
 
     // Set the ceiling (restock / reduce). Job/derive only (kind-gated upstream).
@@ -1588,6 +1627,8 @@ export function buildDatabaseImports(
 
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
             devDb.latest(ref, db, handle, keyPtr, keyLen, limit),
+        'data.events_since': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
+            devDb.since(ref, db, handle, keyPtr, keyLen, limit),
 
         'data.capacity_set_total': (
             handle: number,

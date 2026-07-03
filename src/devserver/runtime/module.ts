@@ -154,6 +154,7 @@ const PROVIDED_IMPORTS = new Set([
     'data.append_once',
     'data.enqueue',
     'data.latest',
+    'data.events_since',
     'data.capacity_set_total',
     'data.capacity_available',
     'data.capacity_reserve',
@@ -401,6 +402,7 @@ export class WasmServerModule {
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.db.functionKind = DbFunctionKind.Derive;
+        state.db.deriveId = deriveId;
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as DeriveExports;
         ref.memory = exports.memory;
