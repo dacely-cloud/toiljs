@@ -217,6 +217,59 @@ class Chat {
 
 The reply is still raw (`StreamOutbound` deals in bytes). Only the **inbound** side is decoded for you. On the client, a typed stream lets you `send(new ChatMsg('hi'))` and toiljs encodes it for you.
 
+## Games and interactive apps
+
+A stream box remembers state for the life of a connection, which is exactly what a game session needs. Each connected player gets their **own** box, and that box holds the player's live state (position, health, score) in memory, right next to the core handling their packets. The lifecycle hooks map cleanly onto a session: `@connect` spawns the player, `@message` handles each input, `@close` and `@disconnect` remove them.
+
+```ts
+// server/streams/Match.ts
+@data
+class Move {                          // the input a player sends each tick
+    dx: i32 = 0;
+    dy: i32 = 0;
+    constructor(dx: i32 = 0, dy: i32 = 0) { this.dx = dx; this.dy = dy; }
+}
+
+@stream({ message: Move, scope: StreamScope.Regional })
+class Match {
+    // Per-connection state: this player's position. It lives in memory for the
+    // whole session, on the one core that owns this connection.
+    private x: i32 = 0;
+    private y: i32 = 0;
+    private moves: u32 = 0;
+
+    @connect
+    onConnect(info: StreamInbound): StreamOutbound {
+        this.x = 50;                  // spawn point
+        this.y = 50;
+        this.moves = 0;
+        return StreamOutbound.accept();
+    }
+
+    @message
+    onMove(move: Move): StreamOutbound {
+        // Apply the input to this player's live position, then confirm it.
+        this.x = this.x + move.dx;
+        this.y = this.y + move.dy;
+        this.moves = this.moves + 1;
+        const state = '{"x":' + this.x.toString() + ',"y":' + this.y.toString() + '}';
+        return StreamOutbound.reply(Uint8Array.wrap(String.UTF8.encode(state)));
+    }
+
+    @disconnect
+    onDrop(ev: StreamConnectionEvent): void {
+        // The player left (tab closed, network died). Their box is destroyed
+        // next. Persist a score here if it must outlive the session.
+    }
+}
+```
+
+Every input a player sends is one `@message`, applied to **their** box's position and confirmed straight back to them with low latency. Because the box is resident, the player's position is always there in memory, on the same core, with no database round trip per move. That is what makes fast input loops (a game tick, a cursor drag, a live editor) feel instant.
+
+**What this version does, and does not, do.** Each player has their own box, so this handles per-player input, per-player state, and instant confirmation back to that player. To make players see **each other** (the other half of multiplayer), one player's move must fan out to everyone else in the match. That cross-connection broadcast is the `@channel` feature, which is **planned, not live yet** (see [Channels](./channels.md)). Until it ships, the common patterns are to write shared match state to [the database](../database/README.md) and have clients read it, or to keep a match to a single authoritative box. The per-connection pieces above (input, state, and presence via `@connect` / `@disconnect`) work today.
+
+For **presence** ("who is online"), `@connect` and `@disconnect` are your join and leave signals: bump a counter or write a row when a player connects, and undo it when they drop.
+
 ## The `main.stream.ts` file (a separate tier)
 
 Streams live in their **own entry file**, `server/main.stream.ts`, separate from the request entry `server/main.ts`. Importing your `@stream` classes there pulls them into a **separate compiled artifact**, `build/server/release-stream.wasm`.
@@ -286,6 +339,19 @@ The client is keyed by the **class name** (`Server.Stream.Echo`) and connects to
 ## How placement works (you do not manage it)
 
 On the production edge, your box is pinned to **one worker** for the connection's whole life, using a QUIC feature called connection-id steering. In plain terms: every message from that connection is routed to the exact machine and process holding your box, so its in-memory state is always there. You never configure this; the edge does it automatically. In `toiljs dev` there is only one process, so this is a non-issue.
+
+## Why this scales
+
+A `@stream` box is deliberately cheap to run at scale, and the edge is built to spread a very large number of them across many cores and cities. Four design choices do the heavy lifting:
+
+- **One core per connection, chosen by the connection id (CID-steering).** The edge encodes the owning worker core's id directly into the QUIC connection id (the label QUIC stamps on every packet), and authenticates it with a keyed tag so it cannot be forged. Every packet for your connection is routed to the one core holding your box. Connections spread across all cores, and there is no shared lock on the hot path: each core owns its own boxes in a plain per-core map. Adding cores adds capacity.
+- **Kernel-bypass, multi-queue networking (DPDK).** The edge pulls packets from the network card in userspace, one worker per hardware queue, and the card fans arriving packets across those queues. Many cores handle traffic at once, in parallel, with no kernel socket in the middle to bottleneck on.
+- **The connection survives network changes.** If a client's network changes (Wi-Fi to cellular, or a NAT rebind), a packet can arrive on the wrong core. The edge re-steers it to the owning core over a small lock-free per-core queue, and moves the box's key in lockstep so the box is never orphaned. The user keeps their session and their in-memory state.
+- **Each box is isolated and bounded.** Every connection gets its own sandboxed box with its own linear memory. One tenant's boxes are capped to a slice of the node's RAM (a noisy-neighbor guard), and a single box is hard-capped (64 MiB) so a runaway connection can only fill itself, then it traps. Each lifecycle hook also runs under a per-event gas budget (a cap on how much work one event may do), so a hook that loops forever is stopped instead of hogging its core. (A finer per-packet gas policy is still being refined.)
+
+Put together: connections spread across every core, cores run in parallel, the session sticks to its core even when the network moves, and each box is walled off from the others. That is what lets one deployment hold a very large number of live connections at once. How large depends on your hardware and message sizes; these docs do not publish a benchmarked number.
+
+> **The wider picture.** For how CID-steering, the per-core re-steer queues, and the edge mesh add up to world-wide fan-out, see [Built for massive fan-out and world-wide sync](./README.md#built-for-massive-fan-out-and-world-wide-sync) in the overview.
 
 ## Gotchas
 

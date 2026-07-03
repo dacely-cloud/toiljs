@@ -178,6 +178,23 @@ The idea is **publish/subscribe** ("pub/sub"), a standard pattern for broadcast:
 
 With `@channel`, the server box would join a connection to a named topic and publish messages to it, and the edge would deliver each published message to every subscriber across all the connections in that topic, no matter which worker or node each one landed on. That is the missing "one to many" piece that turns the echo example above into a real shared room. The plan already reserves per-plan limits for it (a cap on subscribers per channel and on message size), so the surface is designed; it is the runtime delivery that is not shipped yet.
 
+### The picture: world-wide sync (the design)
+
+When `@channel` ships, one `publish` will fan out across the whole edge mesh, reaching every subscriber wherever they are, at nearly the same moment. That is the **world-wide sync** idea: a live session where everyone sees the same update together, whether they are in the same city or on opposite sides of the planet.
+
+```mermaid
+flowchart TB
+    Pub["One publish()<br/>(a chat line, a goal, a game tick)"] --> Mesh["Dacely edge mesh<br/>(routes to every subscriber's core)"]
+    Mesh --> A["Subscriber in Tokyo"]
+    Mesh --> B["Subscriber in Paris"]
+    Mesh --> C["Subscriber in New York"]
+    Mesh --> D["...every other subscriber, at once"]
+```
+
+The mechanism meant to make this fast is the same one that already spreads plain connections across the edge: every subscriber's connection is pinned to a known worker core by its connection id (**CID-steering**), so a broadcast is a fan-out to a set of known cores, not a search for who is listening. For how that pinning works, see [Built for massive fan-out and world-wide sync](./README.md#built-for-massive-fan-out-and-world-wide-sync) in the overview.
+
+Keep the status in mind: the diagram above is the **intended shape**. The delivery runtime is not shipped yet, so treat it as the plan, not an API you can call today.
+
 **What you can build today:** anything where each user talks to their own box (assistants, per-user live updates, single-player sync, progress streams). **What needs `@channel`:** shared rooms and one-to-many broadcast. Until it ships, a common workaround is to persist messages to [the database](../database/README.md) and have clients poll or re-read, which is simpler but not instant.
 
 ## Gotchas

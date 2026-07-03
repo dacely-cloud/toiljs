@@ -1,82 +1,93 @@
 # Why toil? Who is it for?
 
-toil is a full-stack framework that runs your frontend, your backend, and your database close to every user, worldwide. This page explains the problem it exists to fix, what you get in return, who benefits most, and the honest cases where you should reach for something else.
+toil is a full-stack framework: you write a React frontend and a TypeScript backend in one project, and toil runs both (plus a database) close to every user, worldwide.
+
+The thesis in one line: toil is the modern full-stack tech a developer would actually want, AAA-grade from the very first line, and hyper-scalable at the same time. Even a simple pizza site gets top-tier infrastructure with zero setup. Distributed writes are one pillar of that. The modern stack that just works is the heart.
 
 ## The problem with today's stacks
 
-Almost every modern web app has a split personality. The read path is global and the write path is central, and that gap is where the trouble hides.
+Two problems, really.
 
-### Read-global, write-central
+**Read-global, write-central.** Your pages load fast from caches worldwide. But a *write* (a comment, a like, an order) usually travels to one database in one region. A user in Sydney writing to a database in Virginia pays for the round trip. That single region is also a single point of failure.
 
-Your pages, images, and scripts are served from a content network with servers all over the world, so they load fast no matter where you are. That is the "global" part, and it is real. But the moment a user *changes* something (posts a comment, likes a photo, places an order), that write usually has to travel to one database, in one region, often one primary machine. A user in Sydney writing to a database in Virginia pays for the round trip whether the marketing says "global" or not.
+**The ten-vendor tax.** A typical production stack is stitched from rented services: a frontend host, serverless functions, a managed database, auth, email, a queue, a cache, analytics, realtime. Each is its own account, bill, SDK, and failure mode. You did not set out to be a systems integrator, but the stack hands you the job.
 
-This matters for two reasons:
+And every third-party service on your **critical path** (what must work for a request to succeed) is a black box you cannot inspect, patch, or fully secure. When it is slow, you are slow. When it is breached, part of you is breached.
 
-- **Speed.** Far-from-user writes feel slow in exactly the moments users care about most: the tap that is supposed to do something. Reads can be cached and copied everywhere; a write cannot be faked.
-- **Fragility.** A single-region database is a single point of failure. When that region has a bad day, every user everywhere has a bad day, no matter how many edge locations served the pretty part.
+The result: a solo builder and a funded startup hit the *same* wall. Good, safe, fast infrastructure means assembling and babysitting a lot of parts, so most people settle for less.
+
+## What toil does instead
+
+Close the gap, own the pieces, and make the good version the *default* version. Four pillars.
+
+### 1. AAA-grade from the first line
+
+Top-tier infrastructure on day one, on the smallest project, with zero setup: edge compute (your code runs near users worldwide), one-line post-quantum login, automatic tamper-proofing of your app's code, HTTP/3, and a global database already there.
+
+A pizza site and a planet-scale app start from the same baseline. "AAA-grade" is the actual bar toil grades itself against; see [design principles](./design-principles.md).
+
+### 2. Batteries-included, and owned
+
+Auth, database, email, rate limiting, analytics, realtime streaming, and background jobs are all built in and are toil's own. Nothing third-party sits on your critical path.
+
+Because they are one system, the parts already fit. You are not gluing ten SDKs together and praying they agree. Full catalog: [The modern stack](./modern-stack.md).
 
 ```mermaid
-flowchart LR
-    subgraph world["The usual stack"]
-        direction LR
-        U1["User in Sydney"] -->|"fast read"| E["Edge cache<br/>(near the user)"]
-        U1 -->|"slow write, one region"| DB[("Primary database<br/>(one region)")]
-        U2["User in Paris"] -->|"fast read"| E
-        U2 -->|"slow write, one region"| DB
+flowchart TB
+    subgraph assemble["Usual way: assemble ten vendors"]
+        direction TB
+        A1["Your app"] --> V1["host"]
+        A1 --> V2["functions"]
+        A1 --> V3["database"]
+        A1 --> V4["auth"]
+        A1 --> V5["email"]
+        A1 --> V6["rate limiter"]
+        A1 --> V7["analytics"]
+        A1 --> V8["realtime"]
+        A1 --> V9["jobs"]
+    end
+    subgraph toil["toil: one owned stack"]
+        direction TB
+        A2["Your app"] --> T["edge + database + auth + email +<br/>rate limiting + analytics +<br/>streaming + jobs, built in"]
     end
 ```
 
-The RSG rubric that toil grades itself against (see [design principles](./design-principles.md)) has a blunt name for this: the **data path** axis, and it is the one that quietly caps most "global" systems. Reads are easy to distribute. Writes are hard. A system is only as strong as its weakest link, so a globally cached frontend on a single-region database is graded by the database, not by the cache.
+Honest boundary: "owned" means the *core* of a working app is toil's, not that outside services are banned. Call a payment provider or another API and you still can.
 
-### The tax of assembling ten vendors
+### 3. A modern DX that just works
 
-The single database is only the start. A typical production stack is stitched together from many separate services: a host for the frontend, a serverless platform for functions, a managed database, an auth provider, a payment provider, an email sender, a queue, a cache, a search index, a log aggregator, an analytics tool. Each is a separate account, a separate bill, a separate SDK, a separate set of failure modes, and a separate thing to keep in sync.
+TypeScript end to end, one repo, one deploy, wired by types: change a field on the server and the frontend stops compiling until you fix it (a compile error at your desk, not a production bug).
 
-You did not set out to become a systems integrator, but that is the job the stack quietly hands you.
+The toolchain is set up for you: ESLint, Prettier (with a plugin for toil's decorators), an editor plugin, one CLI, and a `doctor` that fixes common problems in place. The docs are even LLM-friendly, so an AI assistant reads your current conventions instead of guessing. More in [The modern stack](./modern-stack.md).
 
-### The platform-team tax
+### 4. Hyper-scalable and distributed (one pillar, not the whole story)
 
-Wiring those pieces into something reliable, observable, and secure is real work, and at scale it becomes a full-time team: a platform or infrastructure group whose job is the plumbing, not the product. Small teams either pay for that team or pay in nights and weekends. Either way it is time not spent on the thing users actually came for.
+Your backend compiles to a tiny sandboxed **WebAssembly** module (a compact, locked-down binary that runs at near-native speed), so one edge box safely runs many apps, which makes running near everyone affordable.
 
-### Critical-path dependencies you cannot inspect or fix
+And the database, **ToilDB**, distributes the *writes*, not just the reads: every key has one **home** region that orders its writes, while data replicates outward for fast local reads. Distributing writes is the hard part almost nobody does. The trade is eventual consistency: a far read can lag a few milliseconds. See [How toil works](./how-it-works.md) and [How toil is distributed](./distributed.md).
 
-The subtlest cost is trust. Every third-party service on your **critical path** (the sequence of things that must work for a request to succeed) is a system you cannot see inside, cannot patch, and cannot fully secure. When your login provider is slow, your login is slow. When their security is breached, part of your security is breached. You inherit their outages and their incidents, and your only lever is a status page and a support ticket.
+## Who it is for
 
-Under the RSG rubric this is the **dependencies** axis, and it is deliberately unforgiving at the top: one auth vendor or one managed queue on the hot path is enough to cap an otherwise excellent system, because your reliability and your security are now only as good as someone else's, and you cannot fix theirs.
+- **Solo builders and small teams:** a full, global, secure stack without hiring a platform team. The pizza site is first-class.
+- **Latency-sensitive apps:** writes that resolve near the user, not across an ocean.
+- **Global apps:** logic and data near users on every continent.
+- **Realtime apps:** chat, presence, and live cursors on built-in streaming, not a bolted-on vendor.
 
-## What toil gives you instead
-
-toil's answer is to close the gap and own the pieces, so the whole request lives near the user and nothing critical is a black box you rent.
-
-- **Global speed for reads and writes.** Your React frontend and your TypeScript backend both compile down and run on the **Dacely edge** (a fleet of servers near your users). The backend is compiled by a compiler called **toilscript** into a small sandboxed **WebAssembly** module (a compact, locked-down binary that runs at near-native speed). The database, **ToilDB**, is distributed too. Its core trick: every key has a single **home** region that lines up that key's writes so they are correct and race-free, while the data replicates outward so reads are fast locally. That distributes the *writes*, not just the reads, which is the hard part almost nobody does. The honest trade is that reads in far regions are eventually consistent (they can be a beat behind for a few milliseconds after a write). The mechanism is covered in [how it works](./how-it-works.md) and [how toil is distributed](./distributed.md).
-- **An owned, batteries-included stack.** Auth, database, email, rate limiting, streaming, and background jobs are all built in and self-owned, with no third-party service on the critical path. You are not assembling ten vendors; the parts already fit, because they are one system.
-- **One language, one project, one deploy.** You write the frontend and the backend in TypeScript, in a single repository, and ship them together. The two ends are wired by types, so a mismatch is a compile error at your desk instead of a runtime bug in production. One build, one deploy, one thing to reason about.
-- **Security designed in, not bolted on.** Password login is **post-quantum** and shaped so the password never reaches the server in a form anyone can replay: a breached server yields no usable credentials (contrast the ordinary pattern, where the server receives the raw password over TLS and hashes it, so a memory dump or a stray log line at the wrong moment leaks live passwords). Secrets are injected per host and never compiled into the WebAssembly module, and the client bundle is protected by Subresource Integrity (the browser checks each asset against a hash and refuses a tampered one). See [auth](../auth/how-it-works.md).
-
-The point is not that each piece is individually novel. It is that owning all of them at once is what lets a system be strong on every axis *at the same time*, instead of being great at reads and quietly capped somewhere you did not look.
-
-## Who benefits most
-
-toil is aimed squarely at people who want top-tier global behavior without running an infrastructure org to get it.
-
-- **Product builders and small teams.** If you want a fast, reliable, global app but do not have (or want) a platform team to stitch and babysit ten services, toil hands you the plumbing already assembled so you can spend your time on the product.
-- **Latency-sensitive apps.** Anything where the *write* has to feel instant (a like, a message send, a save, a reservation) benefits directly from writes that resolve near the user instead of across an ocean.
-- **Global apps.** If your users are spread across continents, a single-region backend punishes everyone far from it. toil puts logic and data near all of them.
-- **Realtime apps.** Chat, presence, live cursors, and collaborative features get built-in streaming over modern transports, next to the user, rather than tacked on through a separate realtime vendor.
+Same install for the smallest project and the largest. You grow into the scale; you do not rebuild to reach it.
 
 ## When not to use toil
 
-toil is opinionated, and the honest flip side of "owns the whole stack" is "you live inside its choices." Reach for something else when:
+- **You need SQL or heavy joins.** ToilDB is seven purpose-built families, not a general SQL engine. See the [database overview](../database/README.md).
+- **You lean on the Node ecosystem.** The server is a strict TypeScript subset compiled to WebAssembly: no arbitrary npm packages, no Node APIs, built-in globals instead.
+- **You are happy single-region and simple.** If one region already fits, toil's distribution is effort you do not need.
+- **You need a big integration catalog today.** toil is younger, and that catalog is smaller.
 
-- **You need a specific existing SQL schema or heavy relational joins.** ToilDB is a set of purpose-built families (Documents, Unique, Counter, Events, View, Membership, Capacity), not a general SQL engine. If your app is built around complex ad-hoc joins, foreign-key-heavy relational modeling, or an existing schema you must keep, a traditional SQL database fits your shape better. See the [database overview](../database/README.md).
-- **You depend on a mature server-side npm ecosystem.** toilscript compiles a strict *subset* of TypeScript to WebAssembly. You cannot import arbitrary npm packages or call Node APIs on the server; you use built-in globals instead. That is what makes the sandbox small, fast, and safe, but if your backend leans on a rich tree of Node libraries, that reliance does not come along.
-- **You are happy single-region and simple.** If your users are concentrated in one area and a boring single-region app already meets your needs, toil's distribution is effort you do not need. A simple, fast, centralized app is a perfectly good answer, and RSG agrees: a tight single-region app outranks a global-but-slow one.
-- **You need a large third-party integration ecosystem today.** toil is younger, and its catalog of prebuilt integrations is smaller than long-established platforms. If your project is defined by plugging into many existing services out of the box, that ecosystem is not there yet.
-
-None of these are permanent verdicts, and some (the ecosystem in particular) are a matter of maturity over time. But the right tool is the one that fits the job in front of you, and pretending otherwise would be exactly the kind of marketing this documentation is trying not to be.
+None of these are permanent, and the right tool is the one that fits the job in front of you.
 
 ## Related
 
-- [How toil works](./how-it-works.md): the whole machine end to end, from your React client to ToilDB.
-- [toil versus other frameworks](./vs-other-frameworks.md): an honest, axis-by-axis comparison with the stacks you already know.
-- [Getting started](../getting-started/README.md): install the tool and build a small feature end to end.
+- [The modern stack](./modern-stack.md): the full, verified catalog of what is built in.
+- [How toil works](./how-it-works.md): the whole machine end to end, from React client to ToilDB.
+- [toil versus other frameworks](./vs-other-frameworks.md): an honest, axis-by-axis comparison.
+- [Security](../concepts/security.md): the defaults that are already on.
+- [Getting started](../getting-started/README.md): install the tool and build a small feature.

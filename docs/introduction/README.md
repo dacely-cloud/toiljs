@@ -35,16 +35,19 @@ almost nobody else does.
 
 1. **[Why toil? Who is it for?](./why-toil.md)** The problem with today's stacks, what toil gives you in
    return, who benefits most, and the honest cases where you should not use it.
-2. **[How toil works](./how-it-works.md)** The whole machine end to end: your React client, your
+2. **[The modern stack: what toil gives you that others do not](./modern-stack.md)** The full catalog of
+   modern tech baked in with zero setup, from post-quantum auth and automatic SRI to a built-in global
+   database, email, streaming, and a clean ESLint + Prettier toolchain.
+3. **[How toil works](./how-it-works.md)** The whole machine end to end: your React client, your
    TypeScript backend compiled to WebAssembly, the edge that runs it, ToilDB, and the four compute tiers.
-3. **[What makes toil hyper-scalable](./hyperscale.md)** What "hyper-scale" actually means, and the
+4. **[What makes toil hyper-scalable](./hyperscale.md)** What "hyper-scale" actually means, and the
    specific mechanisms (edge compute, WebAssembly isolation, an allocation-free hot path, no origin server)
    that let one small program serve the planet.
-4. **[How toil is distributed](./distributed.md)** The hardest problem in web infrastructure, distributing
+5. **[How toil is distributed](./distributed.md)** The hardest problem in web infrastructure, distributing
    the writes, why it makes truly distributed websites so rare, and how ToilDB solves it.
-5. **[toil versus other frameworks](./vs-other-frameworks.md)** An honest comparison with Next.js, Rails and
+6. **[toil versus other frameworks](./vs-other-frameworks.md)** An honest comparison with Next.js, Rails and
    Django, serverless functions, edge runtimes, and backend-as-a-service platforms.
-6. **[Why toil is built this way (the RSG bar)](./design-principles.md)** The rubric toil grades itself
+7. **[Why toil is built this way (the RSG bar)](./design-principles.md)** The rubric toil grades itself
    against, and why hitting the top grade forces almost every design decision.
 
 ## The short version

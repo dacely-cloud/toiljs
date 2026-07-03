@@ -27,9 +27,11 @@ Reach for realtime when **the server needs to talk first**, or when messages fly
 | Use realtime when...                          | Use a plain HTTP request when...                 |
 | --------------------------------------------- | ------------------------------------------------ |
 | A chat or comment thread updates live.        | You load a page or a list once.                  |
-| A game or drawing board syncs many moves.     | You submit a form and get one answer.            |
+| A multiplayer game syncs moves and positions. | You submit a form and get one answer.            |
 | You show live presence or typing indicators.  | You fetch data on a button click.                |
 | You stream progress of a long job.            | The data rarely changes, or the user pulls it.   |
+
+**Games are a first-class use case, not an afterthought.** Realtime multiplayer (player moves, low-latency input, live presence, per-player state) is one of the hardest things to build on the plain web, and it is exactly what toil streaming is designed for. More on why, and how far it is built to scale, in [Built for massive fan-out and world-wide sync](#built-for-massive-fan-out-and-world-wide-sync) below.
 
 If a single request-and-response does the job, prefer that: it is simpler, it caches well, and it needs no open connection. Plain requests in toiljs are [HTTP routes](../backend/rest.md) and [typed RPC](../backend/rpc.md). Reach for realtime only when the "ask again and again" model genuinely gets in your way.
 
@@ -60,6 +62,33 @@ sequenceDiagram
 ```
 
 Notice that the box lives across **many** messages in that diagram. That is the whole idea: because it is the same instance every time, it can remember things between messages (a counter, who you are, what room you joined). A normal HTTP handler forgets everything after each request; a stream box does not, for as long as the connection stays open.
+
+## Built for massive fan-out and world-wide sync
+
+Realtime gets exciting when a single event reaches **many** people at nearly the same moment. Picture a live sports app: a goal is scored, and every fan watching sees it light up together. Picture a multiplayer game: one player moves, and everyone in the match sees it happen right away. That shape, one event fanning out to a huge live audience, is what toil streaming is built for. We call it **world-wide packet sync**: everyone in the same live session gets the same update at nearly the same time, wherever they are on the planet.
+
+```mermaid
+flowchart TB
+    P["One event<br/>(a goal, a chat line, a game move)"] --> E["Dacely edge<br/>(spread across cores and cities)"]
+    E --> S1["Player in Tokyo"]
+    E --> S2["Player in Paris"]
+    E --> S3["Player in Sao Paulo"]
+    E --> Sn["...many more, at once"]
+```
+
+### Why it can go so wide
+
+Three real mechanisms make massive scale possible. None of them is magic: each is plain engineering you can read in the edge source.
+
+1. **Every connection lands on a worker core, in parallel.** The edge runs many worker cores per machine, each pulling packets straight from the network card in userspace (a technique called kernel-bypass, or DPDK). A connection is pinned to one core by writing that core's id **into the QUIC connection id**, a trick called **CID-steering** (a connection id is the label QUIC puts on every packet of a connection; QUIC is the fast, modern transport under HTTP/3). New connections spread evenly across all the cores, and there is no shared lock in the middle for them to fight over. Adding cores adds capacity.
+2. **The session follows the user.** Because the core id travels inside the connection id, a phone that switches from Wi-Fi to cellular keeps its exact session on the exact same core, in-memory game state and all. The edge re-routes the moved connection for you, so a network change does not drop the session.
+3. **The session sits near the user.** The edge is a fleet of servers in many cities. A `@stream` runs at a regional or continental node (see [Compute tiers](../concepts/tiers.md)), so the round trip to a player stays short no matter where on the map they are.
+
+### An honest word on numbers
+
+The framework is **designed** for very large live audiences, aiming at the scale of millions of concurrent connections in a single live session as its ambition. That is the target the architecture is built toward, not a number measured in these docs. Real capacity depends entirely on your deployment: how many machines and cores you run, how big each message is, how often it is sent, and where your users are. We do not publish a benchmarked figure here. What we can say honestly is **why** it scales (the three mechanisms above), and that the design removes the usual single-machine and single-lock ceilings that cap other realtime stacks.
+
+One more honest note. Fanning a single message out to **other** users' connections (true one-to-many broadcast, the arrows in the diagram above) is the job of `@channel`. The client side of that (`useChannel`, `Server.Stream`) is live today. The server-side broadcast that reaches every subscriber across the mesh is **planned, not shipped yet**. See [Channels](./channels.md) for exactly what works now and what is coming, so you can build on solid ground.
 
 ## Where to go next
 

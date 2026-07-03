@@ -55,7 +55,9 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 
 **Understand toil first**
 - [Understanding toil](./introduction/README.md): what toil is and the one big idea, then
-  [why toil and who it is for](./introduction/why-toil.md), [how it works](./introduction/how-it-works.md),
+  [why toil and who it is for](./introduction/why-toil.md),
+  [the modern stack you get](./introduction/modern-stack.md),
+  [how it works](./introduction/how-it-works.md),
   [what makes it hyper-scalable](./introduction/hyperscale.md),
   [how it is distributed](./introduction/distributed.md),
   [toil versus other frameworks](./introduction/vs-other-frameworks.md), and
