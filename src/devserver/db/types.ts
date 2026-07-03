@@ -58,6 +58,11 @@ export interface DbDevState {
     /** The derive index currently running (set by `runDerive`), so `events.since` keys its resumable
      *  checkpoint per (derive, source key). 0 outside a derive. */
     deriveId: number;
+    /** Checkpoint advances `events.since` staged during THIS derive run, keyed `"<deriveId>\0<storeKey>"` ->
+     *  events-folded count. Committed to the durable `deriveCheckpoints` only after the fold's `derive_run`
+     *  returns (its `view.publish`es have landed): a trapped fold discards this overlay, so the next run
+     *  re-reads the batch rather than skipping it (publish-then-persist, mirroring the edge). */
+    pendingCheckpoints: Map<string, number>;
 }
 
 export function freshDbState(): DbDevState {
@@ -68,6 +73,7 @@ export function freshDbState(): DbDevState {
         functionKind: DbFunctionKind.Job,
         writtenCollections: new Set<string>(),
         deriveId: 0,
+        pendingCheckpoints: new Map<string, number>(),
     };
 }
 
@@ -99,6 +105,9 @@ export interface DbSnapshot {
     counterIdem?: Record<string, string>;
     events: Record<string, { v: string; sv: number }[]>;
     eventDedup: Record<string, string[]>;
+    /** Durable `events.since` cursors, `"<deriveId>\0<storeKey>"` -> events-folded count, so a restart
+     *  resumes an incremental `@derive` instead of re-folding the whole log onto the persisted view. */
+    deriveCheckpoints?: Record<string, number>;
     capacity: Record<
         string,
         {

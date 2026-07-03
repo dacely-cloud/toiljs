@@ -305,9 +305,10 @@ export class DevDatabase {
     private readonly counterIdem = new Map<string, bigint>();
     /** Events family: `"collection\0key"` -> append-ordered event blobs (oldest first). */
     private readonly events = new Map<string, Buffer[]>();
-    /** Resumable `events.since` cursors, keyed `"<deriveId>\0<storeKey>"` -> count of events folded. The
-     *  dev store is single-threaded and crash-free, so `since` advances and persists this immediately
-     *  (no publish-then-persist window to worry about, unlike the edge). */
+    /** Durable resumable `events.since` cursors, keyed `"<deriveId>\0<storeKey>"` -> count of events folded.
+     *  A derive run stages its advances in `db.pendingCheckpoints` and only commits them here after its
+     *  `derive_run` returns (publish-then-persist, mirroring the edge), so a trapped fold never advances the
+     *  cursor past unpublished events. Persisted in the snapshot so a restart resumes the fold. */
     private readonly deriveCheckpoints = new Map<string, number>();
     /** append_once dedup: `"collection\0key"` -> set of eventIds already appended. */
     private readonly eventDedup = new Map<string, Set<string>>();
@@ -416,6 +417,7 @@ export class DevDatabase {
             counterIdem: {},
             events: {},
             eventDedup: {},
+            deriveCheckpoints: {},
             capacity: {},
         };
         for (const [k, v] of this.store)
@@ -442,6 +444,7 @@ export class DevDatabase {
             snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0 }));
         }
         for (const [k, s] of this.eventDedup) snap.eventDedup[k] = [...s];
+        for (const [k, v] of this.deriveCheckpoints) snap.deriveCheckpoints![k] = v;
         for (const [k, l] of this.capacity)
             snap.capacity[k] = {
                 total: l.total.toString(),
@@ -516,6 +519,8 @@ export class DevDatabase {
         }
         for (const [k, ids] of Object.entries(snap.eventDedup ?? {}))
             this.eventDedup.set(k, new Set(ids));
+        for (const [k, v] of Object.entries(snap.deriveCheckpoints ?? {}))
+            this.deriveCheckpoints.set(k, v);
         for (const [k, l] of Object.entries(snap.capacity ?? {})) {
             const res = new Map<bigint, Reservation>();
             for (const [id, r] of l.reservations)
@@ -545,6 +550,7 @@ export class DevDatabase {
         this.eventVersions.clear();
         this.events.clear();
         this.eventDedup.clear();
+        this.deriveCheckpoints.clear();
         this.capacity.clear();
     }
 
@@ -1214,9 +1220,10 @@ export class DevDatabase {
     }
 
     // `events.since(handle, keyPtr, keyLen, limit)`: the DERIVE-path incremental read. Returns the next
-    // batch of events for the key PAST this derive's checkpoint, OLDEST first, then advances + persists the
-    // checkpoint immediately (the dev store is crash-free, so there is no publish-then-persist window like
-    // the edge). Same wire frame as `latest`. Repeated calls drain the log; empty once caught up.
+    // batch of events for the key PAST this derive's checkpoint, OLDEST first, and advances the cursor. The
+    // advance is STAGED in `db.pendingCheckpoints` (this run only) and committed to the durable
+    // `deriveCheckpoints` after `derive_run` returns (see `commitDeriveCheckpoints`), so a trapped fold
+    // re-reads the batch next run instead of skipping it. Same wire frame as `latest`; empty once caught up.
     since(
         ref: MemoryRef,
         db: DbDevState,
@@ -1231,12 +1238,14 @@ export class DevDatabase {
         const ckKey = `${db.deriveId} ${sk}`;
         const log = this.events.get(sk) ?? [];
         const vers = this.eventVersions.get(sk) ?? [];
-        const cursor = this.deriveCheckpoints.get(ckKey) ?? 0;
+        // Resume from this run's staged cursor if `since` was already called for this key, else the durable
+        // checkpoint, else the start.
+        const cursor = db.pendingCheckpoints.get(ckKey) ?? this.deriveCheckpoints.get(ckKey) ?? 0;
         const n = Math.max(0, Math.min(limit, 0xffff));
         const end = Math.min(log.length, cursor + n);
         const batch = log.slice(cursor, end); // oldest-first
         const batchVers = vers.slice(cursor, end);
-        this.deriveCheckpoints.set(ckKey, end);
+        db.pendingCheckpoints.set(ckKey, end); // staged; committed only on derive success
         const w = new DataWriter();
         w.writeU32(batch.length);
         for (let i = 0; i < batch.length; i++) {
@@ -1244,6 +1253,16 @@ export class DevDatabase {
         }
         db.lastResult = Buffer.from(w.toBytes());
         return db.lastResult.length;
+    }
+
+    /** Commit the `events.since` cursor advances a derive run staged in `db.pendingCheckpoints` into the
+     *  durable map. Call ONLY after the fold's `derive_run` returned (its `view.publish`es have landed in
+     *  this.views), so a trapped fold leaves the durable cursor untouched and the next run re-reads the
+     *  batch (publish-then-persist, mirroring the edge `commit_derive_checkpoints`). No-op if none staged. */
+    commitDeriveCheckpoints(db: DbDevState): void {
+        if (db.pendingCheckpoints.size === 0) return;
+        for (const [k, v] of db.pendingCheckpoints) this.deriveCheckpoints.set(k, v);
+        db.pendingCheckpoints.clear();
     }
 
     // --- capacity family (escrow: set_total / available / reserve / confirm / cancel) ---
@@ -1463,6 +1482,12 @@ export function configureDbPersistence(filePath: string): void {
 /** Write the current store to disk (no-op if persistence is not configured). */
 export function persistDb(): void {
     devDb.persist();
+}
+
+/** Commit the `events.since` checkpoints a derive run staged in `db.pendingCheckpoints` (call after a
+ *  successful `derive_run`; a trapped fold must NOT reach this). No-op if the run staged none. */
+export function commitDeriveCheckpoints(db: DbDevState): void {
+    devDb.commitDeriveCheckpoints(db);
 }
 
 /**

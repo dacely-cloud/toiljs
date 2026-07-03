@@ -14,6 +14,7 @@
 import fs from 'node:fs';
 
 import {
+    commitDeriveCheckpoints,
     DbFunctionKind,
     type DeriveEntry,
     derivesForWrites,
@@ -408,6 +409,10 @@ export class WasmServerModule {
         ref.memory = exports.memory;
         if (typeof exports.derive_run !== 'function') return;
         exports.derive_run(deriveId);
+        // Publish-then-persist: derive_run returned (its `view.publish`es landed synchronously in the dev
+        // store), so commit the `events.since` cursor advances staged this run. A trapped fold throws above
+        // and never reaches here, leaving the durable cursor for a re-read on the next trigger.
+        commitDeriveCheckpoints(state.db);
     }
 
     /** Fail instantiation up front, with names, when the guest needs imports we do not provide. */

@@ -10,6 +10,7 @@ import {
     __resetDbForTests,
     __setDbCatalogForTests,
     buildDatabaseImports,
+    commitDeriveCheckpoints,
     configureDbPersistence,
     derivesForWrites,
     freshDbState,
@@ -635,6 +636,118 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.latest'](h, k2P, k2L, 10)).toBe(4);
         imports['data.take_result'](300, 8);
         expect(buf.readUInt32LE(300)).toBe(0);
+    });
+
+    it('events.since: drains oldest-first, stages within a run, commits on success, resumes across runs', () => {
+        const { ref, imports, buf, db } = setup();
+        const h = resolve(imports, buf, 'App/feed');
+        const [kPtr, kLen] = put(buf, 32, 'room1');
+        for (let i = 0; i < 3; i++) {
+            const [eP, eL] = put(buf, 48, `e${String(i)}`);
+            expect(imports['data.append'](h, kPtr, kLen, eP, eL, 0)).toBe(0);
+        }
+
+        // Decode a framed since batch (u32 count, then per-event u32 ver + u32 len + bytes), oldest-first.
+        const drain = (
+            imps: Record<string, (...a: number[]) => number>,
+            total: number,
+            at: number,
+        ): string[] => {
+            expect(imps['data.take_result'](at, 256)).toBe(total);
+            let off = at;
+            const count = buf.readUInt32LE(off);
+            off += 4;
+            const out: string[] = [];
+            for (let i = 0; i < count; i++) {
+                off += 4; // schema_version (0 in dev)
+                const len = buf.readUInt32LE(off);
+                off += 4;
+                out.push(buf.toString('utf8', off, off + len));
+                off += len;
+            }
+            return out;
+        };
+
+        // A derive run drains the log in bounded batches, resuming from the STAGED cursor within the run.
+        db.functionKind = DbFunctionKind.Derive;
+        db.deriveId = 0;
+        expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 512)).toEqual(['e0', 'e1']);
+        expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 768)).toEqual(['e2']);
+        expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 1024)).toEqual([]); // caught up
+
+        // The advance is only STAGED until the fold's derive_run returns; commit persists it.
+        expect(db.pendingCheckpoints.size).toBeGreaterThan(0);
+        commitDeriveCheckpoints(db);
+        expect(db.pendingCheckpoints.size).toBe(0);
+
+        // A fresh derive run (new per-request state, same shared store) resumes PAST the committed cursor:
+        // it re-reads nothing, then folds only a newly appended event.
+        const db2 = freshDbState();
+        db2.functionKind = DbFunctionKind.Derive;
+        db2.deriveId = 0;
+        const imports2 = buildDatabaseImports(ref, db2) as Record<string, (...a: number[]) => number>;
+        const h2 = resolve(imports2, buf, 'App/feed');
+        expect(drain(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toEqual([]);
+        const [e3P, e3L] = put(buf, 48, 'e3');
+        expect(imports2['data.append'](h2, kPtr, kLen, e3P, e3L, 0)).toBe(0);
+        expect(drain(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toEqual(['e3']);
+    });
+
+    it('events.since: a derive run that does not commit leaves the durable cursor unmoved (trap-safety)', () => {
+        const { ref, imports, buf, db } = setup();
+        const h = resolve(imports, buf, 'App/feed');
+        const [kPtr, kLen] = put(buf, 32, 'room1');
+        for (let i = 0; i < 2; i++) {
+            const [eP, eL] = put(buf, 48, `e${String(i)}`);
+            expect(imports['data.append'](h, kPtr, kLen, eP, eL, 0)).toBe(0);
+        }
+        const count = (imps: Record<string, (...a: number[]) => number>, total: number, at: number): number => {
+            expect(imps['data.take_result'](at, 256)).toBe(total);
+            return buf.readUInt32LE(at);
+        };
+
+        // Run 1 drains both events but NEVER commits (simulating a fold that trapped before returning): the
+        // staged advance lives only on this discarded per-request state.
+        db.functionKind = DbFunctionKind.Derive;
+        db.deriveId = 0;
+        expect(count(imports, imports['data.events_since'](h, kPtr, kLen, 10), 512)).toBe(2);
+
+        // Run 2 (fresh per-request state) still sees BOTH events: the durable cursor never moved.
+        const db2 = freshDbState();
+        db2.functionKind = DbFunctionKind.Derive;
+        db2.deriveId = 0;
+        const imports2 = buildDatabaseImports(ref, db2) as Record<string, (...a: number[]) => number>;
+        const h2 = resolve(imports2, buf, 'App/feed');
+        expect(count(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toBe(2);
+    });
+
+    it('__resetDbForTests clears events.since checkpoints (no cross-test cursor leak)', () => {
+        {
+            const { imports, buf, db } = setup();
+            const h = resolve(imports, buf, 'App/feed');
+            const [kPtr, kLen] = put(buf, 32, 'room1');
+            const [eP, eL] = put(buf, 48, 'e0');
+            expect(imports['data.append'](h, kPtr, kLen, eP, eL, 0)).toBe(0);
+            db.functionKind = DbFunctionKind.Derive;
+            db.deriveId = 0;
+            imports['data.events_since'](h, kPtr, kLen, 10);
+            commitDeriveCheckpoints(db); // durable cursor now at 1
+        }
+        __resetDbForTests();
+        {
+            // A brand-new store reusing the same (deriveId, key): the cursor must be back at 0, so a fresh
+            // append is read, not skipped by a stale checkpoint.
+            const { imports, buf, db } = setup();
+            const h = resolve(imports, buf, 'App/feed');
+            const [kPtr, kLen] = put(buf, 32, 'room1');
+            const [eP, eL] = put(buf, 48, 'fresh0');
+            expect(imports['data.append'](h, kPtr, kLen, eP, eL, 0)).toBe(0);
+            db.functionKind = DbFunctionKind.Derive;
+            db.deriveId = 0;
+            const total = imports['data.events_since'](h, kPtr, kLen, 10);
+            expect(imports['data.take_result'](512, 256)).toBe(total);
+            expect(buf.readUInt32LE(512)).toBe(1); // the fresh event, not skipped
+        }
     });
 
     it('collections are isolated (no key aliasing)', () => {

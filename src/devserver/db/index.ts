@@ -8,6 +8,7 @@ export {
     __resetDbForTests,
     __setDbCatalogForTests,
     buildDatabaseImports,
+    commitDeriveCheckpoints,
     configureDbPersistence,
     DevDatabase,
     devDb,
