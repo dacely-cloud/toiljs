@@ -20,7 +20,7 @@ flowchart TB
                 direction TB
                 R["@stream (Regional scope)<br/>chat, presence, live cursors"]
                 subgraph L1["L1 - Hot / edge (per request)"]
-                    H["@rest · @service · @remote<br/>HTTP + RPC, the default"]
+                    H["@rest, @service, @remote<br/>HTTP + RPC, the default"]
                 end
             end
         end

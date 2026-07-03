@@ -31,8 +31,8 @@ const id2 = ToilUserId.derive(mldsaPublicKey, 'alice@example.com', 'acme.dacely.
 const a = ToilUserId.derive(pk, 'alice', 'acme.com');
 const b = ToilUserId.derive(pk, 'alice', 'acme.com');
 const c = ToilUserId.derive(pk, 'bob',   'acme.com');
-a == b;   // true , same inputs, same id
-a != c;   // true , different user
+a == b;   // true, same inputs, same id
+a != c;   // true, different user
 ```
 
 > **Null-check gotcha:** because `ToilUserId` overloads `==`, `AuthService.userId() == null` does NOT
@@ -155,11 +155,11 @@ Everything the built-in controller is built from, available for hand-written aut
 - `buildRegisterMessage(username, pk)` / `verifyRegister(pk, msg, sig): bool`: proof-of-possession.
 - `buildLoginMessage(sub, aud, cid, nonce, iat, exp, ct, memKiB, iterations, parallelism, serverKemKeyId)`
   / `verifyLogin(pk, msg, sig): bool`.
-- `mlkemDecapsulate(ct): Uint8Array` · `serverKemKeyId(): Uint8Array`.
-- `deriveSessionKey(sharedSecret, transcriptHash)` · `serverConfirmTag(sessionKey, transcriptHash)`: the
+- `mlkemDecapsulate(ct): Uint8Array`, `serverKemKeyId(): Uint8Array`.
+- `deriveSessionKey(sharedSecret, transcriptHash)`, `serverConfirmTag(sessionKey, transcriptHash)`: the
   mutual-auth confirmation.
 - `sha256(data): Uint8Array`.
-- `setOprfSeed(seed)` · `setServerKemSecretKey(sk)` · `setServerKemPublicKey(pk)`: override the seeds/keys.
+- `setOprfSeed(seed)`, `setServerKemSecretKey(sk)`, `setServerKemPublicKey(pk)`: override the seeds/keys.
 - Sizes: `PUBLIC_KEY_LEN`, `SIGNATURE_LEN`, `OPRF_ELEMENT_LEN`, `KEM_CIPHERTEXT_LEN`, `SHARED_SECRET_LEN`, …
 
 **Related globals**, `TwoFactor` (email codes; see [email](../services/email.md)), `RateLimitService` (used by

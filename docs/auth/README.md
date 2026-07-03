@@ -20,8 +20,8 @@ is live and `@auth` works everywhere.
 
 | Endpoint | Purpose |
 | --- | --- |
-| `POST /auth/register/start` · `/register/finish` | Create an account (password never leaves the browser) |
-| `POST /auth/login/start` · `/login/finish` | Log in; sets a signed session cookie |
+| `POST /auth/register/start`, `/register/finish` | Create an account (password never leaves the browser) |
+| `POST /auth/login/start`, `/login/finish` | Log in; sets a signed session cookie |
 | `GET /auth/me` *(`@auth`)* | The current user (`toilUserId` + `username`) |
 | `POST /auth/logout` *(`@auth`)* | Clear the session |
 

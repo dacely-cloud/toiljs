@@ -53,6 +53,14 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 
 ## Learn toiljs
 
+**Understand toil first**
+- [Understanding toil](./introduction/README.md): what toil is and the one big idea, then
+  [why toil and who it is for](./introduction/why-toil.md), [how it works](./introduction/how-it-works.md),
+  [what makes it hyper-scalable](./introduction/hyperscale.md),
+  [how it is distributed](./introduction/distributed.md),
+  [toil versus other frameworks](./introduction/vs-other-frameworks.md), and
+  [why it is built this way](./introduction/design-principles.md).
+
 **Start here**
 - [Getting started](./getting-started/README.md): install, create a project, project structure, your first
   app, and migrating an existing React app.
@@ -90,4 +98,5 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 
 **Concepts and reference**
 - [Compute tiers (L1 to L4)](./concepts/tiers.md), [Types (u64, u256, and friends)](./concepts/types.md),
-  [Every decorator](./concepts/decorators.md), [Configuration](./concepts/config.md).
+  [Every decorator](./concepts/decorators.md), [Configuration](./concepts/config.md),
+  [Security and SRI](./concepts/security.md).

@@ -6,12 +6,12 @@ Either the config flag (canonical) or a one-line import, both do the same thing 
 framework's auth controller + user shape to your server as compiled entries, so `/auth/*` self-mounts):
 
 ```ts
-// toil.config.ts , canonical
+// toil.config.ts, canonical
 export default defineConfig({ server: { auth: true } });
 ```
 
 ```ts
-// server/main.ts , escape hatch (equivalent)
+// server/main.ts, escape hatch (equivalent)
 import 'toiljs/server/auth';
 ```
 
