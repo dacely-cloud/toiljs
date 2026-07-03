@@ -19,61 +19,7 @@ class AnalyticsRoutes {
         const stats = Analytics.self();
         const out = new SiteAnalytics();
 
-        // Requests / L1 edge (all-time totals). Guest getters are u64, model fields are u64: no casts.
-        out.totalRequests = stats.requests;
-        out.totalBytesOutL1 = stats.bytesOutL1;
-        out.totalBytesInL1 = stats.bytesInL1;
-        out.totalStatus2xx = stats.status2xx;
-        out.totalStatus3xx = stats.status3xx;
-        out.totalStatus4xx = stats.status4xx;
-        out.totalStatus5xx = stats.status5xx;
-        out.totalStaticHits = stats.staticHits;
-        out.totalWasmDispatches = stats.wasmDispatches;
-        out.totalExecutorFullRejects = stats.executorFullRejects;
-        out.totalUnknownHostRejects = stats.unknownHostRejects;
-        out.totalRateLimitedRejects = stats.rateLimitedRejects;
-        out.totalGasUsed = stats.gasUsed;
-
-        // Database (all-time totals).
-        out.totalDbOps = stats.dbOps;
-        out.totalDbReads = stats.dbReads;
-        out.totalDbWrites = stats.dbWrites;
-        out.totalDbErrors = stats.dbErrors;
-        out.totalDbLatencyNsSum = stats.dbLatencyNsSum;
-
-        // Streams / WebTransport (all-time totals).
-        out.totalStreamAccepts = stats.streamAccepts;
-        out.totalStreamRejectWrongNode = stats.streamRejectWrongNode;
-        out.totalStreamRejectCapacity = stats.streamRejectCapacity;
-        out.totalStreamRejectArtifact = stats.streamRejectArtifact;
-        out.totalStreamRejectGuest = stats.streamRejectGuest;
-        out.totalStreamTraps = stats.streamTraps;
-        out.totalStreamIdleTimeouts = stats.streamIdleTimeouts;
-        out.totalStreamBytesIn = stats.streamBytesIn;
-        out.totalStreamBytesOut = stats.streamBytesOut;
-        out.totalStreamBackpressureEvents = stats.streamBackpressureEvents;
-        out.totalStreamCloses = stats.streamCloses;
-        out.totalStreamDisconnects = stats.streamDisconnects;
-
-        // Daemons / L4 (all-time totals).
-        out.totalDaemonStarts = stats.daemonStarts;
-        out.totalDaemonStartFailures = stats.daemonStartFailures;
-        out.totalDaemonTicksFired = stats.daemonTicksFired;
-        out.totalDaemonTicksSkippedNotLeader = stats.daemonTicksSkippedNotLeader;
-        out.totalDaemonTicksFailed = stats.daemonTicksFailed;
-        out.totalDaemonLeaderAcquires = stats.daemonLeaderAcquires;
-        out.totalDaemonLeaderFenced = stats.daemonLeaderFenced;
-        out.totalDaemonHttpCallAttempts = stats.daemonHttpCallAttempts;
-        out.totalDaemonHttpCallFailures = stats.daemonHttpCallFailures;
-
-        // Memory / email / cache (all-time totals) + the derived cache-hit ratio.
-        out.totalMemGrownBytes = stats.memGrownBytes;
-        out.totalEmails = stats.emails;
-        out.totalCacheHits = stats.cacheHits;
-        out.totalCacheMisses = stats.cacheMisses;
-        out.cacheHitRatio = stats.cacheRatio;
-
-        // Live gauges (current level, not a total).
+        // Live gauges (current instantaneous level, not a cumulative total).
         out.liveConnectedStreams = stats.connectedStreams;
         out.liveCommittedMemoryBytes = stats.committedMemory;
 
@@ -83,6 +29,7 @@ class AnalyticsRoutes {
         out.requestsToday = stats.reqDayUsed;
         out.requestsTodayCap = stats.reqDayCap;
 
+        // For historical, time-windowed values (per-bucket, not a lifetime total), see `/series` below.
         return out;
     }
 

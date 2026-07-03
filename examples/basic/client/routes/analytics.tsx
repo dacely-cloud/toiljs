@@ -160,23 +160,14 @@ export default function AnalyticsDemo() {
             <section style={{ marginTop: 24 }}>
                 <h2>Snapshot</h2>
                 <p style={{ color: '#64748b', marginTop: 0 }}>
-                    All <code>total*</code> values are all-time cumulative totals (since the site was first seen);
-                    the <code>live</code> gauges are the current level, and the windows are the current rate-limit
-                    usage vs the plan cap (cap ∞ = unlimited).
+                    The <code>live</code> gauges are the current level right now, and the windows are the
+                    current rate-limit usage vs the plan cap (cap ∞ = unlimited). To see a metric over time,
+                    use the chart above (the time-series), not an ever-growing lifetime total.
                 </p>
                 <button onClick={loadStats}>Load my site analytics</button>
                 {err && <p style={{ color: '#f87171' }}>{err}</p>}
                 {stats && (
                     <ul>
-                        <li>total requests: {String(stats.totalRequests)}</li>
-                        <li>total bytes out (L1): {String(stats.totalBytesOutL1)}</li>
-                        <li>total bytes in (L1): {String(stats.totalBytesInL1)}</li>
-                        <li>total gas used: {String(stats.totalGasUsed)}</li>
-                        <li>total 2xx responses: {String(stats.totalStatus2xx)}</li>
-                        <li>total db ops: {String(stats.totalDbOps)}</li>
-                        <li>total cache hits: {String(stats.totalCacheHits)}</li>
-                        <li>total cache misses: {String(stats.totalCacheMisses)}</li>
-                        <li>cache hit ratio: {(stats.cacheHitRatio * 100).toFixed(1)}%</li>
                         <li>connected streams (live): {String(stats.liveConnectedStreams)}</li>
                         <li>committed memory (live): {fmt(Number(stats.liveCommittedMemoryBytes), 'bytes')}</li>
                         <li>requests this minute: {cap(stats.requestsThisMinute, stats.requestsThisMinuteCap)}</li>
