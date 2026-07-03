@@ -84,6 +84,7 @@ API. Their exact signatures:
 | `append` | `append(key: K, event: V): void` | Add one event to the end of the log. |
 | `appendOnce` | `appendOnce(key: K, eventId: string, event: V): bool` | Add one event, but only if that `eventId` was never seen before. |
 | `latest` | `latest(key: K, limit: i32): V[]` | Read up to `limit` events, newest first. |
+| `since` | `since(key: K, limit: i32): V[]` | Read the NEXT batch of events past a `@derive`'s checkpoint, oldest first. For folding a growing log incrementally. |
 
 ### `append`
 
@@ -151,6 +152,43 @@ Instead you scan the log **off** the request path, in a
 [`@derive`](../background/derive.md), and publish a small precomputed
 [View](./views.md) that your routes read cheaply. The next section shows the full
 pattern.
+
+### `since` (incremental read for a `@derive`)
+
+`latest` rescans the tail every time. For a log that grows without bound, that gets slower and slower. `since`
+reads only the events you have **not folded yet**: the next batch past a saved cursor, oldest first, up to a
+limit. It is how a [`@derive`](../background/derive.md) folds a huge log incrementally instead of rescanning
+it from the start on every change.
+
+You do not pass or manage the cursor. The host owns it: it seeds `since` from a durable checkpoint, advances
+it as it hands you events, and saves it after your fold's view publish lands. So you just loop until the
+batch is empty:
+
+```ts
+@derive
+rollup(): void {
+    const key = new StatsKey('global');
+    const view = StatsDb.summary.get(key) ?? new Summary();   // the running view
+    let batch = StatsDb.events.since(key, 500);
+    while (batch.length > 0) {                                 // drain in bounded batches
+        for (let i = 0; i < batch.length; i++) view.apply(batch[i]);
+        batch = StatsDb.events.since(key, 500);
+    }
+    StatsDb.summary.publish(key, view);
+}
+```
+
+Two rules:
+
+- **`@derive` or `@job` only.** Like `latest`, `since` is a scan, so it is barred on the request path (`@get`
+  / `@post`). Calling it there is rejected.
+- **Your fold must be idempotent per event.** A rare crash-recovery case (a "healed" event that arrives at an
+  older position) makes the host re-read the log from the start that one run, so applying an event twice must
+  not change the result. Use set-style updates (`view.byId[e.id] = e.value`), not blind accumulation
+  (`view.count += 1`). If your fold cannot be idempotent, use `latest` and recompute instead.
+
+`since` is the efficient path; `latest` (recompute) is the simple path. See [`@derive`](../background/derive.md)
+for the full picture.
 
 ## Worked example: an activity feed
 

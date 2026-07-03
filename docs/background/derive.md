@@ -127,6 +127,30 @@ A derive's own `view.publish` never re-triggers it, so there is no infinite loop
 
 The same code runs under `toiljs dev` (the in-process emulator) and on the production edge, with no flags or wiring to change.
 
+## Folding a growing log incrementally
+
+The guestbook above uses `events.latest` and **recomputes** the view from scratch on every change. That is simple, correct, and the right default for a **bounded** read: the latest N, a counter total, a small set.
+
+Some views instead fold an **unbounded** log: a running total over every event ever, an activity rollup, an audit summary. Rescanning the whole log on every change gets slower as it grows. For those, read the source with [`events.since`](../database/events.md) instead of `latest`. `since` hands you only the events you have **not folded yet**, so the derive folds forward incrementally.
+
+```ts
+@derive
+rollup(): void {
+    const key = new StatsKey('all');
+    const view = StatsDb.summary.get(key) ?? new Summary();   // the running view so far
+    let batch = StatsDb.events.since(key, 500);
+    while (batch.length > 0) {                                 // drain the new events in bounded batches
+        for (let i = 0; i < batch.length; i++) view.apply(batch[i]);
+        batch = StatsDb.events.since(key, 500);
+    }
+    StatsDb.summary.publish(key, view);
+}
+```
+
+The host owns the cursor, you never manage it: it seeds `since` from a durable checkpoint, advances it as it hands you events, and saves it **only after** your `publish` lands (so a crash re-folds the batch instead of skipping it). On the next trigger the derive resumes exactly where it left off.
+
+**One rule: the fold must be idempotent per event.** A rare crash-recovery case (an event that "heals" at an older position after the derive already passed it) makes the host re-read the whole log that one run, so applying an event twice must not change the result. Use set-style updates keyed by the event's id, not blind `count += 1` accumulation. If your fold cannot be idempotent, stay on the simple `latest` recompute path.
+
 ## Guarantees and limitations
 
 **Guarantees**
@@ -136,7 +160,7 @@ The same code runs under `toiljs dev` (the in-process emulator) and on the produ
 
 **Limitations (read these)**
 
-- **It recomputes from scratch each time.** A derive re-reads its sources and republishes on every trigger. That makes it a great fit for a view built from a **bounded** read: the latest N, a counter total, a small set. It is not designed to fold an **unbounded, ever-growing** log incrementally; doing that efficiently is a separate, more advanced pattern.
+- **By default it recomputes from scratch each time.** A derive re-reads its sources and republishes on every trigger. That is the simple path and a great fit for a **bounded** read: the latest N, a counter total, a small set. To fold an **unbounded, ever-growing** log efficiently, read it with [`events.since`](../database/events.md) instead of `latest` (see [Folding a growing log incrementally](#folding-a-growing-log-incrementally) above); it folds only the new events since a checkpoint.
 - **It is eventually consistent, by a moment.** The view is republished right after the writing request finishes, so there is a tiny window where a reader could see the pre-write view. For most pages (a feed, a leaderboard) that is invisible and fine.
 - **`view.publish` is derive-only.** Routes cannot publish; they can only read the view. That is the whole point: the expensive build happens off the request path.
 
