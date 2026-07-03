@@ -102,5 +102,5 @@ When you create a project, both `toiljs` and `toilscript` are added to it as dep
 ## Related
 
 - [Create a project](./create-project.md)
-- [The CLI reference](../cli/index.md)
-- [Getting started overview](./index.md)
+- [The CLI reference](../cli/README.md)
+- [Getting started overview](./README.md)

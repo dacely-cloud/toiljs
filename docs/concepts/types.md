@@ -4,7 +4,7 @@ Your backend is TypeScript, but a stricter, faster dialect of it. Numbers have a
 
 ## Why the server types are different
 
-Your frontend TypeScript runs in a browser, where a JavaScript engine figures out types as it goes. Your **server** code is different: the **toilscript** compiler turns it into [WebAssembly](../backend/index.md) (WASM), a compact machine-like binary. To emit that binary, the compiler must know the *exact* size of every value ahead of time. "A number" is not enough; it needs to know "a 32-bit unsigned integer" so it can pick the right machine instruction and lay out memory.
+Your frontend TypeScript runs in a browser, where a JavaScript engine figures out types as it goes. Your **server** code is different: the **toilscript** compiler turns it into [WebAssembly](../backend/README.md) (WASM), a compact machine-like binary. To emit that binary, the compiler must know the *exact* size of every value ahead of time. "A number" is not enough; it needs to know "a 32-bit unsigned integer" so it can pick the right machine instruction and lay out memory.
 
 toilscript is built on **AssemblyScript**, a strict subset of TypeScript designed to compile to WASM. So the server language looks and reads like TypeScript, but every number is a fixed-width type, and there is no room for the fuzzy parts of JavaScript. The payoff is speed and safety: your code compiles to something close to hand-written native code, and whole classes of bugs cannot occur.
 
@@ -212,5 +212,5 @@ The important row is the 64-bit-and-larger integers: they become `bigint` on the
 - [Data types (`@data`)](../backend/data.md): defining structs that cross the wire and the database.
 - [RPC and the generated client](../backend/rpc.md): how server types map to browser types.
 - [Extending auth](../auth/extending.md): the `ToilUserId` 256-bit identity in full.
-- [The database (ToilDB)](../database/index.md): the collections your typed keys and values live in.
+- [The database (ToilDB)](../database/README.md): the collections your typed keys and values live in.
 - [Decorators](./decorators.md): the decorators referenced throughout this page.

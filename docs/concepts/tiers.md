@@ -44,7 +44,7 @@ The tier names come straight from the edge runtime (its node roles are `Hot`, `R
 
 **What:** a plain request-in, response-out handler. This is the default tier and where most code lives.
 
-**How it behaves:** a fresh copy of your handler serves each request, on whatever node is nearest the caller. Nothing you store on a field survives to the next request, because the next request may be a brand-new copy on the other side of the planet. This is called being **stateless**. It is what lets your app scale to the whole world with no coordination. When you need something to persist, you write it to [ToilDB](../database/index.md), the shared database.
+**How it behaves:** a fresh copy of your handler serves each request, on whatever node is nearest the caller. Nothing you store on a field survives to the next request, because the next request may be a brand-new copy on the other side of the planet. This is called being **stateless**. It is what lets your app scale to the whole world with no coordination. When you need something to persist, you write it to [ToilDB](../database/README.md), the shared database.
 
 L1 is the lowest latency tier: the code runs on the node the user already reached, so there is no extra hop.
 
@@ -130,7 +130,7 @@ At build time, `toiljs build` runs the compiler once per tier and hands each pas
 | `main.stream.ts` | `@stream` | `release-stream.wasm` | L2 / L3 stream |
 | `main.daemon.ts` | `@daemon`, `@scheduled` | `release-cold.wasm` | L4 daemon |
 
-Shared building blocks carry no tier of their own. Your [`@data` classes](../backend/data.md) and your [`@database` schema](../database/index.md) are compiled into *every* artifact, because any tier may need to read or write the database. The stream and daemon tiers are opt-in: a project with no `@stream` and no `@daemon` just builds the single `release.wasm` and behaves exactly like a request-only app.
+Shared building blocks carry no tier of their own. Your [`@data` classes](../backend/data.md) and your [`@database` schema](../database/README.md) are compiled into *every* artifact, because any tier may need to read or write the database. The stream and daemon tiers are opt-in: a project with no `@stream` and no `@daemon` just builds the single `release.wasm` and behaves exactly like a request-only app.
 
 For the entry-file conventions and the full build flow, see [Project structure](../getting-started/project-structure.md).
 
@@ -150,17 +150,17 @@ A rule of thumb:
 
 ## Gotchas
 
-- **L1 fields reset every request.** If you set a field in one request and read it in the next, it will be gone. Persist to [ToilDB](../database/index.md) instead.
+- **L1 fields reset every request.** If you set a field in one request and read it in the next, it will be gone. Persist to [ToilDB](../database/README.md) instead.
 - **A project using `@stream` may not also declare `@service` or `@remote`** anywhere (the compiler enforces this). Streams and RPC live in different artifacts. Keep them in separate entry files (`main.stream.ts` vs `main.ts`).
 - **There is at most one `@daemon` class per project.** It compiles only into the cold artifact; a `@daemon` in the request build is a compile error.
 - **Higher tier is not "better".** Do not reach for L4 to hold shared state you read on every request; that adds a long hop. Use the database for shared reads, and the daemon only for scheduled, run-once work.
 
 ## Related
 
-- [Backend overview](../backend/index.md): the L1 request model in depth.
+- [Backend overview](../backend/README.md): the L1 request model in depth.
 - [REST](../backend/rest.md) and [RPC](../backend/rpc.md): the L1 surfaces.
 - [Realtime streams](../realtime/streams.md): the L2 / L3 surface and `StreamScope`.
 - [Daemons](../background/daemons.md) and [@derive](../background/derive.md): scheduled and background work.
-- [The database (ToilDB)](../database/index.md): where shared, persistent state lives.
+- [The database (ToilDB)](../database/README.md): where shared, persistent state lives.
 - [Decorators](./decorators.md): the full list of surface decorators and their tiers.
 - [Project structure](../getting-started/project-structure.md): entry files and the build.

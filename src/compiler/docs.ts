@@ -10,45 +10,23 @@ import { TOIL_DOCS } from './toil-docs.generated.js';
 
 export { TOIL_DOCS };
 
-/**
- * One-line summaries for the pointer files' bullet list, keyed by `.toil/docs/` filename.
- * A doc with no entry here still appears in the list (using its `# ` heading as the label),
- * so adding a `docs/*.md` is picked up automatically without re-listing it by hand.
- */
-const DOC_SUMMARIES: Record<string, string> = {
-    'index.md': 'overview and project layout',
-    'getting-started.md': 'the two halves, build/dev, and the request lifecycle',
-    'routing.md': 'file-based routing, nested layouts, loading / error files',
-    'client.md': 'the `Toil` global, Link / NavLink, router hooks',
-    'styling.md': 'CSS / Sass / Less / Stylus / Tailwind (via `toiljs configure`)',
-    'server.md': 'the toilscript server target, `@data` / `@remote` / `@rest`',
-    'ssr.md': 'server-side rendering (`ssr = true`, hole markers, the server `render`)',
-    'rpc.md': '`@service` / `@remote` and the generated typed client',
-    'data.md': 'the `@data` decorator and the binary codec',
-    'caching.md': 'the `@cache` decorator and `Response.cache(...)`',
-    'ratelimit.md': 'the `@ratelimit` decorator',
-    'auth.md': '`@auth` guards, `@user`, sessions, the client half',
-    'environment.md': '`Environment.get` / `getSecure` config + secrets',
-    'email.md': '`EmailService`, templates, provider config',
-    'cookies.md': 'the `Cookie` builder, `SecureCookies`, signing / encryption',
-    'crypto.md': 'the synchronous `crypto` global and `crypto.subtle`',
-    'time.md': '`Time.nowMillis()` / `Time.nowSeconds()`',
-    'cli.md': 'toiljs CLI commands',
-};
-
-/** First-level `# ` heading of a Markdown doc, used as a fallback bullet label. */
+/** First-level `# ` heading of a Markdown doc, used as the bullet label. */
 function docTitle(content: string): string {
     const m = content.match(/^#\s+(.+)$/m);
     return m ? m[1].trim() : '';
 }
 
 /**
- * The pointer files' bullet list, derived from the generated `TOIL_DOCS` map so it never
- * drifts from the docs actually written into `.toil/docs/` (no second hand-kept list).
+ * The pointer files' navigation list, derived from the generated `TOIL_DOCS` map so it never
+ * drifts from the docs actually written into `.toil/docs/` (no second hand-kept list). We list
+ * the section landing pages (each folder's `README.md`, plus the root one) rather than all
+ * fifty-plus pages; every landing links onward to its own topic pages, and
+ * `.toil/docs/README.md` is the root map.
  */
 const DOC_POINTERS = Object.keys(TOIL_DOCS)
+    .filter((name) => name === 'README.md' || name.endsWith('/README.md'))
     .map((name) => {
-        const summary = DOC_SUMMARIES[name] ?? docTitle(TOIL_DOCS[name]);
+        const summary = docTitle(TOIL_DOCS[name]);
         return `- \`.toil/docs/${name}\`${summary ? `, ${summary}` : ''}`;
     })
     .join('\n');
@@ -59,8 +37,9 @@ const POINTER_BODY = `# toiljs, AI assistant guide
 This is a **toiljs** project, a full-stack React framework (React + Vite client, file-based
 routing, and a toilscript→WebAssembly server).
 
-**Before editing this project, read the generated documentation in \`.toil/docs/\`.** It describes
-the conventions you must follow:
+**Before editing this project, read the generated documentation in \`.toil/docs/\`, starting at
+\`.toil/docs/README.md\`.** It describes the conventions you must follow. The sections, each a
+folder whose \`README.md\` links onward to its topic pages:
 
 ${DOC_POINTERS}
 
@@ -113,6 +92,10 @@ export function writeDocs(toilDir: string): void {
     const dir = path.join(toilDir, 'docs');
     fs.mkdirSync(dir, { recursive: true });
     for (const [name, content] of Object.entries(TOIL_DOCS)) {
-        fs.writeFileSync(path.join(dir, name), content);
+        const dest = path.join(dir, name);
+        // Doc keys can be nested (e.g. "auth/configuration.md"), so ensure the
+        // file's parent directory exists before writing it.
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, content);
     }
 }

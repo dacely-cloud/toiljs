@@ -23,39 +23,19 @@ const docsDir = path.join(repoRoot, 'docs');
 const outFile = path.join(repoRoot, 'src', 'compiler', 'toil-docs.generated.ts');
 
 /**
- * Guides excluded from the AGENT doc set (still published as human docs):
- * - `auth-todo.md`: an internal tracking/roadmap doc, not project guidance.
- * - `README.md`: the human-site docs index; the agent gets `index.md` instead.
+ * Guides excluded from the AGENT doc set (still published as human docs).
+ * Nothing is excluded today: every folder's `README.md` landing page and its
+ * topic pages are bundled so the agent gets the full navigation.
  */
-const EXCLUDE = new Set(['auth-todo.md', 'README.md']);
+const EXCLUDE = new Set();
 
 /**
- * Stable order for the agent docs. Files not listed here are appended
- * alphabetically, so adding a new `docs/*.md` is picked up automatically.
+ * Stable order for the agent docs: the root landing page first, then every
+ * other guide alphabetically by its repo-relative path (which naturally groups
+ * each folder together, led by its `README.md` landing). Adding a new doc file
+ * is picked up automatically.
  */
-const ORDER = [
-    'index.md',
-    'getting-started.md',
-    'routing.md',
-    'client.md',
-    'styling.md',
-    'server.md',
-    'ssr.md',
-    'rpc.md',
-    'tiers.md',
-    'streams.md',
-    'daemon.md',
-    'data.md',
-    'caching.md',
-    'ratelimit.md',
-    'auth.md',
-    'environment.md',
-    'email.md',
-    'cookies.md',
-    'crypto.md',
-    'time.md',
-    'cli.md',
-];
+const ORDER = ['README.md'];
 
 function collect() {
     // Recurse one+ levels so a topic FOLDER (e.g. `docs/auth/*.md`) is bundled too, keyed by its

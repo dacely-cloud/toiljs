@@ -54,30 +54,30 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 ## Learn toiljs
 
 **Start here**
-- [Getting started](./getting-started/index.md): install, create a project, project structure, your first
+- [Getting started](./getting-started/README.md): install, create a project, project structure, your first
   app, and migrating an existing React app.
-- [The CLI](./cli/index.md): `dev`, `build`, `create`, `doctor`, and every flag.
+- [The CLI](./cli/README.md): `dev`, `build`, `create`, `doctor`, and every flag.
 
 **Build the frontend**
-- [Frontend overview](./frontend/index.md), [Routing](./frontend/routing.md),
+- [Frontend overview](./frontend/README.md), [Routing](./frontend/routing.md),
   [Rendering and SSR](./frontend/rendering.md), [Styling](./frontend/styling.md),
   [Images](./frontend/images.md), [Metadata and SEO](./frontend/metadata.md),
   [Fetching data](./frontend/data-fetching.md).
 
 **Build the backend**
-- [Backend overview](./backend/index.md), [HTTP routes (`@rest`)](./backend/rest.md),
+- [Backend overview](./backend/README.md), [HTTP routes (`@rest`)](./backend/rest.md),
   [Typed RPC (`@service`/`@remote`)](./backend/rpc.md), [Data types (`@data`)](./backend/data.md).
 
 **The database (ToilDB)**
-- [Database overview and choosing a family](./database/index.md), [Setup (`@database`)](./database/setup.md),
+- [Database overview and choosing a family](./database/README.md), [Setup (`@database`)](./database/setup.md),
   [Documents](./database/documents.md), [Unique](./database/unique.md), [Counters](./database/counters.md),
   [Events](./database/events.md), [Views and `@derive`](./database/views.md),
   [Membership](./database/membership.md), [Capacity](./database/capacity.md).
 
-**Auth**: [the full auth guide](./auth/index.md) covers post-quantum login, sessions, and `ToilUserId`.
+**Auth**: [the full auth guide](./auth/README.md) covers post-quantum login, sessions, and `ToilUserId`.
 
 **Realtime and background**
-- [Streams](./realtime/index.md) and [channels](./realtime/channels.md), [Daemons and scheduled
+- [Streams](./realtime/README.md) and [channels](./realtime/channels.md), [Daemons and scheduled
   jobs](./background/daemons.md), [Derived views (`@derive`)](./background/derive.md).
 
 **Platform services**

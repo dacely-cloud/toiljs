@@ -367,5 +367,5 @@ flowchart LR
 - [Project structure](../getting-started/project-structure.md)
 - [Configuration reference (`toil.config.ts`)](../concepts/config.md)
 - [Styling](../frontend/styling.md)
-- [Database setup](../database/setup.md) and the [database overview](../database/index.md)
+- [Database setup](../database/setup.md) and the [database overview](../database/README.md)
 - [Compute tiers (L1 to L4)](../concepts/tiers.md)

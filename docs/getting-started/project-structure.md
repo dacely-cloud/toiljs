@@ -76,7 +76,7 @@ A single global, `Toil`, is available in client code without an import (for `Toi
 
 ## `server/` (runs on the edge, as WebAssembly)
 
-This is your backend. It is compiled by toilscript into one `.wasm` file. Remember the two rules: **memory resets every request**, and **this is not Node.js** (a strict TypeScript subset, no arbitrary npm packages). See [Backend overview](../backend/index.md) and [Types](../concepts/types.md).
+This is your backend. It is compiled by toilscript into one `.wasm` file. Remember the two rules: **memory resets every request**, and **this is not Node.js** (a strict TypeScript subset, no arbitrary npm packages). See [Backend overview](../backend/README.md) and [Types](../concepts/types.md).
 
 ```text
 server/
@@ -156,8 +156,8 @@ The browser calls a typed method, the generated client turns it into an HTTP req
 ## Related
 
 - [Your first app](./first-app.md)
-- [Frontend overview](../frontend/index.md) and [Routing](../frontend/routing.md)
-- [Backend overview](../backend/index.md)
-- [Database overview](../database/index.md)
+- [Frontend overview](../frontend/README.md) and [Routing](../frontend/routing.md)
+- [Backend overview](../backend/README.md)
+- [Database overview](../database/README.md)
 - [Configuration](../concepts/config.md)
 - [Decorators reference](../concepts/decorators.md)

@@ -6,7 +6,7 @@
 
 A **channel** is simply an open, two-way connection between one browser and the server, viewed from the client's side. On the server that connection is handled by a [`@stream`](./streams.md) box. On the client you hold the other end with `useChannel` (a React hook) or `connectChannel` (a plain function, no React).
 
-You have already met the two-piece model in the [realtime overview](./index.md): a `@stream` on the server, a channel on the client. This page is the client half.
+You have already met the two-piece model in the [realtime overview](./README.md): a `@stream` on the server, a channel on the client. This page is the client half.
 
 ## The `useChannel` hook
 
@@ -178,7 +178,7 @@ The idea is **publish/subscribe** ("pub/sub"), a standard pattern for broadcast:
 
 With `@channel`, the server box would join a connection to a named topic and publish messages to it, and the edge would deliver each published message to every subscriber across all the connections in that topic, no matter which worker or node each one landed on. That is the missing "one to many" piece that turns the echo example above into a real shared room. The plan already reserves per-plan limits for it (a cap on subscribers per channel and on message size), so the surface is designed; it is the runtime delivery that is not shipped yet.
 
-**What you can build today:** anything where each user talks to their own box (assistants, per-user live updates, single-player sync, progress streams). **What needs `@channel`:** shared rooms and one-to-many broadcast. Until it ships, a common workaround is to persist messages to [the database](../database/index.md) and have clients poll or re-read, which is simpler but not instant.
+**What you can build today:** anything where each user talks to their own box (assistants, per-user live updates, single-player sync, progress streams). **What needs `@channel`:** shared rooms and one-to-many broadcast. Until it ships, a common workaround is to persist messages to [the database](../database/README.md) and have clients poll or re-read, which is simpler but not instant.
 
 ## Gotchas
 
@@ -189,6 +189,6 @@ With `@channel`, the server box would join a connection to a named topic and pub
 
 ## Related
 
-- [Realtime overview](./index.md): the two-piece model and when to use realtime.
+- [Realtime overview](./README.md): the two-piece model and when to use realtime.
 - [Streams](./streams.md): the server `@stream` class this hook talks to.
-- [The database (ToilDB)](../database/index.md): where to persist messages that must outlive a connection or reach users who are offline.
+- [The database (ToilDB)](../database/README.md): where to persist messages that must outlive a connection or reach users who are offline.

@@ -143,5 +143,5 @@ For images specifically, prefer the `Toil.Image` component and its `?toil` impor
 ## Related
 
 - [Images](./images.md): the `Toil.Image` component and image imports.
-- [The CLI](../cli/index.md): `toiljs configure` and every flag.
-- [Frontend overview](./index.md): where styles fit in the `client/` folder.
+- [The CLI](../cli/README.md): `toiljs configure` and every flag.
+- [Frontend overview](./README.md): where styles fit in the `client/` folder.

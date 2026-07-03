@@ -10,7 +10,7 @@ A toiljs project has three top-level folders. The frontend is the first two:
 
 - **`client/`** is your React app: pages, components, and styles. This is what runs in the user's browser.
 - **`shared/`** is a typed bridge that toiljs generates for you. It lets the browser call your backend with full type safety (see [Fetching data](./data-fetching.md)).
-- **`server/`** is your backend. It compiles to WebAssembly and runs on the edge. That is a separate section (see [Backend](../backend/index.md)).
+- **`server/`** is your backend. It compiles to WebAssembly and runs on the edge. That is a separate section (see [Backend](../backend/README.md)).
 
 Inside `client/`, the important pieces are:
 
@@ -91,7 +91,7 @@ Read them in roughly this order:
 
 ## Related
 
-- [Getting started](../getting-started/index.md): install toiljs and create a project.
+- [Getting started](../getting-started/README.md): install toiljs and create a project.
 - [Project structure](../getting-started/project-structure.md): the full folder layout.
-- [Backend overview](../backend/index.md): the `server/` side your frontend talks to.
-- [The CLI](../cli/index.md): `toiljs dev`, `toiljs build`, and every flag.
+- [Backend overview](../backend/README.md): the `server/` side your frontend talks to.
+- [The CLI](../cli/README.md): `toiljs dev`, `toiljs build`, and every flag.

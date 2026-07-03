@@ -63,8 +63,8 @@ toiljs replaces the common needs with built-in globals and decorators, so you ra
 | --- | --- |
 | `express` routes / a router | `@rest` controllers with `@get` / `@post` ([HTTP routes](../backend/rest.md)) |
 | A REST client between services | `@service` / `@remote` typed RPC ([RPC](../backend/rpc.md)) |
-| Postgres / Mongo / Redis | [ToilDB](../database/index.md) families (documents, counters, events, views) |
-| `jsonwebtoken`, session middleware | Built-in [auth](../auth/index.md) and cookies |
+| Postgres / Mongo / Redis | [ToilDB](../database/README.md) families (documents, counters, events, views) |
+| `jsonwebtoken`, session middleware | Built-in [auth](../auth/README.md) and cookies |
 | `crypto` from Node | the `crypto` global (synchronous Web Crypto) ([Crypto](../services/crypto.md)) |
 | `nodemailer` / an email SDK | the built-in email service ([Email](../services/email.md)) |
 | `process.env` | `Environment.get()` / `Environment.getSecure()` ([Environment](../services/environment.md)) |
@@ -94,7 +94,7 @@ Environment variables move from a `.env` you read with `process.env` to `.env` /
 2. **Move the frontend.** Copy components into `client/components/`, turn each page into a file under `client/routes/`, move styles into `client/styles/`, and static assets into `client/public/`. Swap your router's `Link` for `Toil.Link`. Install your client-side npm dependencies.
 3. **Get the client rendering** against the routes, even if the data is still stubbed or points at your old backend. Fix routing and asset paths first.
 4. **Rebuild the backend, one route at a time.** For each old endpoint, add a `@data` model in `server/models/`, a `@rest` controller in `server/routes/`, and move its data into a ToilDB family. Import each new route in `server/main.ts`. This is the bulk of the effort; go endpoint by endpoint.
-5. **Move persistence to ToilDB.** Map each table or collection to a ToilDB family (a document store, a counter, an event log, or a view). See [Database overview](../database/index.md) for choosing a family.
+5. **Move persistence to ToilDB.** Map each table or collection to a ToilDB family (a document store, a counter, an event log, or a view). See [Database overview](../database/README.md) for choosing a family.
 6. **Switch the client to the typed client.** Replace `fetch('/api/...')` calls with `Server.REST.*` (or `Server.<service>.*` for RPC). Now a backend change that breaks the contract shows up as a client type error.
 7. **Run the doctor.** `toiljs doctor` checks your wiring (routes, RPC generation, config, dependencies) and points at anything still off. Add `--fix` to let it repair what it can.
 
@@ -117,9 +117,9 @@ In those cases, you can still adopt toiljs for the frontend and keep your existi
 
 ## Related
 
-- [Getting started overview](./index.md)
-- [Backend overview](../backend/index.md)
+- [Getting started overview](./README.md)
+- [Backend overview](../backend/README.md)
 - [Types](../concepts/types.md)
-- [Database overview](../database/index.md)
-- [The CLI reference](../cli/index.md)
+- [Database overview](../database/README.md)
+- [The CLI reference](../cli/README.md)
 - [Configuration](../concepts/config.md)

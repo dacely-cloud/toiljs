@@ -126,6 +126,6 @@ If you told the wizard **not** to install dependencies, run `npm install` first.
 
 - [Project structure](./project-structure.md)
 - [Your first app](./first-app.md)
-- [The CLI reference](../cli/index.md)
+- [The CLI reference](../cli/README.md)
 - [Configuration](../concepts/config.md)
 - [Styling](../frontend/styling.md)

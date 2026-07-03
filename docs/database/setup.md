@@ -82,7 +82,7 @@ class AppDb {
 
 - `@database` marks the class as a database. You can have more than one `@database` class; each is a separate namespace of collections.
 - Each `@collection` is one collection. Declare it as a **`static`** field with **no initializer**: you write the type, and the compiler wires up the actual handle for you.
-- The field's **type is its family**: `Documents<K, V>`, `Counter<K>`, `Events<K, V>`, `Unique<K, V>`, `Membership<K, M>`, `Capacity<K>`, or `View<K, V>`. The compiler reads the family straight from this type, so getting it right here is how you pick a family (see [Choosing a family](./index.md#choosing-a-family-the-decision-guide)).
+- The field's **type is its family**: `Documents<K, V>`, `Counter<K>`, `Events<K, V>`, `Unique<K, V>`, `Membership<K, M>`, `Capacity<K>`, or `View<K, V>`. The compiler reads the family straight from this type, so getting it right here is how you pick a family (see [Choosing a family](./README.md#choosing-a-family-the-decision-guide)).
 
 You reach a collection through the class, statically: `AppDb.users.get(...)`, `AppDb.likes.add(...)`. There is nothing to instantiate.
 
@@ -144,11 +144,11 @@ flowchart TD
 - **Every `@data` field needs a default, and value types must be default-constructible.** A missing default fails to compile.
 - **Dev data is not durable.** The `toiljs dev` store lives in memory and resets on restart. Do not rely on it to persist across dev runs; that is what the edge is for.
 - **Changing a `@data` type is a format change.** Reordering fields or changing a field's type changes the stored layout. Add new fields at the end, and use a migration when you evolve a stored type. See [data types](../backend/data.md).
-- **Pick the family at the type.** The family is read from the collection's declared type, so `Counter<K>` versus `Documents<K, V>` is a real, load-bearing choice, not a hint. Revisit [Choosing a family](./index.md#choosing-a-family-the-decision-guide) if unsure.
+- **Pick the family at the type.** The family is read from the collection's declared type, so `Counter<K>` versus `Documents<K, V>` is a real, load-bearing choice, not a hint. Revisit [Choosing a family](./README.md#choosing-a-family-the-decision-guide) if unsure.
 
 ## Related
 
-- [ToilDB overview](./index.md): the seven families and how to choose.
+- [ToilDB overview](./README.md): the seven families and how to choose.
 - [Documents](./documents.md): the general-purpose record family (a good first collection).
 - [Data types (`@data`)](../backend/data.md): keys, values, and the codec.
 - [Decorators](../concepts/decorators.md): `@database`, `@collection`, `@query`, `@action`, `@derive`.

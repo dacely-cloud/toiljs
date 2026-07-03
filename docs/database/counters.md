@@ -167,7 +167,7 @@ Counting a view lives in a `@post` because it is a write (a counter `add`), even
 
 ## Related
 
-- [ToilDB overview](./index.md): the seven families and how to choose.
+- [ToilDB overview](./README.md): the seven families and how to choose.
 - [Setup](./setup.md): declaring the collection and which function kinds may write.
 - [Documents](./documents.md): when the number is part of a record you overwrite wholesale.
 - [Events](./events.md): when you need the individual events, not just a total.

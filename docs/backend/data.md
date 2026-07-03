@@ -25,8 +25,8 @@ That is a complete, serializable type. Note every field has a **default value**;
 
 - **Request and response bodies** for [`@rest`](./rest.md) routes.
 - **Arguments and return values** for [`@service` / `@remote`](./rpc.md) calls.
-- **Values stored in [ToilDB](../database/index.md)**.
-- **Sessions**, [stream](../realtime/index.md) messages, and any custom payload you design.
+- **Values stored in [ToilDB](../database/README.md)**.
+- **Sessions**, [stream](../realtime/README.md) messages, and any custom payload you design.
 
 Whenever a route, an RPC method, or the database needs a structured value, that value is a `@data` class. You will define these constantly.
 
@@ -199,5 +199,5 @@ You usually pick this at the route level (see [REST bodies](./rest.md#request-an
 - [Types](../concepts/types.md): `u64`, `u256`, `f64`, and how each maps to `number` or `bigint`.
 - [HTTP routes (`@rest`)](./rest.md): where `@data` bodies and return values are used, and the JSON vs binary route modes.
 - [Typed RPC](./rpc.md): `@data` as RPC arguments and results, and the generated client classes.
-- [The database](../database/index.md): storing `@data` values in ToilDB.
-- [Backend overview](./index.md): where `@data` fits in the request lifecycle.
+- [The database](../database/README.md): storing `@data` values in ToilDB.
+- [Backend overview](./README.md): where `@data` fits in the request lifecycle.

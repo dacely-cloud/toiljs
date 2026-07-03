@@ -84,7 +84,7 @@ Recurring, run-once-globally background work. `@daemon` runs on the single L4 le
 
 ## Database structure (shared)
 
-Declare your database schema. These carry no tier of their own; they are compiled into every artifact so any tier can use them. Covered in the [database section](../database/index.md).
+Declare your database schema. These carry no tier of their own; they are compiled into every artifact so any tier can use them. Covered in the [database section](../database/README.md).
 
 | Decorator | Applies to | What it does |
 | --- | --- | --- |
@@ -94,15 +94,15 @@ Declare your database schema. These carry no tier of their own; they are compile
 
 ## Database function kinds (data-access policy)
 
-A **function kind** labels a function or method with *which* database operations it is allowed to issue, and the compiler enforces it (a read-only `@query` that tries to write is a compile error). Covered across the [database section](../database/index.md).
+A **function kind** labels a function or method with *which* database operations it is allowed to issue, and the compiler enforces it (a read-only `@query` that tries to write is a compile error). Covered across the [database section](../database/README.md).
 
 | Decorator | Applies to | What it does | Covered in |
 | --- | --- | --- | --- |
-| `@query` | function / method | Read-only data access. | [Database](../database/index.md) |
-| `@action` | function / method | Read plus bounded writes and claims. | [Database](../database/index.md) |
+| `@query` | function / method | Read-only data access. | [Database](../database/README.md) |
+| `@action` | function / method | Read plus bounded writes and claims. | [Database](../database/README.md) |
 | `@derive` | function / method | Publishes materialized views and rollups (a background materializer). | [@derive](../background/derive.md) |
-| `@job` | function / method | Background work. | [Background work](../background/index.md) |
-| `@admin` | function / method | Control-plane only operations. | [Database](../database/index.md) |
+| `@job` | function / method | Background work. | [Background work](../background/README.md) |
+| `@admin` | function / method | Control-plane only operations. | [Database](../database/README.md) |
 
 ## Auth and structure
 
@@ -122,5 +122,5 @@ AssemblyScript (the language toilscript is built on) has its own low-level decor
 - [REST](../backend/rest.md) and [RPC](../backend/rpc.md): the L1 surfaces.
 - [Realtime streams](../realtime/streams.md): the `@stream` surface.
 - [Daemons](../background/daemons.md) and [@derive](../background/derive.md): L4 and background work.
-- [The database (ToilDB)](../database/index.md): `@database`, `@collection`, and the function kinds.
-- [Auth](../auth/index.md): `@auth` and `@user`.
+- [The database (ToilDB)](../database/README.md): `@database`, `@collection`, and the function kinds.
+- [Auth](../auth/README.md): `@auth` and `@user`.

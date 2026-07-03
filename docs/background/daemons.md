@@ -130,7 +130,7 @@ These run **only** on the confirmed leader. If code that is not the leader tries
 
 A daemon has a small set of host abilities beyond ordinary computation:
 
-- **Database access.** A daemon reads and writes [ToilDB](../database/index.md) with the same collection handles you use in a route or a derive (`.get`, `.add`, `.append`, `.publish`, and so on). Writes are leader-fenced as described above.
+- **Database access.** A daemon reads and writes [ToilDB](../database/README.md) with the same collection handles you use in a route or a derive (`.get`, `.add`, `.append`, `.publish`, and so on). Writes are leader-fenced as described above.
 - **Outbound HTTP (`http_call`).** A daemon can call an external service (to poll an API, post to a webhook). This is the one place your server code reaches out to the internet, so it is deliberately restricted:
   - It is **leader-only** (fenced, like any side effect).
   - It is **SSRF-bounded**. SSRF (server-side request forgery) is an attack where code is tricked into calling internal addresses it should not reach. The edge resolves the target host and blocks private or internal addresses, so a daemon cannot use `http_call` to poke around inside the network.
@@ -218,7 +218,7 @@ Now any request handler can serve the summary with a single keyed read, and it i
 
 ## Related
 
-- [Background overview](./index.md): daemons versus `@derive`, and which to reach for.
+- [Background overview](./README.md): daemons versus `@derive`, and which to reach for.
 - [Derived views (`@derive`)](./derive.md): keep a read-view in sync on every write.
 - [Compute tiers (L1 to L4)](../concepts/tiers.md): the daemon runs on the L4 global tier.
 - [Counters](../database/counters.md), [Documents](../database/documents.md), [Events](../database/events.md): the data a daemon reads and writes.

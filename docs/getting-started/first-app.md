@@ -38,7 +38,7 @@ Your first instinct might be to keep the count in a normal variable on the serve
 
 **The server runs a fresh copy of your `.wasm` for every request, and wipes its memory when the request ends.** So a variable you set while handling one request is gone by the next request. Anything that must outlive a single request, a counter, a user, a post, has to go into a store. toiljs ships one: **ToilDB**, a database built into the edge.
 
-ToilDB offers a few specialized shapes called **families**. For a running total, the right one is a **counter**: a value you can atomically add to and read back. (Others include documents, events, and views. See [Database overview](../database/index.md).)
+ToilDB offers a few specialized shapes called **families**. For a running total, the right one is a **counter**: a value you can atomically add to and read back. (Others include documents, events, and views. See [Database overview](../database/README.md).)
 
 ## Step 1: add a data type for the response
 
@@ -204,12 +204,12 @@ You wrote three small files. toiljs compiled the server to WebAssembly, generate
 - Return richer objects and lists: [Data types](../backend/data.md) and [HTTP routes](../backend/rest.md).
 - Call the server without URLs, as plain function calls: [Typed RPC](../backend/rpc.md).
 - Store more than a number: [Documents](../database/documents.md), [Events](../database/events.md), and [Views](../database/views.md).
-- Add login and sessions: [Auth](../auth/index.md).
+- Add login and sessions: [Auth](../auth/README.md).
 - Style your pages: [Styling](../frontend/styling.md) and [Routing](../frontend/routing.md).
 
 ## Related
 
 - [Project structure](./project-structure.md)
-- [Database overview](../database/index.md)
+- [Database overview](../database/README.md)
 - [Counters](../database/counters.md)
-- [Backend overview](../backend/index.md)
+- [Backend overview](../backend/README.md)

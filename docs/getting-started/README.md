@@ -72,9 +72,9 @@ Work through these pages in order:
 
 ## Related
 
-- [Documentation home](../index.md)
-- [The CLI reference](../cli/index.md)
-- [Frontend overview](../frontend/index.md)
-- [Backend overview](../backend/index.md)
-- [Database overview](../database/index.md)
+- [Documentation home](../README.md)
+- [The CLI reference](../cli/README.md)
+- [Frontend overview](../frontend/README.md)
+- [Backend overview](../backend/README.md)
+- [Database overview](../database/README.md)
 - [Compute tiers (where code runs)](../concepts/tiers.md)

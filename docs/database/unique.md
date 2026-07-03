@@ -13,7 +13,7 @@ Reach for Unique whenever a value must be globally singular:
 - URL slugs or workspace names
 - any "reserve this name for me" scenario
 
-Why not just check a Documents record first? Because a check-then-write has a race: two requests can both check "is `alice` free?", both see yes, and both create it. Unique closes that gap. The claim is decided at the key's single **home** (see [consistency](./index.md#eventual-consistency-in-plain-words)), where claims are processed one at a time, so exactly one of the two racers wins.
+Why not just check a Documents record first? Because a check-then-write has a race: two requests can both check "is `alice` free?", both see yes, and both create it. Unique closes that gap. The claim is decided at the key's single **home** (see [consistency](./README.md#eventual-consistency-in-plain-words)), where claims are processed one at a time, so exactly one of the two racers wins.
 
 Declare one by typing a `@collection` as `Unique<ClaimKey, OwnerValue>`:
 
@@ -75,7 +75,7 @@ if (owner == null) {
 }
 ```
 
-Note that `lookup` is subject to [eventual consistency](./index.md#eventual-consistency-in-plain-words): a claim made moments ago in another region may not show up in a far-away `lookup` yet. Do not use `lookup` as your uniqueness guard. `lookup` is for display ("this name is taken by ..."); the real guarantee comes from `claim`, which is decided at the home and cannot race.
+Note that `lookup` is subject to [eventual consistency](./README.md#eventual-consistency-in-plain-words): a claim made moments ago in another region may not show up in a far-away `lookup` yet. Do not use `lookup` as your uniqueness guard. `lookup` is for display ("this name is taken by ..."); the real guarantee comes from `claim`, which is decided at the home and cannot race.
 
 ### `claim`
 
@@ -209,7 +209,7 @@ Because `claim` is idempotent for the same owner, a client that retries the whol
 
 ## Related
 
-- [ToilDB overview](./index.md): the seven families and how to choose.
+- [ToilDB overview](./README.md): the seven families and how to choose.
 - [Setup](./setup.md): declaring the collection and which function kinds may claim.
 - [Documents](./documents.md): the account record you create alongside a claim.
 - [Capacity](./capacity.md): time-limited holds that auto-release (a different kind of "reserve").

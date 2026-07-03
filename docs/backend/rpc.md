@@ -88,7 +88,7 @@ A few facts worth knowing:
 
 ## RPC is stateless too
 
-Just like a REST controller, a fresh service instance serves each call. Fields you set on a `@service` class do not survive between calls. If two calls need to share data, that data lives in [ToilDB](../database/index.md), not in an instance field. See [statelessness](./index.md#stateless-by-default).
+Just like a REST controller, a fresh service instance serves each call. Fields you set on a `@service` class do not survive between calls. If two calls need to share data, that data lives in [ToilDB](../database/README.md), not in an instance field. See [statelessness](./README.md#stateless-by-default).
 
 ## Argument and return types
 
@@ -135,7 +135,7 @@ class Roster {
 }
 ```
 
-`@query` is the explicit opposite of `@action`: it marks a function read-only on purpose (the default for a `@remote`, so you rarely need to write it). These are ToilDB **function kinds**; the full rules, including what each kind may and may not do, are in the [database docs](../database/index.md). The takeaway for RPC: reads work out of the box, and a write needs `@action`, so a read-only endpoint can never silently mutate your data.
+`@query` is the explicit opposite of `@action`: it marks a function read-only on purpose (the default for a `@remote`, so you rarely need to write it). These are ToilDB **function kinds**; the full rules, including what each kind may and may not do, are in the [database docs](../database/README.md). The takeaway for RPC: reads work out of the box, and a write needs `@action`, so a read-only endpoint can never silently mutate your data.
 
 ## Guarding a `@remote`
 
@@ -152,7 +152,7 @@ class Stats {
 }
 ```
 
-The RPC dispatcher enforces `@auth` (and `@ratelimit`) the same way the REST router does: the guard runs first, and an unauthenticated call gets a `401` before your method body executes. See the [Auth guide](../auth/index.md) and [Rate limiting](../services/ratelimit.md).
+The RPC dispatcher enforces `@auth` (and `@ratelimit`) the same way the REST router does: the guard runs first, and an unauthenticated call gets a `401` before your method body executes. See the [Auth guide](../auth/README.md) and [Rate limiting](../services/ratelimit.md).
 
 ## The generated `Server` surface
 
@@ -211,7 +211,7 @@ The wrapper builds the URL, substitutes `:params`, appends `query`, sends the re
 ## Gotchas
 
 - **RPC is not a public API.** It uses one reserved endpoint and a binary format meant for the generated client. If an outside system needs to call in, expose a [`@rest`](./rest.md) route.
-- **Instance fields do not persist.** A fresh service instance serves every call. Shared state belongs in [ToilDB](../database/index.md).
+- **Instance fields do not persist.** A fresh service instance serves every call. Shared state belongs in [ToilDB](../database/README.md).
 - **Writes need `@action`.** A plain `@remote` is read-only; the compiler rejects a database write unless the method is `@action`.
 - **Rebuild after signature changes.** `shared/server.ts` is generated. If autocomplete looks stale, rebuild the server (`toiljs dev` does this on save).
 - **`bigint`, not `number`, for 64-bit values.** A `u64`/`i64`/`u256` argument or return is a `bigint` on the client. Pass `10n`, not `10`.
@@ -221,6 +221,6 @@ The wrapper builds the URL, substitutes `:params`, appends `query`, sends the re
 - [Data types (`@data`)](./data.md): the structs your RPC arguments and results are made of, and the binary codec they travel in.
 - [HTTP routes (`@rest`)](./rest.md): the public-facing alternative, and the `Server.REST` fetch client.
 - [Types](../concepts/types.md): `u64`, `u256`, and how they map to `number` / `bigint`.
-- [The database](../database/index.md): `@action` vs `@query`, and persisting state.
+- [The database](../database/README.md): `@action` vs `@query`, and persisting state.
 - [Fetching data on the frontend](../frontend/data-fetching.md): using `Server.*` from your React components.
-- [Auth](../auth/index.md): guarding a `@remote` with `@auth`.
+- [Auth](../auth/README.md): guarding a `@remote` with `@auth`.

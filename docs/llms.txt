@@ -1,0 +1,76 @@
+# toiljs
+
+> toiljs is a full-stack web framework: you write the frontend in React and the backend in TypeScript, and toiljs compiles the backend to a sandboxed WebAssembly module that runs on the worldwide Dacely edge, with a built-in global database (ToilDB), streaming, background jobs, and auth included.
+
+This is the canonical documentation, organized by section. Each link points to a Markdown page (each folder's README.md is its landing page). A toiljs project has three parts: client/ (the React app in the browser), server/ (the backend, compiled to WebAssembly and run on the edge), and shared/ (a generated, fully typed client so the browser calls the server with end-to-end type safety). The backend is compiled by toilscript, a strict TypeScript-to-WebAssembly subset, so server code uses fixed-width number types (u64, i32, and so on) rather than the single JavaScript number type.
+
+## Getting started
+- [Getting started](getting-started/README.md): toiljs is a full-stack web framework: you write a React frontend and a TypeScript backend in one project, and toiljs ships both together.
+- [Create a project](getting-started/create-project.md): Scaffold a brand-new toiljs app with one command.
+- [Your first app](getting-started/first-app.md): Build a tiny feature end to end: a page with a "Like" button that reads and writes a real number in ToilDB, so the count survives page reloads and restarts.
+- [Installation](getting-started/installation.md): Install the toiljs command-line tool (CLI) so you can create and run projects.
+- [Migrating an existing React app](getting-started/migrating.md): How to bring a React app you already have into toiljs.
+- [Project structure](getting-started/project-structure.md): A tour of every folder and file in a toiljs project, what each one is for, and the single most important question: **where does this code run, the browser or the edge?**
+
+## CLI
+- [The toiljs CLI](cli/README.md): The `toiljs` command is how you scaffold, run, build, self-host, and diagnose a toiljs app.
+
+## Frontend
+- [Frontend](frontend/README.md): Your toiljs frontend is a React app with file-based routing that runs in the browser, and can also be rendered ahead of time on the server for a fast first paint and good SEO.
+- [Fetching data](frontend/data-fetching.md): Your React frontend and your toiljs backend live in one project, so toiljs generates a **typed client** that lets the browser call your server with full type safety and no hand-written `fetch` boilerplate.
+- [Images](frontend/images.md): `Toil.Image` is a drop-in replacement for `<img>` that stops layout shift, lazy-loads by default, and can fade in from a blurred placeholder.
+- [Metadata and SEO](frontend/metadata.md): Metadata is the information in a page's `<head>`: its title, its description, and the tags that control how it looks when shared on social media or listed by a search engine.
+- [Rendering and SSR](frontend/rendering.md): This page explains where your pages are built: in the browser, ahead of time at build, or on the server for each request.
+- [Routing](frontend/routing.md): toiljs uses file-based routing: every file under `client/routes/` becomes a page, and its path on disk becomes its URL.
+- [Styling](frontend/styling.md): toiljs does not force a styling system on you.
+
+## Backend
+- [Backend overview](backend/README.md): Your backend is TypeScript that toilscript compiles into a small, sandboxed WebAssembly program, which runs on the Dacely edge and answers every request.
+- [Data types (`@data`)](backend/data.md): `@data` turns a plain class into a typed value that can travel safely between your frontend and your WASM backend, and in and out of the database, with both a binary and a JSON codec generated for you.
+- [HTTP routes (`@rest`)](backend/rest.md): Expose a real HTTP API by tagging a class `@rest` and its methods with an HTTP verb; toiljs generates the router for you.
+- [Typed RPC (`@service` / `@remote`)](backend/rpc.md): Write a server function, tag it `@remote`, and call it from your React frontend like a local async function, with the argument and return types checked end to end.
+
+## Database (ToilDB)
+- [ToilDB](database/README.md): ToilDB is the database built into toiljs.
+- [Capacity (limited stock without overselling)](database/capacity.md): A `Capacity` collection models a **finite resource that must never be oversold**: concert tickets, seats, limited-drop stock, rate grants.
+- [Counters](database/counters.md): The **Counter** family is a distributed running total that many callers can increase at the same time, from anywhere in the world, without ever losing a count.
+- [Documents](database/documents.md): The **Documents** family is ToilDB's general-purpose record store: you keep a value under a key and look it up, update it, or delete it by that key.
+- [Events (append-only logs)](database/events.md): An `Events` collection is an **append-only log**: a growing list of immutable facts under a key.
+- [Membership (sets and relationships)](database/membership.md): A `Membership` collection stores **sets**: unordered groups of members under a key.
+- [Declaring a database](database/setup.md): You set up ToilDB by **declaring** it in code: a `@database` class listing your collections, plus the `@data` key and value types those collections use.
+- [Unique](database/unique.md): The **Unique** family enforces that a value is claimed by only one owner across the entire world.
+- [Views (materialized views)](database/views.md): A `View` collection is a **precomputed, read-optimized result** that you publish once and read many times.
+
+## Auth
+- [Authentication](auth/README.md): Toil ships a complete, **post-quantum password login** you turn on with one line.
+- [Configuring auth for production](auth/configuration.md): Built-in auth runs locally with **zero configuration**, it falls back to published, insecure DEV secrets so `toiljs dev` Just Works.
+- [Extending & integrating auth](auth/extending.md): Built-in auth is deliberately opinionated so the common case is one line.
+- [How Toil auth works](auth/how-it-works.md): Toil auth is a **post-quantum, password-based, mutually-authenticated** login.
+- [Using auth](auth/usage.md): Either the config flag (canonical) or a one-line import, both do the same thing (the build appends the framework's auth controller + user shape to your server as compiled entries, so `/auth/*` self-mounts):
+
+## Realtime
+- [Realtime](realtime/README.md): Realtime is how your app pushes data to the browser the instant it happens, instead of the browser having to ask again and again.
+- [Channels (`useChannel`)](realtime/channels.md): `useChannel` is the client-side React hook for realtime.
+- [Streams (`@stream`)](realtime/streams.md): A `@stream` is a server class that handles one live connection from start to finish.
+
+## Background work
+- [Background work](background/README.md): Background work is code that runs **without a user waiting for it**: on a timer, once globally, or automatically after your data changes.
+- [Daemons (`@daemon` / `@scheduled`)](background/daemons.md): A `@daemon` is a single, long-lived background worker for your whole app.
+- [Derived views (`@derive`)](background/derive.md): A `@derive` keeps a fast, precomputed **View** of your data in sync automatically.
+
+## Platform services
+- [Platform services](services/README.md): Your toiljs backend runs on the **Dacely edge**: a fleet of servers spread around the world that sit close to your users and run your compiled backend (a small, sandboxed WebAssembly program).
+- [Analytics](services/analytics.md): Read your site's own usage numbers (requests, bytes, cache hits, database ops, errors, and more) straight from a route, with no extra code and no third-party service.
+- [Caching](services/caching.md): **Caching lets the edge keep a copy of a response and hand it back instantly, without re-running your code.** You opt in per route, either with the `@cache` decorator or by calling `Response.cache(...)`.
+- [Cookies](services/cookies.md): **Cookies let you store a small piece of state in the user's browser and read it back on the next request.** toiljs ships a complete cookie layer: read incoming cookies, set them on a response, and (optionally) sign or encrypt their values so they cannot be tampered with.
+- [Crypto](services/crypto.md): A small, safe cryptography toolkit (hashing, random bytes, HMAC, symmetric encryption, key derivation, and signatures) available with no import through the ambient `crypto` global.
+- [Email](services/email.md): Send transactional email (verification codes, password resets, receipts) straight from a route handler.
+- [Environment and secrets](services/environment.md): **`Environment` gives your app configuration values and secrets that are set outside your code**, so your compiled backend (`.wasm`) never carries a password or an API key.
+- [Rate limiting](services/ratelimit.md): **Rate limiting caps how often one client can call a route.** You add the `@ratelimit` decorator to a route, and the edge rejects a client that goes over the limit **before your code runs**.
+- [Time](services/time.md): **`Time` is the edge's clock: the blessed way to read the current time in your backend.** It gives you the number of milliseconds or seconds since a fixed reference point, so you can stamp events and compute expiries.
+
+## Concepts and reference
+- [Configuration (`toil.config.ts`)](concepts/config.md): `toil.config.ts` is the one file that configures your whole toiljs app: the client (React/Vite) side and the server (WebAssembly) side.
+- [Decorators reference](concepts/decorators.md): Every feature of a toiljs backend, an HTTP route, an RPC method, a database collection, a scheduled job, is switched on by a **decorator**.
+- [Compute tiers](concepts/tiers.md): Your toiljs backend runs across four **compute tiers**, from a per-request handler at the very edge (L1) up to a single worldwide coordinator (L4).
+- [The server type system](concepts/types.md): Your backend is TypeScript, but a stricter, faster dialect of it.

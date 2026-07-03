@@ -92,7 +92,7 @@ flowchart TD
     Q2 -->|No, fire and forget| ENQUEUE["enqueue<br/>(overwrite; returns only accepted/not)"]
 ```
 
-**`create` inserts a new record.** It only writes if the key is free. If the key already has a record, `create` does nothing and returns `false`. This is your tool for "sign up a new user" or "claim this order id," where accidentally overwriting an existing record would be a bug. Because every key is serialized at its home (see [eventual consistency](./index.md#eventual-consistency-in-plain-words)), `create` is race-safe: if two requests create the same key at the same instant, exactly one gets `true` and the other gets `false`.
+**`create` inserts a new record.** It only writes if the key is free. If the key already has a record, `create` does nothing and returns `false`. This is your tool for "sign up a new user" or "claim this order id," where accidentally overwriting an existing record would be a bug. Because every key is serialized at its home (see [eventual consistency](./README.md#eventual-consistency-in-plain-words)), `create` is race-safe: if two requests create the same key at the same instant, exactly one gets `true` and the other gets `false`.
 
 ```ts
 const ok = AppDb.users.create(new UserId(input.id), input);
@@ -213,7 +213,7 @@ That is a complete persistent CRUD entity. Run it under `toiljs dev` and the not
 
 ## Consistency notes
 
-Documents follows ToilDB's general model (see [the overview](./index.md#eventual-consistency-in-plain-words)):
+Documents follows ToilDB's general model (see [the overview](./README.md#eventual-consistency-in-plain-words)):
 
 - **Writes to one key are serialized at that key's home**, so `create` is race-safe and `patch`/`enqueue`/`getDelete` never corrupt a record under concurrency.
 - **Reads are eventually consistent across regions.** Right after a write, a read from a far-away region may briefly still see the old value (or, for a just-created record, not see it yet). The copies converge within moments.
@@ -229,7 +229,7 @@ Documents follows ToilDB's general model (see [the overview](./index.md#eventual
 
 ## Related
 
-- [ToilDB overview](./index.md): the seven families and how to choose.
+- [ToilDB overview](./README.md): the seven families and how to choose.
 - [Setup](./setup.md): declaring the collection and which function kinds may write.
 - [Data types (`@data`)](../backend/data.md): keys and values.
 - [Counters](./counters.md): when you are really just counting.

@@ -27,7 +27,7 @@ Each service is either a **route decorator** (an annotation you put above a rout
 | Hash, sign, encrypt, or make random bytes | [Crypto](./crypto.md) | `crypto` |
 | Remember a preference or flag in the browser | [Cookies](./cookies.md) | `Cookie` / `Cookies` / `SecureCookies` |
 | Stamp or compare an instant in time | [Time](./time.md) | `Time.nowMillis()` / `Time.nowSeconds()` |
-| Know who is logged in and protect routes | [Auth](../auth/index.md) | `@auth` / `@user` |
+| Know who is logged in and protect routes | [Auth](../auth/README.md) | `@auth` / `@user` |
 
 ## How they fit together
 
@@ -56,5 +56,5 @@ The order of guards is fixed by the framework: rate limiting runs first (so floo
 - [Every decorator, in one place](../concepts/decorators.md)
 - [Configuration: build-time config vs runtime environment](../concepts/config.md)
 - [Compute tiers (where your code runs)](../concepts/tiers.md)
-- [Backend overview](../backend/index.md) and [HTTP routes](../backend/rest.md)
-- [Auth, sessions, and `@user`](../auth/index.md)
+- [Backend overview](../backend/README.md) and [HTTP routes](../backend/rest.md)
+- [Auth, sessions, and `@user`](../auth/README.md)

@@ -320,7 +320,7 @@ If you ever need to change where your server source lives or what the compiled a
 
 ## Related
 
-- [The CLI](../cli/index.md): the commands that read this config.
+- [The CLI](../cli/README.md): the commands that read this config.
 - [Environment and secrets](../services/environment.md): runtime values and how they differ from build-time config.
 - [Auth configuration](../auth/configuration.md): the auth-related environment settings behind `server.auth`.
 - [Email and 2FA](../services/email.md): the full email setup behind `server.email`.

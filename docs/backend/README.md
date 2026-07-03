@@ -46,7 +46,7 @@ The key mental model: your backend is a pure function of the request. Bytes in, 
 
 A **fresh copy** of your handler serves each request. Any fields you set on a controller do not survive to the next request, and the request might even be served by a different edge node on the other side of the world. This is called being **stateless**.
 
-That is a feature, not a limitation: it is what lets your backend scale to the whole planet with no coordination. When you need data to persist between requests (a user account, a counter, a list of posts), you store it in the built-in global database, **ToilDB**. See [the database section](../database/index.md).
+That is a feature, not a limitation: it is what lets your backend scale to the whole planet with no coordination. When you need data to persist between requests (a user account, a counter, a list of posts), you store it in the built-in global database, **ToilDB**. See [the database section](../database/README.md).
 
 ```mermaid
 flowchart LR
@@ -64,7 +64,7 @@ Your backend can expose three different kinds of endpoint. Each is opted into wi
 | --- | --- | --- | --- |
 | **HTTP REST** | `@rest` + `@get`/`@post`/... | Plain HTTP routes with paths, methods, and status codes. | A public API, webhooks, anything a browser, `curl`, or a third party calls directly. See [REST](./rest.md). |
 | **Typed RPC** | `@service` / `@remote` | Server functions your own frontend calls like local async functions, fully type-checked end to end. | Talking from your own React app to your own backend. See [RPC](./rpc.md). |
-| **Realtime** | `@stream` | A long-lived connection where the server keeps state per connected client. | Chat, live cursors, notifications, anything push-based. See [Realtime](../realtime/index.md). |
+| **Realtime** | `@stream` | A long-lived connection where the server keeps state per connected client. | Chat, live cursors, notifications, anything push-based. See [Realtime](../realtime/README.md). |
 
 REST and RPC are the everyday tools. Most apps use both: REST for anything the outside world calls, RPC for your own frontend. They are not exclusive; you can use all three in one project.
 
@@ -108,6 +108,6 @@ The request/response backend described here is the default and most common tier,
 - [HTTP routes (`@rest`)](./rest.md): paths, methods, params, and responses.
 - [Typed RPC (`@service`/`@remote`)](./rpc.md): calling the server from your frontend with end-to-end types.
 - [Data types (`@data`)](./data.md): the serializable structs everything uses.
-- [The database (ToilDB)](../database/index.md): where persistent state lives.
+- [The database (ToilDB)](../database/README.md): where persistent state lives.
 - [Compute tiers](../concepts/tiers.md): L1 request, L2/L3 stream, L4 daemon.
-- [Realtime streams](../realtime/index.md): the `@stream` surface.
+- [Realtime streams](../realtime/README.md): the `@stream` surface.

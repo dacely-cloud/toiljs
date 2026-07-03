@@ -8,7 +8,7 @@ Reach for analytics to build a status or usage dashboard for a site: how much tr
 
 ## What "metering" means
 
-Every time the edge (the Dacely server running your code) serves a request, runs a database operation, opens a stream, or sends an email, it **counts** that into a set of per-domain counters. Those counters live in the same worldwide, distributed database that backs [ToilDB](../database/index.md), so the total for your site is correct across every edge location, not just the one machine that happened to serve a request.
+Every time the edge (the Dacely server running your code) serves a request, runs a database operation, opens a stream, or sends an email, it **counts** that into a set of per-domain counters. Those counters live in the same worldwide, distributed database that backs [ToilDB](../database/README.md), so the total for your site is correct across every edge location, not just the one machine that happened to serve a request.
 
 `Analytics.self()` reads a **snapshot** of your site's current counter values. You do not record anything yourself; the numbers are already there.
 
@@ -263,6 +263,6 @@ Under `toiljs dev`, the real per-domain metering does not exist (there is only o
 ## Related
 
 - [Caching](./caching.md), the source of `cacheHits`, `cacheMisses`, and `cacheRatio`.
-- [ToilDB database](../database/index.md), the source of the `db*` counters and where these counters are stored.
+- [ToilDB database](../database/README.md), the source of the `db*` counters and where these counters are stored.
 - [Structured data types](../backend/data.md), for the `@data` return type in the worked example.
 - [Compute tiers](../concepts/tiers.md), for what "L1", "streams", and "daemons" mean in the catalog.

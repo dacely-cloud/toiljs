@@ -287,13 +287,13 @@ class Admin {
 }
 ```
 
-- `@auth` requires a valid signed session, else the request is rejected with `401` before your method runs. See the [Auth guide](../auth/index.md).
+- `@auth` requires a valid signed session, else the request is rejected with `401` before your method runs. See the [Auth guide](../auth/README.md).
 - `@ratelimit` caps how often a caller may hit the route. See [Rate limiting](../services/ratelimit.md).
 - Response caching is opt-in per response with `.cache(...)` / `.cacheFor(...)`. See [Caching](../services/caching.md).
 
 ## A complete CRUD example
 
-A small in-memory players API showing create, read, update, and delete. In a real app you would store players in [ToilDB](../database/index.md) instead of a local map, because each request gets a fresh handler (see [statelessness](./index.md#stateless-by-default)); this example keeps it in memory to stay focused on routing.
+A small in-memory players API showing create, read, update, and delete. In a real app you would store players in [ToilDB](../database/README.md) instead of a local map, because each request gets a fresh handler (see [statelessness](./README.md#stateless-by-default)); this example keeps it in memory to stay focused on routing.
 
 ```ts
 // server/models/NewPlayer.ts
@@ -385,7 +385,7 @@ See [RPC and the generated client](./rpc.md#the-rest-fetch-client) for that clie
 
 ## Gotchas
 
-- **Fields do not persist.** A fresh controller instance serves each request, so instance fields reset every time and are never shared between requests or edge nodes. Persist to [ToilDB](../database/index.md).
+- **Fields do not persist.** A fresh controller instance serves each request, so instance fields reset every time and are never shared between requests or edge nodes. Persist to [ToilDB](../database/README.md).
 - **`Response.json` wants a string.** Pass an already-serialized JSON string (or return the `@data` value directly). Passing an object will not do what you expect.
 - **`@del`, not `@delete`.** `delete` is a reserved word, so the decorator is `@del`.
 - **Query values are not URL-decoded in v1.** `ctx.query('q')` returns the raw value; decode it yourself if it may contain percent-encoding.
@@ -396,7 +396,7 @@ See [RPC and the generated client](./rpc.md#the-rest-fetch-client) for that clie
 
 - [Data types (`@data`)](./data.md): the request and response body structs, and the JSON vs binary codecs.
 - [Typed RPC](./rpc.md): call your backend from your frontend with end-to-end types (and the generated REST fetch client).
-- [Backend overview](./index.md): the request lifecycle and handler model.
+- [Backend overview](./README.md): the request lifecycle and handler model.
 - [Cookies](../services/cookies.md), [Caching](../services/caching.md), [Rate limiting](../services/ratelimit.md): response helpers and guards.
-- [Auth](../auth/index.md): protecting routes with `@auth`.
-- [The database](../database/index.md): persisting data between requests.
+- [Auth](../auth/README.md): protecting routes with `@auth`.
+- [The database](../database/README.md): persisting data between requests.

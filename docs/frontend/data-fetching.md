@@ -172,7 +172,7 @@ If a call throws an "unavailable" error, it means the generated client has not a
 ## Gotchas
 
 - **Import from `shared/server` to attach the clients.** `Server.REST` (and the RPC client) attach when you import from `shared/server`. Importing your `@data` classes from there does it naturally; if `Server.REST.foo()` throws an "unavailable" error, make sure the server has been built (`npm run build:server`) and that `shared/server` is imported.
-- **The server runs a fresh instance per request.** In the examples, in-memory writes are previews that do not persist. To keep data, write it to the database (see [Database](../database/index.md)). This is a backend property, but it explains why a create returns a value that is not there on the next request.
+- **The server runs a fresh instance per request.** In the examples, in-memory writes are previews that do not persist. To keep data, write it to the database (see [Database](../database/README.md)). This is a backend property, but it explains why a create returns a value that is not there on the next request.
 - **Fetch page data in a `loader`, not `useEffect`.** A loader runs in parallel with the route chunk and integrates with `loading.tsx`, suspense, caching, and SSR hydration. A `useEffect` fetch runs only after the page mounts (slower, and invisible to the server).
 - **`getUser()` is display-only.** It is fast because it does not verify anything. Do real authorization on the server.
 

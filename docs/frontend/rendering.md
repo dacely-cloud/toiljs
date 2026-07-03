@@ -72,7 +72,7 @@ sequenceDiagram
     Note over U: Page is interactive; no redraw, no flash
 ```
 
-For SSR to hydrate cleanly, the HTML the server produced and the HTML the browser would produce must match byte-for-byte. toiljs guarantees this by escaping hole values exactly as React does and by carrying a hash that ties the running backend to the exact template it was built against. Authoring the server side of an SSR route (the hole markers in the page and the matching `render` function in `server/`) is a deeper topic that lives with the [backend](../backend/index.md). For most pages you only need `export const ssr = true` and to keep the page "SSR-safe" (below).
+For SSR to hydrate cleanly, the HTML the server produced and the HTML the browser would produce must match byte-for-byte. toiljs guarantees this by escaping hole values exactly as React does and by carrying a hash that ties the running backend to the exact template it was built against. Authoring the server side of an SSR route (the hole markers in the page and the matching `render` function in `server/`) is a deeper topic that lives with the [backend](../backend/README.md). For most pages you only need `export const ssr = true` and to keep the page "SSR-safe" (below).
 
 ### Keeping a route SSR-safe
 
@@ -101,7 +101,7 @@ Be aware of these honest gaps as of today:
 
 ## Related
 
-- [Backend overview](../backend/index.md): where the server-side `render` for an SSR route lives.
+- [Backend overview](../backend/README.md): where the server-side `render` for an SSR route lives.
 - [Metadata and SEO](./metadata.md): what gets baked into the `<head>`.
 - [Routing](./routing.md): layouts, templates, and slots.
 - [Fetching data](./data-fetching.md): loaders and how their data seeds hydration.

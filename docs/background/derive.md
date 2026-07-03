@@ -151,5 +151,5 @@ The same code runs under `toiljs dev` (the in-process emulator) and on the produ
 - [Views](../database/views.md): the `View<K, V>` family a derive publishes into, and how to read it.
 - [Events](../database/events.md): the append-only log a derive commonly folds into a view.
 - [Counters](../database/counters.md): running totals a derive can read.
-- [Background overview](./index.md): `@derive` versus `@daemon`, and which to reach for.
+- [Background overview](./README.md): `@derive` versus `@daemon`, and which to reach for.
 - [Data types (`@data`)](../backend/data.md): the value and key types a view stores.

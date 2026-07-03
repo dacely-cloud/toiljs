@@ -192,7 +192,7 @@ moves, and `available` reflects the new total.
 `setTotal` is a **privileged** operation: it may only run from a background task
 (a `@job`), never from a request handler. Seeding and restocking are
 administrative actions, so they live off the request path. See
-[background tasks](../background/index.md).
+[background tasks](../background/README.md).
 
 ```ts
 @database
@@ -343,7 +343,7 @@ rather than a best effort. `available` reflects that home ledger.
   (and why it cannot guarantee a limit).
 - [Documents](./documents.md): store the order/booking record that a confirmed
   sale produces.
-- [background tasks](../background/index.md): where `setTotal` (seeding/restock)
+- [background tasks](../background/README.md): where `setTotal` (seeding/restock)
   runs.
 - [Data types (`@data`)](../concepts/types.md): how the capacity key is stored.
 - [Decorators](../concepts/decorators.md): which handler kinds may reserve,

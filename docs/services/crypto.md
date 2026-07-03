@@ -2,7 +2,7 @@
 
 A small, safe cryptography toolkit (hashing, random bytes, HMAC, symmetric encryption, key derivation, and signatures) available with no import through the ambient `crypto` global.
 
-Reach for `crypto` to fingerprint a value (hashing), generate an unguessable token or ID (random bytes), prove a value has not been tampered with (HMAC or a signature), or encrypt data you store yourself (AES). Skip it for **login passwords**: use [auth](../auth/index.md), which is purpose-built and does the hard parts for you. `crypto` is also the engine under [signed cookies](./cookies.md) and auth, so most apps use it indirectly without ever calling it.
+Reach for `crypto` to fingerprint a value (hashing), generate an unguessable token or ID (random bytes), prove a value has not been tampered with (HMAC or a signature), or encrypt data you store yourself (AES). Skip it for **login passwords**: use [auth](../auth/README.md), which is purpose-built and does the hard parts for you. `crypto` is also the engine under [signed cookies](./cookies.md) and auth, so most apps use it indirectly without ever calling it.
 
 ## The shape of the API
 

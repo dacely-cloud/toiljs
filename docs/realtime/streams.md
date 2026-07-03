@@ -107,7 +107,7 @@ State on the box's fields lasts for **one connection**. It does **not** survive:
 - a **reconnect**: if the browser drops and reopens, it gets a brand-new box that starts clean.
 - a **different user**: every connection gets its own box, so one connection's state can never leak into another. This is a safety property, not just a convenience.
 
-So treat box fields as **per-connection scratch space** only. For anything that must outlive the connection (a saved message, a score, who a user is across reconnects), write it to [the database](../database/index.md), not to a class field.
+So treat box fields as **per-connection scratch space** only. For anything that must outlive the connection (a saved message, a score, who a user is across reconnects), write it to [the database](../database/README.md), not to a class field.
 
 ## Reading and replying to messages
 
@@ -237,7 +237,7 @@ On the production edge, your box is pinned to **one worker** for the connection'
 
 ## Gotchas
 
-- **Box fields are per-connection only.** They reset on reconnect and are never shared between users. Persist anything durable to [the database](../database/index.md).
+- **Box fields are per-connection only.** They reset on reconnect and are never shared between users. Persist anything durable to [the database](../database/README.md).
 - **Frames are bytes.** Encode and decode text yourself, or use a typed `message` so toiljs does it.
 - **Copy `packet.bytes()` if you keep it.** The inbound buffer is reused after the hook returns, so store a copy if you need the bytes later.
 - **A file cannot mix `@stream` with `@service` / `@remote`.** Keep streams in `main.stream.ts`.
@@ -245,8 +245,8 @@ On the production edge, your box is pinned to **one worker** for the connection'
 
 ## Related
 
-- [Realtime overview](./index.md): the big picture and when to reach for realtime.
+- [Realtime overview](./README.md): the big picture and when to reach for realtime.
 - [Channels](./channels.md): the client `useChannel` hook and a chat-style example.
 - [Compute tiers (L1 to L4)](../concepts/tiers.md): where the stream artifact runs.
 - [Data types (`@data`)](../backend/data.md): typed messages.
-- [The database (ToilDB)](../database/index.md): where to keep state that outlives a connection.
+- [The database (ToilDB)](../database/README.md): where to keep state that outlives a connection.
