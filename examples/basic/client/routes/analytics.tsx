@@ -25,8 +25,10 @@ const METRICS = [
     { id: 13, label: 'DB ops', unit: 'count' },
     { id: 26, label: 'Stream bytes out', unit: 'bytes' },
     { id: 39, label: 'Memory bandwidth', unit: 'bytes' },
-    { id: 41, label: 'Connected streams', unit: 'count' },
-    { id: 43, label: 'Committed memory', unit: 'bytes' }
+    { id: 41, label: 'Cache hits', unit: 'count' },
+    { id: 42, label: 'Cache misses', unit: 'count' },
+    { id: 43, label: 'Connected streams', unit: 'count' },
+    { id: 45, label: 'Committed memory', unit: 'bytes' }
 ] as const;
 
 // AnalyticsRange (mirrors the server enum).
@@ -157,20 +159,28 @@ export default function AnalyticsDemo() {
 
             <section style={{ marginTop: 24 }}>
                 <h2>Snapshot</h2>
+                <p style={{ color: '#64748b', marginTop: 0 }}>
+                    All <code>total*</code> values are all-time cumulative totals (since the site was first seen);
+                    the <code>live</code> gauges are the current level, and the windows are the current rate-limit
+                    usage vs the plan cap (cap ∞ = unlimited).
+                </p>
                 <button onClick={loadStats}>Load my site analytics</button>
                 {err && <p style={{ color: '#f87171' }}>{err}</p>}
                 {stats && (
                     <ul>
-                        <li>requests: {String(stats.requests)}</li>
-                        <li>bytes out (L1): {String(stats.bytesOutL1)}</li>
-                        <li>bytes in (L1): {String(stats.bytesInL1)}</li>
-                        <li>gas used: {String(stats.gasUsed)}</li>
-                        <li>2xx responses: {String(stats.status2xx)}</li>
-                        <li>db ops: {String(stats.dbOps)}</li>
-                        <li>connected streams (live): {String(stats.connectedStreams)}</li>
-                        <li>committed memory (live): {fmt(Number(stats.committedMemory), 'bytes')}</li>
-                        <li>requests this minute: {cap(stats.reqMinuteUsed, stats.reqMinuteCap)}</li>
-                        <li>requests today: {cap(stats.reqDayUsed, stats.reqDayCap)}</li>
+                        <li>total requests: {String(stats.totalRequests)}</li>
+                        <li>total bytes out (L1): {String(stats.totalBytesOutL1)}</li>
+                        <li>total bytes in (L1): {String(stats.totalBytesInL1)}</li>
+                        <li>total gas used: {String(stats.totalGasUsed)}</li>
+                        <li>total 2xx responses: {String(stats.totalStatus2xx)}</li>
+                        <li>total db ops: {String(stats.totalDbOps)}</li>
+                        <li>total cache hits: {String(stats.totalCacheHits)}</li>
+                        <li>total cache misses: {String(stats.totalCacheMisses)}</li>
+                        <li>cache hit ratio: {(stats.cacheHitRatio * 100).toFixed(1)}%</li>
+                        <li>connected streams (live): {String(stats.liveConnectedStreams)}</li>
+                        <li>committed memory (live): {fmt(Number(stats.liveCommittedMemoryBytes), 'bytes')}</li>
+                        <li>requests this minute: {cap(stats.requestsThisMinute, stats.requestsThisMinuteCap)}</li>
+                        <li>requests today: {cap(stats.requestsToday, stats.requestsTodayCap)}</li>
                     </ul>
                 )}
             </section>

@@ -16,8 +16,9 @@ import type { MemoryRef } from '../runtime/host.js';
 
 /** Frame version + counter count, kept in lockstep with the edge (`analytics.rs` / `metric_id.rs`). */
 const FRAME_VERSION = 2;
-const METRIC_COUNTERS = 41;
-/** MetricId indices we seed with sample data (others default 0). Mirrors the wire contract. */
+const METRIC_COUNTERS = 43;
+/** MetricId indices we seed with sample data (others default 0). Mirrors the wire contract
+ *  (counter ids 0..=42; gauge ids ConnectedStreamsAvg=43, CommittedMemoryAvg=45). */
 const MID = {
     Requests: 0,
     BytesOutL1: 1,
@@ -33,6 +34,8 @@ const MID = {
     StreamBytesIn: 25,
     StreamBytesOut: 26,
     MemGrownBytes: 39,
+    CacheHits: 41,
+    CacheMisses: 42,
 } as const;
 
 interface DevTenantStats {
@@ -63,6 +66,8 @@ function devStats(): DevTenantStats {
     life[MID.StreamBytesIn] = 2048n;
     life[MID.StreamBytesOut] = 8192n;
     life[MID.MemGrownBytes] = 262144n;
+    life[MID.CacheHits] = 900n;
+    life[MID.CacheMisses] = 100n;
     return {
         life,
         connectedStreams: 3,
@@ -103,7 +108,7 @@ function encodeStats(s: DevTenantStats): Buffer {
 
 /** The metric ids carried in the per-minute ring (mirrors the edge `MINUTE_RING_METRICS`). Only these get
  *  minute resolution on the 1h/6h ranges; every other metric falls back to the hour ring there. */
-const MINUTE_RING_METRICS = new Set<number>([0, 2, 1, 25, 26, 12, 13, 39, 41, 43]);
+const MINUTE_RING_METRICS = new Set<number>([0, 2, 1, 25, 26, 12, 13, 39, 43, 45]);
 
 /**
  * Range id -> (bucketCount, bucketSecs), matching the edge `Range` + minute-ring fallback: 1h/6h are
@@ -206,7 +211,8 @@ export function buildAnalyticsImports(
             range: number,
         ): number => {
             if (domainLen > MAX_DOMAIN_LEN) return ABSENT;
-            if (metricId < 0 || metricId > 44 || range < 0 || range > 7) return ABSENT;
+            // Valid metric ids are 0..=46 (counters 0..=42 + the 4 gauge avg/peak series), ranges 0..=7.
+            if (metricId < 0 || metricId > 46 || range < 0 || range > 7) return ABSENT;
             if (domainLen > 0) {
                 if (!ref.memory) throw new Error('analytics_series called before memory was bound');
                 const m = Buffer.from(ref.memory.buffer);

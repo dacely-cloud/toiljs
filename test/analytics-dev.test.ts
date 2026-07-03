@@ -32,12 +32,13 @@ describe('dev analytics stub v2 frame parity', () => {
         expect(u16()).toBe(2); // FRAME_VERSION
         u64(); // now_ms
         const count = u32();
-        expect(count).toBe(41); // METRIC_COUNTERS
+        expect(count).toBe(43); // METRIC_COUNTERS
         const life: bigint[] = [];
         for (let i = 0; i < count; i++) life.push(i64());
         expect(life[0]).toBe(42n); // Requests
         expect(life[1]).toBe(12345n); // BytesOutL1
         expect(life[12]).toBe(1_000_000n); // GasUsed
+        expect(life[41]).toBe(900n); // CacheHits
         expect(i64()).toBe(3n); // connectedStreams
         expect(i64()).toBe(65536n); // committedMemory
         expect(i64()).toBe(5n); // reqMinuteUsed
