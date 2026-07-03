@@ -5,13 +5,13 @@
 This is the canonical documentation, organized by section. Each link points to a Markdown page (each folder's README.md is its landing page). If you are new, read the Understanding toil section first. A toiljs project has three parts: client/ (the React app in the browser), server/ (the backend, compiled to WebAssembly and run on the edge), and shared/ (a generated, fully typed client so the browser calls the server with end-to-end type safety). The backend is compiled by toilscript, a strict TypeScript-to-WebAssembly subset, so server code uses fixed-width number types (u64, i32, and so on) rather than the single JavaScript number type.
 
 ## Understanding toil
-- [Understanding toil](introduction/README.md): This section is the "why." The rest of the docs teach you how to build with toil.
+- [Understanding toil](introduction/README.md): This section is the "why." It explains what toil is, the problem it solves, how it works underneath, and why it is built the way it is.
 - [Why toil is built this way (the RSG bar)](introduction/design-principles.md): toil is opinionated on purpose.
-- [How toil is distributed (and why distributed websites barely exist)](introduction/distributed.md): Distributing a website's reads is easy.
-- [How toil works](introduction/how-it-works.md): This page walks the whole machine end to end for a newcomer: what your project compiles into, what happens when a user makes a request, and the handful of pieces that fit together to serve it.
-- [What makes toil hyper-scalable](introduction/hyperscale.md): toil is built to serve very large, globally spread traffic without you re-architecting the app as it grows.
-- [The modern stack: what toil gives you that others do not](introduction/modern-stack.md): Most frameworks give you a way to write code and then send you shopping: pick a database, an auth provider, an email service, a rate limiter, analytics, a realtime service, a job runner, then wire it all together and keep it in sync.
-- [toil versus other stacks](introduction/vs-other-frameworks.md): An honest, specific comparison of toil against the stacks you probably already use.
+- [How toil is distributed](introduction/distributed.md): Distributing a website's reads is easy.
+- [How toil works](introduction/how-it-works.md): What your project compiles into, and what happens when a user makes a request.
+- [What makes toil hyper-scalable](introduction/hyperscale.md): **Hyper-scale** is serving very large, worldwide traffic at low latency without rebuilding your app as it grows.
+- [The modern stack: what toil gives you that others do not](introduction/modern-stack.md): Most frameworks give you a way to write code and then send you shopping: a database, an auth provider, email, a rate limiter, analytics, a realtime service, a job runner, all wired together and kept in sync by you.
+- [toil versus other stacks](introduction/vs-other-frameworks.md): An honest look at where each stack you already use hits a ceiling, and why toil bets on a different shape.
 - [Why toil? Who is it for?](introduction/why-toil.md): toil is a full-stack framework: you write a React frontend and a TypeScript backend in one project, and toil runs both (plus a database) close to every user, worldwide.
 
 ## Getting started
