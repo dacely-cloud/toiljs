@@ -1,5 +1,11 @@
 # Auth, sessions, and `@user`
 
+> **Just want login working?** Enable **built-in auth** with one line — `server: { auth: true }` — and
+> you get the whole `/auth/*` API + sessions with no code. Start at **[the auth guide](./auth/index.md)**
+> ([how it works](./auth/how-it-works.md) · [usage](./auth/usage.md) · [configuration](./auth/configuration.md) ·
+> [extending](./auth/extending.md)). This page is the deeper reference on the underlying primitives, used
+> both by built-in auth and when you hand-write your own.
+
 toiljs ships **Toil PQ-Auth**: a post-quantum password login where the password
 never leaves the browser and the server stores only public verifier material.
 On top of it sit HMAC-signed session cookies, a `@auth` route guard, and a

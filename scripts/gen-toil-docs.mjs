@@ -58,13 +58,22 @@ const ORDER = [
 ];
 
 function collect() {
-    const all = fs
-        .readdirSync(docsDir)
-        .filter((f) => f.endsWith('.md') && !EXCLUDE.has(f))
-        .sort();
+    // Recurse one+ levels so a topic FOLDER (e.g. `docs/auth/*.md`) is bundled too, keyed by its
+    // repo-relative path (`auth/index.md`). Adding a `docs/**/*.md` is picked up automatically.
+    const files = [];
+    const walk = (dir, prefix) => {
+        for (const ent of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+            if (ent.isDirectory()) {
+                walk(path.join(dir, ent.name), prefix + ent.name + '/');
+            } else if (ent.name.endsWith('.md') && !EXCLUDE.has(prefix + ent.name) && !EXCLUDE.has(ent.name)) {
+                files.push(prefix + ent.name);
+            }
+        }
+    };
+    walk(docsDir, '');
     const ordered = [
-        ...ORDER.filter((f) => all.includes(f)),
-        ...all.filter((f) => !ORDER.includes(f)),
+        ...ORDER.filter((f) => files.includes(f)),
+        ...files.filter((f) => !ORDER.includes(f)),
     ];
     const out = {};
     for (const name of ordered) {
