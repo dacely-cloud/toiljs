@@ -76,30 +76,58 @@ class ProfileApi {
 }
 ```
 
-## A custom user shape: opt out and hand-write
+## Extending the user: add your own fields
 
-Built-in auth ships the single `@user` (`{ toilUserId, username }`), and there is exactly **one `@user` per
-program**. If you need a richer authenticated user (roles, a display name, a tenant), do **not** enable
-`server.auth`; hand-write a controller and your own `@user` using the same primitives. The
-`examples/basic` app does exactly this, copy `server/routes/Auth.ts` + `server/routes/Session.ts` as your
-starting point. The shape:
+Built-in auth reserves exactly two fields on the authenticated user: `toilUserId` and `username`. To carry
+more (a role, a display name, a tenant), just declare your OWN `@user` in your server code while
+`server.auth` is on. The build detects it and **extends** it: it injects the reserved `toilUserId` +
+`username` as the first two fields and mints sessions for your shape automatically. You do not opt out of
+anything, and there is still exactly one `@user` per program.
 
 ```ts
 @user
 class Account {
-    username: string = '';
     admin: bool = false;
-    score: u64 = 0;
+    displayName: string = '';
+    tenant: string = '';
+    // toilUserId + username are INJECTED by the build; do not declare them here.
 }
-
-// After verifyLogin succeeds, mint your own session payload:
-resp.setCookie(AuthService.mintSession(account.encode(), 3600));
-resp.setCookie(AuthService.userCookie(account.encode(), 3600));
 ```
 
-You still get `@auth`, `AuthService.getUser()` (typed to YOUR `@user`), and every crypto primitive, you're
-just choosing your own routes and user fields. You can still derive a `ToilUserId` yourself and put it in
-your `@user` if you want the stable id.
+Rules:
+
+- Do **not** declare `toilUserId` or `username` yourself. They are reserved and injected; declaring either is
+  a compile error (`'username' is reserved by built-in auth`).
+- Your `@user` must be default-constructible (give every field an initializer), like any `@data` class.
+
+`AuthService.getUser()` is now typed to YOUR shape:
+
+```ts
+const user = AuthService.getUser();   // { toilUserId, username, admin, displayName, tenant } | null
+```
+
+**Populating your fields.** Login fills `toilUserId` + `username`; your extra fields start at their declared
+defaults (`admin = false`, and so on). The built-in controller cannot know your business fields, so you set
+them yourself on one of your own `@auth` routes by reading the user, updating it, and re-minting the session:
+
+```ts
+@rest('account')
+class AccountApi {
+    @auth @post('/promote')
+    public promote(): Response {
+        const user = AuthService.getUser()!;
+        user.admin = true;
+        const resp = Response.text('promoted\n');
+        resp.setCookie(AuthService.mintSession(user.encode()));   // re-sign the session with the new fields
+        resp.setCookie(AuthService.userCookie(user.encode()));    // update the readable companion cookie
+        return resp;
+    }
+}
+```
+
+If you would rather hand-write the whole controller instead, you still can: do **not** enable `server.auth`,
+and build your own `@user` + routes from the [AuthService primitives](#the-authservice-primitive-reference)
+below. But for most apps, extending is all you need.
 
 ## Adding email verification / 2FA
 
