@@ -97,6 +97,40 @@ You still get `@auth`, `AuthService.getUser()` (typed to YOUR `@user`), and ever
 just choosing your own routes and user fields. You can still derive a `ToilUserId` yourself and put it in
 your `@user` if you want the stable id.
 
+## Adding email verification / 2FA
+
+Layer a second factor on top of the session with `TwoFactor` (stateless email codes — no DB; see
+[email](../email.md)). Typical flow: after login, require a verified email before granting access to
+sensitive routes.
+
+```ts
+@rest('2fa')
+class TwoFactorApi {
+    // Step 1: email a code to the logged-in user, hand back the signed token.
+    @auth @post('/send')
+    public send(): Response {
+        const email = /* the user's email — e.g. their username, or a stored profile field */;
+        const ch = TwoFactor.send(email, 'login');    // emails the code, returns { token, status }
+        return Response.bytes(new DataWriter().writeString(ch.token).toBytes());
+    }
+
+    // Step 2: verify the code the user typed against the token.
+    @auth @post('/verify')
+    public verify(ctx: RouteContext): Response {
+        const r = new DataReader(ctx.request.body);
+        const token = r.readString(); const email = r.readString(); const code = r.readString();
+        if (!TwoFactor.verify(token, email, code)) return Response.text('bad code\n', 401);
+        // Mark this session 2FA-verified: re-mint the session with a flag in your own @user, or store a
+        // per-user "verified" record keyed on AuthService.userId().
+        return Response.text('verified\n');
+    }
+}
+```
+
+`TwoFactor` gives integrity + expiry but not single-use (a code re-verifies within its TTL); keep the TTL
+short. For a branded email, use `TwoFactor.issue(...)` (returns the code without sending) + your own
+`Emails.*` template. Call `TwoFactor.setSecret(...)` once at startup in production.
+
 ## The `AuthService` primitive reference
 
 Everything the built-in controller is built from, available for hand-written auth. All are ambient globals

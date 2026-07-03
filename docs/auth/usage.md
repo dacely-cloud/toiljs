@@ -47,12 +47,69 @@ await Auth.login(username, password, {
 > **Production:** the client ships with the DEV KEM public key pinned. A real deployment MUST pass its own
 > `serverKemPublicKey` (derived from `AUTH_KEM_SK`). See [Configuration](./configuration.md).
 
-For logout / "who am I", call the endpoints directly (they're plain `fetch`):
+## 2b. Client-side: who's logged in, and protecting pages
+
+`register`/`login` set the session cookies; to *render* login state on the client, use the generated
+`getUser()` (emitted from the built-in `@user`). It reads the **readable** `__Secure-toil_user` companion
+cookie and returns the typed user or `null` — instant, no network call. It is **display-only**; the server
+still enforces access via `@auth`, so never trust it for authorization.
+
+```tsx
+import { getUser } from 'shared/server';   // generated; typed to the built-in @user
+
+function Nav() {
+    const user = getUser();                // { toilUserId, username } | null
+    return user
+        ? <span>Hi {user.username} <button onClick={logout}>Log out</button></span>
+        : <a href="/login">Log in</a>;
+}
+
+async function logout() {
+    await fetch('/auth/logout', { method: 'POST' });
+    location.href = '/login';              // cookies are cleared; bounce to login
+}
+```
+
+Gate a whole client route by redirecting when there's no session:
+
+```tsx
+export default function Dashboard() {
+    const user = getUser();
+    if (user == null) { location.href = '/login'; return null; }   // not logged in -> to /login
+    return <main>Welcome, {user.username}</main>;
+}
+```
+
+The authoritative check is still the server: any data this page fetches should come from an `@auth` route,
+so a user who forged/deleted the readable cookie sees the redirect OR a `401`, never real data.
+
+## 2c. Handling errors
+
+`Auth.register` / `Auth.login` reject with a message you can show. The important distinguishable cases:
 
 ```ts
-await fetch('/auth/logout', { method: 'POST' });
-const me = await fetch('/auth/me'); // 200 with the user, or 401
+try {
+    await Auth.register(username, password);
+} catch (e) {
+    const m = String(e);
+    if (m.includes('already registered')) setError('That username is taken — log in instead.');
+    else setError('Could not register, try again.');
+}
+
+try {
+    await Auth.login(username, password);
+} catch {
+    // Wrong password OR unknown user both fail generically (anti-enumeration) — one message.
+    setError('Incorrect username or password.');
+}
 ```
+
+- **Username taken** → `register` throws `auth: username already registered (log in instead)` (a
+  distinguishable case so you can guide the user).
+- **Wrong password / unknown user** → `login` throws generically (`auth: request failed`) — by design,
+  the two are indistinguishable, so use ONE "incorrect username or password" message.
+- **Rate limited** → after 5 attempts / 60s a `429` surfaces as the same generic throw; back off and tell
+  the user to wait.
 
 ## 3. Guard your routes — `@auth`
 
