@@ -115,8 +115,12 @@ function serverEntryFiles(root: string): string[] {
  * fallback resolves the running toiljs package (`…/build/compiler/index.js` -> package root) for a
  * hoisted install. Throws a clear error if the shipped files are missing.
  */
-function authEntryFiles(root: string): string[] {
-    const names = ['AuthUser.ts', 'AuthController.ts'];
+function authEntryFiles(root: string, appHasUser: boolean): string[] {
+    // EXTEND mode: the app declares its own `@user`, so the build injects the reserved `toilUserId` +
+    // `username` identity fields into it (via `--authUser`) and does NOT append the shipped empty `@user`,
+    // only the controller. BUILTIN mode (no app `@user`): append both (the shipped empty `SessionUser`
+    // gets the same injected identity fields).
+    const names = appHasUser ? ['AuthController.ts'] : ['AuthUser.ts', 'AuthController.ts'];
     const primary = names.map((n) => path.posix.join('node_modules/toiljs/server/auth', n));
     if (primary.every((rel) => fs.existsSync(path.join(root, rel)))) return primary;
     // Fallback: locate this running toiljs package dir and make the paths root-relative.
@@ -144,6 +148,24 @@ function authEntryFiles(root: string): string[] {
  * type` is skipped (erased). The marker module `server/auth/index.ts` is intentionally empty so it never
  * pulls a conflicting `~lib/` copy of the controller into the compile.
  */
+/**
+ * Whether any server entry declares its own `@user` (EXTEND mode). When built-in auth is on and the app
+ * declares a `@user`, the build extends THAT class: toilscript injects the reserved `toilUserId` +
+ * `username` fields into it (via `--authUser`, erroring on a name collision) instead of appending the
+ * shipped empty built-in `@user`, so the app carries the identity plus its own fields with no boilerplate.
+ */
+function serverDeclaresUser(root: string, files: string[]): boolean {
+    const re = /(^|[^.\w])@user\b/m;
+    for (const rel of files) {
+        try {
+            if (re.test(fs.readFileSync(path.join(root, rel), 'utf8'))) return true;
+        } catch {
+            // unreadable: skip
+        }
+    }
+    return false;
+}
+
 function serverImportsAuth(root: string, files: string[]): boolean {
     // Bare side-effect import only (`import 'toiljs/server/auth'`); not `import type`, not a subpath.
     const re = /(^|[^.\w])import\s+['"]toiljs\/server\/auth['"]/m;
@@ -197,8 +219,13 @@ export async function buildServer(root: string, auth: boolean = false): Promise<
     // node_modules, so serverEntryFiles never scanned them. Opt-in is either the `server.auth` config flag
     // OR the escape-hatch `import 'toiljs/server/auth'` in a server entry (which only MARKS the intent —
     // it cannot weave on its own, being a `~lib/` import — so the build turns it into the same injection).
-    if (auth || serverImportsAuth(root, files)) {
-        const authFiles = authEntryFiles(root);
+    const authOn = auth || serverImportsAuth(root, files);
+    if (authOn) {
+        // EXTEND vs BUILTIN: if the app declares its own `@user`, extend that class (do not append the
+        // shipped `@user`); otherwise append the built-in empty one. Either way toilscript injects the
+        // reserved identity fields (`--authUser`, threaded into every pass below).
+        const appHasUser = serverDeclaresUser(root, files);
+        const authFiles = authEntryFiles(root, appHasUser);
         const authSet = new Set(authFiles);
         files.unshift(...authFiles);
         for (let i = files.length - 1; i >= authFiles.length; i--) {
@@ -227,6 +254,7 @@ export async function buildServer(root: string, auth: boolean = false): Promise<
                 mode: 'cold',
                 outFile: artifacts.cold,
                 withRpc: false,
+                authUser: authOn,
             });
         // STREAM pass: --targetMode hot into its OWN `release-stream.wasm`, no client RPC surface
         // (a resident stream box exposes `stream_dispatch`, not the request client surface). Driven
@@ -236,6 +264,7 @@ export async function buildServer(root: string, auth: boolean = false): Promise<
                 mode: 'hot',
                 outFile: artifacts.stream,
                 withRpc: false,
+                authUser: authOn,
             });
         // REQUEST pass: the L1 artifact (= `outFile`), WITH the client RPC surface.
         // A pure daemon/stream project (no request files) skips it so toilscript is not handed an
@@ -250,6 +279,7 @@ export async function buildServer(root: string, auth: boolean = false): Promise<
                 // the typed `Server.Stream` (class names, message-type encoders, merged @rest type)
                 // WITHOUT compiling stream code into release.wasm.
                 rpcSurfaceFiles: split.hasStream ? split.stream : undefined,
+                authUser: authOn,
             });
         // The stream pass carries no client RPC surface (withRpc:false), so toilscript never emits the
         // `Server.Stream` client into shared/server.ts. Append it here from the compiled stream
@@ -260,7 +290,12 @@ export async function buildServer(root: string, auth: boolean = false): Promise<
     }
 
     // Default request-only single-artifact path (no daemon/stream surface).
-    await runToilscriptPass(root, binJs, files, { mode: null, outFile: null, withRpc: true });
+    await runToilscriptPass(root, binJs, files, {
+        mode: null,
+        outFile: null,
+        withRpc: true,
+        authUser: authOn,
+    });
 }
 
 /** Resolve the locally installed `toilscript` bin via Node (no `.bin` shim / PATH assumptions). */
@@ -474,6 +509,9 @@ interface PassOptions {
      *  into this artifact. Lets the request pass emit `Server.Stream` without pulling stream code into
      *  release.wasm. */
     readonly rpcSurfaceFiles?: readonly string[];
+    /** Built-in auth: pass `--authUser` so toilscript injects the reserved `toilUserId` + `username` fields
+     *  into the single `@user`. Threaded into every pass so the `@user` codec is identical across tiers. */
+    readonly authUser?: boolean;
 }
 
 /** Run one toilscript pass. The toilscript CLI flag is `--targetMode` (camelCase). */
@@ -492,6 +530,7 @@ function runToilscriptPass(
     if (opts.withRpc) args.push('--rpcModule', 'shared/server.ts');
     if (opts.rpcSurfaceFiles)
         for (const surfaceFile of opts.rpcSurfaceFiles) args.push('--rpcSurfaceFiles', surfaceFile);
+    if (opts.authUser) args.push('--authUser');
     // Each pass is handed its OWN entry subset (the per-tier `files`); suppress the toilconfig
     // `entries` so toilscript does not ALSO append every project entry to every pass (which would
     // pull, e.g., a `@stream` class into the cold daemon pass). serverEntryFiles already folds

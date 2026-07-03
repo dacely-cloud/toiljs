@@ -1,8 +1,6 @@
 import { Response, RouteContext } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
 
-import { encodeSessionUser } from './AuthUser';
-
 /**
  * Built-in Toil PQ-Auth controller: the full post-quantum password-login API
  * (`/auth/register|login/start|finish`) plus sessions (`/auth/me`, `/auth/logout`),
@@ -294,10 +292,13 @@ class Auth {
         const sessionKey = AuthService.deriveSessionKey(sharedSecret, transcriptHash);
         const confirm = AuthService.serverConfirmTag(sessionKey, transcriptHash);
 
-        // 4. Success: mint the session (the built-in @user codec, carrying the
-        //    stable ToilUserId) and return {0, sessionToken, confirm}.
+        // 4. Success: mint the session for whatever `@user` this program has (built-in or the app's own
+        //    extended one). `__toilEncodeAuthUser` is injected by `--authUser`: it constructs the `@user`
+        //    (app fields at their defaults), sets the reserved identity, and encodes it. The stable
+        //    ToilUserId is derived from the login public key + username + tenant domain.
         const domain = authDomain(ctx);
-        const userData = encodeSessionUser(acct.publicKey, ch.username, domain);
+        const toilUserId = ToilUserId.derive(acct.publicKey, ch.username, domain).toBytes();
+        const userData = __toilEncodeAuthUser(toilUserId, ch.username);
         const w = new DataWriter();
         w.writeU8(0);
         w.writeBytes(userData); // opaque session token (the readable user payload)
