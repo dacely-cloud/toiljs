@@ -109,6 +109,7 @@ const PROVIDED_IMPORTS = new Set([
     'client_ip',
     'ratelimit_check',
     'email_send',
+    'email_send_detached',
     'env_get',
     'env_get_secure',
     // Per-domain analytics (see ./analytics/index.ts).

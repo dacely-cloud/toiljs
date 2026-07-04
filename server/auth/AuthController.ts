@@ -686,7 +686,16 @@ class Auth {
     }
 
     /** Mint a confirm token for `username`/`email` and email the confirm link.
-     *  Best-effort: a failed send is not fatal (the user can resend). */
+     *  Best-effort: a failed send is not fatal (the user can resend).
+     *
+     *  Uses the DETACHED (non-suspending) send: `confirm/resend` returns the same
+     *  generic 200 whether or not the email maps to an account, but on the edge a
+     *  suspending `EmailService.send` would park the "account exists" path for the
+     *  mailer's provider RTT while the miss path returned instantly — a trivially
+     *  measurable email-enumeration timing oracle. `sendDetached` queues in
+     *  constant time, equalizing both paths. (Residual: on the exists path the
+     *  token mint above still does a sub-ms ToilDB write the miss path skips; a
+     *  fully constant-time guarantee would also equalize that DB work.) */
     private issueConfirmation(ctx: RouteContext, username: string, email: string): void {
         // Invalidate this user's previous confirm token (bound to one outstanding).
         const prev = AuthDb.confirmTokenOf.getDelete(new Username(username));
@@ -711,11 +720,20 @@ class Auth {
             '<p>Or paste this into your browser:<br>' +
             link +
             '</p>';
-        EmailService.send(email, subject, text, 'verify', html);
+        // DETACHED (non-suspending) send: constant-time, no provider-RTT parking on
+        // the "account exists" path (see the enumeration note on this method).
+        EmailService.sendDetached(email, subject, text, 'verify', html);
     }
 
     /** Email a password-reset link. Best-effort (the request path already
-     *  returned a generic 200). */
+     *  returned a generic 200).
+     *
+     *  Uses the DETACHED (non-suspending) send for the SAME anti-enumeration
+     *  reason as {@link issueConfirmation}: `/reset/request` always returns a
+     *  generic 200, so the send must not make the "email exists" path park for the
+     *  provider RTT (a timing oracle). `sendDetached` queues in constant time.
+     *  (Residual: the reset-token mint on the exists path still does a sub-ms
+     *  ToilDB write the miss path skips.) */
     private sendResetEmail(email: string, link: string): void {
         const subject = 'Reset your password';
         const text = 'Reset your password by opening this link:\n' + link + '\n';
@@ -728,6 +746,8 @@ class Auth {
             '<p>Or paste this into your browser:<br>' +
             link +
             '</p>';
-        EmailService.send(email, subject, text, 'reset', html);
+        // DETACHED (non-suspending) send: constant-time, closes the reset-request
+        // email-enumeration timing oracle (see the note above).
+        EmailService.sendDetached(email, subject, text, 'reset', html);
     }
 }

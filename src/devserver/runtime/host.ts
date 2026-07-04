@@ -191,6 +191,48 @@ function envLookup(
 }
 
 /**
+ * `env::email_send` / `env::email_send_detached` in dev: the FULL email pipeline
+ * (./email) — parse + recipient validation + dedup + per-min/day budget +
+ * per-recipient cap run SYNCHRONOUSLY (exact status: BadRecipient/Deduped/Budget/
+ * RecipientCapped), then the real provider send is FIRE-AND-FORGET (a sync wasm
+ * import can't await it), so the guest gets `Sent` optimistically and the true
+ * outcome is logged. Unconfigured email stays a log-only mock returning `Sent`.
+ *
+ * The dev path already fires-and-forgets, so the SUSPENDING `email_send` and the
+ * NON-SUSPENDING `email_send_detached` map to the exact same behaviour here (both
+ * return immediately). BOTH feed the `__sentEmails` capture seam, so the email
+ * confirm/reset tests find their tokens whichever import the guest used. Mirrors
+ * the edge's `email_send_import.rs`.
+ */
+function devEmailSend(ref: MemoryRef, reqPtr: number, reqLen: number): number {
+    const raw = readBytes(ref, reqPtr, reqLen);
+    const svc = getEmailService();
+    if (svc === null) {
+        const parsed = parseEmailBlob(raw);
+        if (parsed !== null) recordSentEmail(parsed); // dev test seam
+        const to = parsed?.to ?? '<unparsed>';
+        process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
+        return EmailStatus.Sent;
+    }
+    const { status, parsed } = svc.prepare(raw);
+    if (parsed === null) {
+        process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
+        return status;
+    }
+    recordSentEmail(parsed); // dev test seam
+    void svc
+        .deliver(parsed)
+        .then((s) => {
+            const label = s === EmailStatus.Sent ? 'sent' : EmailStatus[s];
+            process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (${label})\n`);
+        })
+        .catch((e: unknown) => {
+            process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`);
+        });
+    return EmailStatus.Sent; // optimistic; sync wasm can't await the send
+}
+
+/**
  * The portion of the `env.*` request surface that is SHARED by the daemon (cold)
  * box: panic hook, `Environment.get`/`getSecure`, `email_send`, `thread_spawn`,
  * and `Date.now`. It deliberately EXCLUDES the response/stream functions a cold
@@ -226,37 +268,13 @@ export function buildEnvImports(
         // `Date.now()` -> wall-clock milliseconds, matching the edge host.
         'Date.now': (): bigint => BigInt(Date.now()),
 
-        // `env::email_send`: the FULL email pipeline in dev. A daemon may send
-        // mail, so this stays in the shared subset (00 B2 / doc 08 AN-8).
-        email_send: (reqPtr: number, reqLen: number): number => {
-            const raw = readBytes(ref, reqPtr, reqLen);
-            const svc = getEmailService();
-            if (svc === null) {
-                const parsed = parseEmailBlob(raw);
-                if (parsed !== null) recordSentEmail(parsed); // dev test seam
-                const to = parsed?.to ?? '<unparsed>';
-                process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
-                return EmailStatus.Sent;
-            }
-            const { status, parsed } = svc.prepare(raw);
-            if (parsed === null) {
-                process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
-                return status;
-            }
-            recordSentEmail(parsed); // dev test seam
-            void svc
-                .deliver(parsed)
-                .then((s) => {
-                    const label = s === EmailStatus.Sent ? 'sent' : EmailStatus[s];
-                    process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (${label})\n`);
-                })
-                .catch((e: unknown) => {
-                    process.stdout.write(
-                        `  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`,
-                    );
-                });
-            return EmailStatus.Sent; // optimistic; sync wasm can't await the send
-        },
+        // `env::email_send` / `email_send_detached`: the FULL email pipeline in
+        // dev. A daemon may send mail, so this stays in the shared subset (00 B2 /
+        // doc 08 AN-8). Both map to the same fire-and-forget dev path.
+        email_send: (reqPtr: number, reqLen: number): number =>
+            devEmailSend(ref, reqPtr, reqLen),
+        email_send_detached: (reqPtr: number, reqLen: number): number =>
+            devEmailSend(ref, reqPtr, reqLen),
     };
 }
 
@@ -343,44 +361,14 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 return d.allowed ? 1 : -Math.max(1, d.retryAfterSecs);
             },
 
-            // `env::email_send`: the FULL email pipeline in dev (./email): parse +
-            // recipient validation + dedup + per-min/day budget + per-recipient cap
-            // run SYNCHRONOUSLY (exact status — BadRecipient/Deduped/Budget/
-            // RecipientCapped), then the real provider send is FIRE-AND-FORGET (a
-            // sync wasm import can't await it), so the guest gets Sent optimistically
-            // and the true outcome is logged. Unconfigured email stays a log-only
-            // mock returning Sent. Mirrors the edge's `email_send_import.rs`.
-            email_send: (reqPtr: number, reqLen: number): number => {
-                const raw = readBytes(ref, reqPtr, reqLen);
-                const svc = getEmailService();
-                if (svc === null) {
-                    const parsed = parseEmailBlob(raw);
-                    if (parsed !== null) recordSentEmail(parsed); // dev test seam
-                    const to = parsed?.to ?? '<unparsed>';
-                    process.stdout.write(
-                        `  ✉ dev email_send -> ${to} (no email config; not sent)\n`,
-                    );
-                    return EmailStatus.Sent;
-                }
-                const { status, parsed } = svc.prepare(raw);
-                if (parsed === null) {
-                    process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
-                    return status;
-                }
-                recordSentEmail(parsed); // dev test seam
-                void svc
-                    .deliver(parsed)
-                    .then((s) => {
-                        const label = s === EmailStatus.Sent ? 'sent' : EmailStatus[s];
-                        process.stdout.write(`  ✉ dev email_send -> ${parsed.to} (${label})\n`);
-                    })
-                    .catch((e: unknown) => {
-                        process.stdout.write(
-                            `  ✉ dev email_send -> ${parsed.to} (error: ${String(e)})\n`,
-                        );
-                    });
-                return EmailStatus.Sent; // optimistic; sync wasm can't await the send
-            },
+            // `env::email_send` (suspending on the edge) / `email_send_detached`
+            // (non-suspending on the edge): the FULL dev email pipeline. Both map
+            // to the same fire-and-forget dev path (a sync wasm import can't await
+            // the provider send), and BOTH feed `__sentEmails`. See devEmailSend.
+            email_send: (reqPtr: number, reqLen: number): number =>
+                devEmailSend(ref, reqPtr, reqLen),
+            email_send_detached: (reqPtr: number, reqLen: number): number =>
+                devEmailSend(ref, reqPtr, reqLen),
 
             // `Environment.get` / `getSecure`: copy one tenant env value into the
             // guest buffer. Returns the byte length (0 = present-but-empty), -1 if

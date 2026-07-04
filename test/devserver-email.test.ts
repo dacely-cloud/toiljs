@@ -9,11 +9,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { EmailCaps } from '../src/devserver/email/caps.js';
 import { resolveEmailConfig, type ResolvedEmailConfig } from '../src/devserver/email/config.js';
-import { NodeEmailService } from '../src/devserver/email/index.js';
+import {
+    NodeEmailService,
+    __sentEmails,
+    __clearSentEmails,
+    resetEmailService,
+} from '../src/devserver/email/index.js';
 import { sendResend } from '../src/devserver/email/providers.js';
 import { EmailStatus } from '../src/devserver/email/status.js';
 import { validFrom, validRecipient } from '../src/devserver/email/validate.js';
 import { parseEmailBlob } from '../src/devserver/email/wire.js';
+import { buildHostImports, freshDispatchState, type MemoryRef } from '../src/devserver/runtime/host.js';
 
 /** Encode an `email_send` blob exactly like the guest (`server/globals/email.ts`). */
 function encodeBlob(to: string, subject: string, purpose: string, body: string, html: string): Buffer {
@@ -237,5 +243,46 @@ describe('NodeEmailService pipeline', () => {
         expect(parsed).not.toBeNull();
         expect(await svc.deliver(parsed!)).toBe(EmailStatus.Sent);
         expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('host imports: email_send_detached (the anti-enumeration fire-and-forget path)', () => {
+    afterEach(() => {
+        resetEmailService();
+        __clearSentEmails();
+    });
+
+    /** Build a dev host import table over a fresh wasm memory holding `blob` at offset 0. */
+    function wireHost(blob: Buffer): {
+        env: Record<string, (...a: number[]) => number>;
+        len: number;
+    } {
+        const memory = new WebAssembly.Memory({ initial: 1 });
+        Buffer.from(memory.buffer).set(blob, 0);
+        const ref: MemoryRef = { memory };
+        const imports = buildHostImports(ref, freshDispatchState());
+        return { env: imports.env as Record<string, (...a: number[]) => number>, len: blob.length };
+    }
+
+    it('is registered and returns a queue-accept status immediately (no provider round-trip)', () => {
+        resetEmailService(); // unconfigured: log-only stub, still constant-time
+        __clearSentEmails();
+        const { env, len } = wireHost(encodeBlob('someone@x.com', 'Subj', 'verify', 'tok', '<b>x</b>'));
+        // The detached import exists (mirrors the edge's env.email_send_detached).
+        expect(typeof env.email_send_detached).toBe('function');
+        // It returns synchronously with a queue-accept status (Sent == accepted/queued).
+        expect(env.email_send_detached(0, len)).toBe(EmailStatus.Sent);
+    });
+
+    it('feeds the __sentEmails capture seam so confirm/reset tests still find the token', () => {
+        resetEmailService();
+        __clearSentEmails();
+        const link = 'https://app.example.com/reset#token=deadbeef';
+        const { env, len } = wireHost(encodeBlob('user@x.com', 'Reset', 'reset', link, ''));
+        env.email_send_detached(0, len);
+        const captured = __sentEmails.find((e) => e.to === 'user@x.com');
+        expect(captured).toBeTruthy();
+        expect(captured!.purpose).toBe('reset');
+        expect(captured!.text).toContain('token=deadbeef'); // the emailed token survives to the seam
     });
 });

@@ -24,6 +24,17 @@
 @external('env', 'email_send')
 declare function __toilEmailSend(reqPtr: usize, reqLen: i32): i32;
 
+// Host import: submit one email FIRE-AND-FORGET and return immediately (does NOT
+// suspend). Same wire blob as `email_send`; the host validates + queues then
+// returns a queue-accept status without parking on the provider round-trip. Used
+// for transactional sends whose delivery result the caller does not need, so the
+// send is constant-time regardless of whether the recipient exists (this closes
+// the auth email-enumeration timing oracle). A tenant that never calls
+// `sendDetached` tree-shakes this import away.
+// @ts-ignore: decorator
+@external('env', 'email_send_detached')
+declare function __toilEmailSendDetached(reqPtr: usize, reqLen: i32): i32;
+
 /**
  * The result of a send. Kept in sync with `EmailStatus` in toil-backend
  * `email.rs` (`#[repr(i32)]`). `Sent` and `Deduped` are success; the rest say
@@ -68,6 +79,48 @@ export namespace EmailService {
         purpose: string = 'tx',
         html: string = '',
     ): EmailStatus {
+        const buf = frameRequest(to, subject, body, purpose, html);
+        return <EmailStatus>__toilEmailSend(buf.dataStart, buf.length);
+    }
+
+    /**
+     * FIRE-AND-FORGET send: frame the SAME wire request as {@link send} but submit
+     * it via the NON-SUSPENDING `email_send_detached` host import, which validates
+     * + queues the message and returns IMMEDIATELY (constant time) without parking
+     * on the provider round-trip. Use it for transactional mail (confirm/reset
+     * links) whose delivery result the caller does not need: because it does not
+     * block on the send, the response time no longer reveals whether the recipient
+     * maps to an account (the auth email-enumeration timing oracle).
+     *
+     * The returned {@link EmailStatus} is a QUEUE-ACCEPT status, not a delivery
+     * result: `Sent` means "accepted/queued" (the final provider outcome is not
+     * awaited); `Disabled` / `BadRecipient` / `TryLater` are the pre-submit
+     * rejects. The host records the true final outcome for `/_admin/email`.
+     */
+    export function sendDetached(
+        to: string,
+        subject: string,
+        body: string,
+        purpose: string = 'tx',
+        html: string = '',
+    ): EmailStatus {
+        const buf = frameRequest(to, subject, body, purpose, html);
+        return <EmailStatus>__toilEmailSendDetached(buf.dataStart, buf.length);
+    }
+
+    /**
+     * Frame one email request blob (the v2 wire format) into a fresh buffer the
+     * caller passes straight to a host import. Shared by {@link send} and
+     * {@link sendDetached} so their wire encoding can never drift; the caller
+     * keeps the returned buffer live across the (synchronous) import call.
+     */
+    function frameRequest(
+        to: string,
+        subject: string,
+        body: string,
+        purpose: string,
+        html: string,
+    ): Uint8Array {
         const toB = Uint8Array.wrap(String.UTF8.encode(to));
         const subjB = Uint8Array.wrap(String.UTF8.encode(subject));
         const purpB = Uint8Array.wrap(String.UTF8.encode(purpose));
@@ -98,7 +151,7 @@ export namespace EmailService {
         off += bodyB.length;
         memory.copy(off, htmlB.dataStart, htmlB.length);
 
-        return <EmailStatus>__toilEmailSend(base, total);
+        return buf;
     }
 }
 
