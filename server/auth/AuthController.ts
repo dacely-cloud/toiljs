@@ -309,6 +309,11 @@ class AuthDb {
     @collection static challenges: Documents<ChallengeId, Challenge>;
     @collection static confirmTokens: Documents<TokenId, TokenRec>;
     @collection static resetTokens: Documents<TokenId, TokenRec>;
+    // username -> its CURRENT outstanding confirm/reset token id, so minting a new
+    // one can invalidate the previous: outstanding tokens stay bounded at one per
+    // user per kind (O(users)), not one per request (unbounded storage-griefing).
+    @collection static confirmTokenOf: Documents<Username, TokenId>;
+    @collection static resetTokenOf: Documents<Username, TokenId>;
 }
 
 @rest('auth')
@@ -572,11 +577,16 @@ class Auth {
         if (!r.ok) return fail();
         const owner = AuthDb.emails.get(new EmailKey(email));
         if (owner != null && AuthDb.accounts.exists(new Username(owner.username))) {
+            // Invalidate this user's previous reset token (bound to one outstanding).
+            const prev = AuthDb.resetTokenOf.getDelete(new Username(owner.username));
+            if (prev != null) AuthDb.resetTokens.delete(prev);
             const raw = mintToken();
+            const tid = tokenId(raw);
             const rec = new TokenRec();
             rec.username = owner.username;
             rec.exp = nowSecs() + RESET_TTL_SECS;
-            AuthDb.resetTokens.create(tokenId(raw), rec);
+            AuthDb.resetTokens.create(tid, rec);
+            AuthDb.resetTokenOf.create(new Username(owner.username), tid);
             // Token in the URL FRAGMENT, not the query string: a fragment is never
             // sent to the server (so it can't land in edge/CDN access logs) nor in
             // the Referer header. The reset page reads it client-side from
@@ -678,11 +688,16 @@ class Auth {
     /** Mint a confirm token for `username`/`email` and email the confirm link.
      *  Best-effort: a failed send is not fatal (the user can resend). */
     private issueConfirmation(ctx: RouteContext, username: string, email: string): void {
+        // Invalidate this user's previous confirm token (bound to one outstanding).
+        const prev = AuthDb.confirmTokenOf.getDelete(new Username(username));
+        if (prev != null) AuthDb.confirmTokens.delete(prev);
         const raw = mintToken();
+        const tid = tokenId(raw);
         const rec = new TokenRec();
         rec.username = username;
         rec.exp = nowSecs() + CONFIRM_TTL_SECS;
-        AuthDb.confirmTokens.create(tokenId(raw), rec);
+        AuthDb.confirmTokens.create(tid, rec);
+        AuthDb.confirmTokenOf.create(new Username(username), tid);
         // Token in the URL FRAGMENT (see resetRequest): kept out of server/CDN
         // logs and the Referer header; the confirm page reads it from location.hash.
         const link = baseUrl(ctx) + '/confirm#token=' + crypto.toHex(raw);

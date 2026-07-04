@@ -247,6 +247,26 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     );
 
     it(
+        'token bound: a new reset request invalidates the previous token (#5c growth bound)',
+        async () => {
+            await Auth.register('ivan', 'pw-ivan-correct', 'ivan@x.com');
+            await Auth.requestPasswordReset('ivan@x.com');
+            const token1 = tokenFromEmail('reset', 'ivan@x.com');
+            __clearSentEmails();
+            await Auth.requestPasswordReset('ivan@x.com'); // mints token2, invalidates token1
+            const token2 = tokenFromEmail('reset', 'ivan@x.com');
+            expect(token2).not.toBe(token1);
+            // The superseded token no longer works...
+            await expect(Auth.resetPassword(token1, 'new-pw-unused')).rejects.toThrow();
+            // ...only the latest does.
+            await Auth.resetPassword(token2, 'new-pw-ivan');
+            const session = await Auth.login('ivan', 'new-pw-ivan');
+            expect(session.length).toBeGreaterThan(0);
+        },
+        60_000,
+    );
+
+    it(
         'confirmation ON: login is refused until the emailed token confirms the account',
         async () => {
             setConfirmation(true);
