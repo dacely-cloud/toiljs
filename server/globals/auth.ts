@@ -117,11 +117,30 @@ function __fromHex(s: string): Uint8Array {
     return out;
 }
 
+/**
+ * Fail CLOSED in production rather than fall back to a published dev secret. A
+ * request over HTTPS (`__reqIsSecure`) is a real deployment, so refusing here
+ * means a misconfigured node cannot sign/verify sessions (or run OPRF/KEM) with a
+ * key ANYONE could forge from the public source constant -- the operator MUST set
+ * the secret. Plain-HTTP dev (including `toiljs dev`) keeps the zero-config
+ * fallback (the dev server already warns loudly at startup).
+ */
+function __requireConfiguredSecret(envValue: string | null, name: string): void {
+    if (envValue == null && __reqIsSecure()) {
+        throw new Error(
+            'auth: ' +
+                name +
+                ' is not set; refusing to use the published dev key over HTTPS. Set it in the tenant env (.env.secrets / deploy config).',
+        );
+    }
+}
+
 /** The BASE session HMAC secret (UTF-8 of the env value or the DEV fallback). */
 function __resolveSessionSecretBase(): Uint8Array {
     let s = __sessionSecret;
     if (s != null) return s;
     const v = Environment.getSecure(ENV_SESSION_SECRET);
+    __requireConfiguredSecret(v, ENV_SESSION_SECRET);
     s = Uint8Array.wrap(String.UTF8.encode(v != null ? v : DEV_SESSION_SECRET));
     __sessionSecret = s;
     return s;
@@ -164,6 +183,7 @@ function __resolveOprfSeed(): Uint8Array {
     let s = __oprfSeed;
     if (s != null) return s;
     const v = Environment.getSecure(ENV_OPRF_SEED);
+    __requireConfiguredSecret(v, ENV_OPRF_SEED);
     s = crypto.sha256Text(v != null ? v : DEV_OPRF_SEED_SRC);
     __oprfSeed = s;
     return s;
@@ -173,6 +193,7 @@ function __resolveServerKemSk(): Uint8Array {
     let s = __serverKemSk;
     if (s != null) return s;
     const v = Environment.getSecure(ENV_KEM_SK);
+    __requireConfiguredSecret(v, ENV_KEM_SK);
     s = __fromHex(v != null ? v : DEV_KEM_SK_HEX);
     __serverKemSk = s;
     return s;
