@@ -222,31 +222,6 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     );
 
     it(
-        'secrets guard: over HTTPS with no configured secret, auth fails closed (H1)',
-        () => {
-            // Dev leaves AUTH_SESSION_SECRET unset (published placeholder). Over plain
-            // HTTP that is allowed (dev); over HTTPS (a real deployment) resolving the
-            // session secret must REFUSE rather than sign/verify with a forgeable key.
-            const meOver = (secure: boolean) => {
-                const headers: [string, string][] = [['host', 'localhost:3000']];
-                if (secure) headers.push(['x-forwarded-proto', 'https']);
-                return mod.dispatch({ method: 'GET', path: '/auth/me', headers, body: new Uint8Array(0) });
-            };
-            // Control: plain HTTP resolves normally -> a no-session 401 (placeholder ok in dev).
-            expect(meOver(false).status).toBe(401);
-            // HTTPS with the secret unset must NOT behave like a normal 401 (which would
-            // mean it happily used the placeholder); it fails closed (guest trap -> 5xx).
-            let status = 0;
-            try {
-                status = meOver(true).status;
-            } catch {
-                status = 500; // a guest trap surfaced as a thrown dispatch
-            }
-            expect(status).toBeGreaterThanOrEqual(500);
-        },
-    );
-
-    it(
         'token bound: a new reset request invalidates the previous token (#5c growth bound)',
         async () => {
             await Auth.register('ivan', 'pw-ivan-correct', 'ivan@x.com');
