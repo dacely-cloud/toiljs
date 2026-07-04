@@ -117,14 +117,47 @@ function __fromHex(s: string): Uint8Array {
     return out;
 }
 
-/** The session HMAC secret (UTF-8 of the env value or the DEV fallback). */
-function __resolveSessionSecret(): Uint8Array {
+/** The BASE session HMAC secret (UTF-8 of the env value or the DEV fallback). */
+function __resolveSessionSecretBase(): Uint8Array {
     let s = __sessionSecret;
     if (s != null) return s;
     const v = Environment.getSecure(ENV_SESSION_SECRET);
     s = Uint8Array.wrap(String.UTF8.encode(v != null ? v : DEV_SESSION_SECRET));
     __sessionSecret = s;
     return s;
+}
+
+/** A stable per-TENANT tag: the request Host the edge routes on, lowercased and
+ *  port-stripped (matching the edge's `strip_port`), so it is identical for every
+ *  request to one tenant and distinct across tenants. Used to bind a session to
+ *  its tenant (below). */
+function __sessionTenantTag(): string {
+    const req = Server.currentRequest;
+    if (req == null) return '';
+    const raw = req.header('host');
+    if (raw == null) return '';
+    let h = raw.toLowerCase();
+    const colon = h.lastIndexOf(':');
+    if (colon > 0) h = h.slice(0, colon); // drop :port (mirrors edge strip_port)
+    return h;
+}
+
+/**
+ * The session HMAC key, BOUND TO THE TENANT. We fold the tenant tag into the base
+ * secret so a session sealed for tenant B does NOT verify on tenant A even if both
+ * resolve the SAME base secret (e.g. an unconfigured multi-tenant deployment
+ * sharing the published dev fallback). `mintSession` and `getSessionBytes` both
+ * call this within one request instance, so they derive the same key for the same
+ * tenant; a cross-tenant replay derives a different key and fails to open. This
+ * makes the base secret no longer the SOLE cross-tenant isolator — still set a
+ * distinct `AUTH_SESSION_SECRET` per deployment; this is defense-in-depth.
+ */
+function __resolveSessionSecret(): Uint8Array {
+    const base = __resolveSessionSecretBase();
+    const tag = Uint8Array.wrap(
+        String.UTF8.encode('toil-session-tenant-bind-v1:' + __sessionTenantTag()),
+    );
+    return __hmacSha256(base, tag);
 }
 /** The OPRF master seed, hashed to 32 bytes (RFC 9497 Ns) so any env value works. */
 function __resolveOprfSeed(): Uint8Array {

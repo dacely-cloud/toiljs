@@ -75,8 +75,11 @@ function installFetchShim(m: WasmServerModule): () => void {
             text: async () => Buffer.from(r.body).toString('utf8'),
         } as Response;
     }) as typeof fetch;
-    return () => {
-        globalThis.fetch = original;
+    return {
+        restore: () => {
+            globalThis.fetch = original;
+        },
+        jar,
     };
 }
 
@@ -99,7 +102,8 @@ function hexToBytes(hex: string): Uint8Array {
 
 /** Pull the one-time token out of the most-recent captured confirm/reset email to `to`. */
 function tokenFromEmail(kind: 'confirm' | 'reset', to: string): string {
-    const re = kind === 'confirm' ? /\/confirm\?token=([0-9a-f]+)/ : /\/reset\?token=([0-9a-f]+)/;
+    // Tokens live in the URL FRAGMENT now (#token=), kept out of server/CDN logs.
+    const re = kind === 'confirm' ? /\/confirm#token=([0-9a-f]+)/ : /\/reset#token=([0-9a-f]+)/;
     for (let i = __sentEmails.length - 1; i >= 0; i--) {
         const msg = __sentEmails[i];
         if (msg.to !== to) continue;
@@ -116,6 +120,7 @@ function tokenFromEmail(kind: 'confirm' | 'reset', to: string): string {
 describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (client <-> example wasm)', () => {
     let restoreFetch: () => void;
     let mod: WasmServerModule;
+    let jar: Map<string, string>;
 
     beforeEach(() => {
         __resetDbForTests();
@@ -125,7 +130,9 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         __clearSentEmails();
         setConfirmation(false); // default: confirmation off unless a case opts in
         mod = loadModule();
-        restoreFetch = installFetchShim(mod);
+        const shim = installFetchShim(mod);
+        restoreFetch = shim.restore;
+        jar = shim.jar;
     });
     afterEach(() => {
         restoreFetch();
@@ -148,6 +155,68 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
 
             // No confirmation required -> no email was sent.
             expect(__sentEmails.length).toBe(0);
+        },
+        60_000,
+    );
+
+    // ---- security regressions ----
+
+    it(
+        'reset link is NOT poisonable via a crafted Host header (#6 host-header reset-poisoning)',
+        async () => {
+            await Auth.register('grace', 'pw-grace-correct', 'grace@x.com');
+            __clearSentEmails();
+            // Attacker triggers reset/request with a Host that routes to the victim
+            // (the edge strip_port -> "victim.com") but, dropped raw into a link,
+            // reparents the URL authority to attacker.com.
+            const body = new DataWriter().writeString('grace@x.com').toBytes();
+            const r = mod.dispatch({
+                method: 'POST',
+                path: '/auth/reset/request',
+                headers: [
+                    ['host', 'victim.com:@attacker.com'],
+                    ['content-type', 'application/octet-stream'],
+                ],
+                body,
+            });
+            expect(r.status).toBe(200); // always the generic non-enumerating ack
+            const msg = __sentEmails.find((e) => e.to === 'grace@x.com');
+            expect(msg).toBeTruthy();
+            // The poisoned Host is rejected (contains `@`) and the link falls back to
+            // a safe origin -> the attacker domain never appears in the emailed link.
+            expect((msg!.html + msg!.text).includes('attacker.com')).toBe(false);
+        },
+        60_000,
+    );
+
+    it(
+        'a session minted for one tenant does NOT verify for another (#2 cross-tenant session)',
+        async () => {
+            await Auth.register('heidi', 'pw-heidi-correct', 'heidi@x.com');
+            await Auth.login('heidi', 'pw-heidi-correct'); // minted under the shim Host localhost:3000
+            const sess = jar.get('toil_sess'); // dev is plain HTTP -> unprefixed cookie
+            expect(sess).toBeTruthy();
+            const meHeaders = (host: string): [string, string][] => [
+                ['host', host],
+                ['cookie', 'toil_sess=' + String(sess)],
+            ];
+            // Same tenant (localhost) -> the @auth-gated /auth/me accepts it.
+            const same = mod.dispatch({
+                method: 'GET',
+                path: '/auth/me',
+                headers: meHeaders('localhost:3000'),
+                body: new Uint8Array(0),
+            });
+            expect(same.status).toBe(200);
+            // A DIFFERENT tenant Host derives a different session key -> the same
+            // cookie fails to open -> 401. A B-minted session cannot bypass A.
+            const cross = mod.dispatch({
+                method: 'GET',
+                path: '/auth/me',
+                headers: meHeaders('evil-tenant.com'),
+                body: new Uint8Array(0),
+            });
+            expect(cross.status).toBe(401);
         },
         60_000,
     );

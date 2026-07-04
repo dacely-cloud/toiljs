@@ -107,7 +107,16 @@ function authDomain(ctx: RouteContext): string {
  * setting can turn it on without the app changing a line.
  */
 function requireConfirmation(): bool {
-    return Environment.get('AUTH_REQUIRE_EMAIL_CONFIRMATION') == 'true';
+    const v = Environment.get('AUTH_REQUIRE_EMAIL_CONFIRMATION');
+    if (v == null) return false;
+    // Lenient truthy, ALIGNED with the edge's HostConfig parse
+    // (`!matches!(v.trim(), "0"|"false"|"no"|"off")`). A strict `== "true"` here
+    // let a tenant slip a truthy-but-non-canonical value ("1"/"on"/"TRUE"/"true ")
+    // past the guest while the edge treated it as "already opted in" and skipped
+    // the force-on injection -> the platform mandate was defeatable. Same parse on
+    // both sides closes that gap.
+    const t = v.trim().toLowerCase();
+    return t.length != 0 && t != '0' && t != 'false' && t != 'no' && t != 'off';
 }
 
 /**
@@ -116,17 +125,63 @@ function requireConfirmation(): bool {
  * request `Host` (assumed https, since auth cookies are `__Host-`/`Secure`), then
  * localhost for dev. Trailing slash trimmed.
  */
+/**
+ * A request Host header is safe to use as an emailed-link authority ONLY if it is
+ * a bare host[:port] with no userinfo/path/whitespace. The edge routes on a
+ * PORT-STRIPPED, lowercased host, so a crafted `Host: victim.com:@attacker.com`
+ * routes to the VICTIM tenant yet, dropped raw into `https://<host>/...`,
+ * reparents the URL authority to attacker.com (browsers read `victim.com:` as
+ * userinfo) -- a classic reset-link poisoning that mails the victim a link whose
+ * token is delivered to the attacker. So we hard-reject anything but
+ * `[A-Za-z0-9.:-]` plus IPv6 brackets; a poisoned Host yields `null`.
+ */
+function safeAuthority(host: string): string | null {
+    if (host.length == 0 || host.length > 255) return null;
+    for (let i = 0; i < host.length; i++) {
+        const c = host.charCodeAt(i);
+        const ok =
+            (c >= 48 && c <= 57) || // 0-9
+            (c >= 65 && c <= 90) || // A-Z
+            (c >= 97 && c <= 122) || // a-z
+            c == 46 || // .
+            c == 45 || // -
+            c == 58 || // : (port separator)
+            c == 91 || // [ (IPv6)
+            c == 93; //  ] (IPv6)
+        if (!ok) return null;
+    }
+    return host;
+}
+
+/** A tenant-configured base URL is trusted (they own it) but must still be a
+ *  well-formed absolute http(s) origin with no control/header-injection chars. */
+function isAbsoluteHttpUrl(s: string): bool {
+    if (!s.startsWith('https://') && !s.startsWith('http://')) return false;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        if (c < 0x20 || c == 0x7f) return false; // reject CR/LF/other controls
+    }
+    return true;
+}
+
+/**
+ * The absolute origin the emailed confirm/reset links point at. Prefer the
+ * tenant-set `PUBLIC_BASE_URL` (they own it, validated). The request Host is
+ * ATTACKER-CONTROLLED, so it is used ONLY after strict authority validation
+ * ({@link safeAuthority}); a poisoned or absent Host falls back to localhost,
+ * NEVER an attacker-supplied origin. This closes host-header reset-poisoning.
+ */
 function baseUrl(ctx: RouteContext): string {
     const configured = Environment.get('PUBLIC_BASE_URL');
-    let b: string;
-    if (configured != null && configured.length > 0) {
-        b = configured;
-    } else {
-        const host = ctx.request.header('host');
-        b = host != null ? 'https://' + host : 'http://localhost:3000';
+    if (configured != null && configured.length > 0 && isAbsoluteHttpUrl(configured)) {
+        let b = configured;
+        while (b.endsWith('/')) b = b.slice(0, b.length - 1);
+        return b;
     }
-    while (b.endsWith('/')) b = b.slice(0, b.length - 1);
-    return b;
+    const host = ctx.request.header('host');
+    const safe = host != null ? safeAuthority(host) : null;
+    if (safe != null) return 'https://' + safe;
+    return 'http://localhost:3000';
 }
 
 function randomBytes(n: i32): Uint8Array {
@@ -224,14 +279,18 @@ class ChallengeId {
 
 @data
 class AuthAccount {
+    // The original credential fields keep their byte positions; `email` +
+    // `emailConfirmed` are APPENDED so this is a forward-compatible, append-only
+    // @data change (an old row decodes with emailConfirmed=false, the strict/safe
+    // default) rather than a breaking mid-struct reorder the deploy gate rejects.
     username: string = '';
-    email: string = '';
-    emailConfirmed: bool = false;
     salt: Uint8Array = new Uint8Array(0);
     publicKey: Uint8Array = new Uint8Array(0);
     memKiB: u32 = 0;
     iterations: u32 = 0;
     parallelism: u32 = 0;
+    email: string = '';
+    emailConfirmed: bool = false;
 }
 
 @data
@@ -293,21 +352,26 @@ class Auth {
         const proof = r.readBytes();
         if (!r.ok) return fail();
         if (pk.length != AuthService.PUBLIC_KEY_LEN) return fail();
-        if (email.length == 0) return fail();
+        if (username.length == 0 || username.length > 64) return fail();
+        if (email.length == 0 || email.length > 254) return fail();
+
+        // Proof-of-possession FIRST (before any existence check): the client
+        // signed buildRegisterMessage with the matching secret key. Verifying up
+        // front means register/finish is not a cheap PRE-crypto oracle for "is
+        // this username/email registered" -- a probe must present a valid ML-DSA
+        // PoP, not just a well-formed body.
+        const regMsg = AuthService.buildRegisterMessage(username, pk);
+        if (!AuthService.verifyRegister(pk, regMsg, proof)) return fail();
+
         // Distinguishable statuses (not the generic 401) so the UI can say
-        // "username taken" / "email in use" instead of a blank error. Signup
-        // intentionally leaks existence (a product choice); reset never does.
+        // "username taken" / "email in use". Signup intentionally leaks existence
+        // (a product choice, now gated behind the PoP above); reset never does.
         if (AuthDb.accounts.exists(new Username(username))) {
             return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
         }
         if (AuthDb.emails.exists(new EmailKey(email))) {
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
-
-        // Proof-of-possession: the client signed buildRegisterMessage with the
-        // matching secret key, so we confirm it actually holds it.
-        const regMsg = AuthService.buildRegisterMessage(username, pk);
-        if (!AuthService.verifyRegister(pk, regMsg, proof)) return fail();
 
         const mustConfirm = requireConfirmation();
         const a = new AuthAccount();
@@ -513,7 +577,11 @@ class Auth {
             rec.username = owner.username;
             rec.exp = nowSecs() + RESET_TTL_SECS;
             AuthDb.resetTokens.create(tokenId(raw), rec);
-            const link = baseUrl(ctx) + '/reset?token=' + crypto.toHex(raw);
+            // Token in the URL FRAGMENT, not the query string: a fragment is never
+            // sent to the server (so it can't land in edge/CDN access logs) nor in
+            // the Referer header. The reset page reads it client-side from
+            // location.hash and should history.replaceState() to scrub it.
+            const link = baseUrl(ctx) + '/reset#token=' + crypto.toHex(raw);
             this.sendResetEmail(email, link);
         }
         return ackOk();
@@ -615,7 +683,9 @@ class Auth {
         rec.username = username;
         rec.exp = nowSecs() + CONFIRM_TTL_SECS;
         AuthDb.confirmTokens.create(tokenId(raw), rec);
-        const link = baseUrl(ctx) + '/confirm?token=' + crypto.toHex(raw);
+        // Token in the URL FRAGMENT (see resetRequest): kept out of server/CDN
+        // logs and the Referer header; the confirm page reads it from location.hash.
+        const link = baseUrl(ctx) + '/confirm#token=' + crypto.toHex(raw);
         const subject = 'Confirm your account';
         const text = 'Confirm your account by opening this link:\n' + link + '\n';
         const html =
