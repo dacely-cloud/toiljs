@@ -21,7 +21,7 @@ import { devEnvGet, devEnvGetSecure } from '../config/env.js';
 import { ratelimitCheck } from '../config/ratelimit.js';
 import { buildAnalyticsImports } from '../analytics/index.js';
 import { buildDatabaseImports, type DbDevState, freshDbState } from '../db/index.js';
-import { EmailStatus, getEmailService } from '../email/index.js';
+import { EmailStatus, getEmailService, recordSentEmail } from '../email/index.js';
 import { parseEmailBlob } from '../email/wire.js';
 import { buildCryptoImports, type CryptoState, freshCryptoState } from './crypto.js';
 
@@ -232,7 +232,9 @@ export function buildEnvImports(
             const raw = readBytes(ref, reqPtr, reqLen);
             const svc = getEmailService();
             if (svc === null) {
-                const to = parseEmailBlob(raw)?.to ?? '<unparsed>';
+                const parsed = parseEmailBlob(raw);
+                if (parsed !== null) recordSentEmail(parsed); // dev test seam
+                const to = parsed?.to ?? '<unparsed>';
                 process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
                 return EmailStatus.Sent;
             }
@@ -241,6 +243,7 @@ export function buildEnvImports(
                 process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
                 return status;
             }
+            recordSentEmail(parsed); // dev test seam
             void svc
                 .deliver(parsed)
                 .then((s) => {
@@ -351,7 +354,9 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                 const raw = readBytes(ref, reqPtr, reqLen);
                 const svc = getEmailService();
                 if (svc === null) {
-                    const to = parseEmailBlob(raw)?.to ?? '<unparsed>';
+                    const parsed = parseEmailBlob(raw);
+                    if (parsed !== null) recordSentEmail(parsed); // dev test seam
+                    const to = parsed?.to ?? '<unparsed>';
                     process.stdout.write(
                         `  ✉ dev email_send -> ${to} (no email config; not sent)\n`,
                     );
@@ -362,6 +367,7 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
                     process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
                     return status;
                 }
+                recordSentEmail(parsed); // dev test seam
                 void svc
                     .deliver(parsed)
                     .then((s) => {

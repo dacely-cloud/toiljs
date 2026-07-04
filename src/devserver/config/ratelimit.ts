@@ -36,6 +36,13 @@ interface RouteLimiter {
 /** `(routeId) -> limiter`, created lazily with the route's first-seen params. */
 const registry = new Map<number, RouteLimiter>();
 
+/** Drop all limiter state (tests). Each dev wasm dispatch shares this module-level
+ *  registry, so a test that fires many `@ratelimit`-decorated routes in one file
+ *  would otherwise carry counts across cases; reset between cases for isolation. */
+export function __resetRatelimitForTests(): void {
+    registry.clear();
+}
+
 export interface DevDecision {
     allowed: boolean;
     /** Whole seconds to wait before retrying (>= 1 when denied, 0 when allowed). */

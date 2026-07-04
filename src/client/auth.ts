@@ -207,6 +207,7 @@ export interface AuthOptions {
 export async function register(
     username: string,
     password: string,
+    email: string,
     opts: AuthOptions = {},
 ): Promise<void> {
     const baseUrl = opts.baseUrl ?? '/auth';
@@ -247,14 +248,20 @@ export async function register(
     }
     if (publicKey.length !== PUBLIC_KEY_LEN) throw new Error('auth: bad public key length');
 
-    // 3. Submit the public key + proof-of-possession.
+    // 3. Submit the username + email + public key + proof-of-possession.
     const finish = await postBinary(
         baseUrl,
         '/register/finish',
-        new DataWriter().writeString(username).writeBytes(publicKey).writeBytes(regProof).toBytes(),
+        new DataWriter()
+            .writeString(username)
+            .writeString(email)
+            .writeBytes(publicKey)
+            .writeBytes(regProof)
+            .toBytes(),
     );
     const finishStatus = finish.readU8();
     if (finishStatus === 1) throw new Error('auth: username already registered (log in instead)');
+    if (finishStatus === 2) throw new Error('auth: email already in use');
     if (finishStatus !== 0) throw new Error('auth: registration rejected');
 }
 
@@ -338,7 +345,15 @@ export async function login(
         '/login/finish',
         new DataWriter().writeBytes(cid).writeBytes(cipherText).writeBytes(signature).toBytes(),
     );
-    if (res.readU8() !== 0) {
+    const loginStatus = res.readU8();
+    if (loginStatus === 2) {
+        // The credential verified, but the domain requires a confirmed email and
+        // this account is not confirmed yet. Distinguishable so the UI can prompt
+        // "confirm your email" / offer a resend, rather than a generic failure.
+        wipe(sharedSecret);
+        throw new EmailNotConfirmedError();
+    }
+    if (loginStatus !== 0) {
         wipe(sharedSecret);
         throw new Error('auth: login failed');
     }
@@ -364,5 +379,116 @@ export async function login(
     return session; // session token
 }
 
+/** Thrown by {@link login} when the credential is valid but the account's email
+ *  is not confirmed and the domain requires confirmation. Catch it to prompt the
+ *  user to confirm (and offer {@link resendConfirmation}). */
+export class EmailNotConfirmedError extends Error {
+    constructor() {
+        super('auth: email not confirmed');
+        this.name = 'EmailNotConfirmedError';
+    }
+}
+
+/** Confirm an account from the one-time token in the emailed link
+ *  (`/confirm?token=<hex>`). Throws if the token is invalid or expired. */
+export async function confirmEmail(token: string, opts: AuthOptions = {}): Promise<void> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    const res = await postBinary(
+        baseUrl,
+        '/confirm',
+        new DataWriter().writeBytes(fromHex(token)).toBytes(),
+    );
+    if (res.readU8() !== 0) throw new Error('auth: confirmation link invalid or expired');
+}
+
+/** Ask the server to re-send the confirmation email. Resolves regardless of
+ *  whether the email maps to an unconfirmed account (the server never reveals
+ *  it): treat success as "if that address needs confirming, a link is on its
+ *  way." */
+export async function resendConfirmation(email: string, opts: AuthOptions = {}): Promise<void> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    await postBinary(baseUrl, '/confirm/resend', new DataWriter().writeString(email).toBytes());
+}
+
+/** Begin a password reset: ask the server to email a reset link. Resolves
+ *  regardless of whether the email exists (anti-enumeration) — always show the
+ *  user "if that email exists, a reset link is on its way." */
+export async function requestPasswordReset(email: string, opts: AuthOptions = {}): Promise<void> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    await postBinary(baseUrl, '/reset/request', new DataWriter().writeString(email).toBytes());
+}
+
+/**
+ * Complete a password reset from the one-time token in the emailed link
+ * (`/reset?token=<hex>`) and a NEW password. Mirrors registration's crypto: the
+ * new password is blinded through the OPRF, stretched with Argon2id into a fresh
+ * ML-DSA keypair, and only the new public key (+ a proof-of-possession) is sent;
+ * the server overwrites the stored login key. The username is recovered from the
+ * token server-side, so the caller only needs the token + the new password.
+ * Throws (generic) if the token is invalid or expired.
+ */
+export async function resetPassword(
+    token: string,
+    newPassword: string,
+    opts: AuthOptions = {},
+): Promise<void> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    const rawToken = fromHex(token);
+    const oprf = ristretto255_oprf.oprf;
+    const pw = utf8(newPassword.normalize('NFKC'));
+
+    // 1. Peek the token + OPRF-evaluate the new blinded password. The server
+    //    returns the account's username + KDF params (the token is not consumed
+    //    until finish).
+    const { blind, blinded } = oprf.blind(pw);
+    const start = await postBinary(
+        baseUrl,
+        '/reset/start',
+        new DataWriter().writeBytes(rawToken).writeBytes(blinded).toBytes(),
+    );
+    if (start.readU8() !== 0) throw new Error('auth: reset link invalid or expired');
+    const username = start.readString();
+    const kdf = decodeKdf(start);
+    const evaluated = start.readBytes();
+
+    // 2. OPRF -> keyed salt -> seed -> NEW keypair; keep only the public key + a
+    //    PoP over it. Wipe the secret key and seed immediately.
+    const oprfOutput = oprf.finalize(pw, blind, evaluated);
+    const seed = await deriveSeed(oprfOutput, kdf);
+    let publicKey: Uint8Array;
+    let regProof: Uint8Array;
+    try {
+        const kp = ml_dsa44.keygen(seed);
+        publicKey = kp.publicKey;
+        try {
+            regProof = ml_dsa44.sign(buildRegisterMessage(username, publicKey), kp.secretKey, {
+                context: utf8(REGISTER_CONTEXT),
+            });
+        } finally {
+            wipe(kp.secretKey);
+        }
+    } finally {
+        wipe(seed);
+    }
+    if (publicKey.length !== PUBLIC_KEY_LEN) throw new Error('auth: bad public key length');
+
+    // 3. Consume the token + overwrite the stored login key.
+    const finish = await postBinary(
+        baseUrl,
+        '/reset/finish',
+        new DataWriter().writeBytes(rawToken).writeBytes(publicKey).writeBytes(regProof).toBytes(),
+    );
+    if (finish.readU8() !== 0) throw new Error('auth: password reset rejected');
+}
+
 /** The client auth surface, grouped for `Auth.register` / `Auth.login` use. */
-export const Auth = { register, login, buildLoginMessage, LOGIN_CONTEXT } as const;
+export const Auth = {
+    register,
+    login,
+    confirmEmail,
+    resendConfirmation,
+    requestPasswordReset,
+    resetPassword,
+    buildLoginMessage,
+    LOGIN_CONTEXT,
+} as const;

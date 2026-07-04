@@ -24,21 +24,15 @@ import { DataReader, DataWriter } from 'data';
  */
 
 // @user: the authenticated-user shape. Exactly one per program.
+//
+// This app opts into built-in auth (`server: { auth: true }`), so the build runs in EXTEND mode: it
+// injects the reserved `toilUserId` + `username` identity fields into THIS class (via `--authUser`).
+// Only the app-specific extras (`admin`, `score`) are declared here — declaring `username`/`toilUserId`
+// would collide with the injected fields and error. The shipped `/auth/*` controller reuses this shape.
 @user
 class Account {
-    username: string = '';
     admin: bool = false;
     score: u64 = 0;
-}
-
-/** Encode the @user session payload for `username` (admin if `root`). Exported
- * as a FUNCTION (not the class, which would warn AS235 "only ... become WASM
- * exports") so the PQ login can mint a session via the same generated codec. */
-export function encodeSessionUser(username: string): Uint8Array {
-    const u = new Account();
-    u.username = username;
-    u.admin = username == 'root';
-    return u.encode();
 }
 
 @rest('session')

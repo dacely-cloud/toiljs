@@ -74,6 +74,50 @@ export class NodeEmailService {
     }
 }
 
+// --- Test-only capture seam ---------------------------------------------------
+
+/**
+ * A message the dev email pipeline decided to send (a real provider send, or the
+ * unconfigured stub), captured for TESTS ONLY. The built-in auth controller
+ * delivers its one-time confirm/reset tokens via email, so an e2e test reads the
+ * token straight out of the emitted link here. This is NOT a production path —
+ * the edge never imports this module, and real sends are unchanged.
+ */
+export interface SentEmail {
+    readonly to: string;
+    readonly subject: string;
+    /** Plain-text body (the confirm/reset link appears here and in `html`). */
+    readonly text: string;
+    readonly html: string;
+    /** Short non-PII tag the guest passed (e.g. `verify`, `reset`). */
+    readonly purpose: string;
+}
+
+/** Bounded ring of the most-recent dev sends (test seam). */
+export const __sentEmails: SentEmail[] = [];
+const SENT_EMAILS_MAX = 256;
+
+/**
+ * Record one dev send into {@link __sentEmails}. Called at the exact point the
+ * dev pipeline decides to send/stub, so it captures precisely the messages the
+ * guest emitted (and nothing it dropped/deduped).
+ */
+export function recordSentEmail(msg: ParsedEmail): void {
+    __sentEmails.push({
+        to: msg.to,
+        subject: msg.subject,
+        text: msg.body,
+        html: msg.html,
+        purpose: msg.purpose,
+    });
+    while (__sentEmails.length > SENT_EMAILS_MAX) __sentEmails.shift();
+}
+
+/** Clear the captured dev-send ring (tests call this between cases). */
+export function __clearSentEmails(): void {
+    __sentEmails.length = 0;
+}
+
 // --- Process-level singleton (one project per dev/self-host process) ----------
 
 let service: NodeEmailService | null = null;

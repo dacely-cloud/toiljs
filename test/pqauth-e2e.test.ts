@@ -21,6 +21,7 @@ import { ristretto255_oprf } from '@noble/curves/ed25519.js';
 
 import { WasmServerModule } from '../src/devserver/index.js';
 import { __resetDbForTests } from '../src/devserver/db/index.js';
+import { __resetRatelimitForTests } from '../src/devserver/config/ratelimit.js';
 import { Auth } from '../src/client/auth.js';
 import { DataReader, DataWriter } from '../src/io/codec.js';
 
@@ -85,6 +86,9 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
 
     beforeEach(() => {
         __resetDbForTests();
+        // The built-in controller decorates every route with `@ratelimit`; the dev limiter is a
+        // module-level singleton, so reset it per case to keep the many dispatches in this file isolated.
+        __resetRatelimitForTests();
         mod = loadModule();
         restoreFetch = installFetchShim(mod);
     });
@@ -93,7 +97,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'registers then logs in (full OPRF + ML-DSA + ML-KEM mutual-auth chain)',
         async () => {
-            await Auth.register('ada', 'correct horse battery staple');
+            await Auth.register('ada', 'correct horse battery staple', 'ada@example.com');
             // login resolves ONLY if the server's mutual-auth confirmation tag
             // verified against the client's own shared secret.
             const session = await Auth.login('ada', 'correct horse battery staple');
@@ -125,7 +129,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'rejects a wrong password at login',
         async () => {
-            await Auth.register('bob', 'hunter2-correct');
+            await Auth.register('bob', 'hunter2-correct', 'bob@example.com');
             await expect(Auth.login('bob', 'hunter2-WRONG')).rejects.toThrow(/login failed|request failed/);
         },
         60_000,
@@ -142,12 +146,13 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'rejects a duplicate registration with a clear (not generic) message',
         async () => {
-            await Auth.register('dupe', 'correct horse battery staple');
+            await Auth.register('dupe', 'correct horse battery staple', 'dupe@example.com');
             // Second registration of the same username must say so explicitly,
-            // not return the generic "request failed".
-            await expect(Auth.register('dupe', 'correct horse battery staple')).rejects.toThrow(
-                /already registered/,
-            );
+            // not return the generic "request failed". (The username-taken check fires
+            // before the email check, so it stays `already registered` even with the same email.)
+            await expect(
+                Auth.register('dupe', 'correct horse battery staple', 'dupe@example.com'),
+            ).rejects.toThrow(/already registered/);
         },
         60_000,
     );
@@ -155,7 +160,10 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
 
 // Lower-level wire checks that don't need the heavy Argon2id derivation.
 describe.skipIf(!haveWasm)('post-quantum auth wire-level (anti-enumeration, replay)', () => {
-    beforeEach(() => __resetDbForTests());
+    beforeEach(() => {
+        __resetDbForTests();
+        __resetRatelimitForTests();
+    });
 
     const oprf = ristretto255_oprf.oprf;
     const loginStart = (m: WasmServerModule, username: string) => {
@@ -193,7 +201,8 @@ describe.skipIf(!haveWasm)('post-quantum auth wire-level (anti-enumeration, repl
         expect(a.salt.length).toBe(16);
         expect(a.nonce.length).toBe(32);
         expect(a.evaluated.length).toBe(32);
-        expect(a.aud).toBe('toil-demo');
+        // The built-in controller returns `TOIL_AUTH_AUDIENCE` or the literal `'toil'` (dev has no secret set).
+        expect(a.aud).toBe('toil');
         // The randomized fields DO differ (fresh challenge each call).
         expect(hex(a.cid)).not.toBe(hex(b.cid));
     });

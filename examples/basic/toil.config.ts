@@ -2,6 +2,13 @@ import { defineConfig } from 'toiljs/compiler';
 
 // Client and server options go here. Output defaults to build/client and build/server.
 export default defineConfig({
+    // Opt into the framework's built-in post-quantum auth: the build appends the shipped
+    // `@rest('auth')` controller (`/auth/register|login/start|finish`, email verification,
+    // password reset, `/auth/me`, `/auth/logout`) to the toilscript entry set. This app keeps its
+    // own `@user` (server/routes/Session.ts), so the controller runs in EXTEND mode and reuses it.
+    server: {
+        auth: true
+    },
     client: {
         // Animate page transitions (View Transitions API; respects prefers-reduced-motion).
         viewTransitions: false,

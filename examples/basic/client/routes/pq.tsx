@@ -56,6 +56,7 @@ type Note = { kind: 'ok' | 'err'; text: string } | null;
 
 export default function Pq(): React.JSX.Element {
     const [username, setUsername] = useState('ada');
+    const [email, setEmail] = useState('ada@example.com');
     const [password, setPassword] = useState('correct horse battery staple');
     const [busy, setBusy] = useState(false);
     const [note, setNote] = useState<Note>(null);
@@ -70,7 +71,7 @@ export default function Pq(): React.JSX.Element {
         setNote(null);
         setVerified(null);
         try {
-            await Auth.register(username, password);
+            await Auth.register(username, password, email);
             setNote({
                 kind: 'ok',
                 text: 'registered: the server stored only your public key and a proof-of-possession. Now log in to run the ML-KEM-768 mutual-auth step.'
@@ -80,7 +81,7 @@ export default function Pq(): React.JSX.Element {
         } finally {
             setBusy(false);
         }
-    }, [username, password]);
+    }, [username, password, email]);
 
     const doLogin = useCallback(async () => {
         setBusy(true);
@@ -148,6 +149,15 @@ export default function Pq(): React.JSX.Element {
                 <label>
                     Username
                     <input value={username} onChange={(e) => setUsername(e.target.value)} style={{ width: '100%' }} />
+                </label>
+                <label>
+                    Email
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        style={{ width: '100%' }}
+                    />
                 </label>
                 <label>
                     Password
