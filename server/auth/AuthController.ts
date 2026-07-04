@@ -408,8 +408,11 @@ class Auth {
             return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
         }
         // Reserve the email -> username index (uniqueness for reset-by-email). A
-        // racing duplicate email loses here.
+        // racing duplicate email loses here: roll back the account we just created
+        // so a lost email race can't orphan a username whose email index points at
+        // someone else (which would also break reset-by-email for it).
         if (!AuthDb.emails.create(new EmailKey(email), new EmailOwner(username))) {
+            AuthDb.accounts.delete(new Username(username));
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
 
@@ -601,7 +604,11 @@ class Auth {
             rec.username = owner.username;
             rec.exp = nowSecs() + RESET_TTL_SECS;
             AuthDb.resetTokens.create(tid, rec);
-            AuthDb.resetTokenOf.create(new Username(owner.username), tid);
+            // If a concurrent reset request won the pointer index, roll back the
+            // token we just minted so exactly one stays outstanding (no orphan).
+            if (!AuthDb.resetTokenOf.create(new Username(owner.username), tid)) {
+                AuthDb.resetTokens.delete(tid);
+            }
             // Token in the URL FRAGMENT, not the query string: a fragment is never
             // sent to the server (so it can't land in edge/CDN access logs) nor in
             // the Referer header. The reset page reads it client-side from
@@ -721,7 +728,11 @@ class Auth {
         rec.username = username;
         rec.exp = nowSecs() + CONFIRM_TTL_SECS;
         AuthDb.confirmTokens.create(tid, rec);
-        AuthDb.confirmTokenOf.create(new Username(username), tid);
+        // If a concurrent request won the pointer index, roll back the token we
+        // just minted so exactly one stays outstanding (no orphan).
+        if (!AuthDb.confirmTokenOf.create(new Username(username), tid)) {
+            AuthDb.confirmTokens.delete(tid);
+        }
         // Token in the URL FRAGMENT (see resetRequest): kept out of server/CDN
         // logs and the Referer header; the confirm page reads it from location.hash.
         const link = baseUrl(ctx) + '/confirm#token=' + crypto.toHex(raw);

@@ -137,8 +137,17 @@ function __sessionTenantTag(): string {
     const raw = req.header('host');
     if (raw == null) return '';
     let h = raw.toLowerCase();
-    const colon = h.lastIndexOf(':');
-    if (colon > 0) h = h.slice(0, colon); // drop :port (mirrors edge strip_port)
+    if (h.startsWith('[')) {
+        // IPv6 literal `[addr]` optionally + `:port`: keep through the closing
+        // bracket, drop any port after it. A naive lastIndexOf(':') would slice
+        // inside the address (`[::1]` -> `[:`), collapsing distinct IPv6 tenants
+        // to the same tag. Bracket-aware, matching the edge's strip_port.
+        const close = h.indexOf(']');
+        if (close >= 0) h = h.slice(0, close + 1);
+    } else {
+        const colon = h.lastIndexOf(':');
+        if (colon > 0) h = h.slice(0, colon); // drop :port (mirrors edge strip_port)
+    }
     return h;
 }
 
