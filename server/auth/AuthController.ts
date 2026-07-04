@@ -154,12 +154,27 @@ function safeAuthority(host: string): string | null {
 }
 
 /** A tenant-configured base URL is trusted (they own it) but must still be a
- *  well-formed absolute http(s) origin with no control/header-injection chars. */
+ *  well-formed absolute http(s) origin with no control/injection chars: this value
+ *  is concatenated into the emailed link, so a space (a second URL), a quote/angle
+ *  (href breakout / HTML injection into the tenant's own emails), or a control
+ *  (CR/LF) must all be rejected. */
 function isAbsoluteHttpUrl(s: string): bool {
     if (!s.startsWith('https://') && !s.startsWith('http://')) return false;
     for (let i = 0; i < s.length; i++) {
         const c = s.charCodeAt(i);
-        if (c < 0x20 || c == 0x7f) return false; // reject CR/LF/other controls
+        // Reject controls + space (<=0x20), DEL, and the quote/angle/backtick chars
+        // that enable a second URL, an href breakout, or HTML injection.
+        if (
+            c <= 0x20 ||
+            c == 0x7f ||
+            c == 0x22 || // "
+            c == 0x27 || // '
+            c == 0x3c || // <
+            c == 0x3e || // >
+            c == 0x60 //   `
+        ) {
+            return false;
+        }
     }
     return true;
 }
