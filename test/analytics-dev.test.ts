@@ -80,6 +80,18 @@ describe('dev analytics stub v2 frame parity', () => {
         expect(b2.readUInt32LE(4)).toBe(60); // bucketSecs
         expect(b2.readUInt32LE(16)).toBe(60); // count
 
+        // F1 guard: a minute-ring metric OTHER than Requests must ALSO get minute resolution on 1h.
+        // GasUsed(11) is in the edge minute ring; a stale dev set fell back to the hour ring here.
+        imports.analytics_series(0, 0, 11, 0); // GasUsed, 1h
+        const bGas = db.lastResult as unknown as Buffer;
+        expect(bGas.readUInt32LE(4)).toBe(60); // minute bucketSecs (was wrongly 3600 pre-fix)
+        expect(bGas.readUInt32LE(16)).toBe(60); // 60 minute buckets (was wrongly 1)
+        // A metric NOT in the minute ring (Status2xx=3) falls back to the hour ring on 1h.
+        imports.analytics_series(0, 0, 3, 0);
+        const bStat = db.lastResult as unknown as Buffer;
+        expect(bStat.readUInt32LE(4)).toBe(3600); // hour bucketSecs
+        expect(bStat.readUInt32LE(16)).toBe(1); // 1 hour bucket
+
         // range 8 (D60) + 9 (D90) -> DAY ring: 60/90 buckets, bucketSecs 86400.
         imports.analytics_series(0, 0, 0, 8);
         const b60 = db.lastResult as unknown as Buffer;
@@ -94,5 +106,8 @@ describe('dev analytics stub v2 frame parity', () => {
         expect(imports.analytics_series(0, 0, 999, 3)).toBeLessThan(0);
         expect(imports.analytics_series(0, 0, 0, 99)).toBeLessThan(0);
         expect(imports.analytics_series(0, 0, 0, 10)).toBeLessThan(0);
+        // F2: valid ids are 0..=45 (gauges 42..=45); 46 is past the end and must be rejected like the edge.
+        expect(imports.analytics_series(0, 0, 46, 3)).toBeLessThan(0);
+        expect(imports.analytics_series(0, 0, 45, 3)).toBeGreaterThan(0); // gauge id 45 is valid
     });
 });

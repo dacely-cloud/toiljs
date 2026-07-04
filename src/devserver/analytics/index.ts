@@ -134,9 +134,13 @@ function encodeStats(s: DevTenantStats): Buffer {
     return Buffer.concat([head, body]);
 }
 
-/** The metric ids carried in the per-minute ring (mirrors the edge `MINUTE_RING_METRICS`). Only these get
- *  minute resolution on the 1h/6h ranges; every other metric falls back to the hour ring there. */
-const MINUTE_RING_METRICS = new Set<number>([0, 2, 1, 25, 26, 12, 13, 39, 43, 45]);
+/** The metric ids carried in the per-minute ring (mirrors the edge `MINUTE_RING_METRICS` in
+ *  `toil-backend/src/analytics/ring.rs` EXACTLY). Only these get minute resolution on the 1h/6h ranges;
+ *  every other metric falls back to the hour ring there. These are the AUTHORITATIVE edge ids
+ *  (Requests=0, BytesInL1=2, BytesOutL1=1, GasUsed=11, DbOps=12, StreamBytesIn=24, StreamBytesOut=25,
+ *  MemGrownBytes=38, ConnectedStreamsAvg=42, CommittedMemoryAvg=44) -- must match the reindexed layout or
+ *  the dev 1h/6h graphs pick the wrong ring for these metrics. */
+const MINUTE_RING_METRICS = new Set<number>([0, 1, 2, 11, 12, 24, 25, 38, 42, 44]);
 
 /**
  * Range id -> (bucketCount, bucketSecs), matching the edge `Range` + minute-ring fallback: 1h/6h are
@@ -241,9 +245,9 @@ export function buildAnalyticsImports(
             range: number,
         ): number => {
             if (domainLen > MAX_DOMAIN_LEN) return ABSENT;
-            // Valid metric ids are 0..=46 (counters 0..=42 + the 4 gauge avg/peak series); ranges 0..=9
-            // (H1..D30 plus the appended D60/D90 day ranges).
-            if (metricId < 0 || metricId > 46 || range < 0 || range > 9) return ABSENT;
+            // Valid metric ids are 0..=45 (counters 0..=41 + the 4 gauge avg/peak series 42..=45), matching
+            // the edge `MetricId::from_u16` (v < N_METRICS=46); ranges 0..=9 (H1..D30 + D60/D90).
+            if (metricId < 0 || metricId > 45 || range < 0 || range > 9) return ABSENT;
             if (domainLen > 0) {
                 if (!ref.memory) throw new Error('analytics_series called before memory was bound');
                 const m = Buffer.from(ref.memory.buffer);
