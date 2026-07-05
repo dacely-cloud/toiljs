@@ -20,7 +20,7 @@
         "@types/react-dom": "^19.2.3",
         "eslint": "^10.6.0",
         "prettier": "^3.9.4",
-        "toilscript": "^0.1.54",
+        "toilscript": "^0.1.55",
         "typescript": "^6.0.3"
     }
 }
