@@ -1,6 +1,6 @@
 # How toil is distributed
 
-Distributing a website's reads is easy. Distributing its writes is the hard part almost nobody solves, and it is why "global" apps are usually only half global. Here is the problem, and how ToilDB (the database built into toil) actually distributes the writes.
+Distributing a website's reads is easy. Distributing its writes is the hard part almost nobody solves, and it is why "global" apps are usually only half global. Here is the problem, and how ToilDB (the database built into toil) is built to distribute the writes.
 
 ## Reads are easy, writes are hard
 
@@ -8,8 +8,7 @@ A read never changes anything, so you copy your data to servers worldwide and le
 
 A write is a change, and two writes to the *same thing* can collide. A counter says `10`. Tokyo and Paris both read `10`, both add one, both write `11`. The real answer was `12`, so one add vanished with no error. That is a **write conflict**.
 
-You could make every copy agree before accepting a write, but the network will eventually split (a **partition**), and the **CAP tradeoff** says that during a split you keep only two of consistency, availability, and partition tolerance. You either refuse the write (correct but unavailable) or accept it on one side and reconcile later (available but briefly inconsistent). Distributing writes is a real tradeoff to design around.
-
+You could make every copy agree before accepting a write, but the network will eventually split (a **partition**), and the **CAP tradeoff** says that during a split you keep only two of consistency, availability, and partition tolerance. You either refuse the write (correct but unavailable) or accept it on one side and reconcile later (available but briefly inconsistent). Distributing writes is a real tradeoff to design around, not a bug to patch away.
 
 ## So almost everyone centralizes the write database
 
@@ -64,7 +63,17 @@ Distributing writes is not one problem with one answer; each family is the right
 
 The per-key-home model only works if a lot of unglamorous machinery runs reliably across a flaky network, and ToilDB owns it: per-key **placement** and safe **rehoming** (a rising epoch plus a fencing token so the old owner stops the instant the new one takes over), ordered **cross-region replication** with per-stream cursors that detect and backfill gaps, **idempotent apply** so redelivered writes cannot double-count, **capacity escrow** and **tenant quotas**, and **failover** with snapshot re-seeding for a cell that has fallen too far behind. Getting all of these right at once is exactly why truly distributed websites are rare.
 
-**Still being finished:** live multi-cell **WAN routing** (wiring many real regions into one running mesh) and the full database-level **leader fencing** on the write path (the host-side leader gate is the current version). The design is settled; the last-mile host wiring is what remains.
+## What is real today, honestly
+
+This is the hard part almost nobody does, so here is a straight account of where it stands.
+
+The per-key-home model and all of its core logic (placement, rehoming, replication, idempotent apply, escrow, quotas, failover) are **built and tested**. The mechanism is real, not a diagram.
+
+What is not on by default is the **live multi-region deployment**: wiring many real regions into one running mesh (WAN routing) and the [ScyllaDB](https://www.scylladb.com/) storage that backs a production cluster are **configuration-gated**, so you switch them on for a real deployment rather than getting a live global write cluster automatically. The full database-level **leader fencing** on the write path is also still landing (a host-side leader gate is the current version). The design is settled; the last-mile host wiring is what remains.
+
+On your laptop, `toiljs dev` runs a single **in-process** database: everything homes in one place, so your code behaves exactly as it will worldwide, but the distribution only spreads out once you deploy with the multi-cell backing configured. You write your app the same way either way; that is the point.
+
+The honest one-liner: toil is **built** to distribute writes worldwide, the mechanism is real, and turning it on across live regions is a deployment step, not a rewrite of your app.
 
 ## Related
 

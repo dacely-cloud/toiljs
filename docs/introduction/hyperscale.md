@@ -2,50 +2,69 @@
 
 **Hyper-scale** is serving very large, worldwide traffic at low latency without rebuilding your app as it grows. The test: when traffic goes from a thousand users to a hundred million across every continent, do you rewrite the system, or just run more of it?
 
-Most stacks scale the easy half (serving pages and cached reads from many places) but leave the hard half (writes, where data actually changes) in one region, so they slow down at once when enough far-away users start writing. toil scales both halves out together. It promises a design where scaling is cheap, adding more identical edge nodes with no central part everything funnels through, not a specific requests-per-second number.
+Plenty of stacks can reach that scale if you throw money at it: dedicated infrastructure per app, a rented vendor for each moving part, and an ops team to keep the seams from tearing. toil was built for the same scale from the other direction: **cheaply and efficiently**. The whole design is aimed at making top-tier reach the default, not a budget line. Cost is the point of this page.
 
-## The mechanisms
+## Why hyper-scale is normally expensive
 
-**1. Compute next to the user.** toil has no origin server. Your `server.wasm` and its database are replicated to the [edge](../concepts/tiers.md) and run on the node nearest each user, so there is no slow hop to a faraway box. This is the biggest latency win, and the rest of the design exists to support it.
+Running near your users usually means paying for it in three places at once:
+
+- **Dedicated infrastructure per app.** Each app gets its own boxes, its own containers, its own always-warm capacity. Spread that across many cities and you are renting a lot of mostly-idle hardware.
+- **A far-away origin.** Most stacks serve pages from everywhere but send anything real back to one origin server in one region. Every write and every dynamic call pays for a round trip across the planet.
+- **A centralized write database.** The reads scale out; the writes funnel into one primary in one city. That box is both the bottleneck and the thing you overprovision to keep ahead of.
+
+Each of those is a cost multiplier, and they stack. toil removes all three.
+
+## How toil makes it cheap
+
+Three mechanisms do the work, and they reinforce each other.
+
+**1. Density: one box safely runs many apps.** Your backend compiles to its own tiny, [sandboxed](./how-it-works.md#what-build-produces) WebAssembly module that starts fast, runs at near-native speed, and cannot touch another tenant's files, memory, or network. Because the sandbox is that tight, **one shared edge box holds many apps at once** instead of one app per machine. That multi-tenant density is what makes running near everyone affordable: you are not renting dedicated hardware in fifty cities, you are one tenant on boxes that are already there and already busy.
+
+**2. Edge locality: no trip to a central origin.** toil has no origin server. Every request runs on the [edge](../concepts/tiers.md) node nearest the user, on the per-request **L1 hot path**: the network hands the bytes to the WASM host, your handler runs, a response goes back, all in one place. There is no slow hop to a faraway box to make the request "real." Removing the origin removes both the latency and the standing cost of running one.
+
+**3. Local reads, homed writes.** The data your handlers share lives in [ToilDB](../database/README.md), replicated outward so every edge node reads from a copy right next to it. Writes are not centralized either: every key has one **home region** that orders its writes, while the data replicates out for fast local reads. So you get nearby reads everywhere without a single primary that every write funnels through, and without paying to overprovision one. The mechanism and its honest trade-off (eventual consistency) are in [how toil is distributed](./distributed.md).
 
 ```mermaid
 flowchart LR
-    subgraph Origin["Everything funnels to one origin"]
+    subgraph Origin["The expensive shape: everything funnels to one origin"]
         direction TB
         A1["User (Tokyo)"] -->|slow| O[("Origin + DB<br/>(Virginia)")]
         A2["User (Paris)"] -->|slow| O
         A3["User (Sydney)"] -->|slow| O
     end
-    subgraph Toil["Edge + distributed DB scales out"]
+    subgraph Toil["The cheap shape: shared edge + homed writes"]
         direction TB
-        B1["User (Tokyo)"] --> E1["Edge + data (Tokyo)"]
-        B2["User (Paris)"] --> E2["Edge + data (Paris)"]
-        B3["User (Sydney)"] --> E3["Edge + data (Sydney)"]
+        B1["User (Tokyo)"] --> E1["Edge box + local data (Tokyo)"]
+        B2["User (Paris)"] --> E2["Edge box + local data (Paris)"]
+        B3["User (Sydney)"] --> E3["Edge box + local data (Sydney)"]
         E1 <-.->|"replicate"| E2
         E2 <-.->|"replicate"| E3
     end
 ```
 
-The left side has one hot center every user drags a request to and back from, a bottleneck no amount of caching removes. The right side has no center: add a city, add an edge node.
+The left side has one hot center every user drags a request to and back from, plus its dedicated fleet, a cost no amount of caching removes. The right side has no center and no per-app fleet: add a city, add a shared box, and every tenant on it gets that city for near nothing.
 
-**2. WASM isolation and density.** Each site compiles to its own tiny, [sandboxed](./how-it-works.md#what-build-produces) WASM module that starts fast and cannot touch another tenant's files, memory, or network. Hard per-request limits (a memory cap in the tens of MiB, a **hard compute cap** that cuts off a looping handler, rate limits, and hostile-wasm containment) let one box safely hold many tenants at once, which is what makes compute in many cities affordable instead of a luxury.
+## Why this is cheap, in one line each
 
-**3. Allocation-free hot path.** The code that runs on every request wastes nothing: no per-request allocations, and no garbage-collection pauses (so no random latency spikes under load). This earns latency with lean code rather than by overprovisioning hardware to hide slow code, which is a bar toil holds itself to explicitly ([the RSG rubric](./design-principles.md)).
+- **Density** means the cost of an edge presence is split across many tenants, not carried by one app.
+- **Edge locality** means no origin fleet to run and no cross-planet round trip to pay for on every real request.
+- **No dedicated infra** means you scale by adding interchangeable shared nodes, not by standing up a new stack per app.
 
-**4. Stateless tier over a distributed database.** A fresh copy of your handler serves each request and keeps nothing, so every node is interchangeable and you scale out purely by adding more. The data they share lives in [ToilDB](../database/README.md), which distributes **writes** too, not just reads, so there is no single box every write funnels through. The write mechanism and its honest trade-off (eventual consistency) are in [how toil is distributed](./distributed.md).
+Take any one away and a cost reappears: no density and running near everyone is a luxury again; no edge locality and you are back to paying for an origin; a centralized write path and the database caps you and gets overprovisioned to compensate.
 
-**5. Modern transport.** The edge speaks HTTP/3 over QUIC (with graceful fallback to HTTP/2 and HTTP/1.1, plus WebTransport for realtime), and its networking is tuned to keep the connection-level cost of each request low as traffic grows. You configure none of it.
+## An honest note
 
-The five reinforce each other: take any one away and a bottleneck reappears. No density and edge compute is too expensive to spread; no distributed writes and the database caps you; a wasteful hot path and you are back to buying latency with servers.
+This is the design, not a benchmark. Real throughput and latency depend on your hardware, where your users are, how your data is shaped, and how your handler is written. toil removes the central bottlenecks and keeps per-request cost low; it does not make a slow handler fast or repeal the speed of light between continents.
 
-## An honest note on numbers
+A few things are honestly staged, not "already everywhere":
 
-This describes a design, not a benchmark: real throughput and latency depend on your hardware, where your users are, how your data is shaped, and how your handler is written, and toil removes central bottlenecks and keeps per-request cost low without making a slow handler fast or repealing the speed of light between continents.
+- The per-request **L1** edge path is live and real. The **L2** regional, **L3** continental, and **L4** global-daemon tiers are opt-in and deployment-gated, not always-on for every app. See the [tiers page](../concepts/tiers.md).
+- ToilDB's home-region write model and its core logic are real and tested, but **live multi-cell deployment** (WAN routing, the ScyllaDB backing) is configuration-gated, not on by default. The local dev database is a single in-process store. [How toil is distributed](./distributed.md) is honest about what is finished.
 
 ## Related
 
 - [How toil is distributed](./distributed.md): distributing the writes, the hard problem this rests on.
-- [Why toil is built this way (the RSG bar)](./design-principles.md): the efficiency check behind the hot path.
 - [Compute tiers](../concepts/tiers.md): L1 through L4, and the stateless request model.
 - [How toil works](./how-it-works.md): the build outputs and the request lifecycle.
 - [The database (ToilDB)](../database/README.md): families, homes, and eventual consistency.
+- [Why toil is built this way (the RSG bar)](./design-principles.md): the efficiency check behind the hot path.

@@ -1,36 +1,81 @@
 # The modern stack: what toil gives you that others do not
 
-Most frameworks give you a way to write code and then send you shopping: a database, an auth provider, email, a rate limiter, analytics, a realtime service, a job runner, all wired together and kept in sync by you. toil owns those parts instead: built in, and on from the first line. This page is the catalog of what ships; for how the edge and distribution actually work, see [How toil works](./how-it-works.md) and [How toil is distributed](./distributed.md).
+Most frameworks give you a way to write code and then send you shopping: a database, an auth provider, email, a rate limiter, analytics, a realtime service, a job runner, each its own account, bill, and SDK, all wired together and kept in sync by you. toil owns those parts instead. They ship in one framework, they are toil's own (nothing third-party sits on your critical path), and they are on from the first line with zero configuration. This page is the full catalog.
 
-## What is built in
+The point is not that toil bundles a lot. It is that the good version is the default version: a solo builder gets the same baseline as a funded team, without assembling or babysitting ten vendors. For how the edge and worldwide distribution actually work, see [How toil works](./how-it-works.md) and [How toil is distributed](./distributed.md).
+
+## The backend, built in
+
+Your TypeScript backend declares what it needs with a decorator or a one-line config flag. toil provides the machinery.
 
 | Feature | What it is | Why it matters |
 | --- | --- | --- |
-| Edge compute over HTTP/3 | Frontend and backend both run on servers in many cities, over HTTP/3 with automatic fallback to HTTP/2 or HTTP/1.1. | Code runs next to the user, so there is no slow round trip to one origin. |
-| [ToilDB](../database/README.md) | A global database with no connection string and seven families (documents, unique, counter, events, capacity, membership, view). | Distributes writes, not just reads, so a thousand servers can write at once without a single-region bottleneck (trade: eventual consistency). |
-| [Post-quantum auth](../auth/README.md) | Password login via `server: { auth: true }`; the password becomes an ML-DSA-44 key in the browser and the server stores only the public key. | The password never crosses the wire in a replayable form, so a breached server yields no usable passwords, and there is no identity vendor to rent. |
-| Automatic SRI | A SHA-384 fingerprint on every local script, preload, and stylesheet, plus an import map covering the whole module graph. | Tampered assets simply do not run, even if a CDN or cache hop is compromised. |
-| [Email](../services/email.md) | `EmailService.send(...)` or a reusable `EmailTemplate` with `{{placeholder}}` bodies, through a provider you configure once. | Verification codes, resets, and receipts are one call: validated, per-tenant capped, and off the worker while the provider replies. |
+| [Post-quantum auth](../auth/README.md) | Password login via `server: { auth: true }`. The password is stretched (OPRF + Argon2id) into an ML-DSA-44 keypair in the browser; only the public key is sent; login runs ML-KEM-768 mutual auth so the client also verifies the server. | Real post-quantum cryptography (the NIST-standardized algorithms), in about one line. The password never reaches the server in a usable form, so a breached server yields nothing replayable, and there is no identity vendor to rent. |
+| [ToilDB](../database/README.md) | A global database with no connection string and seven purpose-built families. Its differentiator is distributed writes: every key has one home region that orders its writes, while data replicates outward for fast local reads. | Distributes writes, not just reads, so a thousand servers can write at once with no single-region bottleneck. This is the hard part almost nobody does (trade: eventual consistency, a far read can lag a few ms). |
+| [Email](../services/email.md) | `EmailService.send(...)`, or a reusable `EmailTemplate` with `{{placeholder}}` bodies, through a provider you configure once. | Verification codes, resets, and receipts are one validated, per-tenant-capped call, off the worker while the provider replies. |
 | [Rate limiting](../services/ratelimit.md) | `@ratelimit` on a route, counted at the edge in an exact cross-worker limiter keyed on the caller's network address. | Over-limit clients are rejected before your code runs, blunting brute-force and spam. |
-| [Analytics and time series](../services/analytics.md) | The `Analytics` global reads your site's own counters: `self()` for a snapshot, `series(metric, range)` for a graph. | A real usage dashboard with no extra code and no analytics vendor, correct across every edge location. |
-| [Realtime streaming](../realtime/README.md) | A `@stream` class with `@connect`/`@message`/`@close`/`@disconnect` hooks, opened from React with `useChannel`; WebTransport in production, WebSocket in dev. | A resident instance stays alive per connection and remembers state next to the user (chat, presence, progress). |
-| [Daemons and @derive](../background/README.md) | `@daemon` runs one global background worker on a schedule (interval or cron) with lease-based failover; `@derive` re-runs when its source data changes to refresh a View. | Nightly jobs and rollups run once globally, with no cron server, queue, or leader election to run yourself. |
-| [Owned globals](../services/README.md) | No-import cookies (read/set, sign or encrypt), crypto (hash, HMAC, AES, random), time (the edge clock), and environment/secrets. | Your request's small dependencies live in one system, and your compiled program carries no credential. |
-| [Toolchain](../cli/README.md) | `toiljs create` scaffolding, a shared ESLint config, Prettier plus a decorator-aware plugin, an editor plugin, one CLI, and `toiljs doctor --fix`. | Set up for you and wired by types, so a server change is a compile error at your desk, not a production bug. |
-| LLM-friendly docs | A machine-readable `llms.txt` plus a generated `.toil/docs/` folder and pointer files (`CLAUDE.md`, `AGENTS.md`, editor rules), refreshed on every build. | An assistant reads your current conventions instead of guessing from stale training. |
+| [Analytics](../services/analytics.md) | The `Analytics` global reads your site's own counters: `self()` for a snapshot, `series(metric, range)` for a graph. | A real usage dashboard with no extra code and no analytics vendor. |
+| [Realtime streaming](../realtime/README.md) | A `@stream` class with `@connect` / `@message` / `@close` / `@disconnect` hooks, opened from React with `useChannel`. WebTransport (over QUIC) in production, WebSocket in dev. | A resident instance stays alive per connection and remembers state next to the user: chat, presence, live progress. |
+| [Background jobs (`@daemon`)](../background/daemons.md) | One global background worker on a schedule (interval or cron), with lease-based failover so exactly one instance runs worldwide. | Nightly jobs run once globally, with no cron server, queue, or leader election to run yourself. |
+| [Scheduled jobs (`@scheduled`)](../background/daemons.md) | A method that fires on an interval or cron expression, driven by the same lease so it runs once across the fleet. | Recurring work (cleanup, digests, syncs) without standing up a scheduler. |
+| [Materialized views (`@derive`)](../background/derive.md) | A function that re-runs when its source data changes and writes the result into a View family. | Rollups and denormalized read models stay fresh automatically, so reads are cheap without a hand-rolled pipeline. |
+| [Sessions and cookies](../services/cookies.md) | No-import cookie read/set, signed or encrypted, plus the session layer that backs `@auth`. | Login state and small per-user data without a session store to provision. |
+| [Environment and secrets](../services/environment.md) | A per-tenant environment store for config and secrets, read at the edge, never baked into the shipped WASM. | Your compiled program carries no credential; secrets live in one place, disjoint from public config. |
 
-## Built in versus assemble it yourself
+### The seven ToilDB families
+
+One database, seven shapes, each tuned to its access pattern rather than bent out of a single table model.
+
+| Family | For |
+| --- | --- |
+| [Documents](../database/documents.md) | General structured records. |
+| [Unique](../database/unique.md) | Uniqueness constraints (one email, one handle). |
+| [Counter](../database/counters.md) | High-throughput increments (views, likes, quotas). |
+| [Events](../database/events.md) | Append-only logs and feeds. |
+| [Membership](../database/membership.md) | Set membership and relationships (who is in what). |
+| [Capacity](../database/capacity.md) | Bounded resources and seat/slot allocation. |
+| [View](../database/views.md) | Read models materialized by `@derive`. |
+
+## The frontend, built in
+
+The React client is Vite-fast and typed end to end. The pieces that usually take a build config, a fetch layer, and an SEO plugin are already wired.
+
+| Feature | What it is | Why it matters |
+| --- | --- | --- |
+| [File routing](../frontend/routing.md) | Routes are files under `client/routes/`. The tree is your URL map. | No router config to hand-maintain; add a file, get a route. |
+| [Loaders with revalidation](../frontend/data-fetching.md) | A route `loader` fetches its data before render and revalidates on demand. | Data arrives with the page, not after a client-side waterfall. |
+| [Two rendering paths](../frontend/rendering.md) | Build-time prerender for SEO by default, plus opt-in edge SSR with `export const ssr = true`, both hydrated with `hydrateRoot`. | Static-fast pages where you can, live server rendering where you need it, one codebase. |
+| [Typed `Server` client](../frontend/data-fetching.md) | A generated client (`Server.REST.*`, `Server.Stream.*`, `Server.<service>`) so the browser calls the backend with end-to-end types. | No hand-written fetch and no drift: rename a field on the server and the frontend stops compiling until you fix it. |
+| [Image with LQIP](../frontend/images.md) | A built-in `Image` component with blur / low-quality placeholders and reserved aspect ratio. | Fast, layout-stable images with no CLS and no separate image service. |
+| [Metadata and SEO](../frontend/metadata.md) | Per-route title, description, canonical, and Open Graph (including `og:image`), baked into the served HTML head. | Correct SEO and share cards in view-source, not assembled by JavaScript after load. |
+| [Page search](../frontend/search.md) | A static index of each route's title, description, keywords, and Open Graph, generated at build. | In-app search with no search vendor (see the caveat below). |
+| [SHA-384 SRI](../concepts/security.md) | Subresource Integrity plus importmap integrity on every shipped script, preload, and stylesheet, across the whole module graph. | A tampered asset simply does not run, even if a CDN or cache hop is compromised. |
+
+## Owned, not rented
+
+Everything above is toil's own code on your critical path, not a black box you cannot inspect, patch, or secure. That is the difference the table below draws.
 
 | Capability | toil (built in, zero setup) | Typical stack (you assemble it) |
 | --- | --- | --- |
-| Edge and transport | Frontend and backend worldwide over HTTP/3 | A separate edge product, often reads-only |
 | Database | ToilDB: global, distributed writes, seven families | A managed database, usually single-region for writes |
 | Auth | Post-quantum login; the server holds no password | A rented identity provider or hand-rolled hashing |
 | Email, rate limiting, analytics | Built-in primitives, one call each | A separate SDK or vendor per capability |
-| Realtime and background | `@stream`, `@daemon`, `@derive` | A realtime service plus a cron server, queue, and leader election |
-| Asset integrity and toolchain | Automatic SRI, ESLint/Prettier/editor plugins, one CLI | Manual or skipped; configured and maintained by you |
+| Realtime and background | `@stream`, `@daemon`, `@scheduled`, `@derive` | A realtime service plus a cron server, queue, and leader election |
+| Sessions, secrets, cookies | Owned globals, no store to provision | A session store and a secrets manager to run |
+| Frontend integrity and SEO | Automatic SHA-384 SRI, Image/LQIP, metadata, page search | Plugins and services bolted on per concern |
 | Critical-path ownership | The core is toil's own | A mix of vendors you cannot inspect or fix |
+
+Honest boundary: "owned" means the core of a working app is toil's, not that outside services are banned. Call a payment provider or another API and you still can.
+
+## The honest caveats
+
+toil grades itself on honesty, so read these before you count on anything.
+
+- **Distributed writes are built, live multi-cell is config-gated.** The home-region model and its core logic are real and tested, but live multi-region deployment (WAN routing, the ScyllaDB backing) is opt-in, not on by default. The local dev database is a single in-process store. toil is built to distribute writes worldwide; not every app is running a live global write cluster today.
+- **Analytics is a dev stub locally.** It is real on the edge; the local dev server returns sample data.
+- **Auth secrets ship as dev placeholders.** The session HMAC, OPRF seed, and ML-KEM key are clearly-insecure placeholders so `toiljs dev` just works. A real deployment must set its own (per-tenant auto-generation at domain registration is the plan).
+- **Page search indexes static metadata only.** Routes whose metadata comes from a dynamic `generateMetadata` are not in the index.
 
 ## Why it is all a default
 
-None of this is an upgrade you unlock later. toil grades itself against [RSG](./design-principles.md) (Resilience and Scale Grade), whose one rule is that your grade is your weakest axis, never the average, so these batteries exist to keep any single axis from quietly capping the whole. Where the honest trade fits your project (ToilDB is not general SQL, the server language is a strict TypeScript subset, the catalog is younger than long-established platforms), the built-in stack is the whole point; [Why toil](./why-toil.md) says where it does not.
+None of this is an upgrade you unlock later. toil grades itself against [RSG](./design-principles.md) (Resilience and Scale Grade), whose one rule is that your grade is your weakest axis, never the average, so these batteries exist to keep any single axis from quietly capping the whole. Where the honest trade fits your project (ToilDB is not general SQL, the server language is a strict TypeScript subset, the catalog is younger than long-established platforms), the built-in stack is the whole point. [Why toil](./why-toil.md) says where it does not.
