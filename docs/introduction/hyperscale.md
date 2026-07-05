@@ -1,6 +1,6 @@
 # What makes toil hyper-scalable
 
-Hyper-scale means serving very large worldwide traffic at low latency without rebuilding your app as it grows. The test is simple. Traffic climbs from a thousand users to a hundred million across every continent. Do you rewrite the system, or just run more of it?
+Hyper-scale means serving very large worldwide traffic at low latency without rebuilding your app as it grows. Picture traffic climbing from a thousand users to a hundred million across every continent. Do you rewrite the system, or just run more of it?
 
 Any stack can reach that scale if you spend enough: dedicated infrastructure per app, a rented vendor for each moving part, and an ops team to keep the seams from tearing. toil reaches the same scale from the other direction, cheaply. The whole design aims to make worldwide reach a default, not a budget line. This page is about cost.
 

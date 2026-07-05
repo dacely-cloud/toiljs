@@ -18,20 +18,29 @@ Types tie the three together. Change a field on the server and the client stops 
 
 ## The problem it solves
 
-Most apps read fast and write slow. Pages load from caches everywhere, but a write, say a comment or an order, has to reach one database in one region. A user in Tokyo writing to Virginia waits for the trip there and back. That single region is also a single point of failure.
+A good web app should be fast everywhere, secure by default, and able to grow without a rewrite. Getting there is the hard part, and most of it has nothing to do with your actual product.
 
-toil closes the gap in two moves. Your code runs at the edge instead of one origin. And ToilDB is built to distribute the writes, not just the reads: every key has a home region that orders its writes, while the data copies outward so reads stay local and quick.
+You assemble it from rented parts: a host, serverless functions, a database, an auth provider, email, a cache, a queue, analytics, a realtime service. Each is its own account, bill, and SDK, and you keep them all in sync. Under that sits a decade of legacy tooling and a node_modules folder heavier than your app. Worse, the fast and secure version is never the default. A CDN, careful caching, region tuning, hardened auth, current crypto: all of it is extra work, so most apps ship slower and less safe than they should.
 
-Spreading reads is easy, and everyone does it. Spreading writes is the hard part, and it is why most "global" apps are only global for reading.
+toil deletes that assembly. One framework runs your frontend, backend, and database at the edge, next to users. Auth, email, realtime, and background jobs are built in and owned. Login is post-quantum out of the box. There is nothing to wire up and no infrastructure to reason about. The good version is the only version.
+
+Distributing writes worldwide is one of the hard problems it handles under the hood. Most stacks spread reads everywhere but pin every write to one region, so a user far from it waits for a round trip and that region is a single point of failure. ToilDB is built to distribute the writes too: every key has a home region that orders its writes while the data copies outward for fast local reads. You never set any of it up.
 
 ```mermaid
 flowchart TB
-    subgraph Ordinary["The ordinary web"]
-        U1["User in Tokyo"] -->|fast| E1["Edge (pages)"]
-        E1 -->|slow, one region| DB1[("Database in Virginia")]
+    subgraph Assemble["The usual way: rent and wire the parts yourself"]
+        direction TB
+        A["Your app"] --> H["host"]
+        A --> F["functions"]
+        A --> D["database"]
+        A --> Au["auth"]
+        A --> Em["email"]
+        A --> Rt["realtime"]
+        A --> J["jobs"]
     end
-    subgraph Toil["toil"]
-        U2["User in Tokyo"] -->|fast| E2["Edge near Tokyo<br/>frontend + backend + data"]
+    subgraph Toil["toil: one framework, at the edge, by default"]
+        direction TB
+        A2["Your app"] --> T["frontend + backend + database + auth +<br/>email + realtime + jobs, built in and near users"]
     end
 ```
 
@@ -43,7 +52,7 @@ Read these in order. Each one builds on the last.
 2. **[What comes built in](./modern-stack.md)** The full list of what toil owns and runs for you, and what it does not.
 3. **[How toil works](./how-it-works.md)** The whole path, from a React click through WebAssembly to ToilDB and back.
 4. **[Why it scales cheaply](./hyperscale.md)** How one small program can serve the whole planet without a per-app server bill.
-5. **[How toil distributes writes](./distributed.md)** The hardest problem in web infrastructure, and how ToilDB is built to solve it.
+5. **[How toil distributes writes](./distributed.md)** One of the hardest problems in web infrastructure, and how ToilDB is built to solve it.
 6. **[toil next to other stacks](./vs-other-frameworks.md)** A fair comparison with Next.js, Rails, serverless, and the rest, wins and losses both.
 7. **[The bar toil holds itself to](./design-principles.md)** The RSG rubric, and its one rule: your grade is your weakest part.
 
@@ -51,7 +60,7 @@ Read these in order. Each one builds on the last.
 
 - **Who it is for:** anyone shipping a real product who wants global speed without a platform team or ten stitched-together services.
 - **Why it is fast:** the code runs next to the user, with no trip to a distant origin.
-- **Why it is different:** it distributes writes, not only reads.
+- **Why it is different:** the whole stack is built in and owned, so there is nothing to assemble, and it distributes writes worldwide, not only reads.
 - **Why it is safe:** the backend is sandboxed, passwords never reach the server in a usable form, secrets never ship in the code, and the browser checks every file it loads.
 
 Ready to build? Jump to [Getting started](../getting-started/README.md).

@@ -2,7 +2,7 @@
 
 This page compares toil to the stacks you already use, axis by axis. Every tool below is good at what it was built for. The aim is to be concrete about what you gain and what you give up. toil is younger than all of them, and that shows in a few rows.
 
-toil trades a large, mature ecosystem for one owned framework. That framework distributes writes and ships fast, safe defaults for free. Whether the trade fits your project is the question this page answers.
+toil trades a large, mature ecosystem for one owned framework where the fast, secure, global version is the default. You give up SQL, the Node package universe, and a big integration catalog. You gain a stack that is built in and yours, runs near users, ships post-quantum auth and end-to-end types with no setup, and distributes writes worldwide instead of pinning them to one region. Whether that trade fits your project is what this page answers.
 
 ## The comparison table
 
@@ -24,13 +24,13 @@ The top rows lean toil's way. The bottom rows lean the incumbents' way. toil win
 
 ## How toil compares to each stack
 
-**Next.js / Vercel.** Superb React DX and global edge reads. The ceiling is the write path. Pages cache worldwide, but a write still resolves against one primary region. A comment, an order, a flash-sale click all crawl back to that box. Serverless cold starts add latency and per-invocation cost right when a spike hits. toil keeps a React-first client and moves the write to a home region near the data.
+**Next.js / Vercel.** Superb React DX and global edge reads. The backend, though, is still yours to assemble: a database, auth, email, a queue, and a realtime service, each rented and wired up on its own. Serverless cold starts add latency and per-invocation cost right when a spike hits, and writes still resolve against one primary region. toil keeps a React-first client but ships the whole backend built in, running near the data with no cold start.
 
 **Rails / Django.** Mature, productive, and batteries included, with a deep hiring pool. If one region suits you, this is a great and boring choice. The default shape is a single-region monolith with one primary that every write must reach. You can add replicas and standbys to scale, but distributed writes are not in the model.
 
 **Serverless functions (Lambda, Cloud Functions).** Elastic, stateless compute that scales to zero. It still sits in front of a central database, so a write burst bottlenecks on that store. Each cold invocation bills and lags on its own.
 
-**Edge runtimes (Workers, Deno Deploy).** The closest in spirit to toil's compute model: your code runs near users. The catch is the database you attach. It is usually single-region, so edge compute becomes a faster front door to the same central write bottleneck.
+**Edge runtimes (Workers, Deno Deploy).** The closest in spirit to toil's compute model: your code runs near users. The catch is everything you bolt on around it. The database you attach is usually single-region, and auth, email, realtime, and typed client calls are still yours to assemble. toil ships those built in, on a database designed to distribute writes.
 
 Cloudflare Durable Objects and D1 are the closest mainstream analog to toil's idea, and credit is due. A Durable Object gives one object a single-writer home that orders its writes, the same shape as ToilDB's per-key home. The difference is packaging. With the edge-runtime approach you assemble the pieces yourself: runtime, object or database product, auth, email, and realtime. toil ships distributed writes, the seven database families, auth, email, streaming, and background jobs as one owned stack. Which you prefer is a real trade-off.
 

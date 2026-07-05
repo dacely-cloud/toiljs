@@ -2,7 +2,7 @@
 
 toil is a full-stack framework. You write a React frontend and a TypeScript backend in one project, and toil runs both, plus a database, close to every user worldwide.
 
-The thesis is simple. toil is the modern full-stack tooling a developer actually wants: AAA-grade from the first line, and built to scale to the whole planet. Even a simple pizza site gets top-tier infrastructure with zero setup. Distributed writes are one pillar of that. The stack that just works is the core.
+Shipping a fast, secure, global app normally takes a pile of rented services and a team that understands infrastructure. toil gives you that as the default: one framework, zero config, quantum-proof login, built on modern tech, running near your users from day one. The same setup serves a pizza site and a planet-scale app. Distributing writes worldwide is one of the hard things it handles for you, not the reason it exists.
 
 ## The problem with modern stacks
 
@@ -22,9 +22,7 @@ A solo builder and a funded startup hit the same wall. Top-tier infrastructure m
 
 ## What toil delivers
 
-Every design decision in toil serves one goal: AAA-grade infrastructure by default, not something you assemble by hand. One framework instead of ten rented vendors. Zero configuration. No distributed-systems or networking expertise required. It works out of the box, quantum-proof login included.
-
-Four pillars carry it.
+toil was built to reach real scale cheaply, and every design choice serves that. You get top-tier infrastructure by default: one framework instead of ten vendors, zero configuration, and no networking knowledge required. Quantum-proof login is on from the start. Four things make it work.
 
 ### AAA-grade infrastructure by default
 
