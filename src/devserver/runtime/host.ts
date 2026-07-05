@@ -22,7 +22,8 @@ import { ratelimitCheck } from '../config/ratelimit.js';
 import { buildAnalyticsImports } from '../analytics/index.js';
 import { buildDatabaseImports, type DbDevState, freshDbState } from '../db/index.js';
 import { EmailStatus, getEmailService, recordSentEmail } from '../email/index.js';
-import { parseEmailBlob } from '../email/wire.js';
+import { renderEmailConsole } from '../email/console.js';
+import { type ParsedEmail, parseEmailBlob } from '../email/wire.js';
 import { buildCryptoImports, type CryptoState, freshCryptoState } from './crypto.js';
 
 /** Limits identical to the edge's `set_header` / `respond_file` bounds. */
@@ -204,6 +205,14 @@ function envLookup(
  * confirm/reset tests find their tokens whichever import the guest used. Mirrors
  * the edge's `email_send_import.rs`.
  */
+/** Render the dev EMAIL EMULATOR box (from the HTML) so confirm/reset/2FA flows are
+ *  testable without a real inbox. Skipped under vitest (tests read the
+ *  `__sentEmails` seam), where a box per email would just be noise. */
+function previewDevEmail(parsed: ParsedEmail, status: string): void {
+    if (process.env.VITEST) return;
+    process.stdout.write(renderEmailConsole(parsed, status) + '\n');
+}
+
 function devEmailSend(ref: MemoryRef, reqPtr: number, reqLen: number): number {
     const raw = readBytes(ref, reqPtr, reqLen);
     const svc = getEmailService();
@@ -212,6 +221,8 @@ function devEmailSend(ref: MemoryRef, reqPtr: number, reqLen: number): number {
         if (parsed !== null) recordSentEmail(parsed); // dev test seam
         const to = parsed?.to ?? '<unparsed>';
         process.stdout.write(`  ✉ dev email_send -> ${to} (no email config; not sent)\n`);
+        // Draw the email so the flow is testable with no mailer configured.
+        if (parsed !== null) previewDevEmail(parsed, 'not sent · no provider');
         return EmailStatus.Sent;
     }
     const { status, parsed } = svc.prepare(raw);
@@ -220,6 +231,7 @@ function devEmailSend(ref: MemoryRef, reqPtr: number, reqLen: number): number {
         return status;
     }
     recordSentEmail(parsed); // dev test seam
+    previewDevEmail(parsed, 'delivering via provider'); // shown even with a real provider
     void svc
         .deliver(parsed)
         .then((s) => {
