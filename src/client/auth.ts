@@ -39,6 +39,13 @@ function fromHex(hex: string): Uint8Array {
     return out;
 }
 
+/** bytes -> lowercase-hex. */
+function toHex(bytes: Uint8Array): string {
+    let s = '';
+    for (let i = 0; i < bytes.length; i++) s += bytes[i].toString(16).padStart(2, '0');
+    return s;
+}
+
 /**
  * The server's PINNED static ML-KEM-768 public key. The client encapsulates to
  * it; only the genuine server (holder of the matching secret key) can
@@ -353,17 +360,23 @@ export async function login(
         wipe(sharedSecret);
         throw new EmailNotConfirmedError();
     }
-    if (loginStatus !== 0) {
+    // status 3 = 2FA required: the credential verified but the account has a second
+    // factor. The server ALSO returns its serverConfirm tag (so we still complete
+    // mutual auth below) but mints NO session/cookie. Both the success (0) and the
+    // 2FA (3) responses are `bytes(first) bytes(serverConfirm)` -- `first` is the
+    // session token on 0 and the twoFaId on 3.
+    if (loginStatus !== 0 && loginStatus !== 3) {
         wipe(sharedSecret);
         throw new Error('auth: login failed');
     }
-    const session = res.readBytes();
+    const first = res.readBytes();
     const serverConfirm = res.readBytes();
 
     // 5. Mutual auth: derive the session key K = HMAC(sharedSecret, label || H(M)),
     //    then check the server's tag = HMAC(K, label || H(M)). Only a server that
     //    decapsulated correctly derives the same K, so a valid tag proves its
-    //    identity. Verify before returning the session.
+    //    identity. Runs for BOTH statuses, so a 2FA prompt only ever appears AFTER
+    //    the server has authenticated itself.
     const transcriptHash = await sha256Bytes(message);
     const sessionKey = await hmacSha256(
         sharedSecret,
@@ -376,7 +389,14 @@ export async function login(
     );
     if (!bytesEqual(expected, serverConfirm)) throw new Error('auth: server authentication failed');
 
-    return session; // session token
+    if (loginStatus === 3) {
+        // The server authenticated itself, but a second factor is required. Surface
+        // the twoFaId (hex) so the caller can collect a code and call
+        // verifyTwoFactor. NO session exists yet.
+        throw new TwoFactorRequiredError(toHex(first));
+    }
+
+    return first; // session token
 }
 
 /** Thrown by {@link login} when the credential is valid but the account's email
@@ -387,6 +407,91 @@ export class EmailNotConfirmedError extends Error {
         super('auth: email not confirmed');
         this.name = 'EmailNotConfirmedError';
     }
+}
+
+/** Thrown by {@link login} when the password verified AND the server authenticated
+ *  itself (mutual auth passed) but the account requires a SECOND FACTOR. No session
+ *  exists yet. Catch it, collect the delivered code, and call
+ *  {@link verifyTwoFactor} with `err.twoFaId`. */
+export class TwoFactorRequiredError extends Error {
+    /** The opaque login-challenge id (hex) to echo to {@link verifyTwoFactor}. */
+    readonly twoFaId: string;
+    constructor(twoFaId: string) {
+        super('auth: two-factor authentication required');
+        this.name = 'TwoFactorRequiredError';
+        this.twoFaId = twoFaId;
+    }
+}
+
+/** The 2FA method values, mirroring the server enum (append-only). */
+export const TwoFactorMethod = { None: 0, Email: 1 } as const;
+
+/**
+ * Complete a 2FA login: submit the delivered `code` for the challenge `twoFaId`
+ * (from {@link TwoFactorRequiredError}). On success the server mints the session
+ * (sets the cookies) and returns the opaque session token. Throws one generic
+ * error ("code invalid or expired") on any failure -- the code is single-use and
+ * attempt-limited server-side.
+ */
+export async function verifyTwoFactor(
+    twoFaId: string,
+    code: string,
+    opts: AuthOptions = {},
+): Promise<Uint8Array> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    const res = await postBinary(
+        baseUrl,
+        '/2fa/verify',
+        new DataWriter().writeBytes(fromHex(twoFaId)).writeString(code).toBytes(),
+    );
+    if (res.readU8() !== 0) throw new Error('auth: two-factor code invalid or expired');
+    return res.readBytes(); // opaque session token
+}
+
+/**
+ * Begin enabling or disabling 2FA for the CURRENT session user. Pass a
+ * {@link TwoFactorMethod} value (`Email` to enable email 2FA, `None` to disable).
+ * The server delivers a proof code (to the new method when enabling, or the
+ * CURRENT method when disabling - anti-hijack); confirm it with
+ * {@link confirmTwoFactorSetup}. Requires a valid session.
+ */
+export async function setupTwoFactor(method: number, opts: AuthOptions = {}): Promise<void> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    const res = await postBinary(
+        baseUrl,
+        '/2fa/setup',
+        new DataWriter().writeU8(method).toBytes(),
+    );
+    if (res.readU8() !== 0) throw new Error('auth: two-factor setup failed');
+}
+
+/**
+ * Confirm a pending {@link setupTwoFactor} by submitting the delivered `code`.
+ * On success the account's 2FA method is switched (enabled or disabled). Requires
+ * a valid session. Throws (generic) if the code is wrong or expired.
+ */
+export async function confirmTwoFactorSetup(code: string, opts: AuthOptions = {}): Promise<void> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    const res = await postBinary(
+        baseUrl,
+        '/2fa/setup/verify',
+        new DataWriter().writeString(code).toBytes(),
+    );
+    if (res.readU8() !== 0) throw new Error('auth: two-factor setup confirmation failed');
+}
+
+/**
+ * The current session user's 2FA method (a {@link TwoFactorMethod} value; `0` =
+ * off). Requires a valid session. For the UI to reflect enabled/disabled state.
+ */
+export async function twoFactorStatus(opts: AuthOptions = {}): Promise<number> {
+    const baseUrl = opts.baseUrl ?? '/auth';
+    const res = await fetch(baseUrl + '/2fa/status', {
+        method: 'GET',
+        credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('auth: request failed');
+    return new DataReader(new Uint8Array(await res.arrayBuffer())).readU8();
 }
 
 /** Confirm an account from the one-time token in the emailed link
@@ -489,6 +594,11 @@ export const Auth = {
     resendConfirmation,
     requestPasswordReset,
     resetPassword,
+    verifyTwoFactor,
+    setupTwoFactor,
+    confirmTwoFactorSetup,
+    twoFactorStatus,
+    TwoFactorMethod,
     buildLoginMessage,
     LOGIN_CONTEXT,
 } as const;

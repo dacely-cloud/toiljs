@@ -70,6 +70,44 @@ const ST_OK: u8 = 0;
 const ST_TAKEN: u8 = 1; // username already registered
 const ST_EMAIL_TAKEN: u8 = 2; // email already in use (register)
 const ST_UNCONFIRMED: u8 = 2; // email not confirmed (login) — distinct endpoint, reuses the value
+// login/finish 2FA status: the credential verified but a SECOND factor is
+// required; no session is minted (see loginFinish). Distinct from ST_OK(0) /
+// ST_UNCONFIRMED(2) so the client can branch.
+const ST_TWOFA_REQUIRED: u8 = 3;
+
+// Two-factor METHOD enum (append-only; the value is stored in AuthAccount and in
+// every challenge, so NEVER renumber). 0 = 2FA off. Adding a method is one new
+// value here plus a deliver arm + a verify arm (see the `switch (method)` sites);
+// the challenge lifecycle and the login wiring do NOT change.
+const TWOFA_NONE: u8 = 0;
+const TWOFA_EMAIL: u8 = 1;
+// Future (reserved, not yet implemented): TWOFA_TOTP: u8 = 2; TWOFA_SMS: u8 = 3;
+
+// 2FA challenge tuning. The code is single-use, TTL'd, and attempt-limited (all
+// enforced against the stored challenge, independent of the per-IP @ratelimit).
+const TWOFA_TTL_SECS: u64 = 300; // a login/setup code is valid 5 minutes
+const TWOFA_MAX_ATTEMPTS: u32 = 5; // wrong-code guesses before the challenge dies
+const TWOFA_DIGITS: i32 = 6; // digits in an emailed numeric code
+
+// RACE-FREE per-challenge attempt cap. The `ch.attempts` counter below is a
+// non-atomic get+patch across two host calls, so on the edge (a fresh wasm
+// instance per request across 14 workers) N concurrent verifies for ONE
+// challenge can each read attempts=0 and all guess before any patch lands -- a
+// lost-update TOCTOU that lifts the intended 5-guess cap to the attacker's
+// in-flight concurrency. The per-IP @ratelimit does NOT backstop a many-IP
+// attacker. So we ALSO count each verify against a host-side EXACT limiter keyed
+// on the CHALLENGE itself (twoFaId / setup username), never the peer IP: the
+// count is atomic and shared across all workers, so total guesses per challenge
+// are hard-capped regardless of source IP or request concurrency. `ch.attempts`
+// stays as the primary (UX-friendly, burns-the-row) sequential path; this is the
+// concurrency backstop. The routeIds sit just under i32::MAX so they can never
+// collide with the `@ratelimit` decorator's monotonic-from-0 routeIds.
+const TWOFA_VERIFY_RL_ROUTE: i32 = 2147483001;
+const TWOFA_SETUP_RL_ROUTE: i32 = 2147483002;
+// The host strategy tag for SlidingWindow (matches `RateLimit.SlidingWindow` and
+// what the @ratelimit decorator lowers to). Used as a raw int because `RateLimit`
+// is a type-only ambient enum with no runtime backing in a handler body.
+const TWOFA_RL_STRATEGY: i32 = 1;
 
 // Resolved-and-cached per instance; the audience id (server config, never
 // client-echoed). Read lazily (not at module top level) so the env host import
@@ -244,6 +282,49 @@ function mintToken(): Uint8Array {
     return randomBytes(32);
 }
 
+/**
+ * A CSPRNG numeric code of `digits` decimal digits (leading zeros kept), using
+ * REJECTION SAMPLING so there is NO modulo bias: a byte in [250,256) is rejected
+ * (250 = the largest multiple of 10 that is <= 256), so every accepted byte maps
+ * uniformly onto 0-9. Each digit is drawn independently until accepted.
+ */
+function randomCode(digits: i32): string {
+    const buf = new Uint8Array(1);
+    let s = '';
+    for (let i = 0; i < digits; i++) {
+        let b: i32 = 255;
+        do {
+            crypto.getRandomValues(buf);
+            b = <i32>buf[0];
+        } while (b >= 250); // reject the biased tail
+        s += (b % 10).toString();
+    }
+    return s;
+}
+
+/** The stored 2FA verifier: SHA-256 of `username || 0x00 || code`. The username
+ *  is bound INTO the hash (a null separator, unambiguous), so a code is only ever
+ *  valid for the account it was issued to; the plaintext code is NEVER stored. */
+function twoFaCodeHash(username: string, code: string): Uint8Array {
+    return crypto.sha256Text(username + '\x00' + code);
+}
+
+/** Constant-time equality of two fixed 32-byte SHA-256 hashes (XOR-accumulate,
+ *  no early exit on the first differing byte). Mirrors the client `bytesEqual`. */
+function ctEqual(a: Uint8Array, b: Uint8Array): bool {
+    if (a.length != b.length) return false;
+    let diff: i32 = 0;
+    for (let i = 0; i < a.length; i++) diff |= (<i32>a[i]) ^ (<i32>b[i]);
+    return diff == 0;
+}
+
+/** Whether `m` is a 2FA method this build understands (TWOFA_NONE or a supported
+ *  method). ADD A METHOD: also accept its enum value here. */
+function isKnownTwoFaMethod(m: u8): bool {
+    return m == TWOFA_NONE || m == TWOFA_EMAIL;
+    // >>> e.g. `|| m == TWOFA_TOTP || m == TWOFA_SMS` <<<
+}
+
 @data
 class Username {
     name: string = '';
@@ -306,6 +387,11 @@ class AuthAccount {
     parallelism: u32 = 0;
     email: string = '';
     emailConfirmed: bool = false;
+    // APPENDED (append-only, forward-compatible like `email` above): the account's
+    // second-factor method (see the TWOFA_* enum). An old row decodes as 0 =
+    // TWOFA_NONE (2FA off), the safe default, so existing accounts stay logged in
+    // by password alone until they opt in via /auth/2fa/setup.
+    twoFactorMethod: u8 = 0;
 }
 
 @data
@@ -315,6 +401,35 @@ class Challenge {
     nonce: Uint8Array = new Uint8Array(0);
     iat: u64 = 0;
     exp: u64 = 0;
+}
+
+/** The lookup key for a login 2FA challenge: 16 random bytes minted per login.
+ *  Lives in its OWN collection (twoFaLogins), a SEPARATE NAMESPACE from
+ *  confirm/reset TokenId, so a confirm/reset token can never resolve here. */
+@data
+class TwoFaId {
+    id: Uint8Array = new Uint8Array(0);
+    constructor(id: Uint8Array = new Uint8Array(0)) {
+        this.id = id;
+    }
+}
+
+/**
+ * A pending second-factor challenge (login OR setup). METHOD-AGNOSTIC lifecycle
+ * fields (username / exp / attempts) plus the per-method `codeHash`; `method` is
+ * which factor was delivered and `targetMethod` is used ONLY by the setup flow
+ * (what to set `account.twoFactorMethod` to on success). Login challenges leave
+ * `targetMethod` at 0. `codeHash = SHA-256(username || 0x00 || code)`; the
+ * plaintext code is never stored.
+ */
+@data
+class TwoFaChallenge {
+    username: string = '';
+    method: u8 = 0;
+    codeHash: Uint8Array = new Uint8Array(0);
+    exp: u64 = 0;
+    attempts: u32 = 0;
+    targetMethod: u8 = 0;
 }
 
 @database
@@ -329,6 +444,14 @@ class AuthDb {
     // user per kind (O(users)), not one per request (unbounded storage-griefing).
     @collection static confirmTokenOf: Documents<Username, TokenId>;
     @collection static resetTokenOf: Documents<Username, TokenId>;
+    // SECOND-FACTOR challenges live in their OWN collections, a namespace fully
+    // disjoint from confirm/reset tokens (above). A reset/confirm token looked up
+    // here finds nothing (wrong collection); a 2FA code/id looked up in the token
+    // collections finds nothing. The separation is STRUCTURAL, not a purpose
+    // string. `twoFaLogins` is keyed by a random per-login id; `twoFaSetup` is
+    // keyed by username = one outstanding setup challenge per user.
+    @collection static twoFaLogins: Documents<TwoFaId, TwoFaChallenge>;
+    @collection static twoFaSetup: Documents<Username, TwoFaChallenge>;
 }
 
 @rest('auth')
@@ -565,6 +688,40 @@ class Auth {
         const sessionKey = AuthService.deriveSessionKey(sharedSecret, transcriptHash);
         const confirm = AuthService.serverConfirmTag(sessionKey, transcriptHash);
 
+        // 3c. SECOND-FACTOR GATE. If this account has 2FA enabled, DO NOT mint a
+        //     session here. Mint a login 2FA challenge (method-agnostic lifecycle)
+        //     and deliver the code (per-method), then return ST_TWOFA_REQUIRED
+        //     WITH the serverConfirm tag (so the client still completes mutual auth
+        //     and knows the server is genuine BEFORE it prompts for a code) and NO
+        //     cookie. The challenge is stored in `twoFaLogins` (its own namespace,
+        //     never resetTokens/confirmTokens). This runs AFTER the signature
+        //     verify above, so it is not an oracle, and the login `Challenge` was
+        //     already consumed (getDelete) at the top of this handler.
+        if (acct.twoFactorMethod != TWOFA_NONE) {
+            const raw = randomBytes(16); // the twoFaId the client echoes to /2fa/verify
+            const codeHash = this.twoFaDeliver(
+                acct.twoFactorMethod,
+                ch.username,
+                acct.email,
+                'Your login code',
+            );
+            if (codeHash.length == 0) return fail(); // unsupported/misconfigured method
+            const c2 = new TwoFaChallenge();
+            c2.username = ch.username;
+            c2.method = acct.twoFactorMethod;
+            c2.codeHash = codeHash;
+            c2.exp = nowSecs() + TWOFA_TTL_SECS;
+            c2.attempts = 0;
+            c2.targetMethod = TWOFA_NONE; // a LOGIN challenge changes no method on success
+            AuthDb.twoFaLogins.create(new TwoFaId(raw), c2);
+
+            const w2 = new DataWriter();
+            w2.writeU8(ST_TWOFA_REQUIRED);
+            w2.writeBytes(raw);
+            w2.writeBytes(confirm); // mutual-auth tag: the client verifies the server first
+            return Response.bytes(w2.toBytes()); // NO Set-Cookie: no session until 2FA verifies
+        }
+
         // 4. Success: mint the session for whatever `@user` this program has (built-in or the app's own
         //    extended one). `__toilEncodeAuthUser` is injected by `--authUser`: it constructs the `@user`
         //    (app fields at their defaults), sets the reserved identity, and encodes it. The stable
@@ -705,6 +862,239 @@ class Auth {
         resp.setCookie(AuthService.clearSession());
         resp.setCookie(AuthService.clearUserCookie());
         return resp;
+    }
+
+    /** POST /auth/2fa/verify  body: bytes(twoFaId) str(code)
+     *  resp: u8(status) [+ bytes(userData)] + Set-Cookie on success.
+     *  The SECOND factor of a 2FA login: consumes the login challenge minted by
+     *  login/finish and, on success, mints the session (the FIRST point a cookie
+     *  is set for a 2FA account). NOT @auth (there is no session yet). The
+     *  challenge is looked up in `twoFaLogins` ONLY, so a reset/confirm token can
+     *  never be presented here. Single-use, attempt-limited, TTL'd, rate-limited. */
+    @ratelimit(RateLimit.SlidingWindow, 5, 60)
+    @post('/2fa/verify')
+    public twoFaVerify(ctx: RouteContext): Response {
+        const r = new DataReader(ctx.request.body);
+        const id = r.readBytes();
+        const code = r.readString();
+        if (!r.ok || id.length == 0) return fail();
+
+        // RACE-FREE attempt cap: count this guess against a host-side EXACT
+        // limiter keyed on THIS challenge (the twoFaId), not the peer IP. Unlike
+        // the `ch.attempts` get+patch below, this is atomic across all workers,
+        // so a concurrent many-IP attacker cannot exceed TWOFA_MAX_ATTEMPTS
+        // guesses against one code. Denied -> 429 (Retry-After); the challenge is
+        // left for its TTL to reap. Keyed on the hex so the key is stable ASCII.
+        const rl = RateLimitService.guardKeyed(
+            TWOFA_VERIFY_RL_ROUTE,
+            TWOFA_RL_STRATEGY,
+            TWOFA_MAX_ATTEMPTS as i32,
+            TWOFA_TTL_SECS as i32,
+            crypto.toHex(id),
+        );
+        if (rl != null) return rl;
+
+        const key = new TwoFaId(id);
+        // PEEK (not consume): a wrong guess must NOT burn the challenge (a typo
+        // would otherwise lock the user out) until the attempt cap is reached.
+        const ch = AuthDb.twoFaLogins.get(key);
+        if (ch == null) return fail();
+        if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
+            AuthDb.twoFaLogins.delete(key); // burn an expired / exhausted challenge
+            return fail();
+        }
+        if (!this.twoFaVerifyCode(ch.username, code, ch)) {
+            // Wrong code: count the attempt; delete the challenge once the cap is
+            // hit so a burned-out challenge cannot be ground further.
+            ch.attempts = ch.attempts + 1;
+            if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaLogins.delete(key);
+            else AuthDb.twoFaLogins.patch(key, ch);
+            return fail();
+        }
+
+        // SUCCESS: consume-once, then mint the session EXACTLY like login/finish.
+        AuthDb.twoFaLogins.getDelete(key);
+        const acct = AuthDb.accounts.get(new Username(ch.username));
+        if (acct == null) return fail();
+        const domain = authDomain(ctx);
+        const toilUserId = ToilUserId.derive(acct.publicKey, ch.username, domain).toBytes();
+        const userData = __toilEncodeAuthUser(toilUserId, ch.username);
+        const w = new DataWriter();
+        w.writeU8(ST_OK);
+        w.writeBytes(userData);
+        const resp = Response.bytes(w.toBytes());
+        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS));
+        resp.setCookie(AuthService.userCookie(userData, SESSION_TTL_SECS));
+        return resp;
+    }
+
+    /** POST /auth/2fa/setup  (@auth)  body: u8(targetMethod)  resp: u8(ST_OK)
+     *  Begin enabling or disabling 2FA for the SESSION user. Delivers a proof code
+     *  and stores a setup challenge in `twoFaSetup` (keyed by username = one
+     *  outstanding per user); /auth/2fa/setup/verify confirms it. ENABLE proves
+     *  control of the NEW method (deliver via targetMethod). DISABLE proves control
+     *  of the CURRENT method (deliver via account.twoFactorMethod) before the
+     *  factor is removed - anti-hijack. Always a generic ST_OK. */
+    @auth
+    @ratelimit(RateLimit.SlidingWindow, 5, 60)
+    @post('/2fa/setup')
+    public twoFaSetup(_ctx: RouteContext): Response {
+        const r = new DataReader(_ctx.request.body);
+        const targetMethod = r.readU8();
+        if (!r.ok) return fail();
+        if (!isKnownTwoFaMethod(targetMethod)) return fail();
+        const u = AuthService.getUser();
+        if (u == null) return fail();
+        const acct = AuthDb.accounts.get(new Username(u.username));
+        if (acct == null) return fail();
+
+        // Disabling when 2FA is already off: nothing to prove; generic ST_OK.
+        if (targetMethod == TWOFA_NONE && acct.twoFactorMethod == TWOFA_NONE) {
+            return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+        }
+
+        // Which method delivers the PROOF code:
+        //   ENABLE  (targetMethod != NONE): the NEW method (prove you control it).
+        //   DISABLE (targetMethod == NONE): the CURRENT method (prove you still
+        //     hold the existing factor before it is removed).
+        const deliverMethod: u8 = targetMethod != TWOFA_NONE ? targetMethod : acct.twoFactorMethod;
+        const codeHash = this.twoFaDeliver(
+            deliverMethod,
+            u.username,
+            acct.email,
+            'Your verification code',
+        );
+        if (codeHash.length == 0) return fail(); // unsupported deliver method
+
+        const c = new TwoFaChallenge();
+        c.username = u.username;
+        c.method = deliverMethod;
+        c.codeHash = codeHash;
+        c.exp = nowSecs() + TWOFA_TTL_SECS;
+        c.attempts = 0;
+        c.targetMethod = targetMethod; // what to set account.twoFactorMethod to on success
+        // One outstanding setup challenge per user: overwrite any prior.
+        AuthDb.twoFaSetup.delete(new Username(u.username));
+        AuthDb.twoFaSetup.create(new Username(u.username), c);
+        return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+    }
+
+    /** POST /auth/2fa/setup/verify  (@auth)  body: str(code)  resp: u8(ST_OK)
+     *  Confirms a pending /auth/2fa/setup challenge for the SESSION user: on a
+     *  correct code, sets account.twoFactorMethod = challenge.targetMethod (enable
+     *  OR disable) and consumes the challenge. Same single-use + attempt-limit +
+     *  TTL as /auth/2fa/verify. */
+    @auth
+    @ratelimit(RateLimit.SlidingWindow, 5, 60)
+    @post('/2fa/setup/verify')
+    public twoFaSetupVerify(_ctx: RouteContext): Response {
+        const r = new DataReader(_ctx.request.body);
+        const code = r.readString();
+        if (!r.ok) return fail();
+        const u = AuthService.getUser();
+        if (u == null) return fail();
+
+        // RACE-FREE attempt cap for the setup challenge (same rationale as
+        // /2fa/verify): an atomic host-side limiter keyed on the session user, so
+        // the `ch.attempts` get+patch below cannot be out-raced by concurrent
+        // submissions. @auth-gated, so lower risk than login, but fixed alike.
+        const srl = RateLimitService.guardKeyed(
+            TWOFA_SETUP_RL_ROUTE,
+            TWOFA_RL_STRATEGY,
+            TWOFA_MAX_ATTEMPTS as i32,
+            TWOFA_TTL_SECS as i32,
+            u.username,
+        );
+        if (srl != null) return srl;
+
+        const key = new Username(u.username);
+        const ch = AuthDb.twoFaSetup.get(key);
+        if (ch == null) return fail();
+        if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
+            AuthDb.twoFaSetup.delete(key);
+            return fail();
+        }
+        if (!this.twoFaVerifyCode(ch.username, code, ch)) {
+            ch.attempts = ch.attempts + 1;
+            if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaSetup.delete(key);
+            else AuthDb.twoFaSetup.patch(key, ch);
+            return fail();
+        }
+
+        // SUCCESS: consume-once + apply the method change.
+        AuthDb.twoFaSetup.getDelete(key);
+        const acct = AuthDb.accounts.get(key);
+        if (acct == null) return fail();
+        acct.twoFactorMethod = ch.targetMethod;
+        AuthDb.accounts.patch(key, acct);
+        return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+    }
+
+    /** GET /auth/2fa/status  (@auth)  resp: u8(method)  (0 = off, 1 = email, ...)
+     *  The session user's current 2FA method, so the UI can show state. */
+    @auth
+    @get('/2fa/status')
+    public twoFaStatus(_ctx: RouteContext): Response {
+        const u = AuthService.getUser();
+        if (u == null) return fail();
+        const acct = AuthDb.accounts.get(new Username(u.username));
+        if (acct == null) return fail();
+        return Response.bytes(new DataWriter().writeU8(acct.twoFactorMethod).toBytes());
+    }
+
+    /**
+     * PER-METHOD 2FA DELIVERY. Generates and delivers a fresh code for `method`
+     * and returns the codeHash to persist for the later verify; returns an EMPTY
+     * array for an unsupported method (the caller fails closed). The plaintext
+     * code never leaves this method.
+     *
+     * >>> ADD A METHOD HERE: a new `case TWOFA_TOTP:` returns the codeHash/secret
+     *     binding WITHOUT emailing (the code is the authenticator's own output),
+     *     and pairs with a `case TWOFA_TOTP` in {@link twoFaVerifyCode}. The
+     *     lifecycle and the login/setup wiring do NOT change. <<<
+     */
+    private twoFaDeliver(method: u8, username: string, email: string, subject: string): Uint8Array {
+        switch (method) {
+            case TWOFA_EMAIL: {
+                const code = randomCode(TWOFA_DIGITS);
+                const text =
+                    'Your verification code is ' +
+                    code +
+                    '.\nIt expires in a few minutes. If you did not request it, ignore this email.\n';
+                const html =
+                    '<p>Your verification code is:</p>' +
+                    '<p style="font-size:28px;font-weight:bold;letter-spacing:4px">' +
+                    code +
+                    '</p>' +
+                    '<p>It expires in a few minutes. If you did not request it, ignore this email.</p>';
+                // DETACHED (non-suspending) send: constant-time, no provider-RTT
+                // parking (matches the confirm/reset anti-enumeration posture).
+                EmailService.sendDetached(email, subject, text, '2fa', html);
+                return twoFaCodeHash(username, code);
+            }
+            // >>> case TWOFA_TOTP: { return twoFaSecretBinding(username); } <<<
+            default:
+                return new Uint8Array(0);
+        }
+    }
+
+    /**
+     * PER-METHOD 2FA VERIFICATION: `true` iff `code` satisfies `challenge` for its
+     * method. The method-agnostic lifecycle (peek / attempt-limit / TTL / consume)
+     * lives in the endpoints; only the CODE CHECK is per-method here.
+     *
+     * >>> ADD A METHOD HERE: a new `case TWOFA_TOTP:` runs a TOTP check against the
+     *     stored secret binding. <<<
+     */
+    private twoFaVerifyCode(username: string, code: string, challenge: TwoFaChallenge): bool {
+        switch (challenge.method) {
+            case TWOFA_EMAIL:
+                // Constant-time compare of the two 32-byte SHA-256 hashes.
+                return ctEqual(twoFaCodeHash(username, code), challenge.codeHash);
+            // >>> case TWOFA_TOTP: return totpVerify(challenge.codeHash, code); <<<
+            default:
+                return false;
+        }
     }
 
     /** Mint a confirm token for `username`/`email` and email the confirm link.

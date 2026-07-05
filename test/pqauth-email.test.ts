@@ -24,7 +24,7 @@ import { __resetDbForTests } from '../src/devserver/db/index.js';
 import { __resetRatelimitForTests } from '../src/devserver/config/ratelimit.js';
 import { clearEnvCache } from '../src/devserver/config/dotenv.js';
 import { __sentEmails, __clearSentEmails } from '../src/devserver/email/index.js';
-import { Auth, EmailNotConfirmedError } from '../src/client/auth.js';
+import { Auth, EmailNotConfirmedError, TwoFactorRequiredError } from '../src/client/auth.js';
 import { DataReader, DataWriter } from '../src/io/codec.js';
 
 const EXAMPLE_WASM = path.resolve(
@@ -112,6 +112,21 @@ function tokenFromEmail(kind: 'confirm' | 'reset', to: string): string {
     }
     throw new Error(
         `no ${kind} token emailed to ${to}; captured=${JSON.stringify(
+            __sentEmails.map((e) => ({ to: e.to, purpose: e.purpose })),
+        )}`,
+    );
+}
+
+/** Pull the 6-digit code out of the most-recent captured 2FA email (purpose `2fa`) to `to`. */
+function codeFromEmail(to: string): string {
+    for (let i = __sentEmails.length - 1; i >= 0; i--) {
+        const msg = __sentEmails[i];
+        if (msg.to !== to || msg.purpose !== '2fa') continue;
+        const hit = /\b(\d{6})\b/.exec(msg.text) ?? /\b(\d{6})\b/.exec(msg.html);
+        if (hit) return hit[1];
+    }
+    throw new Error(
+        `no 2fa code emailed to ${to}; captured=${JSON.stringify(
             __sentEmails.map((e) => ({ to: e.to, purpose: e.purpose })),
         )}`,
     );
@@ -329,5 +344,294 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             expect(r.status).not.toBe(200);
         },
         60_000,
+    );
+
+    // ---- multi-method 2FA (email) ----
+
+    it(
+        '(a) full email-2FA login round-trip: enable, login requires a code, verify mints the session',
+        async () => {
+            await Auth.register('dave', 'dave-pw-strong', 'dave@x.com');
+            await Auth.login('dave', 'dave-pw-strong'); // 2FA off -> session
+
+            // Enable email 2FA: setup delivers a code, confirm switches the method on.
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            await Auth.confirmTwoFactorSetup(codeFromEmail('dave@x.com'));
+            expect(await Auth.twoFactorStatus()).toBe(Auth.TwoFactorMethod.Email);
+
+            __clearSentEmails();
+            jar.clear(); // drop the existing session so login is a clean 2FA challenge
+
+            // Login now demands a second factor: mutual auth still passes (login()
+            // verifies serverConfirm before throwing), but NO session is minted.
+            let err: unknown;
+            try {
+                await Auth.login('dave', 'dave-pw-strong');
+            } catch (e) {
+                err = e;
+            }
+            expect(err).toBeInstanceOf(TwoFactorRequiredError);
+            const twoFaId = (err as TwoFactorRequiredError).twoFaId;
+            expect(twoFaId.length).toBeGreaterThan(0);
+            expect(jar.get('toil_sess')).toBeUndefined(); // no session at login/finish
+
+            // Read the login code out of the captured email and verify -> session.
+            const session = await Auth.verifyTwoFactor(twoFaId, codeFromEmail('dave@x.com'));
+            expect(session.length).toBeGreaterThan(0);
+
+            // /auth/me now returns the user.
+            const meRes = await fetch('/auth/me');
+            expect(meRes.status).toBe(200);
+            const me = new DataReader(new Uint8Array(await meRes.arrayBuffer()));
+            expect(me.readBytes().length).toBeGreaterThan(0); // toilUserId
+            expect(me.readString()).toBe('dave');
+        },
+        90_000,
+    );
+
+    it(
+        '(b) 2FA code security: wrong code rejected + attempt-limited to death, correct code single-use',
+        async () => {
+            await Auth.register('eve', 'eve-pw-strong', 'eve@x.com');
+            await Auth.login('eve', 'eve-pw-strong');
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            await Auth.confirmTwoFactorSetup(codeFromEmail('eve@x.com'));
+
+            // ---- wrong code is rejected, and after TWOFA_MAX_ATTEMPTS the challenge dies ----
+            __clearSentEmails();
+            jar.clear();
+            let err: unknown;
+            try {
+                await Auth.login('eve', 'eve-pw-strong');
+            } catch (e) {
+                err = e;
+            }
+            const twoFaId = (err as TwoFactorRequiredError).twoFaId;
+            const code = codeFromEmail('eve@x.com');
+            const wrong = code === '000000' ? '111111' : '000000';
+
+            // 5 (TWOFA_MAX_ATTEMPTS) wrong guesses. Reset the per-IP limiter between
+            // each so this exercises the CHALLENGE's own attempt cap, not @ratelimit.
+            for (let i = 0; i < 5; i++) {
+                __resetRatelimitForTests();
+                await expect(Auth.verifyTwoFactor(twoFaId, wrong)).rejects.toThrow();
+            }
+            // The challenge is now destroyed: even the CORRECT code fails.
+            __resetRatelimitForTests();
+            await expect(Auth.verifyTwoFactor(twoFaId, code)).rejects.toThrow();
+
+            // ---- a correct code is single-use: replay fails ----
+            __clearSentEmails();
+            jar.clear();
+            __resetRatelimitForTests();
+            let err2: unknown;
+            try {
+                await Auth.login('eve', 'eve-pw-strong');
+            } catch (e) {
+                err2 = e;
+            }
+            const twoFaId2 = (err2 as TwoFactorRequiredError).twoFaId;
+            const code2 = codeFromEmail('eve@x.com');
+            const session = await Auth.verifyTwoFactor(twoFaId2, code2); // consumes
+            expect(session.length).toBeGreaterThan(0);
+            __resetRatelimitForTests();
+            await expect(Auth.verifyTwoFactor(twoFaId2, code2)).rejects.toThrow(); // replay dead
+        },
+        120_000,
+    );
+
+    it(
+        '(c) cross-flow: reset tokens and 2FA codes are NOT interchangeable (namespace separation)',
+        async () => {
+            await Auth.register('frank', 'frank-pw-strong', 'frank@x.com');
+
+            // ---- direction 1: a LIVE reset token is useless at /auth/2fa/verify ----
+            await Auth.requestPasswordReset('frank@x.com');
+            const resetToken = tokenFromEmail('reset', 'frank@x.com'); // live resetTokens entry
+            __resetRatelimitForTests();
+            // Present the reset token as BOTH the twoFaId AND the code: /2fa/verify
+            // looks in `twoFaLogins` (a different collection) -> nothing -> rejected.
+            await expect(Auth.verifyTwoFactor(resetToken, resetToken)).rejects.toThrow();
+
+            // ---- direction 2: a LIVE 2FA login challenge id is useless at /auth/reset/finish ----
+            await Auth.login('frank', 'frank-pw-strong'); // session (2FA still off here)
+            __clearSentEmails();
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            await Auth.confirmTwoFactorSetup(codeFromEmail('frank@x.com'));
+            __clearSentEmails();
+            jar.clear();
+            __resetRatelimitForTests();
+            let err: unknown;
+            try {
+                await Auth.login('frank', 'frank-pw-strong');
+            } catch (e) {
+                err = e;
+            }
+            const twoFaId = (err as TwoFactorRequiredError).twoFaId; // live twoFaLogins key
+            const loginCode = codeFromEmail('frank@x.com');
+
+            // Submit the live 2FA challenge id AND the live 2FA code to
+            // /auth/reset/finish as the reset token: reset/finish looks in
+            // `resetTokens` -> nothing -> non-200. A live 2FA challenge is NOT a
+            // reset token.
+            const probes: Uint8Array[] = [hexToBytes(twoFaId), new TextEncoder().encode(loginCode)];
+            for (const raw of probes) {
+                __resetRatelimitForTests();
+                const body = new DataWriter()
+                    .writeBytes(raw)
+                    .writeBytes(new Uint8Array(1312)) // valid-length pk (reach the consume step)
+                    .writeBytes(new Uint8Array(2420)) // valid-length proof
+                    .toBytes();
+                const r = mod.dispatch({
+                    method: 'POST',
+                    path: '/auth/reset/finish',
+                    headers: [
+                        ['host', 'localhost:3000'],
+                        ['content-type', 'application/octet-stream'],
+                    ],
+                    body,
+                });
+                expect(r.status).not.toBe(200);
+            }
+
+            // The cross-flow probes touched NOTHING: the real 2FA login still
+            // completes with its real (twoFaId, code).
+            __resetRatelimitForTests();
+            const session = await Auth.verifyTwoFactor(twoFaId, loginCode);
+            expect(session.length).toBeGreaterThan(0);
+        },
+        120_000,
+    );
+
+    it(
+        '(d) NO session cookie is set on the ST_TWOFA_REQUIRED login response',
+        async () => {
+            await Auth.register('gwen', 'gwen-pw-strong', 'gwen@x.com');
+            await Auth.login('gwen', 'gwen-pw-strong');
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            await Auth.confirmTwoFactorSetup(codeFromEmail('gwen@x.com'));
+
+            jar.clear(); // drop every cookie
+            __clearSentEmails();
+            __resetRatelimitForTests();
+
+            let err: unknown;
+            try {
+                await Auth.login('gwen', 'gwen-pw-strong');
+            } catch (e) {
+                err = e;
+            }
+            expect(err).toBeInstanceOf(TwoFactorRequiredError);
+            // The shim folds any Set-Cookie into the jar; login/finish set NONE.
+            expect(jar.get('toil_sess')).toBeUndefined();
+            expect(jar.get('toil_user')).toBeUndefined();
+            // With no session cookie, the @auth-gated /auth/me is 401.
+            const meRes = await fetch('/auth/me');
+            expect(meRes.status).toBe(401);
+        },
+        60_000,
+    );
+
+    it(
+        '(e) login<->setup 2FA challenges are separate: a setup code cannot mint a login session, and setup/verify never silently disables 2FA',
+        async () => {
+            await Auth.register('ivy', 'ivy-pw-strong', 'ivy@x.com');
+            await Auth.login('ivy', 'ivy-pw-strong'); // session; 2FA still off
+
+            // Begin a 2FA SETUP: writes a challenge into `twoFaSetup` (keyed by
+            // username), NOT a login challenge into `twoFaLogins`.
+            __clearSentEmails();
+            __resetRatelimitForTests();
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            const setupCode = codeFromEmail('ivy@x.com');
+
+            // Present the LIVE setup code at /auth/2fa/verify with a fabricated
+            // twoFaId: /2fa/verify consults ONLY `twoFaLogins`, so the id misses and
+            // a setup code can never mint a login session.
+            __resetRatelimitForTests();
+            const fakeId = 'ab'.repeat(16); // 16-byte hex, not a real twoFaLogins key
+            await expect(Auth.verifyTwoFactor(fakeId, setupCode)).rejects.toThrow();
+
+            // The probe consumed NOTHING: the real setup still completes with the code.
+            __resetRatelimitForTests();
+            await Auth.confirmTwoFactorSetup(setupCode);
+            expect(await Auth.twoFactorStatus()).toBe(Auth.TwoFactorMethod.Email);
+
+            // With 2FA now ON but NO pending setup challenge, /auth/2fa/setup/verify is
+            // a no-op: a stray code cannot flip (disable) the method. A login challenge
+            // (targetMethod=NONE) has no wire path here and can never be routed in to
+            // silently disable 2FA.
+            __resetRatelimitForTests();
+            await expect(Auth.confirmTwoFactorSetup('000000')).rejects.toThrow();
+            expect(await Auth.twoFactorStatus()).toBe(Auth.TwoFactorMethod.Email);
+        },
+        120_000,
+    );
+
+    it(
+        '(f) cross-flow: confirm tokens and 2FA codes are NOT interchangeable (namespace separation)',
+        async () => {
+            setConfirmation(true);
+            await Auth.register('jade', 'jade-pw-strong', 'jade@x.com'); // unconfirmed -> confirm token emailed
+            const confirmToken = tokenFromEmail('confirm', 'jade@x.com'); // live confirmTokens entry
+
+            // ---- direction 1: a LIVE confirm token is useless at /auth/2fa/verify ----
+            __resetRatelimitForTests();
+            // Present the confirm token as BOTH the twoFaId AND the code: /2fa/verify
+            // reads `twoFaLogins` (a different collection) -> nothing -> rejected.
+            await expect(Auth.verifyTwoFactor(confirmToken, confirmToken)).rejects.toThrow();
+
+            // The probe consumed NOTHING: the confirm token still confirms the account,
+            // and login then succeeds (email now confirmed).
+            __resetRatelimitForTests();
+            await Auth.confirmEmail(confirmToken);
+            __resetRatelimitForTests();
+            expect((await Auth.login('jade', 'jade-pw-strong')).length).toBeGreaterThan(0);
+
+            // ---- direction 2: a LIVE 2FA login id/code is useless at /auth/confirm ----
+            // Enable 2FA (jade is confirmed + has a session from the login above).
+            __clearSentEmails();
+            __resetRatelimitForTests();
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            await Auth.confirmTwoFactorSetup(codeFromEmail('jade@x.com'));
+
+            // Fresh login -> a live `twoFaLogins` challenge (id + emailed code).
+            __clearSentEmails();
+            jar.clear();
+            __resetRatelimitForTests();
+            let err: unknown;
+            try {
+                await Auth.login('jade', 'jade-pw-strong');
+            } catch (e) {
+                err = e;
+            }
+            const twoFaId = (err as TwoFactorRequiredError).twoFaId;
+            const loginCode = codeFromEmail('jade@x.com');
+
+            // Submit the live 2FA id AND the live code to /auth/confirm as the confirm
+            // token: /auth/confirm consumes from `confirmTokens` (sha256(raw)) -> nothing
+            // -> non-200. A 2FA credential is NOT a confirm token.
+            const probes: Uint8Array[] = [hexToBytes(twoFaId), new TextEncoder().encode(loginCode)];
+            for (const raw of probes) {
+                __resetRatelimitForTests();
+                const body = new DataWriter().writeBytes(raw).toBytes();
+                const r = mod.dispatch({
+                    method: 'POST',
+                    path: '/auth/confirm',
+                    headers: [
+                        ['host', 'localhost:3000'],
+                        ['content-type', 'application/octet-stream'],
+                    ],
+                    body,
+                });
+                expect(r.status).not.toBe(200);
+            }
+
+            // The probes touched NOTHING: the real 2FA login still completes.
+            __resetRatelimitForTests();
+            const session = await Auth.verifyTwoFactor(twoFaId, loginCode);
+            expect(session.length).toBeGreaterThan(0);
+        },
+        120_000,
     );
 });
