@@ -228,6 +228,11 @@ function devEmailSend(ref: MemoryRef, reqPtr: number, reqLen: number): number {
     const { status, parsed } = svc.prepare(raw);
     if (parsed === null) {
         process.stdout.write(`  ✉ dev email_send -> ${EmailStatus[status]}\n`);
+        // The real send was skipped (bad recipient / deduped / budget / cap), but in
+        // DEV still draw the email so its link/code stays testable. Not recorded to
+        // the test seam (that tracks accepted sends only).
+        const skipped = parseEmailBlob(raw);
+        if (skipped !== null) previewDevEmail(skipped, EmailStatus[status]);
         return status;
     }
     recordSentEmail(parsed); // dev test seam

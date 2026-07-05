@@ -15,6 +15,19 @@ import { runUpdate } from './update.js';
 import { type Preprocessor, PREPROCESSORS } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
+// Node 22+/26 prints an ExperimentalWarning the first time any code touches the
+// built-in `localStorage` global (some browser-oriented deps do when they are
+// evaluated server-side during the dev SSR pass). It is harmless (localStorage
+// works fine in the real browser) but noisy on every `toiljs dev`/`build`, so drop
+// exactly that one warning here, before anything runs. Every other warning still
+// prints. Installed on the CLI process, ahead of the compiler/dev work.
+const __origEmitWarning = process.emitWarning.bind(process) as (...a: unknown[]) => void;
+process.emitWarning = ((warning: unknown, ...rest: unknown[]): void => {
+    const msg = typeof warning === 'string' ? warning : (warning as { message?: string })?.message;
+    if (typeof msg === 'string' && msg.includes('localStorage is not available')) return;
+    __origEmitWarning(warning, ...rest);
+}) as typeof process.emitWarning;
+
 interface Flags {
     root?: string;
     port?: number;

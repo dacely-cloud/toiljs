@@ -91,7 +91,8 @@ export async function sendSmtp(
             host: smtp.host,
             port: smtp.port,
             secure: smtp.port === 465, // 465 = implicit TLS; else STARTTLS
-            auth: { user: smtp.user, pass: cfg.apiKey },
+            // Auth only when there is a credential; a local/auth-less relay takes none.
+            auth: cfg.apiKey.length > 0 ? { user: smtp.user, pass: cfg.apiKey } : undefined,
             connectionTimeout: POST_TIMEOUT_MS,
             greetingTimeout: POST_TIMEOUT_MS,
         });

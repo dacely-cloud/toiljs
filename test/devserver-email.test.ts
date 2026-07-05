@@ -154,6 +154,24 @@ describe('config resolution', () => {
             resolveEmailConfig({ from: 'a@b.com' }, reserved({ TOIL_EMAIL_API_KEY: 'k', TOIL_EMAIL_PROVIDER: 'mailgun' }))
                 .warning,
         ).toMatch(/unknown/);
+        // gmail still needs an app password
+        expect(
+            resolveEmailConfig({ provider: 'gmail', from: 'me@gmail.com' }, reserved({})).warning,
+        ).toMatch(/gmail/);
+    });
+
+    it('plain SMTP needs NO api key (a local / auth-less relay)', () => {
+        const { config, warning } = resolveEmailConfig(
+            { provider: 'smtp', from: 'dev@dacely.local' },
+            reserved({ TOIL_EMAIL_SMTP_HOST: '127.0.0.1' }),
+        );
+        expect(warning).toBeNull();
+        expect(config).toMatchObject({
+            provider: 'smtp',
+            from: 'dev@dacely.local',
+            apiKey: '', // no credential -> the send path omits SMTP auth
+            smtp: { host: '127.0.0.1', port: 587 },
+        });
     });
 
     it('TOIL_EMAIL_ENABLED=false disables silently', () => {

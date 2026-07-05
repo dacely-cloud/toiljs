@@ -80,16 +80,20 @@ export function resolveEmailConfig(
     if (!validFrom(from)) {
         return { config: null, warning: 'email `from` is not a valid address (CRLF or no `@`)' };
     }
-    if (apiKey === undefined) {
-        return {
-            config: null,
-            warning: 'email config present but TOIL_EMAIL_API_KEY is not set (in .env.secrets)',
-        };
-    }
-
+    // The API-key requirement is PER PROVIDER: Resend authenticates with a key, and
+    // Gmail SMTP needs an app password (also carried in the key), but a plain SMTP
+    // relay (a local dev catch-all like Mailpit/MailHog on 127.0.0.1, or an internal
+    // open relay) needs NO credential. Requiring a key for plain SMTP silently
+    // disabled a perfectly good local-SMTP dev setup.
     let provider: ResolvedProvider;
     let smtp: ResolvedSmtp | undefined;
     if (providerId === 'resend') {
+        if (apiKey === undefined) {
+            return {
+                config: null,
+                warning: 'provider `resend` requires TOIL_EMAIL_API_KEY (in .env.secrets)',
+            };
+        }
         provider = 'resend';
     } else if (providerId === 'gmail' || providerId === 'smtp') {
         provider = 'smtp';
@@ -100,6 +104,14 @@ export function resolveEmailConfig(
             (isGmail ? 'smtp.gmail.com' : '');
         if (!host) {
             return { config: null, warning: 'provider `smtp` requires TOIL_EMAIL_SMTP_HOST' };
+        }
+        // Gmail always needs an app password; plain SMTP may be auth-less (the send
+        // path omits `auth` when the key is empty). See providers.ts sendSmtp.
+        if (isGmail && apiKey === undefined) {
+            return {
+                config: null,
+                warning: 'provider `gmail` requires TOIL_EMAIL_API_KEY (a Gmail app password)',
+            };
         }
         const port = parseInt0(envOf(reserved, 'SMTP_PORT'), c.smtp?.port ?? 0) || 587;
         const user = envOf(reserved, 'SMTP_USER') ?? c.smtp?.user?.trim() ?? from;
@@ -115,7 +127,7 @@ export function resolveEmailConfig(
         config: {
             provider,
             from,
-            apiKey,
+            apiKey: apiKey ?? '',
             maxPerMin: parseInt0(envOf(reserved, 'MAX_PER_MIN'), c.maxPerMin ?? 60),
             maxPerDay: parseInt0(envOf(reserved, 'MAX_PER_DAY'), c.maxPerDay ?? 0),
             maxPerRecipientPerHour: parseInt0(
