@@ -74,13 +74,13 @@ describe('dev email emulator', () => {
                 '<p><a href="https://x.com/a?b=1">Open</a></p>',
             40,
         );
-        const joined = lines.map((l) => l.replace(/\[[0-9;]*m/g, '')).join('\n');
+        const joined = lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, '')).join('\n');
         expect(joined).toContain('Hi there & welcome');
         expect(joined).toContain('Open');
         expect(joined).toContain('(https://x.com/a?b=1)');
         // a blank separator line sits between the two paragraphs
         expect(lines).toContain('');
         // no line exceeds the wrap width (visible chars; color is off under vitest)
-        for (const l of lines) expect(l.replace(/\[[0-9;]*m/g, '').length).toBeLessThanOrEqual(40);
+        for (const l of lines) expect(l.replace(/\x1b\[[0-9;]*m/g, '').length).toBeLessThanOrEqual(40);
     });
 });
