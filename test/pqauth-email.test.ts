@@ -111,6 +111,15 @@ function setConfirmation(on: boolean): void {
     clearEnvCache();
 }
 
+const EMAIL_CONFIRM_ENV = 'AUTH_EMAIL_CONFIRMATION';
+
+/** Toggle "send a verify email at register but DO NOT block login" (the decoupled flag). */
+function setEmailConfirmation(on: boolean): void {
+    if (on) process.env[EMAIL_CONFIRM_ENV] = 'true';
+    else delete process.env[EMAIL_CONFIRM_ENV];
+    clearEnvCache();
+}
+
 function hexToBytes(hex: string): Uint8Array {
     const out = new Uint8Array(hex.length / 2);
     for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
@@ -162,6 +171,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         __resetRatelimitForTests();
         __clearSentEmails();
         setConfirmation(false); // default: confirmation off unless a case opts in
+        setEmailConfirmation(false);
         mod = loadModule();
         const shim = installFetchShim(mod);
         restoreFetch = shim.restore;
@@ -171,6 +181,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     afterEach(() => {
         restoreFetch();
         setConfirmation(false);
+        setEmailConfirmation(false);
     });
 
     it(
@@ -765,4 +776,26 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             InvalidUsernameError,
         );
     });
+
+    it(
+        'AUTH_EMAIL_CONFIRMATION sends the verify email at register but does NOT block login',
+        async () => {
+            // The decoupled flag: verify-at-register, login NOT gated (unlike the
+            // stricter AUTH_REQUIRE_EMAIL_CONFIRMATION, which also blocks login).
+            setEmailConfirmation(true);
+            __clearSentEmails();
+            await Auth.register('kev', 'Kev-pw-strong1!', 'kev@x.com');
+            // a confirm link was emailed (the account is stored unconfirmed)
+            const tok = tokenFromEmail('confirm', 'kev@x.com');
+            expect(tok.length).toBeGreaterThan(0);
+            // login SUCCEEDS despite the unconfirmed email (no login gate)
+            __resetRatelimitForTests();
+            const session = await Auth.login('kev', 'Kev-pw-strong1!');
+            expect(session.length).toBeGreaterThan(0);
+            // and the emailed confirm link still works
+            __resetRatelimitForTests();
+            await Auth.confirmEmail(tok);
+        },
+        90_000,
+    );
 });

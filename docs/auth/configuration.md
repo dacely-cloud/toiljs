@@ -71,6 +71,17 @@ Set `TOIL_AUTH_DOMAIN` explicitly if your site answers on multiple hostnames, ot
 get different `ToilUserId`s from different aliases. Once users exist, changing it changes everyone's id, so
 pick it before launch.
 
+## Email confirmation
+
+Two plain env vars (tenant-readable, like `PUBLIC_BASE_URL`) control the built-in email-verification flow. They are separate on purpose: sending a verify email at registration is one decision, blocking login until confirmed is another.
+
+| Key | What it does |
+| --- | --- |
+| `AUTH_EMAIL_CONFIRMATION` | Registration emails a one-time confirm link (`/confirm#token=…`) and stores the account **unconfirmed**. Login is **not** blocked: the user can sign in, and you nudge them to verify. Use this for "verify at signup, but let people in". |
+| `AUTH_REQUIRE_EMAIL_CONFIRMATION` | The stricter form: does everything above AND **refuses login** until the email is confirmed (a distinguishable status the client surfaces as `EmailNotConfirmedError`, so the UI can prompt "confirm your email / resend"). Implies `AUTH_EMAIL_CONFIRMATION`. On the managed edge this is force-set from the per-domain Dacely setting. |
+
+With neither set, accounts are auto-confirmed at registration and no confirm email is sent. The one-time link is delivered by email; in `toiljs dev` it is drawn in the console (no mailer needed). Both use the standard non-enumerating responses (a generic 200 that never reveals whether an address exists).
+
 ## Argon2id strength (known limitation)
 
 The built-in controller currently uses **demo-light** Argon2id params (32 MiB, 2 iterations, 1 lane) so it

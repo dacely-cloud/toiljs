@@ -169,24 +169,40 @@ function realm(ctx: RouteContext): string {
     return h;
 }
 
-/**
- * Whether this domain requires a confirmed email before login. A plain
- * (tenant-readable) env var so an app can opt in itself; the edge ALSO force-sets
- * it to "true" from the per-domain platform toggle `HostConfig.require_email_confirmation`
- * (reserved key `TOIL_AUTH_REQUIRE_EMAIL_CONFIRMATION`), so a Dacely per-domain
- * setting can turn it on without the app changing a line.
- */
-function requireConfirmation(): bool {
-    const v = Environment.get('AUTH_REQUIRE_EMAIL_CONFIRMATION');
+/** A lenient truthy read of a plain env var, ALIGNED with the edge's HostConfig
+ *  parse (`!matches!(v.trim(), "0"|"false"|"no"|"off")`). A strict `== "true"` would
+ *  let a tenant slip a truthy-but-non-canonical value ("1"/"on"/"TRUE"/"true ") past
+ *  the guest while the edge treated it as opted-in and skipped the force-on
+ *  injection, defeating the platform mandate. Same parse on both sides closes that. */
+function envTruthy(key: string): bool {
+    const v = Environment.get(key);
     if (v == null) return false;
-    // Lenient truthy, ALIGNED with the edge's HostConfig parse
-    // (`!matches!(v.trim(), "0"|"false"|"no"|"off")`). A strict `== "true"` here
-    // let a tenant slip a truthy-but-non-canonical value ("1"/"on"/"TRUE"/"true ")
-    // past the guest while the edge treated it as "already opted in" and skipped
-    // the force-on injection -> the platform mandate was defeatable. Same parse on
-    // both sides closes that gap.
     const t = v.trim().toLowerCase();
     return t.length != 0 && t != '0' && t != 'false' && t != 'no' && t != 'off';
+}
+
+/**
+ * Whether REGISTRATION emails a confirm link and stores the account UNCONFIRMED.
+ * This is the register-time email-verification switch; on its own it does NOT block
+ * login (an unconfirmed user can still sign in; the app can nudge them to verify).
+ * Turned on by `AUTH_EMAIL_CONFIRMATION`, and IMPLIED by {@link requireConfirmation}
+ * (you cannot require a confirmation you never send).
+ */
+function sendConfirmationEmail(): bool {
+    return envTruthy('AUTH_EMAIL_CONFIRMATION') || requireConfirmation();
+}
+
+/**
+ * Whether this domain BLOCKS login until the email is confirmed (the stricter
+ * form; it also sends the confirm email at register, via {@link sendConfirmationEmail}).
+ * A plain (tenant-readable) env var so an app can opt in itself; the edge ALSO
+ * force-sets it to "true" from the per-domain platform toggle
+ * `HostConfig.require_email_confirmation` (reserved key
+ * `TOIL_AUTH_REQUIRE_EMAIL_CONFIRMATION`), so a Dacely per-domain setting can turn it
+ * on without the app changing a line.
+ */
+function requireConfirmation(): bool {
+    return envTruthy('AUTH_REQUIRE_EMAIL_CONFIRMATION');
 }
 
 /**
@@ -603,7 +619,11 @@ class Auth {
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
 
-        const mustConfirm = requireConfirmation();
+        // Send the confirm email + store unconfirmed when EITHER flag is on
+        // (AUTH_EMAIL_CONFIRMATION or the stricter AUTH_REQUIRE_EMAIL_CONFIRMATION).
+        // Whether login is then BLOCKED is a separate check (requireConfirmation,
+        // used in login/finish), so a domain can verify-at-register without gating.
+        const mustConfirm = sendConfirmationEmail();
         const a = new AuthAccount();
         a.username = username;
         a.email = email;
