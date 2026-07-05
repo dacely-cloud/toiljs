@@ -1,10 +1,12 @@
 # The modern stack: what toil gives you that others do not
 
-Most frameworks give you a way to write code and then send you shopping: a database, an auth provider, email, a rate limiter, analytics, a realtime service, a job runner, each its own account, bill, and SDK, all wired together and kept in sync by you. toil owns those parts instead. They ship in one framework, they are toil's own (nothing third-party sits on your critical path), and they are on from the first line with zero configuration. This page is the full catalog.
+Most frameworks give you a way to write code, then send you shopping. A database, an auth provider, email, a rate limiter, analytics, a realtime service, a job runner. Each one is its own account, its own bill, and its own SDK, and you keep them all in sync.
 
-The point is not that toil bundles a lot. It is that the good version is the default version: a solo builder gets the same baseline as a funded team, without assembling or babysitting ten vendors. For how the edge and worldwide distribution actually work, see [How toil works](./how-it-works.md) and [How toil is distributed](./distributed.md).
+toil owns those parts instead. They ship in the framework, they are toil's own code, and they run from the first line with no configuration. Nothing third-party sits on your critical path.
 
-## The backend, built in
+The good version is the default version. A solo builder gets the same baseline a funded team would rent from ten vendors, with nothing to assemble or babysit. This page is the full catalog. For how the edge and worldwide distribution work, see [How toil works](./how-it-works.md) and [How toil is distributed](./distributed.md).
+
+## Built-in backend features
 
 Your TypeScript backend declares what it needs with a decorator or a one-line config flag. toil provides the machinery.
 
@@ -24,7 +26,7 @@ Your TypeScript backend declares what it needs with a decorator or a one-line co
 
 ### The seven ToilDB families
 
-One database, seven shapes, each tuned to its access pattern rather than bent out of a single table model.
+One database, seven shapes. Each family is tuned to its own access pattern instead of forced out of a single table model.
 
 | Family | For |
 | --- | --- |
@@ -36,7 +38,7 @@ One database, seven shapes, each tuned to its access pattern rather than bent ou
 | [Capacity](../database/capacity.md) | Bounded resources and seat/slot allocation. |
 | [View](../database/views.md) | Read models materialized by `@derive`. |
 
-## The frontend, built in
+## Built-in frontend features
 
 The React client is Vite-fast and typed end to end. The pieces that usually take a build config, a fetch layer, and an SEO plugin are already wired.
 
@@ -51,9 +53,9 @@ The React client is Vite-fast and typed end to end. The pieces that usually take
 | [Page search](../frontend/search.md) | A static index of each route's title, description, keywords, and Open Graph, generated at build. | In-app search with no search vendor (see the caveat below). |
 | [SHA-384 SRI](../concepts/security.md) | Subresource Integrity plus importmap integrity on every shipped script, preload, and stylesheet, across the whole module graph. | A tampered asset simply does not run, even if a CDN or cache hop is compromised. |
 
-## Owned, not rented
+## toil versus a typical stack
 
-Everything above is toil's own code on your critical path, not a black box you cannot inspect, patch, or secure. That is the difference the table below draws.
+Everything above is toil's own code on your critical path. You can inspect it, patch it, and secure it. The table below draws the difference.
 
 | Capability | toil (built in, zero setup) | Typical stack (you assemble it) |
 | --- | --- | --- |
@@ -65,17 +67,19 @@ Everything above is toil's own code on your critical path, not a black box you c
 | Frontend integrity and SEO | Automatic SHA-384 SRI, Image/LQIP, metadata, page search | Plugins and services bolted on per concern |
 | Critical-path ownership | The core is toil's own | A mix of vendors you cannot inspect or fix |
 
-Honest boundary: "owned" means the core of a working app is toil's, not that outside services are banned. Call a payment provider or another API and you still can.
+Owned means the core of a working app is toil's. It does not mean outside services are banned. You can still call a payment provider or any other API.
 
-## The honest caveats
+## Honest limits
 
-toil grades itself on honesty, so read these before you count on anything.
+toil grades itself on honesty. Read these before you count on anything.
 
-- **Distributed writes are built, live multi-cell is config-gated.** The home-region model and its core logic are real and tested, but live multi-region deployment (WAN routing, the ScyllaDB backing) is opt-in, not on by default. The local dev database is a single in-process store. toil is built to distribute writes worldwide; not every app is running a live global write cluster today.
-- **Analytics is a dev stub locally.** It is real on the edge; the local dev server returns sample data.
-- **Auth secrets ship as dev placeholders.** The session HMAC, OPRF seed, and ML-KEM key are clearly-insecure placeholders so `toiljs dev` just works. A real deployment must set its own (per-tenant auto-generation at domain registration is the plan).
+- **Distributed writes are built, live multi-cell is config-gated.** The home-region model and its core logic are real and tested. Live multi-region deployment (WAN routing, the ScyllaDB backing) is opt-in, not on by default. The local dev database is a single in-process store. toil is built to distribute writes worldwide. Not every app is running a live global write cluster today.
+- **Analytics is a dev stub locally.** It is real on the edge. The local dev server returns sample data.
+- **Auth secrets ship as dev placeholders.** The session HMAC, OPRF seed, and ML-KEM key are clearly insecure placeholders so `toiljs dev` just works. A real deployment must set its own. Per-tenant auto-generation at domain registration is the plan.
 - **Page search indexes static metadata only.** Routes whose metadata comes from a dynamic `generateMetadata` are not in the index.
 
-## Why it is all a default
+## Why these ship by default
 
-None of this is an upgrade you unlock later. toil grades itself against [RSG](./design-principles.md) (Resilience and Scale Grade), whose one rule is that your grade is your weakest axis, never the average, so these batteries exist to keep any single axis from quietly capping the whole. Where the honest trade fits your project (ToilDB is not general SQL, the server language is a strict TypeScript subset, the catalog is younger than long-established platforms), the built-in stack is the whole point. [Why toil](./why-toil.md) says where it does not.
+None of this is an upgrade you unlock later. toil grades itself against [RSG](./design-principles.md), the Resilience and Scale Grade. Its one rule: your grade is your weakest axis, never the average. These built-in parts exist so no single axis quietly caps the whole.
+
+The trades are real. ToilDB is not general SQL. The server language is a strict TypeScript subset. The catalog is younger than long-established platforms. Where those trades fit your project, the built-in stack earns its place. [Why toil](./why-toil.md) covers where it does not.

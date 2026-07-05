@@ -1,19 +1,33 @@
 # Understanding toil
 
-toil is one framework that gives you AAA-grade, hyper-scale infrastructure with zero configuration and no networking or distributed-systems knowledge required. You write a React frontend and a TypeScript backend in one project; toil runs both, plus a database, close to your users worldwide. Post-quantum login is one line. It just works out of the box.
+toil is one framework for a whole web app: the frontend, the backend, and the database, in a single project, all running close to your users.
 
-Top-tier infrastructure is normally something a funded team assembles from ten rented vendors and babysits with deep expertise. toil makes the good version the default version, in a single framework, so a solo builder starts from the same baseline as that team. This section is the "why": what toil is, the problem it solves, how it works underneath, and why it is built the way it is. If you read nothing else first, read this. It is what turns "another framework" into "oh, that is the point."
+You write React for the client and TypeScript for the server. toil compiles the server to WebAssembly and runs it at the edge, next to whoever is asking. Auth, database, email, realtime, and background jobs are already built in. Nothing to wire up, nothing to configure. A pizza site gets the same infrastructure a funded team would rent from ten separate vendors.
 
-## The one big idea
+This section explains what that means and why it holds up. Start here, then follow the links at the end.
 
-Almost every website has a split personality. The pretty part (pages, buttons) is served from machines all over the world, close to you. The important part (the database, where your data lives and changes) sits in **one place**, one region, often one machine. Post a comment in Tokyo when that database is in Virginia and your click flies halfway around the planet and back before anything happens.
+## What toil is
 
-toil is built to remove the split. Your **frontend** (React) and **backend** (TypeScript, compiled to a tiny WebAssembly program) both run at the **edge**, near your users. And **ToilDB** is built to distribute the writes too, so a write does not have to travel to one far-away box: every key has a home region that orders its writes, while the data replicates outward for fast local reads. One language, one project, one deploy, running close to everyone.
+A toil project has three parts in one folder:
+
+- `client/` is your React app: file-based routing, data loaders, and a typed client for calling the server.
+- `server/` is your backend, plain TypeScript marked up with decorators like `@rest`, `@data`, and `@auth`. toil compiles it to a small sandboxed WebAssembly module.
+- ToilDB is your database. It is already there. No connection string, no instance to spin up.
+
+Types tie the three together. Change a field on the server and the client stops compiling until you fix it. Edge deployment, post-quantum login, and asset tamper-proofing are on by default, not features you bolt on later.
+
+## The problem it solves
+
+Most apps read fast and write slow. Pages load from caches everywhere, but a write, say a comment or an order, has to reach one database in one region. A user in Tokyo writing to Virginia waits for the trip there and back. That single region is also a single point of failure.
+
+toil closes the gap in two moves. Your code runs at the edge instead of one origin. And ToilDB is built to distribute the writes, not just the reads: every key has a home region that orders its writes, while the data copies outward so reads stay local and quick.
+
+Spreading reads is easy, and everyone does it. Spreading writes is the hard part, and it is why most "global" apps are only global for reading.
 
 ```mermaid
 flowchart TB
     subgraph Ordinary["The ordinary web"]
-        U1["User in Tokyo"] -->|fast| E1["Edge (pretty part)"]
+        U1["User in Tokyo"] -->|fast| E1["Edge (pages)"]
         E1 -->|slow, one region| DB1[("Database in Virginia")]
     end
     subgraph Toil["toil"]
@@ -21,23 +35,23 @@ flowchart TB
     end
 ```
 
-That is the entire pitch. Distributing reads is easy and everyone does it; distributing the **writes** is the hard part almost nobody does, and it is the reason most "global" apps are only half global. The rest of these pages is how toil pulls it off, and why it stays honest about what is live today versus what is built and deployment-gated.
+## Where to go from here
 
-## Read these in order
+Read these in order. Each one builds on the last.
 
-1. **[Why toil? Who is it for?](./why-toil.md)** The problem with today's stacks, who benefits most, and the honest cases against.
-2. **[The modern stack](./modern-stack.md)** The full catalog of modern tech baked in, owned by toil, with zero setup.
-3. **[How toil works](./how-it-works.md)** The whole machine end to end: React client, WebAssembly backend, the edge node, and ToilDB.
-4. **[What makes toil hyper-scalable](./hyperscale.md)** What "hyper-scale" means, and the mechanisms that let one tiny program serve the planet.
-5. **[How toil is distributed](./distributed.md)** The hardest problem in web infrastructure, distributing the writes, and how ToilDB is built to solve it.
-6. **[toil versus other frameworks](./vs-other-frameworks.md)** An honest comparison with Next.js, Rails, Django, serverless, edge runtimes, and backend-as-a-service.
-7. **[Why toil is built this way (the RSG bar)](./design-principles.md)** The internal rubric, graded AAA down to D on its weakest axis, that toil holds itself against.
+1. **[Why toil, and who it is for](./why-toil.md)** What is wrong with a modern stack, who gains most from toil, and the honest cases against it.
+2. **[What comes built in](./modern-stack.md)** The full list of what toil owns and runs for you, and what it does not.
+3. **[How toil works](./how-it-works.md)** The whole path, from a React click through WebAssembly to ToilDB and back.
+4. **[Why it scales cheaply](./hyperscale.md)** How one small program can serve the whole planet without a per-app server bill.
+5. **[How toil distributes writes](./distributed.md)** The hardest problem in web infrastructure, and how ToilDB is built to solve it.
+6. **[toil next to other stacks](./vs-other-frameworks.md)** A fair comparison with Next.js, Rails, serverless, and the rest, wins and losses both.
+7. **[The bar toil holds itself to](./design-principles.md)** The RSG rubric, and its one rule: your grade is your weakest part.
 
-## The short version
+## The short answer
 
-- **Who it is for:** people building real products who want global speed and reliability without a platform team or ten stitched-together vendors. See [Why toil](./why-toil.md).
-- **Why it is fast:** the code runs next to the user, with no slow trip to a central origin. See [Hyper-scale](./hyperscale.md).
-- **Why it is different:** it is built to distribute the writes, not just the reads. See [Distributed](./distributed.md).
-- **Why it is safe:** the backend is a sandbox, passwords never reach the server in a usable form (real post-quantum auth), secrets never ship in the code, and the browser verifies every asset it loads. See [Security](../concepts/security.md).
+- **Who it is for:** anyone shipping a real product who wants global speed without a platform team or ten stitched-together services.
+- **Why it is fast:** the code runs next to the user, with no trip to a distant origin.
+- **Why it is different:** it distributes writes, not only reads.
+- **Why it is safe:** the backend is sandboxed, passwords never reach the server in a usable form, secrets never ship in the code, and the browser checks every file it loads.
 
-One framework, zero config, AAA-grade from the first line. When you are ready to build, jump to [Getting started](../getting-started/README.md).
+Ready to build? Jump to [Getting started](../getting-started/README.md).
