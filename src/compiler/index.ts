@@ -14,7 +14,11 @@ import type { RunningBackend } from 'toiljs/backend';
 
 import { loadConfig, type ResolvedToilConfig } from './config.js';
 import { renderEmails } from './emails.js';
-import { AUTH_EMAILS_GENERATED_BASENAME, renderAuthEmails } from './auth-emails.js';
+import {
+    AUTH_EMAILS_GENERATED_BASENAME,
+    AUTH_EMAILS_LIB_SUBDIR,
+    renderAuthEmails,
+} from './auth-emails.js';
 import { generate, TOIL_SERVER_ENV_DTS } from './generate.js';
 import { prerenderStaticParams } from './ssg.js';
 import {
@@ -546,6 +550,11 @@ function runToilscriptPass(
     if (opts.rpcSurfaceFiles)
         for (const surfaceFile of opts.rpcSurfaceFiles) args.push('--rpcSurfaceFiles', surfaceFile);
     if (opts.authUser) args.push('--authUser');
+    // Built-in auth: add the app-local `.toil/authlib` as a library path so the
+    // generated `AuthEmail` (see renderAuthEmails) is an ambient global the
+    // node_modules-compiled AuthController resolves with no import. `--lib` merges
+    // with the toilconfig `lib` (it does not replace it). Written before this pass.
+    if (opts.authUser) args.push('--lib', AUTH_EMAILS_LIB_SUBDIR);
     // Each pass is handed its OWN entry subset (the per-tier `files`); suppress the toilconfig
     // `entries` so toilscript does not ALSO append every project entry to every pass (which would
     // pull, e.g., a `@stream` class into the cold daemon pass). serverEntryFiles already folds
@@ -595,8 +604,9 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
         process.stdout.write(pc.dim('  server changed, rebuilding…') + '\n');
         // Recompile emails/*.tsx -> the generated module before the server build,
         // so editing an email template hot-reloads like any other server change.
-        renderEmails(cfg)
-            .then(() => renderAuthEmails(cfg, serverAuthEnabled(root, cfg.auth)))
+        const authOn = serverAuthEnabled(root, cfg.auth);
+        renderEmails(cfg, authOn)
+            .then(() => renderAuthEmails(cfg, authOn))
             .then(() => buildServer(root, cfg.auth))
             .then(() => process.stdout.write(pc.green('  ✓ ') + pc.dim('server rebuilt') + '\n'))
             .catch((e: unknown) =>
@@ -879,10 +889,11 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
     if (hasServer) process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
     // Compile emails/*.tsx -> generated server module BEFORE toilscript builds it in.
-    await renderEmails(cfg);
-    // Built-in auth: (re)generate `<server>/_auth_emails.ts` (defaults + any emails/auth-*.tsx
-    // overrides) so the injected AuthController's `AuthEmail.*` senders compile in.
-    await renderAuthEmails(cfg, serverAuthEnabled(cfg.root, cfg.auth));
+    const authOnDev = serverAuthEnabled(cfg.root, cfg.auth);
+    await renderEmails(cfg, authOnDev);
+    // Built-in auth: (re)generate `.toil/authlib/_auth_emails.ts` (defaults + any emails/auth-*.tsx
+    // overrides) so the injected AuthController's `AuthEmail.*` senders compile in via --lib.
+    await renderAuthEmails(cfg, authOnDev);
     // Generate the client codegen first so the SSR slots pre-pass can load the route graph, then
     // emit the server-importable `<server>/_ssr/<name>.slots.ts` BEFORE the server build so its
     // `render` can import them. Dev reuses the prior build's shell (or the template) for the HASH;
@@ -1007,10 +1018,11 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     if (hasServer && !opts.serverOnly)
         process.stdout.write(pc.dim('  building the server (toilscript)…') + '\n');
     // Compile emails/*.tsx -> generated server module BEFORE toilscript builds it in.
-    await renderEmails(cfg);
-    // Built-in auth: (re)generate `<server>/_auth_emails.ts` (defaults + any emails/auth-*.tsx
-    // overrides) so the injected AuthController's `AuthEmail.*` senders compile in.
-    await renderAuthEmails(cfg, serverAuthEnabled(cfg.root, cfg.auth));
+    const authOnBuild = serverAuthEnabled(cfg.root, cfg.auth);
+    await renderEmails(cfg, authOnBuild);
+    // Built-in auth: (re)generate `.toil/authlib/_auth_emails.ts` (defaults + any emails/auth-*.tsx
+    // overrides) so the injected AuthController's `AuthEmail.*` senders compile in via --lib.
+    await renderAuthEmails(cfg, authOnBuild);
     // Generate the client codegen (`.toil/globals.ts`, `.toil/index.html`, …) NOW — before the
     // server build — so the SSR slots pre-pass below can load the route/layout module graph and
     // render the opted-in routes.

@@ -325,7 +325,7 @@ function warn(msg: string): void {
  * there is no `emails/` directory. Removes a stale generated module when the
  * directory becomes empty.
  */
-export async function renderEmails(cfg: ResolvedToilConfig): Promise<void> {
+export async function renderEmails(cfg: ResolvedToilConfig, authOn = false): Promise<void> {
     const emailsDir = path.join(cfg.root, 'emails');
     const generatedPath = path.join(serverDir(cfg.root), GENERATED_BASENAME);
 
@@ -355,7 +355,12 @@ export async function renderEmails(cfg: ResolvedToilConfig): Promise<void> {
         for (const file of files) {
             // Reserved auth-override templates (emails/auth-confirm.tsx, …) are
             // consumed by the auth pipeline, not surfaced as generic `Emails.*`.
-            if (RESERVED_AUTH_EMAIL_NAMES.has(toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, ''))))
+            // Only reserved WHEN AUTH IS ON: a non-auth project keeping an email
+            // by that name still gets its normal `Emails.<Name>.send(...)`.
+            if (
+                authOn &&
+                RESERVED_AUTH_EMAIL_NAMES.has(toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, '')))
+            )
                 continue;
             try {
                 const r = await renderEmailFile(

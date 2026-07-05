@@ -23,7 +23,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import pc from 'picocolors';
 import { createServer } from 'vite';
@@ -33,20 +32,19 @@ import { RESERVED_AUTH_EMAIL_NAMES, renderEmailFile, toPascal, type RenderedEmai
 import { createViteConfig } from './vite.js';
 
 /**
- * The toiljs package's `server/globals` LIB directory: the ambient, no-import
- * surface (`EmailService`, `AuthService`, …) the toilconfig `lib` array points
- * at. The auth-email module is generated HERE, not in the app's `server/` dir,
- * because that is what makes `AuthEmail` resolvable from the node_modules-compiled
- * `AuthController` with NO import (an exported namespace in a plain app entry is
- * module-scoped, not global). Prefers the app's install so a symlinked/linked
- * toiljs is followed; falls back to the running package (hoisted install).
+ * The APP-LOCAL library directory the auth-email module is generated into,
+ * relative to the project root (posix, for the toilscript `--lib` CLI arg). It is
+ * passed to the compiler via `--lib` (see runToilscriptPass), which "uses exports
+ * of all top-level files at this path as globals". That is what makes the
+ * generated `AuthEmail` namespace resolvable from the node_modules-compiled
+ * `AuthController` with NO import, the same way `EmailService`/`AuthService` are
+ * ambient. Generating HERE (the app's own gitignored `.toil/`) rather than into
+ * `node_modules/toiljs/server/globals` keeps it PER-APP: a pnpm/workspace/linked
+ * install physically shares that package dir, so writing there would let one app
+ * clobber another's templates (or delete the file another app is compiling), and
+ * a read-only store would fail the build. `.toil` is always app-writable.
  */
-function globalsDir(root: string): string {
-    const inApp = path.join(root, 'node_modules', 'toiljs', 'server', 'globals');
-    if (fs.existsSync(inApp)) return inApp;
-    const pkgDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-    return path.join(pkgDir, 'server', 'globals');
-}
+export const AUTH_EMAILS_LIB_SUBDIR = '.toil/authlib';
 
 /** The reserved override names (PascalCase), one per built-in auth email. */
 type AuthName = 'AuthConfirm' | 'AuthReset' | 'Auth2fa';
@@ -204,17 +202,36 @@ function moduleSource(parts: Parts): string {
 }
 
 /**
- * (Re)write `_auth_emails.ts` in the toiljs lib globals dir so the built-in auth
- * controller has its email senders, baking any reserved `emails/*.tsx` override
- * over the default. Runs BEFORE the toilscript server build (like
- * {@link renderEmails}) so the module is compiled in. A no-op that removes a stale
- * module when `authOn` is false. Only spins up Vite when an override actually
- * exists.
+ * Best-effort removal of a stale copy from the pre-0.0.107 location
+ * (`node_modules/toiljs/server/globals/_auth_emails.ts`). Leaving it there would
+ * define a SECOND `AuthEmail` namespace alongside the new app-local one and break
+ * the compile with a duplicate symbol, so a project upgraded in place (without a
+ * fresh `npm i`) is cleaned up here. Never throws (a read-only store just skips).
+ */
+function removeLegacyModule(root: string): void {
+    try {
+        const legacy = path.join(root, 'node_modules', 'toiljs', 'server', 'globals', GENERATED_BASENAME);
+        if (fs.existsSync(legacy)) fs.rmSync(legacy);
+    } catch {
+        // read-only / missing: nothing to clean, not fatal
+    }
+}
+
+/**
+ * (Re)write `_auth_emails.ts` into the app-local `.toil/authlib` LIB dir so the
+ * built-in auth controller has its email senders, baking any reserved
+ * `emails/*.tsx` override over the default. Runs BEFORE the toilscript server
+ * build (like {@link renderEmails}) so the module is compiled in via `--lib`. A
+ * no-op that removes a stale module when auth is off or there is no server. Only
+ * spins up Vite when an override actually exists.
  */
 export async function renderAuthEmails(cfg: ResolvedToilConfig, authOn: boolean): Promise<void> {
-    const generatedPath = path.join(globalsDir(cfg.root), GENERATED_BASENAME);
+    const generatedPath = path.join(cfg.root, AUTH_EMAILS_LIB_SUBDIR, GENERATED_BASENAME);
+    removeLegacyModule(cfg.root);
 
-    if (!authOn) {
+    // No server to compile into, or auth off: ensure no stale module lingers.
+    const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
+    if (!authOn || !hasServer) {
         if (fs.existsSync(generatedPath)) fs.rmSync(generatedPath);
         return;
     }
