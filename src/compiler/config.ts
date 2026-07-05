@@ -51,8 +51,13 @@ export interface ClientConfig {
     readonly outDir?: string;
     /** Public base path. Default `/`. */
     readonly base?: string;
-    /** Dev server port. Default `3000`. */
+    /** Port the dev server AND the self-host (`toiljs start`) listen on. Default `3000`.
+     *  Overridden by the `--port` CLI flag and the `PORT` env var (in that precedence). */
     readonly port?: number;
+    /** Bind host for the dev server AND the self-host. Default `127.0.0.1` (loopback only).
+     *  Set to `0.0.0.0` (or a specific interface) to accept LAN / public connections.
+     *  Overridden by the `--host` CLI flag and the `HOST` env var (in that precedence). */
+    readonly host?: string;
     /**
      * Optimize imported images at build time (resize/convert via `vite-imagetools` + sharp): an
      * import like `logo.png?w=400;800&format=webp&as=srcset` emits resized, compressed variants.
@@ -194,6 +199,8 @@ export interface ResolvedToilConfig {
     readonly outDir: string;
     readonly base: string;
     readonly port: number;
+    /** Bind host for the dev server + self-host (`toiljs start`). Default `127.0.0.1`. */
+    readonly host: string;
     /** Whether build-time image optimization (`vite-imagetools`) is enabled. */
     readonly images: boolean;
     /** Whether build-time font preloading is enabled. */
@@ -246,7 +253,7 @@ function resolveRuntimePath(): string {
 
 /** Finds and loads `toil.config.*` or `toiljs.config.*` from `root`, then resolves defaults. */
 export async function loadConfig(
-    opts: { root?: string; port?: number } = {},
+    opts: { root?: string; port?: number; host?: string } = {},
 ): Promise<ResolvedToilConfig> {
     const root = path.resolve(opts.root ?? process.cwd());
 
@@ -278,7 +285,12 @@ export async function loadConfig(
         toilDir: path.join(root, '.toil'),
         outDir: client.outDir ?? 'build/client',
         base: client.base ?? '/',
-        port: opts.port ?? client.port ?? 3000,
+        // Port + bind host for the dev server and the self-host, resolved with the
+        // precedence: CLI flag (opts) > env (PORT/HOST) > config (client.*) > default.
+        // `PORT`/`HOST` are the conventional PaaS env vars; a platform that injects
+        // `PORT` (Heroku, Render, Fly, containers) works with zero config.
+        port: opts.port ?? envPort() ?? client.port ?? 3000,
+        host: opts.host ?? envHost() ?? client.host ?? '127.0.0.1',
         images: client.images ?? true,
         fonts: client.fonts ?? true,
         viewTransitions: client.viewTransitions ?? false,
@@ -297,6 +309,21 @@ export async function loadConfig(
         runtimePath: resolveRuntimePath(),
         vite: client.vite ?? {},
     };
+}
+
+/** The `PORT` env var as a positive integer, or `undefined` when unset/invalid
+ *  (so it falls through to the config value / default rather than binding to 0). */
+function envPort(): number | undefined {
+    const v = process.env.PORT;
+    if (v == null || v.trim() === '') return undefined;
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+}
+
+/** The `HOST` env var (trimmed), or `undefined` when unset/blank. */
+function envHost(): string | undefined {
+    const v = process.env.HOST;
+    return v != null && v.trim() !== '' ? v.trim() : undefined;
 }
 
 const DEV_NODE_MODES: readonly DevNodeMode[] = ['hot', 'regional', 'continental', 'daemon', 'all'];

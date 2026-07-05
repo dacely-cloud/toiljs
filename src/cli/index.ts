@@ -144,7 +144,8 @@ function printHelp(): void {
             '',
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
-            cmd('--port <n>', 'dev server port'),
+            cmd('--port <n>', 'dev/start: listen port (or PORT env / client.port; default 3000)'),
+            cmd('--host <h>', 'dev/start: bind host, e.g. 0.0.0.0 (or HOST env / client.host; default 127.0.0.1)'),
             cmd('--threads <n>', 'start: production HTTP worker count'),
             cmd('-t, --template', 'create: app | minimal'),
             cmd('--style <name>', 'create/configure: css | sass | less | stylus'),
@@ -213,7 +214,7 @@ async function main(): Promise<void> {
         case 'dev':
             banner();
             process.stdout.write(dim('  starting dev server…') + '\n\n');
-            await dev({ root: flags.root, port: flags.port });
+            await dev({ root: flags.root, port: flags.port, host: flags.host });
             break;
 
         case 'build':
@@ -240,10 +241,21 @@ async function main(): Promise<void> {
                 host: flags.host,
                 threads: flags.threads,
             });
+            // A wildcard bind (0.0.0.0/::) is not universally openable, so present a
+            // clickable loopback URL and separately flag that it is exposed.
+            const wildcard =
+                server.host === '0.0.0.0' || server.host === '::' || server.host === '';
+            const shownHost = wildcard ? 'localhost' : server.host;
+            const exposed =
+                server.host !== '127.0.0.1' && server.host !== 'localhost' && server.host !== '::1';
             process.stdout.write(
                 accent('  ➜ ') +
-                    bold(`http://localhost:${String(server.port)}`) +
+                    bold(`http://${shownHost}:${String(server.port)}`) +
                     dim(`   ws channel: ${server.wsPath}`) +
+                    (exposed
+                        ? '\n' +
+                          dim(`     bound to ${server.host}:${String(server.port)} (exposed beyond loopback)`)
+                        : '') +
                     '\n\n',
             );
             break;

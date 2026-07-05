@@ -845,6 +845,17 @@ async function collectDevCss(server: ViteDevServer): Promise<string> {
     return css;
 }
 
+/** The host to show in a clickable URL: a wildcard bind (`0.0.0.0`/`::`/empty) is
+ *  not universally openable, so present `localhost` for those; otherwise the host. */
+function displayHost(host: string): string {
+    return host === '0.0.0.0' || host === '::' || host === '' ? 'localhost' : host;
+}
+
+/** Whether the bind host exposes the server beyond loopback (worth flagging to the user). */
+function isExposedHost(host: string): boolean {
+    return host !== '127.0.0.1' && host !== 'localhost' && host !== '::1';
+}
+
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
     // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
@@ -921,6 +932,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     const front = await startDevServer({
         root: cfg.root,
         port: cfg.port,
+        host: cfg.host,
         wasmFile: serverWasmFile(cfg.root),
         // The daemon (cold) emulator drives `release-cold.wasm` per `nodeMode`; absent for a
         // project with no `@daemon` (the cold artifact never gets built, so the host stays idle).
@@ -938,17 +950,21 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     server.httpServer?.once('close', () => {
         void front.close();
     });
+    const shownHost = displayHost(front.host);
     process.stdout.write(
         '\n  ' +
             pc.green('➜') +
             '  ' +
             pc.bold('Local') +
             ':   ' +
-            pc.cyan(`http://localhost:${pc.bold(String(front.port))}/`) +
+            pc.cyan(`http://${shownHost}:${pc.bold(String(front.port))}/`) +
             pc.dim('  (wasm server + vite)') +
+            (isExposedHost(front.host)
+                ? pc.yellow(`\n  ⚠  exposed on ${front.host}:${String(front.port)} (not just loopback)`)
+                : '') +
             '\n',
     );
-    printEmailsUrl(cfg, `http://localhost:${String(front.port)}/`);
+    printEmailsUrl(cfg, `http://${shownHost}:${String(front.port)}/`);
 
     // Rebuild the server on server-file changes; Vite HMRs the regenerated shared/server.ts
     // and the dev server hot-swaps the recompiled wasm module.
@@ -1044,7 +1060,9 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
         daemon: cfg.daemon,
         threads: opts.threads ?? cfg.threads,
         port: cfg.port,
-        host: opts.host,
+        // `cfg.host` already folds in the `--host` flag, `HOST` env, and `client.host`
+        // config (CLI > env > config > 127.0.0.1); see loadConfig.
+        host: cfg.host,
         email: cfg.email ?? undefined,
     });
 }
