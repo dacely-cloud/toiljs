@@ -24,7 +24,13 @@ import { __resetDbForTests } from '../src/devserver/db/index.js';
 import { __resetRatelimitForTests } from '../src/devserver/config/ratelimit.js';
 import { clearEnvCache } from '../src/devserver/config/dotenv.js';
 import { __sentEmails, __clearSentEmails } from '../src/devserver/email/index.js';
-import { Auth, EmailNotConfirmedError, TwoFactorRequiredError } from '../src/client/auth.js';
+import {
+    Auth,
+    AuthErrorCode,
+    EmailInUseError,
+    EmailNotConfirmedError,
+    TwoFactorRequiredError,
+} from '../src/client/auth.js';
 import { DataReader, DataWriter } from '../src/io/codec.js';
 
 const EXAMPLE_WASM = path.resolve(
@@ -291,9 +297,13 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         'duplicate email is rejected at registration (distinct "email already in use")',
         async () => {
             await Auth.register('carol', 'carol-pw-strong', 'dupe@x.com');
-            await expect(Auth.register('dave', 'dave-pw-strong', 'dupe@x.com')).rejects.toThrow(
-                /email already in use/,
+            // Typed error: a distinct EmailInUseError carrying the stable code, so a UI can
+            // branch reliably (never on the message/name string).
+            const err = await Auth.register('dave', 'dave-pw-strong', 'dupe@x.com').catch(
+                (e: unknown) => e,
             );
+            expect(err).toBeInstanceOf(EmailInUseError);
+            expect((err as EmailInUseError).code).toBe(AuthErrorCode.EmailInUse);
         },
         60_000,
     );

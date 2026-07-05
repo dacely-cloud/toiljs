@@ -16,6 +16,19 @@ export {
     login as authLogin,
     buildLoginMessage,
     LOGIN_CONTEXT,
+    // Typed auth errors + the discriminant enum: catch `AuthError` (or a specific
+    // subclass) and branch on `err.code === AuthErrorCode.*`, never on `err.name`.
+    AuthError,
+    AuthErrorCode,
+    UsernameTakenError,
+    EmailInUseError,
+    InvalidCredentialsError,
+    EmailNotConfirmedError,
+    TwoFactorRequiredError,
+    ServerAuthFailedError,
+    TwoFactorCodeError,
+    ConfirmationInvalidError,
+    PasswordResetInvalidError,
 } from './auth.js';
 export type { KdfParams, AuthOptions } from './auth.js';
 export { Link } from './navigation/Link.js';

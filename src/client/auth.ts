@@ -196,7 +196,7 @@ async function postBinary(baseUrl: string, path: string, body: Uint8Array): Prom
         body: body as BodyInit,
         credentials: 'same-origin',
     });
-    if (!res.ok) throw new Error('auth: request failed');
+    if (!res.ok) throw new AuthError(AuthErrorCode.RequestFailed, 'The auth request failed.');
     return new DataReader(new Uint8Array(await res.arrayBuffer()));
 }
 
@@ -230,7 +230,8 @@ export async function register(
         new DataWriter().writeString(username).writeBytes(blinded).toBytes(),
     );
     const status = start.readU8();
-    if (status !== 0) throw new Error('auth: registration unavailable');
+    if (status !== 0)
+        throw new AuthError(AuthErrorCode.RequestFailed, 'Registration is unavailable right now.');
     const kdf = decodeKdf(start);
     const evaluated = start.readBytes();
 
@@ -253,7 +254,8 @@ export async function register(
     } finally {
         wipe(seed);
     }
-    if (publicKey.length !== PUBLIC_KEY_LEN) throw new Error('auth: bad public key length');
+    if (publicKey.length !== PUBLIC_KEY_LEN)
+        throw new AuthError(AuthErrorCode.ProtocolError, 'Server returned a bad public key length.');
 
     // 3. Submit the username + email + public key + proof-of-possession.
     const finish = await postBinary(
@@ -267,9 +269,10 @@ export async function register(
             .toBytes(),
     );
     const finishStatus = finish.readU8();
-    if (finishStatus === 1) throw new Error('auth: username already registered (log in instead)');
-    if (finishStatus === 2) throw new Error('auth: email already in use');
-    if (finishStatus !== 0) throw new Error('auth: registration rejected');
+    if (finishStatus === 1) throw new UsernameTakenError();
+    if (finishStatus === 2) throw new EmailInUseError();
+    if (finishStatus !== 0)
+        throw new AuthError(AuthErrorCode.RegistrationRejected, 'Registration was rejected.');
 }
 
 /**
@@ -310,7 +313,8 @@ export async function login(
     const exp = r.readU64();
     const evaluated = r.readBytes();
     // Client-side fast-fail only; the server re-checks expiry authoritatively.
-    if (BigInt(Math.floor(Date.now() / 1000)) >= exp) throw new Error('auth: challenge expired');
+    if (BigInt(Math.floor(Date.now() / 1000)) >= exp)
+        throw new AuthError(AuthErrorCode.ProtocolError, 'The login challenge expired; retry.');
 
     // 2. OPRF -> keyed salt -> seed.
     const oprfOutput = oprf.finalize(pw, blind, evaluated);
@@ -344,7 +348,8 @@ export async function login(
     } finally {
         wipe(seed);
     }
-    if (signature.length !== SIGNATURE_LEN) throw new Error('auth: bad signature length');
+    if (signature.length !== SIGNATURE_LEN)
+        throw new AuthError(AuthErrorCode.ProtocolError, 'Computed a bad signature length.');
 
     // 4. Submit {cid, ct, signature}.
     const res = await postBinary(
@@ -367,7 +372,7 @@ export async function login(
     // session token on 0 and the twoFaId on 3.
     if (loginStatus !== 0 && loginStatus !== 3) {
         wipe(sharedSecret);
-        throw new Error('auth: login failed');
+        throw new InvalidCredentialsError();
     }
     const first = res.readBytes();
     const serverConfirm = res.readBytes();
@@ -387,7 +392,7 @@ export async function login(
         sessionKey,
         concatBytes(utf8(SERVER_CONFIRM_LABEL), transcriptHash),
     );
-    if (!bytesEqual(expected, serverConfirm)) throw new Error('auth: server authentication failed');
+    if (!bytesEqual(expected, serverConfirm)) throw new ServerAuthFailedError();
 
     if (loginStatus === 3) {
         // The server authenticated itself, but a second factor is required. Surface
@@ -399,27 +404,147 @@ export async function login(
     return first; // session token
 }
 
-/** Thrown by {@link login} when the credential is valid but the account's email
- *  is not confirmed and the domain requires confirmation. Catch it to prompt the
- *  user to confirm (and offer {@link resendConfirmation}). */
-export class EmailNotConfirmedError extends Error {
+/**
+ * The STABLE, typed discriminant carried by every auth error as `err.code`. Branch
+ * on THIS (or on the error class via `instanceof`), never on `err.message` (human
+ * facing, may change) nor `err.name` (a bare string, mangled by minifiers). Each
+ * value maps 1:1 to an {@link AuthError} subclass below.
+ *
+ * ```ts
+ * try { await Auth.login(email, password); }
+ * catch (err) {
+ *   if (err instanceof Auth.EmailNotConfirmedError) return promptConfirm();
+ *   if (err instanceof Auth.TwoFactorRequiredError) return promptCode(err.twoFaId);
+ *   if (err instanceof Auth.AuthError && err.code === Auth.AuthErrorCode.InvalidCredentials)
+ *     return setError('Incorrect email or password.');
+ *   throw err;
+ * }
+ * ```
+ */
+export enum AuthErrorCode {
+    /** Network failure or a non-2xx / malformed response from the auth endpoint. */
+    RequestFailed = 'request_failed',
+    /** A client/server protocol mismatch (bad key or signature length, expired challenge). */
+    ProtocolError = 'protocol_error',
+    /** register: the username is already registered. */
+    UsernameTaken = 'username_taken',
+    /** register: the email is already in use. */
+    EmailInUse = 'email_in_use',
+    /** register: rejected for another reason (e.g. failed proof-of-possession). */
+    RegistrationRejected = 'registration_rejected',
+    /** login: wrong username/password. Deliberately indistinguishable from "no such user". */
+    InvalidCredentials = 'invalid_credentials',
+    /** login: the credential is valid but the account's email is not confirmed. */
+    EmailNotConfirmed = 'email_not_confirmed',
+    /** login: password + server auth OK, but a second factor is required (no session yet). */
+    TwoFactorRequired = 'two_factor_required',
+    /** login/2fa: the SERVER failed to authenticate itself (mutual-auth mismatch) -> possible MITM. */
+    ServerAuthFailed = 'server_auth_failed',
+    /** 2fa: the submitted code was wrong, expired, or already used. */
+    TwoFactorCodeInvalid = 'two_factor_code_invalid',
+    /** 2fa setup: enabling/disabling the second factor failed. */
+    TwoFactorSetupFailed = 'two_factor_setup_failed',
+    /** confirm: the email-confirmation link was invalid or expired. */
+    ConfirmationInvalid = 'confirmation_invalid',
+    /** reset: the password-reset link was invalid or expired. */
+    PasswordResetInvalid = 'password_reset_invalid',
+}
+
+/**
+ * Base class for EVERY error thrown by the auth client. Always carries a typed
+ * {@link AuthErrorCode} as `err.code`, so `err instanceof AuthError` narrows the
+ * whole family and `err.code` discriminates within it. The specific subclasses
+ * below are sugar for the common branches; any error is still an `AuthError`.
+ */
+export class AuthError extends Error {
+    /** The stable machine-readable discriminant. Prefer this over `message`/`name`. */
+    readonly code: AuthErrorCode;
+    constructor(code: AuthErrorCode, message: string) {
+        super(message);
+        this.name = 'AuthError';
+        this.code = code;
+    }
+}
+
+/** register: the username is already registered ({@link AuthErrorCode.UsernameTaken}). */
+export class UsernameTakenError extends AuthError {
     constructor() {
-        super('auth: email not confirmed');
+        super(AuthErrorCode.UsernameTaken, 'That username is already registered.');
+        this.name = 'UsernameTakenError';
+    }
+}
+
+/** register: the email is already in use ({@link AuthErrorCode.EmailInUse}). */
+export class EmailInUseError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.EmailInUse, 'That email is already in use.');
+        this.name = 'EmailInUseError';
+    }
+}
+
+/** login: wrong username/password, or no such account ({@link AuthErrorCode.InvalidCredentials}). */
+export class InvalidCredentialsError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.InvalidCredentials, 'Incorrect username or password.');
+        this.name = 'InvalidCredentialsError';
+    }
+}
+
+/** login: the credential is valid but the account's email is not confirmed and the
+ *  domain requires confirmation. Catch it to prompt the user to confirm (and offer
+ *  {@link resendConfirmation}). {@link AuthErrorCode.EmailNotConfirmed}. */
+export class EmailNotConfirmedError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.EmailNotConfirmed, 'Your email address is not confirmed yet.');
         this.name = 'EmailNotConfirmedError';
     }
 }
 
-/** Thrown by {@link login} when the password verified AND the server authenticated
- *  itself (mutual auth passed) but the account requires a SECOND FACTOR. No session
- *  exists yet. Catch it, collect the delivered code, and call
- *  {@link verifyTwoFactor} with `err.twoFaId`. */
-export class TwoFactorRequiredError extends Error {
+/** login: the password verified AND the server authenticated itself (mutual auth
+ *  passed) but the account requires a SECOND FACTOR. No session exists yet. Catch it,
+ *  collect the delivered code, and call {@link verifyTwoFactor} with `err.twoFaId`.
+ *  {@link AuthErrorCode.TwoFactorRequired}. */
+export class TwoFactorRequiredError extends AuthError {
     /** The opaque login-challenge id (hex) to echo to {@link verifyTwoFactor}. */
     readonly twoFaId: string;
     constructor(twoFaId: string) {
-        super('auth: two-factor authentication required');
+        super(AuthErrorCode.TwoFactorRequired, 'A second factor is required to sign in.');
         this.name = 'TwoFactorRequiredError';
         this.twoFaId = twoFaId;
+    }
+}
+
+/** login/2fa: the SERVER failed to prove its identity (mutual-auth tag mismatch).
+ *  Treat as hostile: a genuine server always authenticates. Possible MITM / wrong
+ *  pinned KEM key. {@link AuthErrorCode.ServerAuthFailed}. */
+export class ServerAuthFailedError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.ServerAuthFailed, 'Server authentication failed (possible MITM).');
+        this.name = 'ServerAuthFailedError';
+    }
+}
+
+/** 2fa: the submitted code was wrong, expired, or already used ({@link AuthErrorCode.TwoFactorCodeInvalid}). */
+export class TwoFactorCodeError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.TwoFactorCodeInvalid, 'The verification code is invalid or expired.');
+        this.name = 'TwoFactorCodeError';
+    }
+}
+
+/** confirm: the email-confirmation link was invalid or expired ({@link AuthErrorCode.ConfirmationInvalid}). */
+export class ConfirmationInvalidError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.ConfirmationInvalid, 'This confirmation link is invalid or has expired.');
+        this.name = 'ConfirmationInvalidError';
+    }
+}
+
+/** reset: the password-reset link was invalid or expired ({@link AuthErrorCode.PasswordResetInvalid}). */
+export class PasswordResetInvalidError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.PasswordResetInvalid, 'This password-reset link is invalid or has expired.');
+        this.name = 'PasswordResetInvalidError';
     }
 }
 
@@ -444,7 +569,7 @@ export async function verifyTwoFactor(
         '/2fa/verify',
         new DataWriter().writeBytes(fromHex(twoFaId)).writeString(code).toBytes(),
     );
-    if (res.readU8() !== 0) throw new Error('auth: two-factor code invalid or expired');
+    if (res.readU8() !== 0) throw new TwoFactorCodeError();
     return res.readBytes(); // opaque session token
 }
 
@@ -462,7 +587,8 @@ export async function setupTwoFactor(method: number, opts: AuthOptions = {}): Pr
         '/2fa/setup',
         new DataWriter().writeU8(method).toBytes(),
     );
-    if (res.readU8() !== 0) throw new Error('auth: two-factor setup failed');
+    if (res.readU8() !== 0)
+        throw new AuthError(AuthErrorCode.TwoFactorSetupFailed, 'Enabling or disabling two-factor failed.');
 }
 
 /**
@@ -477,7 +603,8 @@ export async function confirmTwoFactorSetup(code: string, opts: AuthOptions = {}
         '/2fa/setup/verify',
         new DataWriter().writeString(code).toBytes(),
     );
-    if (res.readU8() !== 0) throw new Error('auth: two-factor setup confirmation failed');
+    if (res.readU8() !== 0)
+        throw new AuthError(AuthErrorCode.TwoFactorSetupFailed, 'Confirming the two-factor setup failed.');
 }
 
 /**
@@ -490,7 +617,7 @@ export async function twoFactorStatus(opts: AuthOptions = {}): Promise<number> {
         method: 'GET',
         credentials: 'same-origin',
     });
-    if (!res.ok) throw new Error('auth: request failed');
+    if (!res.ok) throw new AuthError(AuthErrorCode.RequestFailed, 'The auth request failed.');
     return new DataReader(new Uint8Array(await res.arrayBuffer())).readU8();
 }
 
@@ -503,7 +630,7 @@ export async function confirmEmail(token: string, opts: AuthOptions = {}): Promi
         '/confirm',
         new DataWriter().writeBytes(fromHex(token)).toBytes(),
     );
-    if (res.readU8() !== 0) throw new Error('auth: confirmation link invalid or expired');
+    if (res.readU8() !== 0) throw new ConfirmationInvalidError();
 }
 
 /** Ask the server to re-send the confirmation email. Resolves regardless of
@@ -551,7 +678,7 @@ export async function resetPassword(
         '/reset/start',
         new DataWriter().writeBytes(rawToken).writeBytes(blinded).toBytes(),
     );
-    if (start.readU8() !== 0) throw new Error('auth: reset link invalid or expired');
+    if (start.readU8() !== 0) throw new PasswordResetInvalidError();
     const username = start.readString();
     const kdf = decodeKdf(start);
     const evaluated = start.readBytes();
@@ -575,7 +702,8 @@ export async function resetPassword(
     } finally {
         wipe(seed);
     }
-    if (publicKey.length !== PUBLIC_KEY_LEN) throw new Error('auth: bad public key length');
+    if (publicKey.length !== PUBLIC_KEY_LEN)
+        throw new AuthError(AuthErrorCode.ProtocolError, 'Server returned a bad public key length.');
 
     // 3. Consume the token + overwrite the stored login key.
     const finish = await postBinary(
@@ -583,7 +711,7 @@ export async function resetPassword(
         '/reset/finish',
         new DataWriter().writeBytes(rawToken).writeBytes(publicKey).writeBytes(regProof).toBytes(),
     );
-    if (finish.readU8() !== 0) throw new Error('auth: password reset rejected');
+    if (finish.readU8() !== 0) throw new PasswordResetInvalidError();
 }
 
 /** The client auth surface, grouped for `Auth.register` / `Auth.login` use. */
@@ -601,4 +729,16 @@ export const Auth = {
     TwoFactorMethod,
     buildLoginMessage,
     LOGIN_CONTEXT,
+    // Typed error surface: branch on `Auth.AuthErrorCode` or `instanceof Auth.<X>Error`.
+    AuthError,
+    AuthErrorCode,
+    UsernameTakenError,
+    EmailInUseError,
+    InvalidCredentialsError,
+    EmailNotConfirmedError,
+    TwoFactorRequiredError,
+    ServerAuthFailedError,
+    TwoFactorCodeError,
+    ConfirmationInvalidError,
+    PasswordResetInvalidError,
 } as const;
