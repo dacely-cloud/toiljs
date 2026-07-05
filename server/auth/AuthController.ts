@@ -367,6 +367,34 @@ function isKnownTwoFaMethod(m: u8): bool {
     // >>> e.g. `|| m == TWOFA_TOTP || m == TWOFA_SMS` <<<
 }
 
+/**
+ * A plausible email address: length 3..254, exactly one `@` (not at either end), a
+ * dotted domain (a `.` after the `@`, not adjacent to it or at the very end), and no
+ * spaces or control characters. AssemblyScript has no RegExp, so this scans chars.
+ * Mirrors the client `isValidEmail`; the client validates first, but a hostile client
+ * can skip that, so the server re-checks BEFORE storing (never register `bob.com`).
+ */
+function isValidEmail(email: string): bool {
+    if (email.length < 3 || email.length > 254) return false;
+    let at: i32 = -1;
+    for (let i = 0; i < email.length; i++) {
+        const c = email.charCodeAt(i);
+        if (c <= 32 || c == 127) return false; // no space / control chars
+        if (c == 64) {
+            // '@'
+            if (at >= 0) return false; // a second '@' is invalid
+            at = i;
+        }
+    }
+    if (at <= 0 || at >= email.length - 1) return false; // '@' present, not first/last
+    let dot: i32 = -1;
+    for (let i = at + 1; i < email.length; i++) {
+        if (email.charCodeAt(i) == 46) dot = i; // last '.' in the domain
+    }
+    if (dot < 0 || dot == at + 1 || dot == email.length - 1) return false; // dotted domain
+    return true;
+}
+
 // Every lookup KEY carries the tenant `host` (realm) as its FIRST field, so the
 // physical key includes the domain and the SAME logical name/email/id addresses a
 // DIFFERENT row per host (cross-domain isolation, on top of toildb's per-tenant
@@ -551,7 +579,7 @@ class Auth {
         if (!r.ok) return fail();
         if (pk.length != AuthService.PUBLIC_KEY_LEN) return fail();
         if (username.length == 0 || username.length > 64) return fail();
-        if (email.length == 0 || email.length > 254) return fail();
+        if (!isValidEmail(email)) return fail(); // format + length; a bypassing client stores nothing garbage
 
         // Proof-of-possession FIRST (before any existence check): the client
         // signed buildRegisterMessage with the matching secret key. Verifying up

@@ -97,10 +97,10 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'registers then logs in (full OPRF + ML-DSA + ML-KEM mutual-auth chain)',
         async () => {
-            await Auth.register('ada', 'correct horse battery staple', 'ada@example.com');
+            await Auth.register('ada', 'correct horse battery stapleA1', 'ada@example.com');
             // login resolves ONLY if the server's mutual-auth confirmation tag
             // verified against the client's own shared secret.
-            const session = await Auth.login('ada', 'correct horse battery staple');
+            const session = await Auth.login('ada', 'correct horse battery stapleA1');
             expect(session.length).toBeGreaterThan(0);
 
             // Regression guard: the freshly minted session cookie (captured by the
@@ -129,7 +129,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'rejects a wrong password at login',
         async () => {
-            await Auth.register('bob', 'hunter2-correct', 'bob@example.com');
+            await Auth.register('bob', 'hunter2-correctA1', 'bob@example.com');
             await expect(Auth.login('bob', 'hunter2-WRONG')).rejects.toThrow(/login failed|request failed/);
         },
         60_000,
@@ -146,12 +146,12 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'rejects a duplicate registration with a clear (not generic) message',
         async () => {
-            await Auth.register('dupe', 'correct horse battery staple', 'dupe@example.com');
+            await Auth.register('dupe', 'correct horse battery stapleA1', 'dupe@example.com');
             // Second registration of the same username must say so explicitly,
             // not return the generic "request failed". (The username-taken check fires
             // before the email check, so it stays `already registered` even with the same email.)
             await expect(
-                Auth.register('dupe', 'correct horse battery staple', 'dupe@example.com'),
+                Auth.register('dupe', 'correct horse battery stapleA1', 'dupe@example.com'),
             ).rejects.toThrow(/already registered/);
         },
         60_000,

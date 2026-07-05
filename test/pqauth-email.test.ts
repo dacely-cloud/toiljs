@@ -27,9 +27,14 @@ import { __sentEmails, __clearSentEmails } from '../src/devserver/email/index.js
 import {
     Auth,
     AuthErrorCode,
+    checkPassword,
     EmailInUseError,
     EmailNotConfirmedError,
+    InvalidEmailError,
+    InvalidUsernameError,
+    isValidEmail,
     TwoFactorRequiredError,
+    WeakPasswordError,
 } from '../src/client/auth.js';
 import { DataReader, DataWriter } from '../src/io/codec.js';
 
@@ -171,8 +176,8 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'confirmation OFF (default): register auto-confirms, login succeeds, /auth/me returns the user',
         async () => {
-            await Auth.register('ada', 'correct horse battery staple', 'ada@example.com');
-            const session = await Auth.login('ada', 'correct horse battery staple');
+            await Auth.register('ada', 'correct horse battery stapleA1', 'ada@example.com');
+            const session = await Auth.login('ada', 'correct horse battery stapleA1');
             expect(session.length).toBeGreaterThan(0);
 
             // The controller's `@auth`-gated /auth/me returns bytes(toilUserId) str(username).
@@ -195,7 +200,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         async () => {
             // grace lives on the victim tenant (realm = normalized Host "victim.com").
             setHost('victim.com');
-            await Auth.register('grace', 'pw-grace-correct', 'grace@x.com');
+            await Auth.register('grace', 'pw-grace-correctA1', 'grace@x.com');
             __clearSentEmails();
             // Attacker triggers reset/request with a Host that routes to the victim
             // (the edge strip_port -> "victim.com", which is grace's realm, so the
@@ -224,8 +229,8 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'a session minted for one tenant does NOT verify for another (#2 cross-tenant session)',
         async () => {
-            await Auth.register('heidi', 'pw-heidi-correct', 'heidi@x.com');
-            await Auth.login('heidi', 'pw-heidi-correct'); // minted under the shim Host localhost:3000
+            await Auth.register('heidi', 'pw-heidi-correctA1', 'heidi@x.com');
+            await Auth.login('heidi', 'pw-heidi-correctA1'); // minted under the shim Host localhost:3000
             const sess = jar.get('toil_sess'); // dev is plain HTTP -> unprefixed cookie
             expect(sess).toBeTruthy();
             const meHeaders = (host: string): [string, string][] => [
@@ -256,7 +261,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'token bound: a new reset request invalidates the previous token (#5c growth bound)',
         async () => {
-            await Auth.register('ivan', 'pw-ivan-correct', 'ivan@x.com');
+            await Auth.register('ivan', 'pw-ivan-correctA1', 'ivan@x.com');
             await Auth.requestPasswordReset('ivan@x.com');
             const token1 = tokenFromEmail('reset', 'ivan@x.com');
             __clearSentEmails();
@@ -264,10 +269,10 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             const token2 = tokenFromEmail('reset', 'ivan@x.com');
             expect(token2).not.toBe(token1);
             // The superseded token no longer works...
-            await expect(Auth.resetPassword(token1, 'new-pw-unused')).rejects.toThrow();
+            await expect(Auth.resetPassword(token1, 'new-pw-unusedA1')).rejects.toThrow();
             // ...only the latest does.
-            await Auth.resetPassword(token2, 'new-pw-ivan');
-            const session = await Auth.login('ivan', 'new-pw-ivan');
+            await Auth.resetPassword(token2, 'new-pw-ivanA1');
+            const session = await Auth.login('ivan', 'new-pw-ivanA1');
             expect(session.length).toBeGreaterThan(0);
         },
         60_000,
@@ -277,17 +282,17 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         'confirmation ON: login is refused until the emailed token confirms the account',
         async () => {
             setConfirmation(true);
-            await Auth.register('bob', 'hunter2-correct', 'bob@example.com');
+            await Auth.register('bob', 'hunter2-correctA1', 'bob@example.com');
 
             // A valid credential is not enough: the domain requires a confirmed email.
-            await expect(Auth.login('bob', 'hunter2-correct')).rejects.toThrow(EmailNotConfirmedError);
+            await expect(Auth.login('bob', 'hunter2-correctA1')).rejects.toThrow(EmailNotConfirmedError);
 
             // Read the confirm link out of the captured email and confirm.
             const token = tokenFromEmail('confirm', 'bob@example.com');
             await Auth.confirmEmail(token);
 
             // Now login succeeds.
-            const session = await Auth.login('bob', 'hunter2-correct');
+            const session = await Auth.login('bob', 'hunter2-correctA1');
             expect(session.length).toBeGreaterThan(0);
         },
         60_000,
@@ -296,10 +301,10 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'duplicate email is rejected at registration (distinct "email already in use")',
         async () => {
-            await Auth.register('carol', 'carol-pw-strong', 'dupe@x.com');
+            await Auth.register('carol', 'carol-pw-strongA1', 'dupe@x.com');
             // Typed error: a distinct EmailInUseError carrying the stable code, so a UI can
             // branch reliably (never on the message/name string).
-            const err = await Auth.register('dave', 'dave-pw-strong', 'dupe@x.com').catch(
+            const err = await Auth.register('dave', 'dave-pw-strongA1', 'dupe@x.com').catch(
                 (e: unknown) => e,
             );
             expect(err).toBeInstanceOf(EmailInUseError);
@@ -311,18 +316,18 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'password reset round trip: old password stops working, the new one logs in',
         async () => {
-            await Auth.register('erin', 'oldpw-erin-strong', 'erin@x.com');
+            await Auth.register('erin', 'oldpw-erin-strongA1', 'erin@x.com');
             // Sanity: confirmation is off, so she can log in before the reset.
-            expect((await Auth.login('erin', 'oldpw-erin-strong')).length).toBeGreaterThan(0);
+            expect((await Auth.login('erin', 'oldpw-erin-strongA1')).length).toBeGreaterThan(0);
 
             await Auth.requestPasswordReset('erin@x.com');
             const token = tokenFromEmail('reset', 'erin@x.com');
-            await Auth.resetPassword(token, 'newpw-erin-strong');
+            await Auth.resetPassword(token, 'newpw-erin-strongA1');
 
-            await expect(Auth.login('erin', 'oldpw-erin-strong')).rejects.toThrow(
+            await expect(Auth.login('erin', 'oldpw-erin-strongA1')).rejects.toThrow(
                 /login failed|request failed/,
             );
-            expect((await Auth.login('erin', 'newpw-erin-strong')).length).toBeGreaterThan(0);
+            expect((await Auth.login('erin', 'newpw-erin-strongA1')).length).toBeGreaterThan(0);
         },
         60_000,
     );
@@ -341,10 +346,10 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'a reset token is one-time: replaying /auth/reset/finish with the consumed token fails',
         async () => {
-            await Auth.register('frank', 'oldpw-frank-strong', 'frank@x.com');
+            await Auth.register('frank', 'oldpw-frank-strongA1', 'frank@x.com');
             await Auth.requestPasswordReset('frank@x.com');
             const tokenHex = tokenFromEmail('reset', 'frank@x.com');
-            await Auth.resetPassword(tokenHex, 'newpw-frank-strong'); // consumes the token
+            await Auth.resetPassword(tokenHex, 'newpw-frank-strongA1'); // consumes the token
 
             // Replay reset/finish with a valid-length pk/proof so the controller reaches the
             // token-consume step, which now finds the token already deleted -> generic fail.
@@ -372,8 +377,8 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         '(a) full email-2FA login round-trip: enable, login requires a code, verify mints the session',
         async () => {
-            await Auth.register('dave', 'dave-pw-strong', 'dave@x.com');
-            await Auth.login('dave', 'dave-pw-strong'); // 2FA off -> session
+            await Auth.register('dave', 'dave-pw-strongA1', 'dave@x.com');
+            await Auth.login('dave', 'dave-pw-strongA1'); // 2FA off -> session
 
             // Enable email 2FA: setup delivers a code, confirm switches the method on.
             await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
@@ -387,7 +392,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             // verifies serverConfirm before throwing), but NO session is minted.
             let err: unknown;
             try {
-                await Auth.login('dave', 'dave-pw-strong');
+                await Auth.login('dave', 'dave-pw-strongA1');
             } catch (e) {
                 err = e;
             }
@@ -413,8 +418,8 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         '(b) 2FA code security: wrong code rejected + attempt-limited to death, correct code single-use',
         async () => {
-            await Auth.register('eve', 'eve-pw-strong', 'eve@x.com');
-            await Auth.login('eve', 'eve-pw-strong');
+            await Auth.register('eve', 'eve-pw-strongA1', 'eve@x.com');
+            await Auth.login('eve', 'eve-pw-strongA1');
             await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
             await Auth.confirmTwoFactorSetup(codeFromEmail('eve@x.com'));
 
@@ -423,7 +428,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             jar.clear();
             let err: unknown;
             try {
-                await Auth.login('eve', 'eve-pw-strong');
+                await Auth.login('eve', 'eve-pw-strongA1');
             } catch (e) {
                 err = e;
             }
@@ -447,7 +452,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             __resetRatelimitForTests();
             let err2: unknown;
             try {
-                await Auth.login('eve', 'eve-pw-strong');
+                await Auth.login('eve', 'eve-pw-strongA1');
             } catch (e) {
                 err2 = e;
             }
@@ -464,7 +469,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         '(c) cross-flow: reset tokens and 2FA codes are NOT interchangeable (namespace separation)',
         async () => {
-            await Auth.register('frank', 'frank-pw-strong', 'frank@x.com');
+            await Auth.register('frank', 'frank-pw-strongA1', 'frank@x.com');
 
             // ---- direction 1: a LIVE reset token is useless at /auth/2fa/verify ----
             await Auth.requestPasswordReset('frank@x.com');
@@ -475,7 +480,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             await expect(Auth.verifyTwoFactor(resetToken, resetToken)).rejects.toThrow();
 
             // ---- direction 2: a LIVE 2FA login challenge id is useless at /auth/reset/finish ----
-            await Auth.login('frank', 'frank-pw-strong'); // session (2FA still off here)
+            await Auth.login('frank', 'frank-pw-strongA1'); // session (2FA still off here)
             __clearSentEmails();
             await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
             await Auth.confirmTwoFactorSetup(codeFromEmail('frank@x.com'));
@@ -484,7 +489,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             __resetRatelimitForTests();
             let err: unknown;
             try {
-                await Auth.login('frank', 'frank-pw-strong');
+                await Auth.login('frank', 'frank-pw-strongA1');
             } catch (e) {
                 err = e;
             }
@@ -527,8 +532,8 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         '(d) NO session cookie is set on the ST_TWOFA_REQUIRED login response',
         async () => {
-            await Auth.register('gwen', 'gwen-pw-strong', 'gwen@x.com');
-            await Auth.login('gwen', 'gwen-pw-strong');
+            await Auth.register('gwen', 'gwen-pw-strongA1', 'gwen@x.com');
+            await Auth.login('gwen', 'gwen-pw-strongA1');
             await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
             await Auth.confirmTwoFactorSetup(codeFromEmail('gwen@x.com'));
 
@@ -538,7 +543,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
 
             let err: unknown;
             try {
-                await Auth.login('gwen', 'gwen-pw-strong');
+                await Auth.login('gwen', 'gwen-pw-strongA1');
             } catch (e) {
                 err = e;
             }
@@ -556,8 +561,8 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         '(e) login<->setup 2FA challenges are separate: a setup code cannot mint a login session, and setup/verify never silently disables 2FA',
         async () => {
-            await Auth.register('ivy', 'ivy-pw-strong', 'ivy@x.com');
-            await Auth.login('ivy', 'ivy-pw-strong'); // session; 2FA still off
+            await Auth.register('ivy', 'ivy-pw-strongA1', 'ivy@x.com');
+            await Auth.login('ivy', 'ivy-pw-strongA1'); // session; 2FA still off
 
             // Begin a 2FA SETUP: writes a challenge into `twoFaSetup` (keyed by
             // username), NOT a login challenge into `twoFaLogins`.
@@ -593,7 +598,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         '(f) cross-flow: confirm tokens and 2FA codes are NOT interchangeable (namespace separation)',
         async () => {
             setConfirmation(true);
-            await Auth.register('jade', 'jade-pw-strong', 'jade@x.com'); // unconfirmed -> confirm token emailed
+            await Auth.register('jade', 'jade-pw-strongA1', 'jade@x.com'); // unconfirmed -> confirm token emailed
             const confirmToken = tokenFromEmail('confirm', 'jade@x.com'); // live confirmTokens entry
 
             // ---- direction 1: a LIVE confirm token is useless at /auth/2fa/verify ----
@@ -607,7 +612,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             __resetRatelimitForTests();
             await Auth.confirmEmail(confirmToken);
             __resetRatelimitForTests();
-            expect((await Auth.login('jade', 'jade-pw-strong')).length).toBeGreaterThan(0);
+            expect((await Auth.login('jade', 'jade-pw-strongA1')).length).toBeGreaterThan(0);
 
             // ---- direction 2: a LIVE 2FA login id/code is useless at /auth/confirm ----
             // Enable 2FA (jade is confirmed + has a session from the login above).
@@ -622,7 +627,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             __resetRatelimitForTests();
             let err: unknown;
             try {
-                await Auth.login('jade', 'jade-pw-strong');
+                await Auth.login('jade', 'jade-pw-strongA1');
             } catch (e) {
                 err = e;
             }
@@ -665,7 +670,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             // ---- confirm token: minted on A, unredeemable on B ----
             setConfirmation(true);
             setHost(A);
-            await Auth.register('mia', 'mia-pw-strong', 'mia@x.com'); // realm A + confirm token emailed
+            await Auth.register('mia', 'mia-pw-strongA1', 'mia@x.com'); // realm A + confirm token emailed
             const confirmTok = tokenFromEmail('confirm', 'mia@x.com');
 
             setHost(B);
@@ -687,16 +692,16 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
 
             setHost(B);
             __resetRatelimitForTests();
-            await expect(Auth.resetPassword(resetTok, 'mia-pw-new')).rejects.toThrow(); // realm B miss
+            await expect(Auth.resetPassword(resetTok, 'mia-pw-newA1')).rejects.toThrow(); // realm B miss
 
             setHost(A);
             __resetRatelimitForTests();
-            await Auth.resetPassword(resetTok, 'mia-pw-new'); // realm A -> resets
+            await Auth.resetPassword(resetTok, 'mia-pw-newA1'); // realm A -> resets
 
             // ---- 2FA login code: minted on A, unusable on B ----
             setHost(A);
             __resetRatelimitForTests();
-            await Auth.login('mia', 'mia-pw-new'); // session on A (2FA still off)
+            await Auth.login('mia', 'mia-pw-newA1'); // session on A (2FA still off)
             __clearSentEmails();
             await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
             await Auth.confirmTwoFactorSetup(codeFromEmail('mia@x.com')); // 2FA enabled on A
@@ -706,7 +711,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             __resetRatelimitForTests();
             let err: unknown;
             try {
-                await Auth.login('mia', 'mia-pw-new'); // -> 2FA challenge (twoFaId + code, realm A)
+                await Auth.login('mia', 'mia-pw-newA1'); // -> 2FA challenge (twoFaId + code, realm A)
             } catch (e) {
                 err = e;
             }
@@ -726,4 +731,38 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         },
         180_000,
     );
+
+    // ---- input validation (client-side, before any crypto / network) ----
+
+    it('checkPassword + isValidEmail: the pure validators behave', () => {
+        expect(checkPassword('Str0ng-pw!')).toEqual([]); // meets every rule
+        expect(checkPassword('short1A').sort()).toEqual(['minLength', 'special'].sort()); // 7 chars, no special
+        expect(checkPassword('alllowercase1!')).toEqual(['uppercase']);
+        expect(checkPassword('NoDigits!!')).toEqual(['digit']);
+        expect(isValidEmail('bob@example.com')).toBe(true);
+        expect(isValidEmail('bobfwehfuewhfwf.com')).toBe(false); // no @
+        expect(isValidEmail('a@b')).toBe(false); // no dotted domain
+        expect(isValidEmail('a b@x.com')).toBe(false); // space
+    });
+
+    it('register rejects a weak password with WeakPasswordError (before any network)', async () => {
+        const err = await Auth.register('newbie', 'weak', 'newbie@x.com').catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(WeakPasswordError);
+        expect((err as WeakPasswordError).code).toBe(AuthErrorCode.WeakPassword);
+        // the unmet rules are exposed so a UI can show a checklist
+        expect((err as WeakPasswordError).unmet).toContain('minLength');
+        expect((err as WeakPasswordError).unmet).toContain('uppercase');
+        // no confirm email was sent (it threw before the request)
+        __clearSentEmails();
+        expect(__sentEmails.length).toBe(0);
+    });
+
+    it('register rejects an invalid email + a bad username with typed errors', async () => {
+        await expect(Auth.register('newbie', 'Str0ng-pw!', 'not-an-email')).rejects.toBeInstanceOf(
+            InvalidEmailError,
+        );
+        await expect(Auth.register('', 'Str0ng-pw!', 'ok@x.com')).rejects.toBeInstanceOf(
+            InvalidUsernameError,
+        );
+    });
 });

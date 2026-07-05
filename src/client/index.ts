@@ -29,8 +29,16 @@ export {
     TwoFactorCodeError,
     ConfirmationInvalidError,
     PasswordResetInvalidError,
+    WeakPasswordError,
+    InvalidEmailError,
+    InvalidUsernameError,
+    checkPassword,
+    isValidEmail,
+    isValidUsername,
+    DEFAULT_PASSWORD_POLICY,
+    PASSWORD_RULE_LABELS,
 } from './auth.js';
-export type { KdfParams, AuthOptions } from './auth.js';
+export type { KdfParams, AuthOptions, PasswordPolicy, PasswordRule } from './auth.js';
 export { Link } from './navigation/Link.js';
 export type { LinkProps } from './navigation/Link.js';
 export { NavLink, matchActive } from './navigation/NavLink.js';

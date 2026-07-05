@@ -218,6 +218,12 @@ export async function register(
     opts: AuthOptions = {},
 ): Promise<void> {
     const baseUrl = opts.baseUrl ?? '/auth';
+    // Validate BEFORE any crypto or network. The password never leaves this module,
+    // so the client is the ONLY place its policy can be enforced.
+    if (!isValidUsername(username)) throw new InvalidUsernameError();
+    if (!isValidEmail(email)) throw new InvalidEmailError();
+    const weak = checkPassword(password);
+    if (weak.length > 0) throw new WeakPasswordError(weak);
     const oprf = ristretto255_oprf.oprf;
     const pw = utf8(password.normalize('NFKC'));
 
@@ -448,6 +454,12 @@ export enum AuthErrorCode {
     ConfirmationInvalid = 'confirmation_invalid',
     /** reset: the password-reset link was invalid or expired. */
     PasswordResetInvalid = 'password_reset_invalid',
+    /** register/reset: the password does not meet the strength policy (see WeakPasswordError.unmet). */
+    WeakPassword = 'weak_password',
+    /** register: the email address is not a valid format / length. */
+    InvalidEmail = 'invalid_email',
+    /** register: the username is empty or too long. */
+    InvalidUsername = 'invalid_username',
 }
 
 /**
@@ -545,6 +557,107 @@ export class PasswordResetInvalidError extends AuthError {
     constructor() {
         super(AuthErrorCode.PasswordResetInvalid, 'This password-reset link is invalid or has expired.');
         this.name = 'PasswordResetInvalidError';
+    }
+}
+
+// --- INPUT VALIDATION (client-side) --------------------------------------------------------------
+//
+// The password NEVER leaves this module (it is stretched into a key), so the SERVER
+// cannot enforce a password policy: it is enforced HERE, before any crypto or
+// network. Email + username are validated here too (and the server re-validates the
+// email format independently, since a hostile client can skip this). All exported so
+// a form can show live feedback with the SAME rules register/reset enforce.
+
+/** One password requirement. See {@link checkPassword} / {@link DEFAULT_PASSWORD_POLICY}. */
+export type PasswordRule = 'minLength' | 'maxLength' | 'digit' | 'uppercase' | 'special';
+
+/** The enforced password strength policy. */
+export interface PasswordPolicy {
+    /** Minimum length. Default 8. */
+    readonly minLength: number;
+    /** Maximum length (guards against absurd inputs before Argon2id). Default 256. */
+    readonly maxLength: number;
+    /** Require at least one digit (0-9). Default true. */
+    readonly digit: boolean;
+    /** Require at least one uppercase letter (A-Z). Default true. */
+    readonly uppercase: boolean;
+    /** Require at least one special (non-alphanumeric) character. Default true. */
+    readonly special: boolean;
+}
+
+/** The default policy: at least 8 characters, a digit, an uppercase letter, a special character. */
+export const DEFAULT_PASSWORD_POLICY: PasswordPolicy = {
+    minLength: 8,
+    maxLength: 256,
+    digit: true,
+    uppercase: true,
+    special: true,
+};
+
+/** Human labels for the requirements, for messages or a live checklist. */
+export const PASSWORD_RULE_LABELS: Record<PasswordRule, string> = {
+    minLength: 'at least 8 characters',
+    maxLength: 'at most 256 characters',
+    digit: 'a number',
+    uppercase: 'an uppercase letter',
+    special: 'a special character',
+};
+
+/**
+ * Which password rules are UNMET (an empty array means the password is acceptable).
+ * Pure and exported, so a form can show live feedback as the user types using the
+ * SAME rules {@link register} / {@link resetPassword} enforce.
+ */
+export function checkPassword(
+    password: string,
+    policy: PasswordPolicy = DEFAULT_PASSWORD_POLICY,
+): PasswordRule[] {
+    const unmet: PasswordRule[] = [];
+    if (password.length < policy.minLength) unmet.push('minLength');
+    if (password.length > policy.maxLength) unmet.push('maxLength');
+    if (policy.digit && !/[0-9]/.test(password)) unmet.push('digit');
+    if (policy.uppercase && !/[A-Z]/.test(password)) unmet.push('uppercase');
+    if (policy.special && !/[^A-Za-z0-9]/.test(password)) unmet.push('special');
+    return unmet;
+}
+
+/** Whether `email` is a plausible address (length 3 to 254, one `@`, a dotted domain). */
+export function isValidEmail(email: string): boolean {
+    return email.length >= 3 && email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+/** Whether `username` is a valid length (1 to 64), matching the server bound. */
+export function isValidUsername(username: string): boolean {
+    return username.length >= 1 && username.length <= 64;
+}
+
+/** register/reset: the password failed the policy. `unmet` lists which rules failed so a
+ *  UI can render a precise checklist. {@link AuthErrorCode.WeakPassword}. */
+export class WeakPasswordError extends AuthError {
+    readonly unmet: readonly PasswordRule[];
+    constructor(unmet: readonly PasswordRule[]) {
+        super(
+            AuthErrorCode.WeakPassword,
+            'Password must have ' + unmet.map((r) => PASSWORD_RULE_LABELS[r]).join(', ') + '.',
+        );
+        this.name = 'WeakPasswordError';
+        this.unmet = unmet;
+    }
+}
+
+/** register: the email address is not a valid format ({@link AuthErrorCode.InvalidEmail}). */
+export class InvalidEmailError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.InvalidEmail, 'Please enter a valid email address.');
+        this.name = 'InvalidEmailError';
+    }
+}
+
+/** register: the username is empty or too long ({@link AuthErrorCode.InvalidUsername}). */
+export class InvalidUsernameError extends AuthError {
+    constructor() {
+        super(AuthErrorCode.InvalidUsername, 'Username must be 1 to 64 characters.');
+        this.name = 'InvalidUsernameError';
     }
 }
 
@@ -665,6 +778,9 @@ export async function resetPassword(
     opts: AuthOptions = {},
 ): Promise<void> {
     const baseUrl = opts.baseUrl ?? '/auth';
+    // The new password is subject to the same policy as registration.
+    const weak = checkPassword(newPassword);
+    if (weak.length > 0) throw new WeakPasswordError(weak);
     const rawToken = fromHex(token);
     const oprf = ristretto255_oprf.oprf;
     const pw = utf8(newPassword.normalize('NFKC'));
@@ -741,4 +857,13 @@ export const Auth = {
     TwoFactorCodeError,
     ConfirmationInvalidError,
     PasswordResetInvalidError,
+    WeakPasswordError,
+    InvalidEmailError,
+    InvalidUsernameError,
+    // Input validation (exported so a form can show live feedback with the enforced rules).
+    checkPassword,
+    isValidEmail,
+    isValidUsername,
+    DEFAULT_PASSWORD_POLICY,
+    PASSWORD_RULE_LABELS,
 } as const;
