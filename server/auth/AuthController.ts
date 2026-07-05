@@ -1188,19 +1188,12 @@ class Auth {
         switch (method) {
             case TWOFA_EMAIL: {
                 const code = randomCode(TWOFA_DIGITS);
-                const text =
-                    'Your verification code is ' +
-                    code +
-                    '.\nIt expires in a few minutes. If you did not request it, ignore this email.\n';
-                const html =
-                    '<p>Your verification code is:</p>' +
-                    '<p style="font-size:28px;font-weight:bold;letter-spacing:4px">' +
-                    code +
-                    '</p>' +
-                    '<p>It expires in a few minutes. If you did not request it, ignore this email.</p>';
-                // DETACHED (non-suspending) send: constant-time, no provider-RTT
-                // parking (matches the confirm/reset anti-enumeration posture).
-                EmailService.sendDetached(email, subject, text, '2fa', html);
+                // The subject is contextual (login vs setup) so AuthController owns it;
+                // the body/html come from the generated `AuthEmail` — the built-in
+                // default, or an `emails/auth-2fa.tsx` override filling `{code}`. The
+                // send is DETACHED (constant-time, no provider-RTT parking), a property
+                // the override cannot lose (AuthEmail.twofa uses sendDetached).
+                AuthEmail.twofa(email, code, subject);
                 return twoFaCodeHash(host, username, code);
             }
             // >>> case TWOFA_TOTP: { return twoFaSecretBinding(username); } <<<
@@ -1267,19 +1260,11 @@ class Auth {
         // Token in the URL FRAGMENT (see resetRequest): kept out of server/CDN
         // logs and the Referer header; the confirm page reads it from location.hash.
         const link = baseUrl(ctx) + '/confirm#token=' + crypto.toHex(raw);
-        const subject = 'Confirm your account';
-        const text = 'Confirm your account by opening this link:\n' + link + '\n';
-        const html =
-            '<p>Confirm your account by clicking the link below:</p>' +
-            '<p><a href="' +
-            link +
-            '">Confirm my account</a></p>' +
-            '<p>Or paste this into your browser:<br>' +
-            link +
-            '</p>';
-        // DETACHED (non-suspending) send: constant-time, no provider-RTT parking on
-        // the "account exists" path (see the enumeration note on this method).
-        EmailService.sendDetached(email, subject, text, 'verify', html);
+        // The built-in confirm email, or an `emails/auth-confirm.tsx` override filling
+        // `{link}`. DETACHED (non-suspending) send: constant-time, no provider-RTT
+        // parking on the "account exists" path (see the enumeration note on this
+        // method); AuthEmail.confirm uses sendDetached, so an override keeps that.
+        AuthEmail.confirm(email, link);
     }
 
     /** Email a password-reset link. Best-effort (the request path already
@@ -1292,19 +1277,10 @@ class Auth {
      *  (Residual: the reset-token mint on the exists path still does a sub-ms
      *  ToilDB write the miss path skips.) */
     private sendResetEmail(email: string, link: string): void {
-        const subject = 'Reset your password';
-        const text = 'Reset your password by opening this link:\n' + link + '\n';
-        const html =
-            '<p>We received a request to reset your password. Click the link below:</p>' +
-            '<p><a href="' +
-            link +
-            '">Reset my password</a></p>' +
-            '<p>If you did not request this, you can ignore this email.</p>' +
-            '<p>Or paste this into your browser:<br>' +
-            link +
-            '</p>';
-        // DETACHED (non-suspending) send: constant-time, closes the reset-request
-        // email-enumeration timing oracle (see the note above).
-        EmailService.sendDetached(email, subject, text, 'reset', html);
+        // The built-in reset email, or an `emails/auth-reset.tsx` override filling
+        // `{link}`. DETACHED (non-suspending) send: constant-time, closes the
+        // reset-request email-enumeration timing oracle (see the note above);
+        // AuthEmail.reset uses sendDetached, so an override keeps that property.
+        AuthEmail.reset(email, link);
     }
 }

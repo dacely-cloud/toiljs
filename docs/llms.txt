@@ -61,6 +61,7 @@ This is the canonical documentation, organized by section. Each link points to a
 - [Authentication](auth/README.md): Toil ships a complete, **post-quantum password login** you turn on with one line.
 - [Configuring auth for production](auth/configuration.md): Built-in auth runs locally with **zero configuration**, it falls back to published, insecure DEV secrets so `toiljs dev` Just Works.
 - [Extending & integrating auth](auth/extending.md): Built-in auth is deliberately opinionated so the common case is one line.
+- [Customizing the auth emails](auth/emails.md): Override the built-in verification, password-reset, and 2FA emails with your own branded React templates by adding reserved emails/auth-*.tsx files (tokens: {link} for confirm/reset, {code} for 2FA); sends stay detached (constant-time).
 - [How Toil auth works](auth/how-it-works.md): Toil auth is a **post-quantum, password-based, mutually-authenticated** login.
 - [Using auth](auth/usage.md): Either the config flag (canonical) or a one-line import, both do the same thing (the build appends the framework's auth controller + user shape to your server as compiled entries, so `/auth/*` self-mounts):
 

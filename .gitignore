@@ -428,3 +428,5 @@ examples/*/.toil
 examples/*/toil-env.d.ts
 examples/*/toil-routes.d.ts
 examples/*/server/toil-server-env.d.ts
+# Generated per app build into the lib globals dir (built-in auth email templates).
+server/globals/_auth_emails.ts

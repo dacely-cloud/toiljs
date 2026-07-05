@@ -20,3 +20,6 @@ examples/basic/build
 
 # Dev-only override stub (overrides do not apply to consumers anyway)
 stubs
+
+# Generated per app build into the lib globals dir (auth email templates); never shipped.
+server/globals/_auth_emails.ts

@@ -63,6 +63,15 @@ const REACT_INTERNAL = new Set([
     'then', // so a thenable check never tokenizes
 ]);
 
+/**
+ * Reserved `emails/*.tsx` module names (by PascalCase basename) that OVERRIDE a
+ * built-in auth email instead of becoming a generic `Emails.<Name>.send(...)`
+ * entry. When one is present, the auth pipeline (src/compiler/auth-emails.ts)
+ * bakes it into `_auth_emails.ts` in place of the default; here we just make sure
+ * it does NOT also surface as an app-callable `Emails.*` template.
+ */
+export const RESERVED_AUTH_EMAIL_NAMES = new Set(['AuthConfirm', 'AuthReset', 'Auth2fa']);
+
 const TOKEN_RE = /\{\{\s*([A-Za-z_$][\w$]*)\s*\}\}/g;
 
 function extractTokens(s: string): string[] {
@@ -240,7 +249,7 @@ export function toPascal(base: string): string {
 
 /** Server source dir (where the generated module must live to be compiled): the
  *  dir of the first toilconfig entry, else `<root>/server`. */
-function serverDir(root: string): string {
+export function serverDir(root: string): string {
     try {
         const cfg = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
             entries?: unknown;
@@ -344,6 +353,10 @@ export async function renderEmails(cfg: ResolvedToilConfig): Promise<void> {
     const rendered: RenderedEmail[] = [];
     try {
         for (const file of files) {
+            // Reserved auth-override templates (emails/auth-confirm.tsx, …) are
+            // consumed by the auth pipeline, not surfaced as generic `Emails.*`.
+            if (RESERVED_AUTH_EMAIL_NAMES.has(toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, ''))))
+                continue;
             try {
                 const r = await renderEmailFile(
                     server,

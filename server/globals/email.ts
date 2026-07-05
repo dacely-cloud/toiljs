@@ -68,7 +68,7 @@ export namespace EmailService {
      * the off-core mailer reports a result.
      *
      * `body` is the plain-text body; pass a non-empty `html` to send an HTML
-     * message (then `body` is the plain-text alternative — set both for the best
+     * message (then `body` is the plain-text alternative; set both for the best
      * deliverability, or leave `body` empty for HTML-only). `purpose` is a short,
      * non-PII tag used for host-side dedup/abuse keying.
      */
@@ -181,7 +181,7 @@ export class RenderedEmail {
  *   welcome.send('alice@example.com', vars, 'welcome');
  *
  * `{{ key }}` (with surrounding spaces) is accepted; an unknown placeholder
- * renders to the empty string. `html` is optional — omit it for a plain-text
+ * renders to the empty string. `html` is optional: omit it for a plain-text
  * template.
  */
 export class EmailTemplate {
@@ -208,6 +208,19 @@ export class EmailTemplate {
     send(to: string, vars: Map<string, string>, purpose: string = 'tx'): EmailStatus {
         const r = this.render(vars);
         return EmailService.send(to, r.subject, r.body, purpose, r.html);
+    }
+
+    /**
+     * Render and DETACHED-send to `to`: frames the message and returns via the
+     * non-suspending {@link EmailService.sendDetached}, so the call is constant
+     * time regardless of whether the recipient exists. Use for transactional auth
+     * mail (confirm / reset links, 2FA codes) whose delivery result the caller
+     * does not need; this is what keeps the built-in auth flows free of an
+     * email-enumeration timing oracle even when an app overrides the template.
+     */
+    sendDetached(to: string, vars: Map<string, string>, purpose: string = 'tx'): EmailStatus {
+        const r = this.render(vars);
+        return EmailService.sendDetached(to, r.subject, r.body, purpose, r.html);
     }
 }
 

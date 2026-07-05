@@ -87,7 +87,8 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
   [Events](./database/events.md), [Views and `@derive`](./database/views.md),
   [Membership](./database/membership.md), [Capacity](./database/capacity.md).
 
-**Auth**: [the full auth guide](./auth/README.md) covers post-quantum login, sessions, and `ToilUserId`.
+**Auth**: [the full auth guide](./auth/README.md) covers post-quantum login, sessions, and `ToilUserId`;
+[customizing the auth emails](./auth/emails.md) shows how to brand the verification, reset, and 2FA mail.
 
 **Realtime and background**
 - [Streams](./realtime/README.md) and [channels](./realtime/channels.md), [Daemons and scheduled

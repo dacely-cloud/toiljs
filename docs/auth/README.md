@@ -96,6 +96,8 @@ ML-KEM-768 challenge. You didn't write any of it.
   Argon2id, and the deploy checklist.
 - **[Extending & integrating](./extending.md)**: `ToilUserId`, keying your own data on a user, a custom
   user shape / opting out, and the `AuthService` primitive reference.
+- **[Customizing the auth emails](./emails.md)**: replace the verification, password-reset, and 2FA
+  emails with your own branded React templates by dropping `emails/auth-*.tsx` files.
 
 > **One rule before you ship:** built-in auth runs with **insecure DEV fallback secrets** so it Just Works
 > locally. A deployment MUST set `AUTH_SESSION_SECRET`, `AUTH_OPRF_SEED`, and `AUTH_KEM_SK`. See
