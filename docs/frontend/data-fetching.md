@@ -13,6 +13,23 @@ There are two surfaces under `Server`:
 
 Both are generated from your server code, so if you rename a route or change an argument type, the call site is a compile error until you fix it.
 
+> **Rule: never call your own backend with raw `fetch`. Always go through `Server`.**
+> Use `Server.REST.<controller>.<route>(args)` for `@rest` HTTP controllers, or
+> `Server.<service>.<method>(args)` / `Server.<remote>(args)` for `@service` / `@remote`
+> RPC. Raw `fetch` throws away the type safety, the argument/return decoding, and the
+> binary wire format that the generated client handles for you, and it silently breaks
+> when a route is renamed. This applies to AI assistants generating code too.
+>
+> ```ts
+> // WRONG: raw fetch to your backend
+> await fetch('/account/session', { method: 'POST', credentials: 'same-origin' });
+>
+> // RIGHT: the typed client (renames become compile errors, args + result are typed)
+> await Server.REST.account.session();
+> ```
+>
+> `fetch` is only for URLs that are NOT your toiljs backend (a third-party API, a CDN).
+
 ## Calling a REST endpoint
 
 `Server.REST` mirrors your `@rest` controllers. If your backend has a `players` controller with routes on it, you call them like this:
