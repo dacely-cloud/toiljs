@@ -443,6 +443,19 @@ class EmailOwner {
     }
 }
 
+/** Reverse-index key for the STABLE ToilUserId uniqueness guard: (realm host,
+ *  32-byte id). Realm-scoped, so uniqueness is enforced PER TENANT — two sites
+ *  never share an id namespace. */
+@data
+class UserIdKey {
+    host: string = '';
+    id: Uint8Array = new Uint8Array(0);
+    constructor(host: string = '', id: Uint8Array = new Uint8Array(0)) {
+        this.host = host;
+        this.id = id;
+    }
+}
+
 @data
 class TokenId {
     hash: Uint8Array = new Uint8Array(0);
@@ -488,6 +501,9 @@ class AuthAccount {
     // TWOFA_NONE (2FA off), the safe default, so existing accounts stay logged in
     // by password alone until they opt in via /auth/2fa/setup.
     twoFactorMethod: u8 = 0;
+    // Append-only: the STABLE ToilUserId, derived once at registration. Reset rotates
+    // publicKey but leaves this, so the id is stable across a reset.
+    toilUserId: Uint8Array = new Uint8Array(0);
 }
 
 @data
@@ -534,6 +550,7 @@ class TwoFaChallenge {
 class AuthDb {
     @collection static accounts: Documents<Username, AuthAccount>;
     @collection static emails: Documents<EmailKey, EmailOwner>; // email -> username (uniqueness index)
+    @collection static userIds: Documents<UserIdKey, EmailOwner>; // toilUserId -> username (per-tenant uniqueness guard)
     @collection static challenges: Documents<ChallengeId, Challenge>;
     @collection static confirmTokens: Documents<TokenId, TokenRec>;
     @collection static resetTokens: Documents<TokenId, TokenRec>;
@@ -633,6 +650,10 @@ class Auth {
         a.memKiB = MEM_KIB;
         a.iterations = ITERS;
         a.parallelism = PAR;
+        // Derive + persist the stable id once, here. Tenant-scoped (framed domain +
+        // realm-keyed reverse index below).
+        const uid = ToilUserId.derive(pk, username, authDomain(ctx)).toBytes();
+        a.toilUserId = uid;
         // create-if-absent: a racing duplicate registration loses here, not above.
         if (!AuthDb.accounts.create(new Username(h, username), a)) {
             return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
@@ -644,6 +665,13 @@ class Auth {
         if (!AuthDb.emails.create(new EmailKey(h, email), new EmailOwner(username))) {
             AuthDb.accounts.delete(new Username(h, username));
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
+        }
+        // Per-tenant id-uniqueness guard: atomic create of toilUserId -> username
+        // (race-safe at the key's home). A lost race rolls back email + account.
+        if (!AuthDb.userIds.create(new UserIdKey(h, uid), new EmailOwner(username))) {
+            AuthDb.emails.delete(new EmailKey(h, email));
+            AuthDb.accounts.delete(new Username(h, username));
+            return fail();
         }
 
         if (mustConfirm) {
@@ -841,8 +869,7 @@ class Auth {
         //    extended one). `__toilEncodeAuthUser` is injected by `--authUser`: it constructs the `@user`
         //    (app fields at their defaults), sets the reserved identity, and encodes it. The stable
         //    ToilUserId is derived from the login public key + username + tenant domain.
-        const domain = authDomain(ctx);
-        const toilUserId = ToilUserId.derive(acct.publicKey, ch.username, domain).toBytes();
+        const toilUserId = this.stableUserId(ctx, h, ch.username, acct);
         const userData = __toilEncodeAuthUser(toilUserId, ch.username);
         const w = new DataWriter();
         w.writeU8(ST_OK);
@@ -958,6 +985,17 @@ class Auth {
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
 
+    /** The account's STABLE ToilUserId, persisted at registration (so reset never
+     *  changes it). An empty stored id is derived once, persisted, and indexed. */
+    private stableUserId(ctx: RouteContext, h: string, username: string, acct: AuthAccount): Uint8Array {
+        if (acct.toilUserId.length > 0) return acct.toilUserId;
+        const uid = ToilUserId.derive(acct.publicKey, username, authDomain(ctx)).toBytes();
+        acct.toilUserId = uid;
+        AuthDb.accounts.patch(new Username(h, username), acct);
+        AuthDb.userIds.create(new UserIdKey(h, uid), new EmailOwner(username));
+        return uid;
+    }
+
     /** GET /auth/me  (@auth: 401 without a valid session) -> the typed user
      *  (bytes(toilUserId) str(username)). `AuthService.getUser()` is auto-typed
      *  to the built-in `@user` with no type argument. */
@@ -1037,8 +1075,7 @@ class Auth {
         AuthDb.twoFaLogins.getDelete(key);
         const acct = AuthDb.accounts.get(new Username(h, ch.username));
         if (acct == null) return fail();
-        const domain = authDomain(ctx);
-        const toilUserId = ToilUserId.derive(acct.publicKey, ch.username, domain).toBytes();
+        const toilUserId = this.stableUserId(ctx, h, ch.username, acct);
         const userData = __toilEncodeAuthUser(toilUserId, ch.username);
         const w = new DataWriter();
         w.writeU8(ST_OK);

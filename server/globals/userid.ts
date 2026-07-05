@@ -30,12 +30,18 @@ export class ToilUserId {
      * unambiguous, and `domain` is the trusted tail supplied by the host, not the user.
      */
     static derive(mldsaPublicKey: Uint8Array, identifier: string, domain: string): ToilUserId {
+        // Length-framed, domain-separated preimage: a u32 length prefix on every
+        // field keeps ids collision-free across tenants; the context tag separates
+        // this hash from other sha256 uses.
+        const ctx = Uint8Array.wrap(String.UTF8.encode(USERID_CONTEXT));
         const id = Uint8Array.wrap(String.UTF8.encode(identifier));
         const dom = Uint8Array.wrap(String.UTF8.encode(domain));
-        const buf = new Uint8Array(mldsaPublicKey.length + id.length + dom.length);
-        buf.set(mldsaPublicKey, 0);
-        buf.set(id, mldsaPublicKey.length);
-        buf.set(dom, mldsaPublicKey.length + id.length);
+        const buf = new Uint8Array(16 + ctx.length + mldsaPublicKey.length + id.length + dom.length);
+        let off = 0;
+        off = putField(buf, off, ctx);
+        off = putField(buf, off, mldsaPublicKey);
+        off = putField(buf, off, id);
+        off = putField(buf, off, dom);
         return ToilUserId.fromBytes(crypto.sha256(buf));
     }
 
@@ -104,4 +110,19 @@ export class ToilUserId {
     ne(other: ToilUserId): bool {
         return !this.equals(other);
     }
+}
+
+/** Domain-separation tag for {@link ToilUserId.derive}; versioned. */
+const USERID_CONTEXT: string = 'toil.userid.v1';
+
+/** Append a u32-LE length prefix + `src` to `buf` at `off`; return the new offset. */
+function putField(buf: Uint8Array, off: i32, src: Uint8Array): i32 {
+    const n = src.length;
+    buf[off] = <u8>(n & 0xff);
+    buf[off + 1] = <u8>((n >> 8) & 0xff);
+    buf[off + 2] = <u8>((n >> 16) & 0xff);
+    buf[off + 3] = <u8>((n >> 24) & 0xff);
+    off += 4;
+    buf.set(src, off);
+    return off + n;
 }
