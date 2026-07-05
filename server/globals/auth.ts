@@ -228,8 +228,16 @@ function __labelled(label: string, transcriptHash: Uint8Array): Uint8Array {
 function __reqIsSecure(): bool {
     const req = Server.currentRequest;
     if (req == null) return false;
+    // Proxied deployments: trust the terminating proxy's scheme header.
     const proto = req.header('x-forwarded-proto');
-    return proto != null && proto == 'https';
+    if (proto != null) return proto == 'https';
+    // Direct-origin deployments: the edge terminates TLS itself and sends no
+    // x-forwarded-proto, so fall back to the configured public origin. An https
+    // PUBLIC_BASE_URL means the site is served over TLS, so the auth cookies must
+    // be Secure + __Host-/__Secure- prefixed. Without this a direct-origin HTTPS
+    // edge sets bare cookies and the client's getUser() misses the __Secure- name.
+    const base = Environment.get('PUBLIC_BASE_URL');
+    return base != null && base.startsWith('https://');
 }
 
 export namespace AuthService {
@@ -402,7 +410,10 @@ export namespace AuthService {
         let cookie = Cookie.create(USER_BASE, base64UrlEncode(userData))
             .sameSite(SameSite.Lax)
             .maxAge(<i64>ttlSecs);
-        cookie = secure ? cookie.asSecurePrefixed() : cookie.path('/');
+        // Path=/ in BOTH branches: asSecurePrefixed() sets no path, so without this
+        // the cookie is scoped to the /auth request path and getUser() can't read it
+        // on /login or /dashboard.
+        cookie = secure ? cookie.asSecurePrefixed().path('/') : cookie.path('/');
         return cookie;
     }
 
@@ -412,7 +423,10 @@ export namespace AuthService {
         let cookie = Cookie.create(USER_BASE, '')
             .sameSite(SameSite.Lax)
             .maxAge(0);
-        cookie = secure ? cookie.asSecurePrefixed() : cookie.path('/');
+        // Path=/ in BOTH branches: asSecurePrefixed() sets no path, so without this
+        // the cookie is scoped to the /auth request path and getUser() can't read it
+        // on /login or /dashboard.
+        cookie = secure ? cookie.asSecurePrefixed().path('/') : cookie.path('/');
         return cookie;
     }
 
