@@ -40,17 +40,20 @@ function loadModule(): WasmServerModule {
     return m;
 }
 
-/** Route the client's `fetch(path, {body})` into the dev wasm dispatcher (with a cookie jar). */
+/** Route the client's `fetch(path, {body})` into the dev wasm dispatcher (with a cookie jar).
+ *  The Host header the client's requests carry is settable (`setHost`) so a test can drive
+ *  the same client against DIFFERENT tenant domains and prove per-host auth isolation. */
 function installFetchShim(m: WasmServerModule): () => void {
     const original = globalThis.fetch;
     const jar = new Map<string, string>();
+    let host = 'localhost:3000';
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
         const url = typeof input === 'string' ? input : input.toString();
         const pathname = new URL(url, 'http://localhost').pathname;
         const bodyBytes =
             init?.body == null ? new Uint8Array(0) : new Uint8Array(init.body as ArrayBuffer);
         const headers: [string, string][] = [
-            ['host', 'localhost:3000'],
+            ['host', host],
             ['content-type', 'application/octet-stream'],
         ];
         if (jar.size > 0)
@@ -80,6 +83,9 @@ function installFetchShim(m: WasmServerModule): () => void {
             globalThis.fetch = original;
         },
         jar,
+        setHost: (h: string) => {
+            host = h;
+        },
     };
 }
 
@@ -136,6 +142,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     let restoreFetch: () => void;
     let mod: WasmServerModule;
     let jar: Map<string, string>;
+    let setHost: (h: string) => void;
 
     beforeEach(() => {
         __resetDbForTests();
@@ -148,6 +155,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         const shim = installFetchShim(mod);
         restoreFetch = shim.restore;
         jar = shim.jar;
+        setHost = shim.setHost;
     });
     afterEach(() => {
         restoreFetch();
@@ -179,10 +187,13 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it(
         'reset link is NOT poisonable via a crafted Host header (#6 host-header reset-poisoning)',
         async () => {
+            // grace lives on the victim tenant (realm = normalized Host "victim.com").
+            setHost('victim.com');
             await Auth.register('grace', 'pw-grace-correct', 'grace@x.com');
             __clearSentEmails();
             // Attacker triggers reset/request with a Host that routes to the victim
-            // (the edge strip_port -> "victim.com") but, dropped raw into a link,
+            // (the edge strip_port -> "victim.com", which is grace's realm, so the
+            // request DOES resolve her account) but, dropped raw into a link,
             // reparents the URL authority to attacker.com.
             const body = new DataWriter().writeString('grace@x.com').toBytes();
             const r = mod.dispatch({
@@ -633,5 +644,76 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
             expect(session.length).toBeGreaterThan(0);
         },
         120_000,
+    );
+
+    it(
+        '(g) per-domain isolation: a confirm/reset/2FA code minted on domain A is USELESS on domain B',
+        async () => {
+            const A = 'a.example.com';
+            const B = 'b.example.com';
+
+            // ---- confirm token: minted on A, unredeemable on B ----
+            setConfirmation(true);
+            setHost(A);
+            await Auth.register('mia', 'mia-pw-strong', 'mia@x.com'); // realm A + confirm token emailed
+            const confirmTok = tokenFromEmail('confirm', 'mia@x.com');
+
+            setHost(B);
+            __resetRatelimitForTests();
+            // Same raw token, different realm -> tokenId(B, raw) is a different key -> miss.
+            await expect(Auth.confirmEmail(confirmTok)).rejects.toThrow();
+
+            setHost(A);
+            __resetRatelimitForTests();
+            await Auth.confirmEmail(confirmTok); // realm A -> confirms
+            setConfirmation(false);
+
+            // ---- reset token: minted on A, unredeemable on B ----
+            setHost(A);
+            __clearSentEmails();
+            __resetRatelimitForTests();
+            await Auth.requestPasswordReset('mia@x.com');
+            const resetTok = tokenFromEmail('reset', 'mia@x.com');
+
+            setHost(B);
+            __resetRatelimitForTests();
+            await expect(Auth.resetPassword(resetTok, 'mia-pw-new')).rejects.toThrow(); // realm B miss
+
+            setHost(A);
+            __resetRatelimitForTests();
+            await Auth.resetPassword(resetTok, 'mia-pw-new'); // realm A -> resets
+
+            // ---- 2FA login code: minted on A, unusable on B ----
+            setHost(A);
+            __resetRatelimitForTests();
+            await Auth.login('mia', 'mia-pw-new'); // session on A (2FA still off)
+            __clearSentEmails();
+            await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+            await Auth.confirmTwoFactorSetup(codeFromEmail('mia@x.com')); // 2FA enabled on A
+
+            __clearSentEmails();
+            jar.clear();
+            __resetRatelimitForTests();
+            let err: unknown;
+            try {
+                await Auth.login('mia', 'mia-pw-new'); // -> 2FA challenge (twoFaId + code, realm A)
+            } catch (e) {
+                err = e;
+            }
+            const twoFaId = (err as TwoFactorRequiredError).twoFaId;
+            const loginCode = codeFromEmail('mia@x.com');
+
+            setHost(B);
+            __resetRatelimitForTests();
+            // The twoFaId lives in twoFaLogins under realm A; on B its key (and the
+            // realm-bound codeHash) miss -> a code from A cannot mint a session on B.
+            await expect(Auth.verifyTwoFactor(twoFaId, loginCode)).rejects.toThrow();
+
+            setHost(A);
+            __resetRatelimitForTests();
+            const session = await Auth.verifyTwoFactor(twoFaId, loginCode); // realm A -> mints
+            expect(session.length).toBeGreaterThan(0);
+        },
+        180_000,
     );
 });

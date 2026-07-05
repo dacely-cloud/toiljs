@@ -138,6 +138,38 @@ function authDomain(ctx: RouteContext): string {
 }
 
 /**
+ * The per-request TENANT REALM that EVERY AuthDb key and one-time code/token is
+ * scoped to: the routed, NORMALIZED Host (lowercased, port-stripped, IPv6-bracket
+ * aware). DERIVED IDENTICALLY to the session cookie's tenant tag
+ * (`server/globals/auth.ts` `__sessionTenantTag`) so the DB data and the session
+ * agree on "which domain" a request belongs to.
+ *
+ * This is the HARD cross-domain boundary. The realm is folded into every physical
+ * key (`Username`/`EmailKey`/`TwoFaId`/`ChallengeId`) and every one-time verifier
+ * (`tokenId`/`twoFaCodeHash`/`deriveSalt`), so a confirm/reset/2FA artifact minted
+ * under domain A addresses a DIFFERENT row AND hashes to a DIFFERENT verifier under
+ * domain B: a single toildb tenant that fronts multiple domains can NOT let an auth
+ * code from one be redeemed on another. Mint-realm and redeem-realm must match, and
+ * both are this normalized Host, so a code is bound to the domain it was issued on.
+ */
+function realm(ctx: RouteContext): string {
+    const raw = ctx.request.header('host');
+    if (raw == null) return '';
+    let h = raw.toLowerCase();
+    if (h.startsWith('[')) {
+        // IPv6 literal `[addr]`(:port): keep through the closing bracket, drop the
+        // port. Bracket-aware so `[::1]` is not sliced to `[:` (which would collapse
+        // distinct IPv6 tenants). Mirrors the edge strip_port + the session tag.
+        const close = h.indexOf(']');
+        if (close >= 0) h = h.slice(0, close + 1);
+    } else {
+        const colon = h.lastIndexOf(':');
+        if (colon > 0) h = h.slice(0, colon); // drop :port
+    }
+    return h;
+}
+
+/**
  * Whether this domain requires a confirmed email before login. A plain
  * (tenant-readable) env var so an app can opt in itself; the edge ALSO force-sets
  * it to "true" from the per-domain platform toggle `HostConfig.require_email_confirmation`
@@ -265,15 +297,22 @@ function ackOk(): Response {
  * unknown user yields the SAME stable salt as a known one would -- no
  * enumeration oracle.
  */
-function deriveSalt(username: string): Uint8Array {
-    return crypto.sha256Text('toil-auth-salt-v1:' + username).slice(0, 16);
+function deriveSalt(host: string, username: string): Uint8Array {
+    return crypto.sha256Text('toil-auth-salt-v1:' + host + '\x00' + username).slice(0, 16);
 }
 
-/** The one-time-token lookup key: SHA-256 of the raw token bytes. Storing only
- *  the hash means a leak of the token store yields nothing usable — the raw
- *  token lives only in the emailed link. */
-function tokenId(raw: Uint8Array): TokenId {
-    return new TokenId(crypto.sha256(raw));
+/** The one-time-token lookup key: SHA-256 of `host || 0x00 || rawToken`. Storing
+ *  only the hash means a leak of the token store yields nothing usable (the raw
+ *  token lives only in the emailed link); folding the tenant realm IN means the
+ *  same raw token addresses a DIFFERENT row per host, so a confirm/reset token
+ *  minted on domain A can never be redeemed on domain B (its `tokenId` under B's
+ *  realm is a different key that misses). */
+function tokenId(host: string, raw: Uint8Array): TokenId {
+    const prefix = Uint8Array.wrap(String.UTF8.encode(host + '\x00'));
+    const buf = new Uint8Array(prefix.length + raw.length);
+    buf.set(prefix, 0);
+    buf.set(raw, prefix.length);
+    return new TokenId(crypto.sha256(buf));
 }
 
 /** Mint a fresh 32-byte token; returns the raw bytes (for the link) — the store
@@ -302,11 +341,14 @@ function randomCode(digits: i32): string {
     return s;
 }
 
-/** The stored 2FA verifier: SHA-256 of `username || 0x00 || code`. The username
- *  is bound INTO the hash (a null separator, unambiguous), so a code is only ever
- *  valid for the account it was issued to; the plaintext code is NEVER stored. */
-function twoFaCodeHash(username: string, code: string): Uint8Array {
-    return crypto.sha256Text(username + '\x00' + code);
+/** The stored 2FA verifier: SHA-256 of `host || 0x00 || username || 0x00 || code`.
+ *  The tenant realm AND the username are bound INTO the hash (null separators,
+ *  unambiguous), so a code is only ever valid for the account it was issued to AND
+ *  the domain it was issued on -- a code from domain A can never satisfy the same
+ *  user's challenge on domain B, even if the row were reachable. The plaintext code
+ *  is NEVER stored. */
+function twoFaCodeHash(host: string, username: string, code: string): Uint8Array {
+    return crypto.sha256Text(host + '\x00' + username + '\x00' + code);
 }
 
 /** Constant-time equality of two fixed 32-byte SHA-256 hashes (XOR-accumulate,
@@ -325,18 +367,26 @@ function isKnownTwoFaMethod(m: u8): bool {
     // >>> e.g. `|| m == TWOFA_TOTP || m == TWOFA_SMS` <<<
 }
 
+// Every lookup KEY carries the tenant `host` (realm) as its FIRST field, so the
+// physical key includes the domain and the SAME logical name/email/id addresses a
+// DIFFERENT row per host (cross-domain isolation, on top of toildb's per-tenant
+// scoping). `host` is populated from `realm(ctx)` at every call site.
 @data
 class Username {
+    host: string = '';
     name: string = '';
-    constructor(name: string = '') {
+    constructor(host: string = '', name: string = '') {
+        this.host = host;
         this.name = name;
     }
 }
 
 @data
 class EmailKey {
+    host: string = '';
     email: string = '';
-    constructor(email: string = '') {
+    constructor(host: string = '', email: string = '') {
+        this.host = host;
         this.email = email;
     }
 }
@@ -367,8 +417,10 @@ class TokenRec {
 
 @data
 class ChallengeId {
+    host: string = '';
     cid: Uint8Array = new Uint8Array(0);
-    constructor(cid: Uint8Array = new Uint8Array(0)) {
+    constructor(host: string = '', cid: Uint8Array = new Uint8Array(0)) {
+        this.host = host;
         this.cid = cid;
     }
 }
@@ -408,8 +460,10 @@ class Challenge {
  *  confirm/reset TokenId, so a confirm/reset token can never resolve here. */
 @data
 class TwoFaId {
+    host: string = '';
     id: Uint8Array = new Uint8Array(0);
-    constructor(id: Uint8Array = new Uint8Array(0)) {
+    constructor(host: string = '', id: Uint8Array = new Uint8Array(0)) {
+        this.host = host;
         this.id = id;
     }
 }
@@ -470,12 +524,13 @@ class Auth {
         const evaluated = AuthService.oprfEvaluate(username, blinded);
         if (evaluated.length != AuthService.OPRF_ELEMENT_LEN) return fail();
 
+        const h = realm(ctx);
         const w = new DataWriter();
         w.writeU8(ST_OK);
         w.writeU32(MEM_KIB);
         w.writeU32(ITERS);
         w.writeU32(PAR);
-        w.writeBytes(deriveSalt(username));
+        w.writeBytes(deriveSalt(h, username));
         w.writeBytes(evaluated);
         return Response.bytes(w.toBytes());
     }
@@ -506,13 +561,17 @@ class Auth {
         const regMsg = AuthService.buildRegisterMessage(username, pk);
         if (!AuthService.verifyRegister(pk, regMsg, proof)) return fail();
 
+        // Every key below is scoped to this request's tenant realm: `bob` / an email
+        // on domain A is a DIFFERENT account + index entry from the same on domain B.
+        const h = realm(ctx);
+
         // Distinguishable statuses (not the generic 401) so the UI can say
         // "username taken" / "email in use". Signup intentionally leaks existence
         // (a product choice, now gated behind the PoP above); reset never does.
-        if (AuthDb.accounts.exists(new Username(username))) {
+        if (AuthDb.accounts.exists(new Username(h, username))) {
             return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
         }
-        if (AuthDb.emails.exists(new EmailKey(email))) {
+        if (AuthDb.emails.exists(new EmailKey(h, email))) {
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
 
@@ -521,26 +580,26 @@ class Auth {
         a.username = username;
         a.email = email;
         a.emailConfirmed = !mustConfirm; // auto-confirm when confirmation is off
-        a.salt = deriveSalt(username);
+        a.salt = deriveSalt(h, username);
         a.publicKey = pk;
         a.memKiB = MEM_KIB;
         a.iterations = ITERS;
         a.parallelism = PAR;
         // create-if-absent: a racing duplicate registration loses here, not above.
-        if (!AuthDb.accounts.create(new Username(username), a)) {
+        if (!AuthDb.accounts.create(new Username(h, username), a)) {
             return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
         }
-        // Reserve the email -> username index (uniqueness for reset-by-email). A
-        // racing duplicate email loses here: roll back the account we just created
-        // so a lost email race can't orphan a username whose email index points at
-        // someone else (which would also break reset-by-email for it).
-        if (!AuthDb.emails.create(new EmailKey(email), new EmailOwner(username))) {
-            AuthDb.accounts.delete(new Username(username));
+        // Reserve the email -> username index (uniqueness for reset-by-email, scoped
+        // per host). A racing duplicate email loses here: roll back the account we
+        // just created so a lost email race can't orphan a username whose email index
+        // points at someone else (which would also break reset-by-email for it).
+        if (!AuthDb.emails.create(new EmailKey(h, email), new EmailOwner(username))) {
+            AuthDb.accounts.delete(new Username(h, username));
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
 
         if (mustConfirm) {
-            this.issueConfirmation(ctx, username, email);
+            this.issueConfirmation(h, ctx, username, email);
         }
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
@@ -555,15 +614,17 @@ class Auth {
         const r = new DataReader(ctx.request.body);
         const raw = r.readBytes();
         if (!r.ok || raw.length == 0) return fail();
-        // Consume FIRST (a replayed/expired token still burns), then validate.
-        const rec = AuthDb.confirmTokens.getDelete(tokenId(raw));
+        const h = realm(ctx);
+        // Consume FIRST (a replayed/expired token still burns), then validate. The
+        // token id folds in `h`, so a confirm token minted on another domain misses.
+        const rec = AuthDb.confirmTokens.getDelete(tokenId(h, raw));
         if (rec == null) return fail();
         if (nowSecs() >= rec.exp) return fail();
-        const acct = AuthDb.accounts.get(new Username(rec.username));
+        const acct = AuthDb.accounts.get(new Username(h, rec.username));
         if (acct == null) return fail();
         if (!acct.emailConfirmed) {
             acct.emailConfirmed = true;
-            AuthDb.accounts.patch(new Username(rec.username), acct);
+            AuthDb.accounts.patch(new Username(h, rec.username), acct);
         }
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
@@ -577,11 +638,12 @@ class Auth {
         const r = new DataReader(ctx.request.body);
         const email = r.readString();
         if (!r.ok) return fail();
-        const owner = AuthDb.emails.get(new EmailKey(email));
+        const h = realm(ctx);
+        const owner = AuthDb.emails.get(new EmailKey(h, email));
         if (owner != null) {
-            const acct = AuthDb.accounts.get(new Username(owner.username));
+            const acct = AuthDb.accounts.get(new Username(h, owner.username));
             if (acct != null && !acct.emailConfirmed) {
-                this.issueConfirmation(ctx, owner.username, email);
+                this.issueConfirmation(h, ctx, owner.username, email);
             }
         }
         return ackOk();
@@ -603,14 +665,16 @@ class Auth {
         const evaluated = AuthService.oprfEvaluate(username, blinded);
         if (evaluated.length != AuthService.OPRF_ELEMENT_LEN) return fail();
 
-        const known = AuthDb.accounts.exists(new Username(username));
+        const h = realm(ctx);
+        const known = AuthDb.accounts.exists(new Username(h, username));
         const cid = randomBytes(16);
         const nonce = randomBytes(32);
         const iat = nowSecs();
         const exp = iat + CHALLENGE_TTL_SECS;
 
         // Persist only for a real account; the response is identical either way,
-        // and login/finish for an unknown user fails generically at consume.
+        // and login/finish for an unknown user fails generically at consume. The
+        // challenge key folds in `h`, so a challenge is bound to the login domain.
         if (known) {
             const c = new Challenge();
             c.cid = cid;
@@ -618,7 +682,7 @@ class Auth {
             c.nonce = nonce;
             c.iat = iat;
             c.exp = exp;
-            AuthDb.challenges.create(new ChallengeId(cid), c);
+            AuthDb.challenges.create(new ChallengeId(h, cid), c);
         }
 
         const w = new DataWriter();
@@ -627,7 +691,7 @@ class Auth {
         w.writeU32(MEM_KIB);
         w.writeU32(ITERS);
         w.writeU32(PAR);
-        w.writeBytes(deriveSalt(username));
+        w.writeBytes(deriveSalt(h, username));
         w.writeBytes(nonce);
         w.writeU64(iat);
         w.writeU64(exp);
@@ -646,15 +710,17 @@ class Auth {
         const ct = r.readBytes();
         const sig = r.readBytes();
         if (!r.ok) return fail();
+        const h = realm(ctx);
 
         // 1. CONSUME FIRST: atomic fetch-and-delete. Unknown/used/expired => fail.
-        const ch = AuthDb.challenges.getDelete(new ChallengeId(cid));
+        //    The challenge is realm-keyed, so one minted on another domain misses.
+        const ch = AuthDb.challenges.getDelete(new ChallengeId(h, cid));
         if (ch == null) return fail();
         if (nowSecs() >= ch.exp) return fail();
 
         // 2. Rebuild the message from OUR stored values + the client's ct (and
         //    the bound params + server key id), load the account key, verify.
-        const acct = AuthDb.accounts.get(new Username(ch.username));
+        const acct = AuthDb.accounts.get(new Username(h, ch.username));
         if (acct == null) return fail();
         const message = AuthService.buildLoginMessage(
             ch.username,
@@ -700,6 +766,7 @@ class Auth {
         if (acct.twoFactorMethod != TWOFA_NONE) {
             const raw = randomBytes(16); // the twoFaId the client echoes to /2fa/verify
             const codeHash = this.twoFaDeliver(
+                h,
                 acct.twoFactorMethod,
                 ch.username,
                 acct.email,
@@ -713,7 +780,7 @@ class Auth {
             c2.exp = nowSecs() + TWOFA_TTL_SECS;
             c2.attempts = 0;
             c2.targetMethod = TWOFA_NONE; // a LOGIN challenge changes no method on success
-            AuthDb.twoFaLogins.create(new TwoFaId(raw), c2);
+            AuthDb.twoFaLogins.create(new TwoFaId(h, raw), c2);
 
             const w2 = new DataWriter();
             w2.writeU8(ST_TWOFA_REQUIRED);
@@ -750,20 +817,21 @@ class Auth {
         const r = new DataReader(ctx.request.body);
         const email = r.readString();
         if (!r.ok) return fail();
-        const owner = AuthDb.emails.get(new EmailKey(email));
-        if (owner != null && AuthDb.accounts.exists(new Username(owner.username))) {
+        const h = realm(ctx);
+        const owner = AuthDb.emails.get(new EmailKey(h, email));
+        if (owner != null && AuthDb.accounts.exists(new Username(h, owner.username))) {
             // Invalidate this user's previous reset token (bound to one outstanding).
-            const prev = AuthDb.resetTokenOf.getDelete(new Username(owner.username));
+            const prev = AuthDb.resetTokenOf.getDelete(new Username(h, owner.username));
             if (prev != null) AuthDb.resetTokens.delete(prev);
             const raw = mintToken();
-            const tid = tokenId(raw);
+            const tid = tokenId(h, raw); // realm-bound: unredeemable on another domain
             const rec = new TokenRec();
             rec.username = owner.username;
             rec.exp = nowSecs() + RESET_TTL_SECS;
             AuthDb.resetTokens.create(tid, rec);
             // If a concurrent reset request won the pointer index, roll back the
             // token we just minted so exactly one stays outstanding (no orphan).
-            if (!AuthDb.resetTokenOf.create(new Username(owner.username), tid)) {
+            if (!AuthDb.resetTokenOf.create(new Username(h, owner.username), tid)) {
                 AuthDb.resetTokens.delete(tid);
             }
             // Token in the URL FRAGMENT, not the query string: a fragment is never
@@ -789,7 +857,8 @@ class Auth {
         const raw = r.readBytes();
         const blinded = r.readBytes();
         if (!r.ok || raw.length == 0) return fail();
-        const rec = AuthDb.resetTokens.get(tokenId(raw));
+        const h = realm(ctx);
+        const rec = AuthDb.resetTokens.get(tokenId(h, raw));
         if (rec == null) return fail();
         if (nowSecs() >= rec.exp) return fail();
         const evaluated = AuthService.oprfEvaluate(rec.username, blinded);
@@ -801,7 +870,7 @@ class Auth {
         w.writeU32(MEM_KIB);
         w.writeU32(ITERS);
         w.writeU32(PAR);
-        w.writeBytes(deriveSalt(rec.username));
+        w.writeBytes(deriveSalt(h, rec.username));
         w.writeBytes(evaluated);
         return Response.bytes(w.toBytes());
     }
@@ -820,11 +889,13 @@ class Auth {
         const proof = r.readBytes();
         if (!r.ok || raw.length == 0) return fail();
         if (pk.length != AuthService.PUBLIC_KEY_LEN) return fail();
-        // Consume FIRST (single use), then validate.
-        const rec = AuthDb.resetTokens.getDelete(tokenId(raw));
+        const h = realm(ctx);
+        // Consume FIRST (single use), then validate. Realm-bound token id: a reset
+        // token from another domain hashes to a different key and misses here.
+        const rec = AuthDb.resetTokens.getDelete(tokenId(h, raw));
         if (rec == null) return fail();
         if (nowSecs() >= rec.exp) return fail();
-        const acct = AuthDb.accounts.get(new Username(rec.username));
+        const acct = AuthDb.accounts.get(new Username(h, rec.username));
         if (acct == null) return fail();
 
         const regMsg = AuthService.buildRegisterMessage(rec.username, pk);
@@ -835,7 +906,7 @@ class Auth {
         // so confirm the account while we are here.
         acct.publicKey = pk;
         acct.emailConfirmed = true;
-        AuthDb.accounts.patch(new Username(rec.username), acct);
+        AuthDb.accounts.patch(new Username(h, rec.username), acct);
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
 
@@ -878,23 +949,25 @@ class Auth {
         const id = r.readBytes();
         const code = r.readString();
         if (!r.ok || id.length == 0) return fail();
+        const h = realm(ctx);
 
         // RACE-FREE attempt cap: count this guess against a host-side EXACT
         // limiter keyed on THIS challenge (the twoFaId), not the peer IP. Unlike
         // the `ch.attempts` get+patch below, this is atomic across all workers,
         // so a concurrent many-IP attacker cannot exceed TWOFA_MAX_ATTEMPTS
         // guesses against one code. Denied -> 429 (Retry-After); the challenge is
-        // left for its TTL to reap. Keyed on the hex so the key is stable ASCII.
+        // left for its TTL to reap. Key = realm + twoFaId hex (the edge limiter is
+        // already per-host; the prefix keeps dev parity + isolates per domain).
         const rl = RateLimitService.guardKeyed(
             TWOFA_VERIFY_RL_ROUTE,
             TWOFA_RL_STRATEGY,
             TWOFA_MAX_ATTEMPTS as i32,
             TWOFA_TTL_SECS as i32,
-            crypto.toHex(id),
+            h + '\x00' + crypto.toHex(id),
         );
         if (rl != null) return rl;
 
-        const key = new TwoFaId(id);
+        const key = new TwoFaId(h, id);
         // PEEK (not consume): a wrong guess must NOT burn the challenge (a typo
         // would otherwise lock the user out) until the attempt cap is reached.
         const ch = AuthDb.twoFaLogins.get(key);
@@ -903,7 +976,7 @@ class Auth {
             AuthDb.twoFaLogins.delete(key); // burn an expired / exhausted challenge
             return fail();
         }
-        if (!this.twoFaVerifyCode(ch.username, code, ch)) {
+        if (!this.twoFaVerifyCode(h, ch.username, code, ch)) {
             // Wrong code: count the attempt; delete the challenge once the cap is
             // hit so a burned-out challenge cannot be ground further.
             ch.attempts = ch.attempts + 1;
@@ -914,7 +987,7 @@ class Auth {
 
         // SUCCESS: consume-once, then mint the session EXACTLY like login/finish.
         AuthDb.twoFaLogins.getDelete(key);
-        const acct = AuthDb.accounts.get(new Username(ch.username));
+        const acct = AuthDb.accounts.get(new Username(h, ch.username));
         if (acct == null) return fail();
         const domain = authDomain(ctx);
         const toilUserId = ToilUserId.derive(acct.publicKey, ch.username, domain).toBytes();
@@ -945,7 +1018,8 @@ class Auth {
         if (!isKnownTwoFaMethod(targetMethod)) return fail();
         const u = AuthService.getUser();
         if (u == null) return fail();
-        const acct = AuthDb.accounts.get(new Username(u.username));
+        const h = realm(_ctx);
+        const acct = AuthDb.accounts.get(new Username(h, u.username));
         if (acct == null) return fail();
 
         // Disabling when 2FA is already off: nothing to prove; generic ST_OK.
@@ -959,6 +1033,7 @@ class Auth {
         //     hold the existing factor before it is removed).
         const deliverMethod: u8 = targetMethod != TWOFA_NONE ? targetMethod : acct.twoFactorMethod;
         const codeHash = this.twoFaDeliver(
+            h,
             deliverMethod,
             u.username,
             acct.email,
@@ -974,8 +1049,8 @@ class Auth {
         c.attempts = 0;
         c.targetMethod = targetMethod; // what to set account.twoFactorMethod to on success
         // One outstanding setup challenge per user: overwrite any prior.
-        AuthDb.twoFaSetup.delete(new Username(u.username));
-        AuthDb.twoFaSetup.create(new Username(u.username), c);
+        AuthDb.twoFaSetup.delete(new Username(h, u.username));
+        AuthDb.twoFaSetup.create(new Username(h, u.username), c);
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
 
@@ -993,6 +1068,7 @@ class Auth {
         if (!r.ok) return fail();
         const u = AuthService.getUser();
         if (u == null) return fail();
+        const h = realm(_ctx);
 
         // RACE-FREE attempt cap for the setup challenge (same rationale as
         // /2fa/verify): an atomic host-side limiter keyed on the session user, so
@@ -1003,18 +1079,18 @@ class Auth {
             TWOFA_RL_STRATEGY,
             TWOFA_MAX_ATTEMPTS as i32,
             TWOFA_TTL_SECS as i32,
-            u.username,
+            h + '\x00' + u.username,
         );
         if (srl != null) return srl;
 
-        const key = new Username(u.username);
+        const key = new Username(h, u.username);
         const ch = AuthDb.twoFaSetup.get(key);
         if (ch == null) return fail();
         if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
             AuthDb.twoFaSetup.delete(key);
             return fail();
         }
-        if (!this.twoFaVerifyCode(ch.username, code, ch)) {
+        if (!this.twoFaVerifyCode(h, ch.username, code, ch)) {
             ch.attempts = ch.attempts + 1;
             if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaSetup.delete(key);
             else AuthDb.twoFaSetup.patch(key, ch);
@@ -1037,7 +1113,8 @@ class Auth {
     public twoFaStatus(_ctx: RouteContext): Response {
         const u = AuthService.getUser();
         if (u == null) return fail();
-        const acct = AuthDb.accounts.get(new Username(u.username));
+        const h = realm(_ctx);
+        const acct = AuthDb.accounts.get(new Username(h, u.username));
         if (acct == null) return fail();
         return Response.bytes(new DataWriter().writeU8(acct.twoFactorMethod).toBytes());
     }
@@ -1053,7 +1130,13 @@ class Auth {
      *     and pairs with a `case TWOFA_TOTP` in {@link twoFaVerifyCode}. The
      *     lifecycle and the login/setup wiring do NOT change. <<<
      */
-    private twoFaDeliver(method: u8, username: string, email: string, subject: string): Uint8Array {
+    private twoFaDeliver(
+        host: string,
+        method: u8,
+        username: string,
+        email: string,
+        subject: string,
+    ): Uint8Array {
         switch (method) {
             case TWOFA_EMAIL: {
                 const code = randomCode(TWOFA_DIGITS);
@@ -1070,7 +1153,7 @@ class Auth {
                 // DETACHED (non-suspending) send: constant-time, no provider-RTT
                 // parking (matches the confirm/reset anti-enumeration posture).
                 EmailService.sendDetached(email, subject, text, '2fa', html);
-                return twoFaCodeHash(username, code);
+                return twoFaCodeHash(host, username, code);
             }
             // >>> case TWOFA_TOTP: { return twoFaSecretBinding(username); } <<<
             default:
@@ -1086,11 +1169,16 @@ class Auth {
      * >>> ADD A METHOD HERE: a new `case TWOFA_TOTP:` runs a TOTP check against the
      *     stored secret binding. <<<
      */
-    private twoFaVerifyCode(username: string, code: string, challenge: TwoFaChallenge): bool {
+    private twoFaVerifyCode(
+        host: string,
+        username: string,
+        code: string,
+        challenge: TwoFaChallenge,
+    ): bool {
         switch (challenge.method) {
             case TWOFA_EMAIL:
                 // Constant-time compare of the two 32-byte SHA-256 hashes.
-                return ctEqual(twoFaCodeHash(username, code), challenge.codeHash);
+                return ctEqual(twoFaCodeHash(host, username, code), challenge.codeHash);
             // >>> case TWOFA_TOTP: return totpVerify(challenge.codeHash, code); <<<
             default:
                 return false;
@@ -1108,19 +1196,24 @@ class Auth {
      *  constant time, equalizing both paths. (Residual: on the exists path the
      *  token mint above still does a sub-ms ToilDB write the miss path skips; a
      *  fully constant-time guarantee would also equalize that DB work.) */
-    private issueConfirmation(ctx: RouteContext, username: string, email: string): void {
+    private issueConfirmation(
+        host: string,
+        ctx: RouteContext,
+        username: string,
+        email: string,
+    ): void {
         // Invalidate this user's previous confirm token (bound to one outstanding).
-        const prev = AuthDb.confirmTokenOf.getDelete(new Username(username));
+        const prev = AuthDb.confirmTokenOf.getDelete(new Username(host, username));
         if (prev != null) AuthDb.confirmTokens.delete(prev);
         const raw = mintToken();
-        const tid = tokenId(raw);
+        const tid = tokenId(host, raw); // realm-bound token id (see tokenId)
         const rec = new TokenRec();
         rec.username = username;
         rec.exp = nowSecs() + CONFIRM_TTL_SECS;
         AuthDb.confirmTokens.create(tid, rec);
         // If a concurrent request won the pointer index, roll back the token we
         // just minted so exactly one stays outstanding (no orphan).
-        if (!AuthDb.confirmTokenOf.create(new Username(username), tid)) {
+        if (!AuthDb.confirmTokenOf.create(new Username(host, username), tid)) {
             AuthDb.confirmTokens.delete(tid);
         }
         // Token in the URL FRAGMENT (see resetRequest): kept out of server/CDN
