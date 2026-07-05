@@ -71,10 +71,11 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 
 **Build the frontend**
 - [Frontend overview](./frontend/README.md), [Routing](./frontend/routing.md),
+  [Navigation](./frontend/navigation.md), [Components](./frontend/components.md),
   [Rendering and SSR](./frontend/rendering.md), [Styling](./frontend/styling.md),
   [Images](./frontend/images.md), [Metadata and SEO](./frontend/metadata.md),
   [Fetching data](./frontend/data-fetching.md), [Scripts](./frontend/scripts.md),
-  [Search](./frontend/search.md).
+  [Search](./frontend/search.md), [The Toil global (reference)](./frontend/toil-global.md).
 
 **Build the backend**
 - [Backend overview](./backend/README.md), [HTTP routes (`@rest`)](./backend/rest.md),

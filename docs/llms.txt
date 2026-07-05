@@ -28,14 +28,17 @@ This is the canonical documentation, organized by section. Each link points to a
 
 ## Frontend
 - [Frontend](frontend/README.md): Your toiljs frontend is a React app with file-based routing that runs in the browser, and can also be rendered ahead of time on the server for a fast first paint and good SEO.
+- [Components](frontend/components.md): Write your own React components in a toiljs app, plus the component primitives toiljs provides on the Toil global: Image, Script, Form, Slot, Head, Metadata, and the SSR markers Hole, Repeat, RawHtml, attr, and Island.
 - [Fetching data](frontend/data-fetching.md): Your React frontend and your toiljs backend live in one project, so toiljs generates a **typed client** that lets the browser call your server with full type safety and no hand-written `fetch` boilerplate.
 - [Images](frontend/images.md): `Toil.Image` is a drop-in replacement for `<img>` that stops layout shift, lazy-loads by default, and can fade in from a blurred placeholder.
 - [Metadata and SEO](frontend/metadata.md): Metadata is the information in a page's `<head>`: its title, its description, and the tags that control how it looks when shared on social media or listed by a search engine.
+- [Navigation](frontend/navigation.md): Move between pages: Link and NavLink with active state, programmatic navigation (useNavigate, useRouter, navigate), typed hrefs and the href() escape hatch, link prefetching, scroll restoration, and animated transitions.
 - [Rendering and SSR](frontend/rendering.md): This page explains where your pages are built: in the browser, ahead of time at build, or on the server for each request.
 - [Routing](frontend/routing.md): toiljs uses file-based routing: every file under `client/routes/` becomes a page, and its path on disk becomes its URL.
 - [Scripts](frontend/scripts.md): `Toil.Script` loads an external or inline `<script>` for you, with control over *when* it runs and a guarantee it runs only *once* across your whole app.
 - [Page search](frontend/search.md): toiljs ships a built-in search over your own pages: at build time it indexes every route's metadata (title, description, keywords, Open Graph), and at runtime you query that index to build a search box or a command palette that jumps straight to a page.
 - [Styling](frontend/styling.md): toiljs does not force a styling system on you.
+- [The Toil global (reference)](frontend/toil-global.md): A complete, grouped reference of every member on the global Toil object (components, navigation, hooks, data, head, search, realtime, the typed Server client, and auth), with signatures and links to the deeper pages.
 
 ## Backend
 - [Backend overview](backend/README.md): Your backend is TypeScript that toilscript compiles into a small, sandboxed WebAssembly program, which runs on the Dacely edge and answers every request.

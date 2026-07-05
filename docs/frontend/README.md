@@ -84,7 +84,9 @@ The same fast data utilities your backend uses are available in client code too,
 
 Read them in roughly this order:
 
-- **[Routing](./routing.md)**: turn files into URLs. Index, nested, and dynamic pages; layouts and templates; active links; and navigating in code.
+- **[Routing](./routing.md)**: turn files into URLs. Index, nested, and dynamic pages; layouts and templates.
+- **[Navigation](./navigation.md)**: move between pages. Links and active state, navigating in code, typed hrefs, prefetching, scroll restoration, and animated transitions.
+- **[Components](./components.md)**: use your own React components, plus the toiljs primitives (`Image`, `Script`, `Form`, `Slot`, `Head`, and the SSR markers).
 - **[Rendering and SSR](./rendering.md)**: what renders on the server versus in the browser, how hydration works, and the current SSR limitations.
 - **[Styling](./styling.md)**: plain CSS, preprocessors (Sass / Less / Stylus), and Tailwind.
 - **[Images](./images.md)**: the `Toil.Image` component, automatic blur placeholders, and how it stops layout shift.
@@ -92,6 +94,7 @@ Read them in roughly this order:
 - **[Fetching data](./data-fetching.md)**: call your backend with the generated typed clients, submit forms, and read who is logged in.
 - **[Scripts](./scripts.md)**: load external or inline `<script>` tags with a loading strategy, using `Toil.Script`.
 - **[Search](./search.md)**: the built-in, statically-baked page search and command palette (`usePageSearch`).
+- **[The Toil global (reference)](./toil-global.md)**: a complete, grouped list of everything on the `Toil` object.
 
 ## Related
 

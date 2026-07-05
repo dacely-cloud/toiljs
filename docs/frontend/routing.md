@@ -195,6 +195,8 @@ The `(.)` markers mean: `(.)` same level, `(..)` up one level, `(...)` from the 
 
 ## Links and navigation
 
+This is a quick tour. For the full treatment, programmatic navigation, typed hrefs, prefetching, scroll restoration, and animated transitions, see [Navigation](./navigation.md).
+
 ### `Toil.Link`
 
 Use `Toil.Link` instead of a plain `<a>` for in-app links. It navigates client-side (no full page reload), and prefetches the target route's code on hover or focus so the click feels instant:
