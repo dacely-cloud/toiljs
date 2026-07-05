@@ -37,5 +37,7 @@ export class SeriesData {
     metric: i32 = 0;
     bucketSecs: u32 = 0;
     headMs: u64 = 0;
-    points: i64[] = [];
+    // `u64` to match `Analytics.series(...).points` (per-bucket totals are
+    // non-negative). Was `i64[]`, which the toilscript analytics API rejects.
+    points: u64[] = [];
 }
