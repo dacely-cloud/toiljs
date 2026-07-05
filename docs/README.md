@@ -100,6 +100,7 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
   [Time](./services/time.md).
 
 **Concepts and reference**
-- [Compute tiers (L1 to L4)](./concepts/tiers.md), [Types (u64, u256, and friends)](./concepts/types.md),
+- [Writing toiljs correctly (AI + human quick rules)](./concepts/ai-guide.md),
+  [Compute tiers (L1 to L4)](./concepts/tiers.md), [Types (u64, u256, and friends)](./concepts/types.md),
   [Every decorator](./concepts/decorators.md), [Configuration](./concepts/config.md),
   [Security and SRI](./concepts/security.md).

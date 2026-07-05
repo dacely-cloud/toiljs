@@ -16,8 +16,8 @@ sequenceDiagram
     participant B as Browser
     participant S as Your handler
     B->>S: Request<br/>Cookie: theme=dark
-    Note over S: req.cookie('theme') -> "dark"
-    S-->>B: Response<br/>Set-Cookie: theme=light; ...
+    Note over S: req.cookie('theme') returns "dark"
+    S-->>B: Response<br/>Set-Cookie: theme=light
     Note over B: browser stores the new cookie<br/>and sends it next time
 ```
 

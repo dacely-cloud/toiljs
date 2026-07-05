@@ -86,6 +86,7 @@ This is the canonical documentation, organized by section. Each link points to a
 - [Time](services/time.md): **`Time` is the edge's clock: the blessed way to read the current time in your backend.** It gives you the number of milliseconds or seconds since a fixed reference point, so you can stamp events and compute expiries.
 
 ## Concepts and reference
+- [Writing toiljs correctly](concepts/ai-guide.md): A fast, high-signal cheat-sheet for writing toiljs and toilscript code that compiles and behaves, aimed at AI assistants (and humans in a hurry): the client + server + ToilDB patterns to follow, the common mistakes to avoid, and links to the deep pages.
 - [Configuration (`toil.config.ts`)](concepts/config.md): `toil.config.ts` is the one file that configures your whole toiljs app: the client (React/Vite) side and the server (WebAssembly) side.
 - [Decorators reference](concepts/decorators.md): Every feature of a toiljs backend, an HTTP route, an RPC method, a database collection, a scheduled job, is switched on by a **decorator**.
 - [Security](concepts/security.md): Security in toil is not a single feature you switch on.

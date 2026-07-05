@@ -93,15 +93,15 @@ sequenceDiagram
     participant B as Build
     participant Edge as Dacely edge
     participant U as Browser
-    B->>Edge: prebuilt template (HTML with holes) + a coherence hash
+    B->>Edge: prebuilt template (HTML with holes) plus a coherence hash
     U->>Edge: GET / (ssr route)
-    Edge->>Edge: run the wasm render -> small "hole values" list
+    Edge->>Edge: run the wasm render to get a small hole-values list
     Edge->>Edge: splice values into the template
     Edge-->>U: real first-paint HTML
     Note over U: Content is visible immediately
-    U->>Edge: fetch JS + route chunk
-    Note over U: React hydrates: attaches to the existing HTML
-    Note over U: Page is interactive; no redraw, no flash
+    U->>Edge: fetch JS plus route chunk
+    Note over U: React hydrates and attaches to the existing HTML
+    Note over U: Page is interactive with no redraw or flash
 ```
 
 For SSR to hydrate cleanly, the HTML the server produced and the HTML the browser would produce must match byte-for-byte. toiljs guarantees this by escaping hole values exactly as React does and by carrying a hash that ties the running backend to the exact template it was built against. Authoring the server side of an SSR route (the hole markers in the page and the matching `render` function in `server/`) is a deeper topic that lives with the [backend](../backend/README.md). For most pages you only need `export const ssr = true` and to keep the page "SSR-safe" (below).
