@@ -41,7 +41,9 @@ describe('AuthEmail module codegen', () => {
         expect(src).toContain('export function confirm(to: string, link: string): void');
         expect(src).toContain('export function reset(to: string, link: string): void');
         // twofa takes the subject as a runtime arg (login vs setup), not baked.
-        expect(src).toContain('export function twofa(to: string, code: string, subject: string): void');
+        expect(src).toContain(
+            'export function twofa(to: string, code: string, subject: string, action: string): void',
+        );
         // Every send is detached (the anti-enumeration property), never the suspending send.
         expect(src.match(/\.sendDetached\(/g)).toHaveLength(3);
         expect(src).not.toContain('.send(to');
@@ -57,10 +59,11 @@ describe('AuthEmail module codegen', () => {
         expect(src).toContain('new EmailTemplate(subject,'); // twofa uses the arg
     });
 
-    it('interpolates the right token per email (link for confirm/reset, code for twofa)', () => {
+    it('interpolates the right token per email (link for confirm/reset, code + action for twofa)', () => {
         const src = moduleSource(defaultParts());
         expect(src).toContain('v.set("link", link)');
         expect(src).toContain('v.set("code", code)');
+        expect(src).toContain('v.set("action", action)');
     });
 
     it('escapes baked HTML into a valid string literal', () => {

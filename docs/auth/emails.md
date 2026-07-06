@@ -8,7 +8,7 @@ Built-in auth sends three transactional emails: the email-verification link, the
 | --- | --- | --- |
 | Email verification | On register, when email confirmation is on | `link` (the confirm URL) |
 | Password reset | On `POST /auth/reset/request` | `link` (the reset URL) |
-| Two-factor code | On login or 2FA setup, for the email method | `code` (the numeric code) |
+| Two-factor code | On login or 2FA setup, for the email method | `code` (the numeric code) and `action` (the flow phrase) |
 
 The defaults are intentionally minimal so a fresh project sends real, correct mail with no setup. To match your brand, override them.
 
@@ -20,7 +20,7 @@ Drop a React template in your project's `emails/` folder with the reserved name 
 | --- | --- | --- |
 | `emails/auth-confirm.tsx` | Email verification | `link` |
 | `emails/auth-reset.tsx` | Password reset | `link` |
-| `emails/auth-2fa.tsx` | Two-factor code | `code` |
+| `emails/auth-2fa.tsx` | Two-factor code | `code`, `action` |
 
 Each template is a default-exported React component. Read the one prop it is given, and it becomes a `{{token}}` hole the edge fills per send. Reading any other prop renders empty, so the build warns you.
 
@@ -53,15 +53,16 @@ The reset template works the same way with the `link` prop.
 
 For verification and reset, set the subject with `export const subject = '...'`. Leave it out and the default subject is used (`Confirm your account`, `Reset your password`).
 
-The two-factor email is different: its subject is set by the framework because it changes with context (a login code versus a setup code). Your `emails/auth-2fa.tsx` override controls the body and HTML around the `code`, and the subject stays contextual. A `subject` export in that file is ignored.
+The two-factor email is different. It serves three flows (signing in, enabling 2FA, and turning 2FA off), so besides the `code` it also gets an `action` prop: the framework fills it with the flow phrase, `sign in`, `enable two-factor authentication`, or `turn off two-factor authentication`. Write it into a sentence like "Enter this code to {action}." and the one template reads correctly for every flow. The subject is likewise set by the framework and stays contextual, so a `subject` export in this file is ignored.
 
 ```tsx
 // emails/auth-2fa.tsx  ->  overrides the 2FA code message (subject is contextual).
-export default function Auth2fa({ code }: { code: string }) {
+export default function Auth2fa({ code, action }: { code: string; action: string }) {
     return (
         <div style={{ fontFamily: 'system-ui', padding: 24, textAlign: 'center' }}>
             <p>Your Acme verification code:</p>
             <p style={{ fontSize: 32, fontWeight: 700, letterSpacing: 6 }}>{code}</p>
+            <p>Enter it to {action}.</p>
             <p style={{ color: '#666' }}>It expires in a few minutes.</p>
         </div>
     );
@@ -72,7 +73,7 @@ export default function Auth2fa({ code }: { code: string }) {
 
 Each template is rendered once, at build time, into a static string of HTML with your styles inlined, and the prop becomes a fill hole. So a fixed layout and inline styles work, but per-send logic does not: a `{items.map(...)}` or a conditional runs at build, not per email. For these three messages that is all you need, one link or one code.
 
-The only value auth hands each template is the one in the table above (`link` or `code`). There is no user name, no app name, no expiry value. Write those into the template text directly.
+The only values auth hands each template are the ones in the table above (`link`, or `code` plus `action` for 2FA). There is no user name, no app name, no expiry value. Write those into the template text directly.
 
 Styling rules are the same as any toiljs email: write inline `style={{ ... }}`, or import a stylesheet and its rules are inlined for you. A bare CSS import with no inlining has no effect in an email client. See [Email](../services/email.md) for the details.
 

@@ -54,8 +54,10 @@ type AuthName = 'AuthConfirm' | 'AuthReset' | 'Auth2fa';
 interface AuthEmailSpec {
     /** The generated `AuthEmail.<fn>` this feeds. */
     readonly fn: 'confirm' | 'reset' | 'twofa';
-    /** The single runtime value the template interpolates. */
-    readonly token: 'link' | 'code';
+    /** The token that MUST be present in an override (the link or code). */
+    readonly requiredToken: 'link' | 'code';
+    /** Every token the framework fills for this email (an override may use any subset). */
+    readonly providedTokens: readonly string[];
     /** Host dedup/abuse tag; must match what AuthController passed before. */
     readonly purpose: string;
     /** Default subject. Empty (and ignored) for `twofa`: AuthController passes login/setup subjects. */
@@ -70,7 +72,8 @@ interface AuthEmailSpec {
 const SPECS: Record<AuthName, AuthEmailSpec> = {
     AuthConfirm: {
         fn: 'confirm',
-        token: 'link',
+        requiredToken: 'link',
+        providedTokens: ['link'],
         purpose: 'verify',
         subjectFromArg: false,
         defaultSubject: 'Confirm your account',
@@ -82,7 +85,8 @@ const SPECS: Record<AuthName, AuthEmailSpec> = {
     },
     AuthReset: {
         fn: 'reset',
-        token: 'link',
+        requiredToken: 'link',
+        providedTokens: ['link'],
         purpose: 'reset',
         subjectFromArg: false,
         defaultSubject: 'Reset your password',
@@ -95,18 +99,22 @@ const SPECS: Record<AuthName, AuthEmailSpec> = {
     },
     Auth2fa: {
         fn: 'twofa',
-        token: 'code',
+        requiredToken: 'code',
+        // `code` is the 6-digit code; `action` is the flow phrase AuthController passes
+        // ("sign in" / "enable two-factor authentication" / "turn off two-factor
+        // authentication"), so one 2FA template reads correctly for login vs setup.
+        providedTokens: ['code', 'action'],
         purpose: '2fa',
         subjectFromArg: true,
         // Subject is supplied by AuthController (login vs setup), so it is not baked.
         defaultSubject: '',
         defaultText:
             'Your verification code is {{code}}.\n' +
-            'It expires in a few minutes. If you did not request it, ignore this email.\n',
+            'Enter it to {{action}}. It expires in a few minutes. If you did not request it, ignore this email.\n',
         defaultHtml:
             '<p>Your verification code is:</p>' +
             '<p style="font-size:28px;font-weight:bold;letter-spacing:4px">{{code}}</p>' +
-            '<p>It expires in a few minutes. If you did not request it, ignore this email.</p>',
+            '<p>Enter it to {{action}}. It expires in a few minutes. If you did not request it, ignore this email.</p>',
     },
 };
 
@@ -151,16 +159,16 @@ function reservedFilesIn(emailsDir: string): Map<AuthName, string> {
  * renderer defaulted to the module name is treated as "no custom subject".
  */
 function effectiveFromOverride(name: AuthName, spec: AuthEmailSpec, r: RenderedEmail): Effective {
-    if (!r.tokens.includes(spec.token))
+    if (!r.tokens.includes(spec.requiredToken))
         warn(
-            `override emails/${name} never uses the {${spec.token}} prop, so the ` +
-                `${spec.token === 'link' ? 'link' : 'code'} will be missing from the email.`,
+            `override emails/${name} never uses the {${spec.requiredToken}} prop, so the ` +
+                `${spec.requiredToken === 'link' ? 'link' : 'code'} will be missing from the email.`,
         );
     for (const t of r.tokens)
-        if (t !== spec.token)
+        if (!spec.providedTokens.includes(t))
             warn(
-                `override emails/${name} uses {${t}}, which auth does not provide ` +
-                    `(only {${spec.token}}); it will render empty.`,
+                `override emails/${name} uses {${t}}, which auth does not provide (only ` +
+                    `${spec.providedTokens.map((x) => '{' + x + '}').join(', ')}); it will render empty.`,
             );
     // For twofa the subject is a runtime arg; for confirm/reset use the template's
     // subject unless it defaulted to the component name (no `export const subject`).
@@ -170,17 +178,25 @@ function effectiveFromOverride(name: AuthName, spec: AuthEmailSpec, r: RenderedE
 
 /** Codegen one `AuthEmail.<fn>` function. `twofa` takes its subject as an arg. */
 function emitFn(spec: AuthEmailSpec, eff: Effective): string[] {
-    const subjectExpr = spec.subjectFromArg ? 'subject' : asLit(eff.subject);
-    const sig =
-        spec.fn === 'twofa'
-            ? 'twofa(to: string, code: string, subject: string): void'
-            : `${spec.fn}(to: string, ${spec.token}: string): void`;
+    let sig: string;
+    let subjectExpr: string;
+    let sets: string[];
+    if (spec.fn === 'twofa') {
+        // twofa takes its subject AND its action phrase as runtime args (login vs setup).
+        sig = 'twofa(to: string, code: string, subject: string, action: string): void';
+        subjectExpr = 'subject';
+        sets = ['v.set("code", code);', 'v.set("action", action);'];
+    } else {
+        sig = `${spec.fn}(to: string, ${spec.requiredToken}: string): void`;
+        subjectExpr = asLit(eff.subject);
+        sets = [`v.set(${asLit(spec.requiredToken)}, ${spec.requiredToken});`];
+    }
     return [
         `  export function ${sig} {`,
         `    const T: string = ${asLit(eff.text)};`,
         `    const H: string = ${asLit(eff.html)};`,
         `    const v = new Map<string, string>();`,
-        `    v.set(${asLit(spec.token)}, ${spec.token});`,
+        ...sets.map((s) => `    ${s}`),
         `    new EmailTemplate(${subjectExpr}, T, H).sendDetached(to, v, ${asLit(spec.purpose)});`,
         `  }`,
     ];

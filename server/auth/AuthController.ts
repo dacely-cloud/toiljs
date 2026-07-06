@@ -818,6 +818,7 @@ class Auth {
                 ch.username,
                 acct.email,
                 'Your login code',
+                'sign in',
             );
             if (codeHash.length == 0) return fail(); // unsupported/misconfigured method
             const c2 = new TwoFaChallenge();
@@ -1087,12 +1088,19 @@ class Auth {
         //   DISABLE (targetMethod == NONE): the CURRENT method (prove you still
         //     hold the existing factor before it is removed).
         const deliverMethod: u8 = targetMethod != TWOFA_NONE ? targetMethod : acct.twoFactorMethod;
+        // Action phrase for the 2FA email body (the `{action}` token): enabling proves the
+        // new factor, disabling proves the current one before it is removed.
+        const twoFaAction: string =
+            targetMethod != TWOFA_NONE
+                ? 'enable two-factor authentication'
+                : 'turn off two-factor authentication';
         const codeHash = this.twoFaDeliver(
             h,
             deliverMethod,
             u.username,
             acct.email,
             'Your verification code',
+            twoFaAction,
         );
         if (codeHash.length == 0) return fail(); // unsupported deliver method
 
@@ -1191,16 +1199,17 @@ class Auth {
         username: string,
         email: string,
         subject: string,
+        action: string,
     ): Uint8Array {
         switch (method) {
             case TWOFA_EMAIL: {
                 const code = randomCode(TWOFA_DIGITS);
-                // The subject is contextual (login vs setup) so AuthController owns it;
-                // the body/html come from the generated `AuthEmail` — the built-in
-                // default, or an `emails/auth-2fa.tsx` override filling `{code}`. The
-                // send is DETACHED (constant-time, no provider-RTT parking), a property
-                // the override cannot lose (AuthEmail.twofa uses sendDetached).
-                AuthEmail.twofa(email, code, subject);
+                // Subject + action phrase are contextual (login vs enable/disable 2FA), so
+                // AuthController owns them; the body/html come from the generated
+                // `AuthEmail` (built-in default, or an `emails/auth-2fa.tsx` override
+                // filling `{code}` and `{action}`). The send is DETACHED (constant-time,
+                // no provider-RTT parking), which the override cannot lose (sendDetached).
+                AuthEmail.twofa(email, code, subject, action);
                 return twoFaCodeHash(host, username, code);
             }
             // >>> case TWOFA_TOTP: { return twoFaSecretBinding(username); } <<<
