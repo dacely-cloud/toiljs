@@ -693,6 +693,7 @@ export class DevDatabase {
         const fields = coll.fields;
         if (!fields || !fields.some((f) => f.unique)) return [];
         const r = new DataReader(value);
+        r.readU32(); // skip the @data message-boundary id that encode() writes before the fields
         const out: { index: number; val: Buffer }[] = [];
         for (let i = 0; i < fields.length; i++) {
             const f = fields[i];
