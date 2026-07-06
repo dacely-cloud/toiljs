@@ -443,19 +443,6 @@ class EmailOwner {
     }
 }
 
-/** Reverse-index key for the STABLE ToilUserId uniqueness guard: (realm host,
- *  32-byte id). Realm-scoped, so uniqueness is enforced PER TENANT — two sites
- *  never share an id namespace. */
-@data
-class UserIdKey {
-    host: string = '';
-    id: Uint8Array = new Uint8Array(0);
-    constructor(host: string = '', id: Uint8Array = new Uint8Array(0)) {
-        this.host = host;
-        this.id = id;
-    }
-}
-
 @data
 class TokenId {
     hash: Uint8Array = new Uint8Array(0);
@@ -550,7 +537,6 @@ class TwoFaChallenge {
 class AuthDb {
     @collection static accounts: Documents<Username, AuthAccount>;
     @collection static emails: Documents<EmailKey, EmailOwner>; // email -> username (uniqueness index)
-    @collection static userIds: Documents<UserIdKey, EmailOwner>; // toilUserId -> username (per-tenant uniqueness guard)
     @collection static challenges: Documents<ChallengeId, Challenge>;
     @collection static confirmTokens: Documents<TokenId, TokenRec>;
     @collection static resetTokens: Documents<TokenId, TokenRec>;
@@ -626,16 +612,6 @@ class Auth {
         // on domain A is a DIFFERENT account + index entry from the same on domain B.
         const h = realm(ctx);
 
-        // Distinguishable statuses (not the generic 401) so the UI can say
-        // "username taken" / "email in use". Signup intentionally leaks existence
-        // (a product choice, now gated behind the PoP above); reset never does.
-        if (AuthDb.accounts.exists(new Username(h, username))) {
-            return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
-        }
-        if (AuthDb.emails.exists(new EmailKey(h, email))) {
-            return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
-        }
-
         // Send the confirm email + store unconfirmed when EITHER flag is on
         // (AUTH_EMAIL_CONFIRMATION or the stricter AUTH_REQUIRE_EMAIL_CONFIRMATION).
         // Whether login is then BLOCKED is a separate check (requireConfirmation,
@@ -650,28 +626,23 @@ class Auth {
         a.memKiB = MEM_KIB;
         a.iterations = ITERS;
         a.parallelism = PAR;
-        // Derive + persist the stable id once, here. Tenant-scoped (framed domain +
-        // realm-keyed reverse index below).
-        const uid = ToilUserId.derive(pk, username, authDomain(ctx)).toBytes();
-        a.toilUserId = uid;
-        // create-if-absent: a racing duplicate registration loses here, not above.
+        // Derive + persist the stable id once. Tenant-scoped, and unique WITHOUT a
+        // separate index: the framed derive maps distinct (username, domain) to
+        // distinct ids, and username is unique per realm (accounts.create below), so
+        // two accounts can never share an id.
+        a.toilUserId = ToilUserId.derive(pk, username, authDomain(ctx)).toBytes();
+        // create-if-absent IS the authoritative, race-safe uniqueness guard
+        // (serialized at the key's home): a duplicate username loses here and gets the
+        // distinguishable ST_TAKEN. No pre-`exists` read needed -- the create result
+        // is the answer.
         if (!AuthDb.accounts.create(new Username(h, username), a)) {
             return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
         }
-        // Reserve the email -> username index (uniqueness for reset-by-email, scoped
-        // per host). A racing duplicate email loses here: roll back the account we
-        // just created so a lost email race can't orphan a username whose email index
-        // points at someone else (which would also break reset-by-email for it).
+        // Reserve the email -> username index (email uniqueness + reset-by-email). A
+        // duplicate email loses here; roll back the account so nothing is orphaned.
         if (!AuthDb.emails.create(new EmailKey(h, email), new EmailOwner(username))) {
             AuthDb.accounts.delete(new Username(h, username));
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
-        }
-        // Per-tenant id-uniqueness guard: atomic create of toilUserId -> username
-        // (race-safe at the key's home). A lost race rolls back email + account.
-        if (!AuthDb.userIds.create(new UserIdKey(h, uid), new EmailOwner(username))) {
-            AuthDb.emails.delete(new EmailKey(h, email));
-            AuthDb.accounts.delete(new Username(h, username));
-            return fail();
         }
 
         if (mustConfirm) {
@@ -992,7 +963,6 @@ class Auth {
         const uid = ToilUserId.derive(acct.publicKey, username, authDomain(ctx)).toBytes();
         acct.toilUserId = uid;
         AuthDb.accounts.patch(new Username(h, username), acct);
-        AuthDb.userIds.create(new UserIdKey(h, uid), new EmailOwner(username));
         return uid;
     }
 
