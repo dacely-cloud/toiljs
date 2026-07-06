@@ -28,6 +28,13 @@ export function isCollectionFamily(value: number): value is CollectionFamily {
     return value >= CollectionFamily.Record && value <= CollectionFamily.Capacity;
 }
 
+export interface DevField {
+    name: string;
+    typeName: string;
+    isArray: boolean;
+    unique: boolean;
+}
+
 export interface DevCollectionHandle {
     name: string;
     family: CollectionFamily;
@@ -36,6 +43,9 @@ export interface DevCollectionHandle {
     placement: number;
     fillMaxWaitMs: number;
     fillAllowStale: boolean;
+    /** The value type's field layout (declaration order); present when the catalog
+     *  carried one. Drives @unique enforcement. */
+    fields?: DevField[];
 }
 
 export type DbCatalogState =

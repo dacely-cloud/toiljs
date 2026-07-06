@@ -21,6 +21,7 @@ import {
     type DbCatalogState,
     DEFAULT_FILL_WAIT_MS,
     type DevCollectionHandle,
+    type DevField,
     isCollectionFamily,
     MAX_FILL_WAIT_MS,
 } from './types.js';
@@ -72,10 +73,13 @@ export function parseCatalog(wasm: Buffer): DbCatalogState {
                 return { kind: 'malformed' };
             const fillAllowStale = fillAllowStaleByte === 1;
             const nFields = r.readU16();
+            const fields: DevField[] = [];
             for (let f = 0; f < nFields; f++) {
-                r.readString(); // field name
-                r.readString(); // field type
-                r.readU8(); // isArray
+                const fName = r.readString();
+                const fType = r.readString();
+                const isArray = r.readU8() !== 0;
+                const unique = r.readU8() !== 0;
+                fields.push({ name: fName, typeName: fType, isArray, unique });
             }
             const nMig = r.readU16();
             for (let m = 0; m < nMig; m++) r.readU32(); // migratableFrom versions
@@ -96,6 +100,7 @@ export function parseCatalog(wasm: Buffer): DbCatalogState {
                     placement,
                     fillMaxWaitMs,
                     fillAllowStale,
+                    fields,
                 });
         }
     }

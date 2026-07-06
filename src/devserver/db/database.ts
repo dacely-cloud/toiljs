@@ -685,6 +685,70 @@ export class DevDatabase {
         return this.store.has(storeKey(coll.name, readKey(ref, keyPtr, keyLen))) ? 1 : 0;
     }
 
+    /** Each `@unique` field's raw value in an encoded record, per the collection's
+     *  field layout. `[]` when there is no layout or no `@unique` field. The
+     *  compiler restricts `@unique` to top-level scalar/blob records, so the walker
+     *  only skips fixed scalars and length-prefixed blobs. */
+    private uniqueValuesOf(coll: DevCollectionHandle, value: Buffer): { index: number; val: Buffer }[] {
+        const fields = coll.fields;
+        if (!fields || !fields.some((f) => f.unique)) return [];
+        const r = new DataReader(value);
+        const out: { index: number; val: Buffer }[] = [];
+        for (let i = 0; i < fields.length; i++) {
+            const f = fields[i];
+            if (f.isArray) break;
+            if (f.typeName === 'string') {
+                const s = r.readString();
+                if (f.unique) out.push({ index: i, val: Buffer.from(s, 'utf8') });
+            } else if (f.typeName === 'Uint8Array') {
+                const b = r.readBytes();
+                if (f.unique) out.push({ index: i, val: Buffer.from(b) });
+            } else {
+                switch (f.typeName) {
+                    case 'bool':
+                    case 'u8':
+                    case 'i8':
+                        r.readU8();
+                        break;
+                    case 'u16':
+                    case 'i16':
+                        r.readU16();
+                        break;
+                    case 'u32':
+                    case 'i32':
+                    case 'f32':
+                        r.readU32();
+                        break;
+                    case 'u64':
+                    case 'i64':
+                    case 'f64':
+                        r.readU64();
+                        break;
+                    default:
+                        return out; // nested @data — compiler forbids @unique on/after it
+                }
+            }
+        }
+        return out;
+    }
+
+    /** True when another record in `coll` already holds one of `value`'s `@unique`
+     *  field values (per-tenant uniqueness). `selfSk` is the writing record's store
+     *  key so it never conflicts with itself; empty values are unique-if-present. */
+    private uniqueConflict(coll: DevCollectionHandle, value: Buffer, selfSk: string): boolean {
+        const uvals = this.uniqueValuesOf(coll, value).filter((u) => u.val.length > 0);
+        if (uvals.length === 0) return false;
+        const prefix = coll.name + '\0';
+        for (const [otherSk, otherVal] of this.store) {
+            if (otherSk === selfSk || !otherSk.startsWith(prefix)) continue;
+            const otherUvals = this.uniqueValuesOf(coll, otherVal);
+            for (const u of uvals) {
+                if (otherUvals.some((o) => o.index === u.index && o.val.equals(u.val))) return true;
+            }
+        }
+        return false;
+    }
+
     create(
         ref: MemoryRef,
         db: DbDevState,
@@ -706,9 +770,12 @@ export class DevDatabase {
         if (!start.fresh)
             return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
         const sk = storeKey(coll.name, key);
-        const outcome: RecordOutcome = this.store.has(sk)
-            ? { kind: 'already_exists' }
-            : { kind: 'unit' };
+        // @unique: a value already held by another record blocks the create, exactly
+        // like the edge's op_create claim (surfaced as AlreadyExists -> create false).
+        const outcome: RecordOutcome =
+            this.store.has(sk) || this.uniqueConflict(coll, value, sk)
+                ? { kind: 'already_exists' }
+                : { kind: 'unit' };
         if (outcome.kind === 'unit') {
             this.store.set(sk, value);
             this.stampVersion(coll, sk); // stamp the value type's current schema version
@@ -740,7 +807,9 @@ export class DevDatabase {
             return start.outcome ? this.replayRecordOutcome(db, start.outcome) : start.status;
         const sk = storeKey(coll.name, key);
         const outcome: RecordOutcome = this.store.has(sk)
-            ? { kind: 'value', value: v, schemaVersion: this.currentSchemaVersion(coll) }
+            ? this.uniqueConflict(coll, v, sk)
+                ? { kind: 'already_exists' } // patch would collide a @unique field
+                : { kind: 'value', value: v, schemaVersion: this.currentSchemaVersion(coll) }
             : { kind: 'not_found' };
         if (outcome.kind === 'value') {
             this.store.set(sk, v);
