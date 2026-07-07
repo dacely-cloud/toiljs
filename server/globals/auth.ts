@@ -345,7 +345,9 @@ export namespace AuthService {
     export function userId(): ToilUserId | null {
         const bytes = getSessionBytes();
         if (bytes == null) return null;
-        return ToilUserId.fromBytes(new DataReader(bytes).readBytes());
+        const r = new DataReader(bytes);
+        r.readU32(); // skip the @data message-boundary id that `encode()` writes first
+        return ToilUserId.fromBytes(r.readBytes());
     }
 
     /**
