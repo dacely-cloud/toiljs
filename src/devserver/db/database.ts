@@ -186,6 +186,7 @@ enum DbOp {
     Exists,
     Create,
     Patch,
+    Upsert,
     Delete,
     GetDelete,
     Enqueue,
@@ -209,6 +210,13 @@ enum DbOp {
     ViewPublish,
     CapacitySetTotal,
     EventsSince,
+}
+
+/** `data.upsert` return tags (ABI.md), mirroring the guest `UpsertResult` enum. */
+enum UpsertResult {
+    Created = 0,
+    Updated = 1,
+    Conflict = 2,
 }
 
 function isReadOp(op: DbOp): boolean {
@@ -238,6 +246,7 @@ function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
             (isReadOp(op) && !isScanOp(op)) ||
             op === DbOp.Create ||
             op === DbOp.Patch ||
+            op === DbOp.Upsert ||
             op === DbOp.Delete ||
             op === DbOp.GetDelete ||
             op === DbOp.Enqueue ||
@@ -819,6 +828,39 @@ export class DevDatabase {
         }
         this.recordIdemFinish(coll, key, 'P', idem, requestHash, outcome);
         return this.replayRecordOutcome(db, outcome);
+    }
+
+    // Create-or-overwrite in ONE op: a blind last-writer-wins put. Returns
+    // UPSERT_CREATED (0) / UPSERT_UPDATED (1), or UPSERT_CONFLICT (2) when a
+    // @unique value is held by ANOTHER record (nothing written). A blind put is
+    // naturally idempotent (re-applying the same value is a no-op beyond the
+    // Created/Updated tag), so `idem` needs no dedup ledger; it is accepted for
+    // ABI parity and ignored, mirroring how the edge merely threads it into the
+    // oplog env.
+    upsert(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        keyPtr: number,
+        keyLen: number,
+        valPtr: number,
+        valLen: number,
+        _idemPtr: number,
+    ): number {
+        const coll = collForOp(db, handle, DbOp.Upsert, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
+        if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+        const key = readKey(ref, keyPtr, keyLen);
+        const value = readCopy(ref, valPtr, valLen);
+        const sk = storeKey(coll.name, key);
+        // @unique: a value already held by ANOTHER record blocks the upsert (the
+        // one outcome a blind put cannot auto-resolve), exactly like the edge op.
+        if (this.uniqueConflict(coll, value, sk)) return UpsertResult.Conflict;
+        const existed = this.store.has(sk);
+        this.store.set(sk, value);
+        this.stampVersion(coll, sk); // stamp the value type's current schema version
+        this.recordWrite(db, coll);
+        return existed ? UpsertResult.Updated : UpsertResult.Created;
     }
 
     delete(
@@ -1602,6 +1644,15 @@ export function buildDatabaseImports(
             patchLen: number,
             idemPtr: number,
         ): number => devDb.patch(ref, db, handle, keyPtr, keyLen, patchPtr, patchLen, idemPtr),
+
+        'data.upsert': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            valPtr: number,
+            valLen: number,
+            idemPtr: number,
+        ): number => devDb.upsert(ref, db, handle, keyPtr, keyLen, valPtr, valLen, idemPtr),
 
         'data.delete': (handle: number, keyPtr: number, keyLen: number, idemPtr: number): number =>
             devDb.delete(ref, db, handle, keyPtr, keyLen, idemPtr),

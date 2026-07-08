@@ -41,11 +41,12 @@ Here is every operation, its shape, and what it gives back. `K` is your key type
 | `exists` | `exists(key: K): bool` | `true` if the record is present | check presence without reading the value |
 | `create` | `create(key: K, value: V): bool` | `true` if inserted, `false` if the key was already taken | add a **new** record without overwriting |
 | `patch` | `patch(key: K, value: V): V` | the newly stored value; **traps** if the record is absent | replace an **existing** record's value |
+| `upsert` | `upsert(key: K, value: V): UpsertResult` | `UpsertResult.Created` or `.Updated`; `.Conflict` on a `@unique` collision (nothing written) | create **or** overwrite in one op (last-writer-wins) |
 | `enqueue` | `enqueue(key: K, value: V): bool` | `true` if applied, `false` if a concurrent write won first or the record is absent | a version-checked (compare-and-swap) overwrite of an existing record |
 | `delete` | `delete(key: K): void` | nothing (idempotent) | remove a record |
 | `getDelete` | `getDelete(key: K): V \| null` | the value that was there, or `null`; removes it atomically | consume a record exactly once |
 
-Which kind of function may call which operation is covered in [Setup](./setup.md#how-access-is-gated-query-action-and-friends). In short: reads (`get`, `getMany`, `exists`) work anywhere; writes (`create`, `patch`, `enqueue`, `delete`, `getDelete`) need an **Action** (a `@post` route or an `@action`).
+Which kind of function may call which operation is covered in [Setup](./setup.md#how-access-is-gated-query-action-and-friends). In short: reads (`get`, `getMany`, `exists`) work anywhere; writes (`create`, `patch`, `upsert`, `enqueue`, `delete`, `getDelete`) need an **Action** (a `@post` route or an `@action`).
 
 ### Reading: `get`, `require`, `exists`, `getMany`
 
@@ -79,17 +80,18 @@ const found: Array<User | null> = AppDb.users.getMany(ids);
 
 `getMany` is a **bounded batch of point reads**, not a scan: the number of keys you may pass is capped by the request budget, and it never walks the whole collection. There is no "get all records" operation on a request path, by design (an unbounded scan could fan out across a huge collection). If you need "the latest N of something," model it as [Events](./events.md) or precompute a [View](./views.md).
 
-### Writing: `create` vs `patch` vs `enqueue`
+### Writing: `create` vs `upsert` vs `patch` vs `enqueue`
 
-These three all put a value under a key, but they differ in one important way each. Choosing correctly is the heart of using this family.
+These four all put a value under a key, but they differ in one important way each. Choosing correctly is the heart of using this family.
 
 ```mermaid
 flowchart TD
-    START["I want to write a record"] --> Q1{"Is this a brand-new<br/>record that must not<br/>clobber an existing one?"}
-    Q1 -->|Yes| CREATE["create<br/>(insert only; false if the key exists)"]
-    Q1 -->|"No, it already exists"| Q2{"Must the write fail if another<br/>request changed the record<br/>since I read it?"}
-    Q2 -->|"Yes, guard against a lost update"| ENQUEUE["enqueue<br/>(version-checked CAS; false if<br/>someone wrote first, then retry)"]
-    Q2 -->|"No, last write wins"| PATCH["patch<br/>(unconditional overwrite;<br/>returns the new value)"]
+    START["I want to write a record"] --> Q1{"Must this write fail if another<br/>request changed the record<br/>since I read it?"}
+    Q1 -->|"Yes, guard against a lost update"| ENQUEUE["enqueue<br/>(version-checked CAS;<br/>false = retry)"]
+    Q1 -->|"No, last write wins"| Q2{"Does the record<br/>already exist?"}
+    Q2 -->|"Must be new (never clobber)"| CREATE["create<br/>(false if the key is taken)"]
+    Q2 -->|"May or may not exist"| UPSERT["upsert<br/>(create-or-overwrite in one op)"]
+    Q2 -->|"Definitely exists"| PATCH["patch<br/>(overwrite; returns the value;<br/>traps if absent)"]
 ```
 
 **`create` inserts a new record.** It only writes if the key is free. If the key already has a record, `create` does nothing and returns `false`. This is your tool for "sign up a new user" or "claim this order id," where accidentally overwriting an existing record would be a bug. Because every key is serialized at its home (see [eventual consistency](./README.md#eventual-consistency-in-plain-words)), `create` is race-safe: if two requests create the same key at the same instant, exactly one gets `true` and the other gets `false`.
@@ -132,14 +134,33 @@ return Response.text('too much contention, try again later', 409);
 
 Because every retry re-reads the latest value, the two updates **compose** (both `+10`s land) instead of one silently overwriting the other. If you do not need this guard (only one writer touches the key, or last-write-wins is genuinely fine), a plain `patch` is simpler and also hands you the stored value back directly.
 
-> There is no single "create or overwrite" (upsert) call. To get that behavior, try `create` first and fall back to `patch` if the key was taken:
->
-> ```ts
-> const key = new UserId(input.id);
-> if (!AppDb.users.create(key, input)) {
->   AppDb.users.patch(key, input);
-> }
-> ```
+**`upsert` creates the record or overwrites it, in one operation.** It is the "just store this value, I do not care whether a row was already there" call, and it is the right tool for a save that runs repeatedly (a profile edit, a settings blob) where the first save inserts and every later save replaces. It returns an `UpsertResult` telling you which happened:
+
+```ts
+const key = new UserId('u_123');
+const result = AppDb.users.upsert(key, user);
+// result is UpsertResult.Created (row was absent) or UpsertResult.Updated (overwrote)
+```
+
+Before `upsert`, that meant two operations, `create` then `patch`:
+
+```ts
+// the old two-op idiom - upsert replaces it
+if (!AppDb.users.create(key, user)) {
+  AppDb.users.patch(key, user);
+}
+```
+
+`upsert` collapses both into a single write, so the common "already exists" path costs one round trip instead of two.
+
+Like `patch`, it is a **last-writer-wins** overwrite, not a compare-and-swap: concurrent upserts never fail or retry, the later one simply wins. That makes it correct for writing a **whole value**, and wrong for a read-modify-write of accumulating state (a running total, a like count) where a concurrent write would be silently lost, use `enqueue`'s retry loop or a [Counter](./counters.md) there. On a collection with a `@unique` field, `upsert` returns `UpsertResult.Conflict` (and writes nothing) when the value's unique field is already held by a **different** record, the one case it cannot resolve by overwriting:
+
+```ts
+const outcome = AppDb.handles.upsert(key, profile);
+if (outcome == UpsertResult.Conflict) {
+  return Response.text('that handle is taken', 409);
+}
+```
 
 ### Removing: `delete` and `getDelete`
 
@@ -234,15 +255,16 @@ That is a complete persistent CRUD entity. Run it under `toiljs dev` and the not
 
 Documents follows ToilDB's general model (see [the overview](./README.md#eventual-consistency-in-plain-words)):
 
-- **Writes to one key are serialized at that key's home**, so `create` is race-safe and `patch`/`enqueue`/`getDelete` never corrupt a record under concurrency.
+- **Writes to one key are serialized at that key's home**, so `create` is race-safe and `patch`/`upsert`/`enqueue`/`getDelete` never corrupt a record under concurrency. `upsert` is last-writer-wins like `patch`: serialization means the writes do not tear, but the later one still overwrites the earlier, so it does not by itself prevent a lost update (use `enqueue` for that).
 - **Reads are eventually consistent across regions.** Right after a write, a read from a far-away region may briefly still see the old value (or, for a just-created record, not see it yet). The copies converge within moments.
 - Because `patch` replaces the whole value, two updates to *different* fields of the same record can clobber each other if they overlap (read-modify-write races). `enqueue`'s version check is exactly the guard against that: use the read-modify-CAS retry loop shown above so a lost update turns into a retry instead of silent data loss. If you find yourself contending on one hot record a lot, a counter or a set is often a better fit than a Documents value. See [Counters](./counters.md) and [Membership](./membership.md).
 
 ## Gotchas
 
-- **`patch` requires an existing record.** Calling it on a missing key traps the request. Use `create` for new records, or the `create`-then-`patch` upsert pattern above.
+- **`patch` requires an existing record.** Calling it on a missing key traps the request. Use `create` for new records, or `upsert` when the record may or may not exist yet.
 - **`patch` replaces the whole value.** There is no field-level merge; read, modify, and write back the full value.
 - **`enqueue` returning `false` is not a failure.** It means a concurrent write beat you to the record (or the record is absent), so re-read and retry in a loop; never ignore the return value or treat `false` as a hard error. `enqueue` also does not hand back the stored value; use `patch` when you want the value returned and last-write-wins is acceptable.
+- **`upsert` is last-writer-wins, not a merge.** It writes the whole value you pass, so it is for storing a complete value, not a read-modify-write of one field of a shared record. Two overlapping upserts do not error, but the earlier one is overwritten (lost). When several writers contend on one record and must not lose each other's changes, use `enqueue`'s retry loop or a [Counter](./counters.md).
 - **No "get all."** There is no scan on the request path. Use `getMany` for known keys, and [Events](./events.md) or a [View](./views.md) for "the latest N."
 - **`getDelete`, not `get` + `delete`, for consume-once.** Only `getDelete` guarantees exactly one caller receives the value.
 

@@ -139,6 +139,7 @@ const PROVIDED_IMPORTS = new Set([
     'data.exists',
     'data.create',
     'data.patch',
+    'data.upsert',
     'data.delete',
     'data.get_delete',
     'data.unique_lookup',
