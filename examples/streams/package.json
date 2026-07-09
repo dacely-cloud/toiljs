@@ -13,13 +13,13 @@
     "dependencies": {
         "react": "^19.2.7",
         "react-dom": "^19.2.7",
-        "toiljs": "^0.0.89"
+        "toiljs": "^0.0.113"
     },
     "devDependencies": {
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
         "eslint": "^10.6.0",
-        "prettier": "^3.9.4",
+        "prettier": "^3.9.5",
         "toilscript": "^0.1.59",
         "typescript": "^6.0.3"
     }

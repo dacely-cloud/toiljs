@@ -250,7 +250,7 @@ The report is grouped:
 
 | Group | Example checks |
 | --- | --- |
-| **Environment** | Node.js version, that `toiljs` and its peer dependencies (React, TypeScript, and so on) are installed and new enough, that a lockfile exists, and that your scripts do not wrap `toiljs` in a stray `npx`. |
+| **Environment** | Node.js version, that `toiljs` and its peer dependencies (React and so on) are installed and new enough, that your TypeScript is a supported 6.x rather than the unsupported native 7.x, that a lockfile exists, and that your scripts do not wrap `toiljs` in a stray `npx`. |
 | **Project + routing** | The `client/` and `routes/` folders exist, `index.html` has a `<div id="root">`, your app entry calls `mount(...)` with the `slots` argument, at least one route exists, no two routes collide on the same URL, and no asset paths are written in a way that 404s on nested routes. |
 | **Config + assets** | Your `toil.config` loads, the base path is well formed, `client.seo` has a `url` if SEO is configured, and your styling packages are actually installed. |
 | **Server / WASM** | The `toilconfig.json` and its entry files exist, `toilscript` is installed, a compiled `.wasm` exists, the typed-RPC wiring is in place, your `@rest` controllers are actually dispatched, the Prettier and editor plugins are wired, and a `migrations/` folder exists. |
@@ -258,7 +258,7 @@ The report is grouped:
 
 ### What `--fix` repairs
 
-`--fix` only touches a server project (one with a `toilconfig.json`), and it repairs the wiring that is easy to get wrong or that older projects predate:
+`--fix` pins an unsupported TypeScript (the native 7.x, which ships no compiler API) back to `^6.0.3` in any project. The rest only touch a server project (one with a `toilconfig.json`), repairing the wiring that is easy to get wrong or that older projects predate:
 
 - adds `--rpcModule shared/server.ts` to your server build scripts,
 - adds `shared` and the `shared/*` path alias to `tsconfig.json`,
@@ -281,6 +281,8 @@ It is idempotent: it only writes files it actually needs to change, and it tells
 ## `toiljs update`
 
 A friendly wrapper over `npm-check-updates`. It checks the registry for newer versions of your dependencies, groups them by how big the jump is (major, minor, patch), lets you pick which to apply (or `-y` to apply all), bumps `package.json`, and runs your package manager's install. It also makes sure your `server/migrations/` folder exists (older projects predate it). `npm-check-updates` runs via `npx`, so it never becomes a permanent dependency of your project.
+
+Upgrades into a major toiljs does not support are held back and listed separately, so neither the picker nor `-y` can install one. Today that means **TypeScript 7**, the native port, which ships no JavaScript compiler API (see [Installation](../getting-started/installation.md)). Bumps inside TypeScript 6 are still offered.
 
 ```bash
 # Interactive picker.

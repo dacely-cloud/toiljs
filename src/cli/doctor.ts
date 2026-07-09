@@ -46,15 +46,18 @@ import {
     checkToilconfig,
     checkToiljsInstalled,
     checkToilscriptInstalled,
+    checkTypeScript,
     checkWasmBuilt,
     findRelativeAssets,
     hasFailures,
+    rangeMajor,
     type RestFacts,
     RPC_TOILSCRIPT_MIN,
     type RpcFacts,
     satisfiesMin,
     type SourceFile,
     summarize,
+    TYPESCRIPT_FIX_RANGE,
 } from './diagnostics.js';
 import {
     detectTailwind,
@@ -70,7 +73,7 @@ export interface DoctorOptions {
     readonly cwd: string;
     /** Emit machine-readable JSON instead of the human report. */
     readonly json?: boolean;
-    /** Auto-fix what can be fixed in place (currently the typed-RPC wiring). */
+    /** Auto-fix what can be fixed in place (the typed-RPC wiring, and an unsupported typescript). */
     readonly fix?: boolean;
 }
 
@@ -127,6 +130,72 @@ function isPackageInstalled(root: string, name: string): boolean {
         if (parent === dir) return false;
         dir = parent;
     }
+}
+
+/**
+ * The version of `name` actually installed for the project at `root`, or null when absent. Reads the
+ * resolved package.json rather than trusting the declared range, since the installed copy is what
+ * the compiler API consumers load. Falls back to walking `node_modules` (see `isPackageInstalled`).
+ */
+function installedVersion(root: string, name: string): string | null {
+    const require = createRequire(path.join(root, 'package.json'));
+    let pkgPath: string | null = null;
+    try {
+        pkgPath = require.resolve(`${name}/package.json`);
+    } catch {
+        for (let dir = root; pkgPath === null; ) {
+            const candidate = path.join(dir, 'node_modules', name, 'package.json');
+            if (fs.existsSync(candidate)) pkgPath = candidate;
+            const parent = path.dirname(dir);
+            if (parent === dir) break;
+            dir = parent;
+        }
+    }
+    if (pkgPath === null) return null;
+    const pkg = readJsonObject(pkgPath);
+    return pkg && typeof pkg.version === 'string' ? pkg.version : null;
+}
+
+/**
+ * Pins an unsupported TypeScript (the native 7.x, which ships no JavaScript compiler API) back to a
+ * range toiljs can drive. Rewrites whichever of `devDependencies`/`dependencies` declares it; a
+ * project with no declaration at all is left alone (nothing to pin), and the reinstall is left to
+ * the user since only they know their package manager.
+ */
+function applyTypeScriptFix(root: string): RpcFixResult {
+    const changed: string[] = [];
+    const skipped: string[] = [];
+
+    const pkgPath = path.join(root, 'package.json');
+    const pkg = readJsonObject(pkgPath);
+    if (pkg === null) return { changed, skipped };
+
+    const field = (['devDependencies', 'dependencies'] as const).find((f) => {
+        const deps = asRecord(pkg[f]);
+        return deps !== null && typeof deps.typescript === 'string';
+    });
+    if (field === undefined) {
+        // Nothing declares typescript: it is either absent or hoisted from a workspace root.
+        if (installedVersion(root, 'typescript') !== null) {
+            skipped.push('typescript (installed but not declared in package.json; pin it by hand)');
+        }
+        return { changed, skipped };
+    }
+
+    const deps = asRecord(pkg[field]);
+    if (deps === null) return { changed, skipped };
+    const declared = deps.typescript as string;
+    const declaredMajor = rangeMajor(declared);
+    const installedMajor = rangeMajor(installedVersion(root, 'typescript') ?? '');
+    const unsupported =
+        (declaredMajor !== null && declaredMajor >= 7) ||
+        (installedMajor !== null && installedMajor >= 7);
+    if (!unsupported) return { changed, skipped };
+
+    deps.typescript = TYPESCRIPT_FIX_RANGE;
+    writeFile(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
+    changed.push(`package.json (typescript ${declared} -> ${TYPESCRIPT_FIX_RANGE})`);
+    return { changed, skipped };
 }
 
 /** Narrows a value to a plain (non-array) object, or null. */
@@ -764,7 +833,26 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     }
 
     const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
-    const peerChecks = Object.keys(meta.peers).map(peerName);
+    // typescript gets its own check: its peer range is the only one whose upper bound matters (7.x
+    // clears the `>=6.0.0` floor but ships no compiler API), and it is fixable in place.
+    const peerChecks = Object.keys(meta.peers)
+        .filter((n) => n !== 'typescript')
+        .map(peerName);
+    const typeScriptFix = opts.fix ? applyTypeScriptFix(root) : null;
+    // Re-read the declared range: `--fix` may have just rewritten it.
+    const declaredTypeScript = (() => {
+        const pkg = readJsonObject(path.join(root, 'package.json'));
+        if (pkg === null) return deps.typescript ?? null;
+        for (const field of ['devDependencies', 'dependencies'] as const) {
+            const range = asRecord(pkg[field])?.typescript;
+            if (typeof range === 'string') return range;
+        }
+        return null;
+    })();
+    const typeScriptCheck = checkTypeScript(
+        installedVersion(root, 'typescript'),
+        declaredTypeScript,
+    );
 
     // Server tooling (RPC wiring + the prettier plugin + the editor LS plugin): optionally fix in
     // place, then re-read.
@@ -784,19 +872,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const serverTsParsed = serverTsPath ? readJsonObject(serverTsPath) : null;
     const serverTsPluginPresent =
         serverTsPath === null || serverTsParsed === null ? true : tsconfigHasToilPlugin(serverTsParsed);
+    // The typescript pin is fixable without a server; the rest only apply to one.
+    const applied = [typeScriptFix, rpcFix, prettierFix, editorFix].filter(
+        (fix): fix is RpcFixResult => fix !== null,
+    );
     const serverFix =
-        rpcFix || prettierFix || editorFix
+        applied.length > 0
             ? {
-                  changed: [
-                      ...(rpcFix?.changed ?? []),
-                      ...(prettierFix?.changed ?? []),
-                      ...(editorFix?.changed ?? []),
-                  ],
-                  skipped: [
-                      ...(rpcFix?.skipped ?? []),
-                      ...(prettierFix?.skipped ?? []),
-                      ...(editorFix?.skipped ?? []),
-                  ],
+                  changed: applied.flatMap((fix) => fix.changed),
+                  skipped: applied.flatMap((fix) => fix.skipped),
               }
             : null;
 
@@ -807,6 +891,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                 checkNode(process.versions.node, meta.node),
                 checkToiljsInstalled('toiljs' in deps ? version() : null),
                 ...peerChecks,
+                typeScriptCheck,
                 checkPackageManager(LOCKFILES.filter((f) => fs.existsSync(path.join(root, f)))),
             ],
         },
@@ -876,28 +961,21 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     } else {
         process.stdout.write('\n' + accent('  Doctor') + dim(`  ${root}`) + '\n\n');
         renderHuman(groups);
-        if (serverFix) renderRpcFix(serverFix);
-        else if (opts.fix && !serverPresent) {
-            process.stdout.write(
-                '  ' + dim('--fix: no server (toilconfig.json) found, nothing to wire.') + '\n\n',
-            );
-        }
+        if (serverFix) renderFix(serverFix);
     }
     if (hasFailures(summary)) process.exitCode = 1;
 }
 
-/** Prints the result of `--fix`, and whether a reinstall is needed (toilscript bump). */
-function renderRpcFix(result: RpcFixResult): void {
+/** Prints the result of `--fix`, and whether a reinstall is needed (a changed dependency range). */
+function renderFix(result: RpcFixResult): void {
     const out: string[] = [];
     if (result.changed.length > 0) {
-        out.push('  ' + success('fixed server wiring') + dim(`  ${result.changed.join(', ')}`));
-        if (result.changed.includes('package.json')) {
-            out.push(
-                '  ' + dim('run your installer (npm/pnpm/yarn) if the toilscript version changed.'),
-            );
+        out.push('  ' + success('fixed') + dim(`  ${result.changed.join(', ')}`));
+        if (result.changed.some((entry) => entry.startsWith('package.json'))) {
+            out.push('  ' + dim('run your installer (npm/pnpm/yarn) to apply the version changes.'));
         }
     } else {
-        out.push('  ' + dim('server wiring already in place, nothing to fix.'));
+        out.push('  ' + dim('nothing to fix.'));
     }
     for (const item of result.skipped) out.push('  ' + warn('skipped') + dim(`  ${item}`));
     process.stdout.write(out.join('\n') + '\n\n');

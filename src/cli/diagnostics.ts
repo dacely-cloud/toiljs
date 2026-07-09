@@ -83,6 +83,80 @@ export function checkPeer(name: string, installed: string | null, range: string)
     };
 }
 
+/** The TypeScript range toiljs supports, and the range `doctor --fix` pins an unsupported one to. */
+export const TYPESCRIPT_SUPPORTED = '>=6.0.0 <7.0.0';
+export const TYPESCRIPT_FIX_RANGE = '^6.0.3';
+
+/** First TypeScript major that dropped the JavaScript compiler API (the native port). */
+const TYPESCRIPT_NATIVE_MAJOR = 7;
+
+/**
+ * The major a dependency range floats to: the first number in the range, once the comparators are
+ * stripped (`^7.0.2` -> 7, `>=6.0.0 <7.0.0` -> 6). Returns null for a range that names no version
+ * (`*`, `latest`), which is treated as "unpinned" rather than "unsupported".
+ */
+export function rangeMajor(range: string): number | null {
+    const m = /(\d+)/.exec(range.replace(/^[\s^~>=<v]*/, ''));
+    return m ? Number(m[1]) : null;
+}
+
+/**
+ * TypeScript 7 is the native (Go) port: it publishes `tsc` but no longer exports the JavaScript
+ * compiler API, whose main entry is now just `{ version, versionMajorMinor }`. toiljs reads each
+ * route's static `metadata` through that API to bake SEO tags into the built HTML, and the eslint
+ * and typedoc presets load it too. So a TS 7 install does not fail loudly, it silently stops baking
+ * metadata (and hard-crashes typescript-eslint), which is worth a `fail` rather than a warning.
+ *
+ * `installed` is the version resolved from node_modules (authoritative, it is what actually runs);
+ * `declared` is the project's package.json range, which is flagged when it *admits* 7 even if the
+ * currently-installed copy is older, since the next install would break.
+ */
+export function checkTypeScript(installed: string | null, declared: string | null): Check {
+    const id = 'peer:typescript';
+    const label = 'typescript';
+    const unsupported = (version: string, detail: string): Check => ({
+        id,
+        label,
+        status: 'fail',
+        detail,
+        fix:
+            `TypeScript ${version} removed the JavaScript compiler API (it moved to ` +
+            `'typescript/unstable/*'), which toiljs's route-metadata extractor, the eslint preset, ` +
+            `and typedoc all load. Pin typescript to "${TYPESCRIPT_FIX_RANGE}" and reinstall ` +
+            `(\`toiljs doctor --fix\` does this).`,
+    });
+
+    if (installed === null) {
+        return {
+            id,
+            label,
+            status: 'fail',
+            detail: `not installed (requires ${TYPESCRIPT_SUPPORTED})`,
+            fix: `Install typescript@"${TYPESCRIPT_FIX_RANGE}".`,
+        };
+    }
+
+    const installedMajor = rangeMajor(installed);
+    if (installedMajor !== null && installedMajor >= TYPESCRIPT_NATIVE_MAJOR) {
+        return unsupported(String(installedMajor), `${installed} installed, unsupported`);
+    }
+
+    // Installed copy is fine, but the declared range would pull an unsupported major next install.
+    const declaredMajor = declared === null ? null : rangeMajor(declared);
+    if (declaredMajor !== null && declaredMajor >= TYPESCRIPT_NATIVE_MAJOR) {
+        return unsupported(String(declaredMajor), `package.json declares ${declared ?? ''}`);
+    }
+
+    const ok = satisfiesMin(installed, TYPESCRIPT_SUPPORTED);
+    return {
+        id,
+        label,
+        status: ok ? 'pass' : 'warn',
+        detail: `${installed} (requires ${TYPESCRIPT_SUPPORTED})`,
+        fix: ok ? undefined : `Update typescript to ${TYPESCRIPT_SUPPORTED}.`,
+    };
+}
+
 export function checkPackageManager(lockfiles: readonly string[]): Check {
     if (lockfiles.length === 0) {
         return {

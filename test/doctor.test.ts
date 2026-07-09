@@ -18,7 +18,9 @@ import {
     checkSeoUrl,
     checkServerTsPlugin,
     checkStyling,
+    checkTypeScript,
     findRelativeAssets,
+    rangeMajor,
     satisfiesMin,
     summarize,
 } from '../src/cli/diagnostics';
@@ -89,6 +91,32 @@ describe('config + environment checks', () => {
         expect(checkPeer('react', null, '>=18.0.0').status).toBe('fail');
         expect(checkPeer('react', '^17.0.0', '>=18.0.0').status).toBe('warn');
         expect(checkPeer('react', '^19.0.0', '>=18.0.0').status).toBe('pass');
+    });
+
+    it('checkTypeScript fails an installed 7.x (the native port, no compiler API)', () => {
+        const check = checkTypeScript('7.0.2', '^7.0.2');
+        expect(check.status).toBe('fail');
+        expect(check.detail).toContain('7.0.2');
+        expect(check.fix).toContain('^6.0.3');
+    });
+
+    it('checkTypeScript fails a declared 7.x even while a supported copy is installed', () => {
+        // The installed copy still works, but the next install would pull the native port.
+        expect(checkTypeScript('6.0.3', '^7.0.0').status).toBe('fail');
+        expect(checkTypeScript('6.0.3', '>=7').status).toBe('fail');
+    });
+
+    it('checkTypeScript passes a supported 6.x and warns below the floor', () => {
+        expect(checkTypeScript('6.0.3', '^6.0.3').status).toBe('pass');
+        expect(checkTypeScript('5.9.3', '^5.9.0').status).toBe('warn');
+        expect(checkTypeScript(null, null).status).toBe('fail');
+    });
+
+    it('rangeMajor reads the major a range floats to, ignoring comparators', () => {
+        expect(rangeMajor('^7.0.2')).toBe(7);
+        expect(rangeMajor('>=6.0.0 <7.0.0')).toBe(6);
+        expect(rangeMajor('~6.0')).toBe(6);
+        expect(rangeMajor('*')).toBe(null);
     });
 
     it('checkDuplicatePatterns flags repeated route URLs', () => {

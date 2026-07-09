@@ -50,6 +50,29 @@ export function parseNcuJson(stdout: string): Record<string, string> {
     }
 }
 
+/**
+ * Majors `toiljs update` refuses to upgrade into, by package. TypeScript 7 is the native (Go) port:
+ * it ships `tsc` but no JavaScript compiler API, which toiljs's route-metadata extractor, the eslint
+ * preset, and typedoc all load. Upgrading into it silently stops SEO metadata being baked into the
+ * built HTML and hard-crashes typescript-eslint, so the upgrade is withheld until the ecosystem
+ * catches up. Bumps *within* the supported major are still offered.
+ */
+export const UNSUPPORTED_MAJOR: Readonly<Record<string, number>> = { typescript: 7 };
+
+/**
+ * The names ncu wants to upgrade into a major toiljs does not support (see {@link UNSUPPORTED_MAJOR}).
+ * These are dropped from the picker and passed to ncu's `--reject`, so `-u` cannot apply them either.
+ */
+export function withheldUpgrades(upgraded: Record<string, string>): string[] {
+    return Object.entries(upgraded)
+        .filter(([name, to]) => {
+            const ceiling = UNSUPPORTED_MAJOR[name];
+            return ceiling !== undefined && parseVersion(to)[0] >= ceiling;
+        })
+        .map(([name]) => name)
+        .sort();
+}
+
 const SEVERITY: Record<Bump, number> = { major: 0, minor: 1, patch: 2, other: 3 };
 
 /**

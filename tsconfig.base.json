@@ -3,7 +3,6 @@
         "declaration": true,
         "noImplicitAny": true,
         "removeComments": true,
-        "suppressImplicitAnyIndexErrors": false,
         "preserveConstEnums": true,
         "resolveJsonModule": true,
         "skipLibCheck": true,

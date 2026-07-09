@@ -26,6 +26,24 @@ nvm use 24
 
 You also need a package manager. **npm** comes with Node.js, so you already have it. toiljs also supports **pnpm**, **yarn**, and **bun** if you prefer one of those.
 
+### TypeScript 6, not 7
+
+toiljs requires **TypeScript 6** (`>=6.0.0 <7.0.0`). TypeScript 7 is not supported yet.
+
+TypeScript 7 is the native (Go) port of the compiler. It ships a much faster `tsc`, but its package no longer exports the JavaScript compiler API, whose main entry is now just `{ version, versionMajorMinor }`. toiljs reads each route's static `metadata` export through that API to bake your SEO tags into the built HTML, and the `toiljs/eslint` preset loads it too. On TypeScript 7 the metadata baking silently stops (your built pages lose their tags) and typescript-eslint fails to load at all.
+
+Pin TypeScript in your `package.json`:
+
+```json
+{
+    "devDependencies": {
+        "typescript": "^6.0.3"
+    }
+}
+```
+
+`toiljs doctor` flags an unsupported TypeScript, and `toiljs doctor --fix` pins it back for you. `toiljs update` will not upgrade you into TypeScript 7. Support will land once the tools toiljs builds on can read the new `typescript/unstable/*` API.
+
 ## Install the CLI
 
 The package is called `toiljs`, and it provides a command named `toiljs`. You have two ways to use it.

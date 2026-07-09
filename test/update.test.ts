@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildRows, classifyBump, parseNcuJson } from '../src/cli/updates';
+import { buildRows, classifyBump, parseNcuJson, withheldUpgrades } from '../src/cli/updates';
 
 describe('classifyBump', () => {
     it('classifies major / minor / patch from ranges', () => {
@@ -40,5 +40,19 @@ describe('buildRows', () => {
     it('marks a package missing from current deps with a "?" source', () => {
         const rows = buildRows({ foo: '^2.0.0' }, {});
         expect(rows[0]).toMatchObject({ name: 'foo', from: '?', to: '^2.0.0', bump: 'major' });
+    });
+});
+
+describe('withheldUpgrades', () => {
+    it('withholds an upgrade into typescript 7 (the native port has no compiler API)', () => {
+        expect(withheldUpgrades({ typescript: '^7.0.2', react: '^20.0.0' })).toEqual(['typescript']);
+    });
+
+    it('still offers typescript bumps inside the supported major', () => {
+        expect(withheldUpgrades({ typescript: '^6.1.0' })).toEqual([]);
+    });
+
+    it('ignores packages with no declared ceiling', () => {
+        expect(withheldUpgrades({ vite: '^9.0.0', eslint: '^11.0.0' })).toEqual([]);
     });
 });

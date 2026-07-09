@@ -11,7 +11,7 @@ import { cancel, intro, isCancel, multiselect, note, outro, spinner } from '@cla
 
 import { MIGRATIONS_README } from './create.js';
 import { capture, run } from './proc.js';
-import { buildRows, type Bump, parseNcuJson, type UpdateRow } from './updates.js';
+import { buildRows, type Bump, parseNcuJson, type UpdateRow, withheldUpgrades } from './updates.js';
 import { accent, danger, dim, success, warn } from './ui.js';
 
 export interface UpdateOptions {
@@ -109,6 +109,20 @@ function rowLine(row: UpdateRow): string {
     return `${row.name}  ${dim(row.from)} ${dim('->')} ${bumpColor(row.bump, row.to)}`;
 }
 
+/** Tells the user which upgrades were held back, and why they are not simply missing. */
+function noteWithheld(names: readonly string[]): void {
+    note(
+        names.map((n) => `${dim('-')} ${n}`).join('\n') +
+            '\n\n' +
+            dim(
+                'Held back: this major is not supported by toiljs yet. TypeScript 7 is the native\n' +
+                    'port and ships no JavaScript compiler API, so route metadata would stop being\n' +
+                    'baked into the built HTML and typescript-eslint would not load.',
+            ),
+        warn('Not upgraded'),
+    );
+}
+
 const TARGETS = new Set(['latest', 'minor', 'patch', 'newest', 'greatest']);
 
 export async function runUpdate(opts: UpdateOptions): Promise<void> {
@@ -152,13 +166,21 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
         process.exitCode = 1;
         return;
     }
-    const rows = buildRows(parseNcuJson(res.stdout), currentDeps);
+    // Hold back upgrades into a major toiljs cannot run on (typescript 7), so neither the picker nor
+    // a `-y` run can install one. `--reject` keeps ncu from applying them during `-u` below.
+    const upgraded = parseNcuJson(res.stdout);
+    const withheld = withheldUpgrades(upgraded);
+    for (const name of withheld) delete upgraded[name];
+
+    const rows = buildRows(upgraded, currentDeps);
     if (rows.length === 0) {
         s.stop('Everything is up to date');
+        if (withheld.length > 0) noteWithheld(withheld);
         outro(success('Nothing to update.'));
         return;
     }
     s.stop(`${String(rows.length)} update${rows.length === 1 ? '' : 's'} available`);
+    if (withheld.length > 0) noteWithheld(withheld);
 
     const counts = { major: 0, minor: 0, patch: 0, other: 0 };
     for (const r of rows) counts[r.bump]++;
@@ -195,7 +217,12 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
 
     s.start('Updating package.json');
     const applyAll = selected.length === rows.length;
-    await run('npx', ncuArgs(applyAll ? ['-u'] : ['-u', '--filter', selected.join(' ')]), root);
+    const reject = withheld.length > 0 ? ['--reject', withheld.join(' ')] : [];
+    await run(
+        'npx',
+        ncuArgs(applyAll ? ['-u', ...reject] : ['-u', '--filter', selected.join(' '), ...reject]),
+        root,
+    );
     s.stop('package.json updated');
 
     // Run the install with VISIBLE output (so a failure is diagnosable — npm
