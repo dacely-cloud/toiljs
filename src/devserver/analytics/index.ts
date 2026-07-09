@@ -22,6 +22,12 @@ const METRIC_COUNTERS = 42;
  *  `sustained_rps` (X) allows `X * BURST_WINDOW_SECS` requests across it; instantaneous spikes above
  *  that are NOT capped per-tier (only the box `firewall.global_pps` DDoS backstop applies). */
 export const BURST_WINDOW_SECS = 180;
+
+/** The plan's sustained rate in requests/second, derived from the rolling window's allowance.
+ *  `0` means unmetered (no sustained cap), and must NOT be divided into a rate. */
+export function sustainedRpsCap(reqBurstCap: number): number {
+    return reqBurstCap === 0 ? 0 : reqBurstCap / BURST_WINDOW_SECS;
+}
 /** MetricId indices we seed with sample data (others default 0). Mirrors the AUTHORITATIVE edge wire
  *  contract EXACTLY (`toil-backend/src/analytics/metric_id.rs`): counter ids 0..=41, gauge ids
  *  ConnectedStreamsAvg=42, CommittedMemoryAvg=44. There is NO WasmDispatches (removed + reindexed); the
@@ -89,7 +95,7 @@ function devStats(): DevTenantStats {
     life[MID.CacheMisses] = 100n;
     // Free tier: sustained 1000 rps -> a 3-minute burst cap of 1000 * 180 = 180_000, plus a 30-day
     // quota of 10_000_000. `used` values are small so the dashboard shows plenty of headroom.
-    const reqBurstCap = 180_000;
+    const reqBurstCap: number = 180_000;
     return {
         life,
         connectedStreams: 3,
@@ -98,7 +104,7 @@ function devStats(): DevTenantStats {
         reqBurstCap,
         req30dUsed: 250_000,
         req30dCap: 10_000_000,
-        sustainedRpsCap: reqBurstCap === 0 ? 0 : reqBurstCap / BURST_WINDOW_SECS,
+        sustainedRpsCap: sustainedRpsCap(reqBurstCap),
         // Plausible non-zero live rates so a dev dashboard shows moving gauges.
         rps: 0.7,
         bytesInPerSec: 68.2,
