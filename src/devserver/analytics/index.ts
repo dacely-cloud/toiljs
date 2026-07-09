@@ -15,8 +15,13 @@ import type { DbDevState } from '../db/index.js';
 import type { MemoryRef } from '../runtime/host.js';
 
 /** Frame version + counter count, kept in lockstep with the edge (`analytics.rs` / `metric_id.rs`). */
-const FRAME_VERSION = 2;
+const FRAME_VERSION = 3;
 const METRIC_COUNTERS = 42;
+
+/** The sustained-rate window: requests are metered over a 3-minute ROLLING window. A plan's
+ *  `sustained_rps` (X) allows `X * BURST_WINDOW_SECS` requests across it; instantaneous spikes above
+ *  that are NOT capped per-tier (only the box `firewall.global_pps` DDoS backstop applies). */
+export const BURST_WINDOW_SECS = 180;
 /** MetricId indices we seed with sample data (others default 0). Mirrors the AUTHORITATIVE edge wire
  *  contract EXACTLY (`toil-backend/src/analytics/metric_id.rs`): counter ids 0..=41, gauge ids
  *  ConnectedStreamsAvg=42, CommittedMemoryAvg=44. There is NO WasmDispatches (removed + reindexed); the
@@ -43,10 +48,16 @@ interface DevTenantStats {
     life: bigint[]; // length METRIC_COUNTERS, indexed by MetricId
     connectedStreams: number;
     committedMemory: number;
-    reqMinuteUsed: number;
-    reqMinuteCap: number;
-    reqDayUsed: number;
-    reqDayCap: number;
+    // Fleet-global requests in the trailing 3-minute ROLLING window, and its allowance
+    // (= sustained_rps * BURST_WINDOW_SECS; 0 = unmetered). Spikes are not tier-capped.
+    reqBurstUsed: number;
+    reqBurstCap: number;
+    // Fleet-global requests in the current 30-day tumbling bucket, and the 30-day quota (0 = unmetered).
+    req30dUsed: number;
+    req30dCap: number;
+    // Derived (NOT part of the wire frame): the plan's sustained request rate, `reqBurstCap /
+    // BURST_WINDOW_SECS` (0 = unmetered). Surfaced so a dev dashboard can show "X sustained rps".
+    sustainedRpsCap: number;
     // LIVE per-second rates (f64), appended after the windows. Mirrors the edge `encode_stats`.
     rps: number;
     bytesInPerSec: number;
@@ -76,14 +87,18 @@ function devStats(): DevTenantStats {
     life[MID.MemGrownBytes] = 262144n;
     life[MID.CacheHits] = 900n;
     life[MID.CacheMisses] = 100n;
+    // Free tier: sustained 1000 rps -> a 3-minute burst cap of 1000 * 180 = 180_000, plus a 30-day
+    // quota of 10_000_000. `used` values are small so the dashboard shows plenty of headroom.
+    const reqBurstCap = 180_000;
     return {
         life,
         connectedStreams: 3,
         committedMemory: 65536,
-        reqMinuteUsed: 5,
-        reqMinuteCap: 100,
-        reqDayUsed: 42,
-        reqDayCap: 5000,
+        reqBurstUsed: 1_200,
+        reqBurstCap,
+        req30dUsed: 250_000,
+        req30dCap: 10_000_000,
+        sustainedRpsCap: reqBurstCap === 0 ? 0 : reqBurstCap / BURST_WINDOW_SECS,
         // Plausible non-zero live rates so a dev dashboard shows moving gauges.
         rps: 0.7,
         bytesInPerSec: 68.2,
@@ -97,10 +112,12 @@ function devStats(): DevTenantStats {
 }
 
 /**
- * Encode the v2 snapshot frame BYTE-FOR-BYTE like the edge (`analytics.rs` `encode_stats`), FIXED
- * layout (no strings). Counters/levels are u64; the 7 trailing LIVE per-second rates are f64:
+ * Encode the v3 snapshot frame BYTE-FOR-BYTE like the edge (`analytics.rs` `encode_stats`), FIXED
+ * layout (no strings). The v2 -> v3 bump renamed two u64 pairs (req_minute_* -> req_burst_*,
+ * req_day_* -> req_30d_*); the BYTE LAYOUT is UNCHANGED (same field count, order, and widths).
+ * Counters/levels are u64; the 7 trailing LIVE per-second rates are f64:
  *   u16 version | u64 now_ms | u32 count | u64 × count | u64 connectedStreams | u64 committedMemory |
- *   u64 reqMinuteUsed | u64 reqMinuteCap | u64 reqDayUsed | u64 reqDayCap |
+ *   u64 reqBurstUsed | u64 reqBurstCap | u64 req30dUsed | u64 req30dCap |
  *   f64 rps | f64 bytesInPerSec | f64 bytesOutPerSec | f64 streamBytesInPerSec |
  *   f64 streamBytesOutPerSec | f64 dbOpsPerSec | f64 gasPerSec
  * The rates are APPENDED (version-gated by length): the guest's bounds-checked reader yields 0.0 for a
@@ -120,10 +137,10 @@ function encodeStats(s: DevTenantStats): Buffer {
     }
     body.writeBigUInt64LE(BigInt(s.connectedStreams), o); o += 8;
     body.writeBigUInt64LE(BigInt(s.committedMemory), o); o += 8;
-    body.writeBigUInt64LE(BigInt(s.reqMinuteUsed), o); o += 8;
-    body.writeBigUInt64LE(BigInt(s.reqMinuteCap), o); o += 8;
-    body.writeBigUInt64LE(BigInt(s.reqDayUsed), o); o += 8;
-    body.writeBigUInt64LE(BigInt(s.reqDayCap), o); o += 8;
+    body.writeBigUInt64LE(BigInt(s.reqBurstUsed), o); o += 8;
+    body.writeBigUInt64LE(BigInt(s.reqBurstCap), o); o += 8;
+    body.writeBigUInt64LE(BigInt(s.req30dUsed), o); o += 8;
+    body.writeBigUInt64LE(BigInt(s.req30dCap), o); o += 8;
     body.writeDoubleLE(s.rps, o); o += 8;
     body.writeDoubleLE(s.bytesInPerSec, o); o += 8;
     body.writeDoubleLE(s.bytesOutPerSec, o); o += 8;
@@ -165,7 +182,7 @@ function rangeShape(range: number, metricId: number): { count: number; bucketSec
 }
 
 /**
- * Encode the v2 series frame BYTE-FOR-BYTE like the edge `encode_series` (points are u64 now):
+ * Encode the v3 series frame BYTE-FOR-BYTE like the edge `encode_series` (points are u64 now):
  *   u16 version | u16 metricId | u32 bucketSecs | u64 headMs | u32 count | u64 × count
  * A synthetic gentle ramp so a dev dashboard draws a non-flat line.
  */

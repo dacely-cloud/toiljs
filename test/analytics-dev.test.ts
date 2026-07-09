@@ -1,6 +1,6 @@
 /**
  * Dev-server analytics stub parity: the `env.analytics_read` / `env.analytics_series` dev imports must
- * encode the v2 frames BYTE-FOR-BYTE like the edge (`analytics.rs`), so a guest's toilscript `Analytics`
+ * encode the v3 frames BYTE-FOR-BYTE like the edge (`analytics.rs`), so a guest's toilscript `Analytics`
  * decode is identical in dev and prod. We decode the stashed frame positionally, exactly as the guest.
  */
 import { describe, expect, it } from 'vitest';
@@ -16,7 +16,7 @@ function harness() {
     return { imports: buildAnalyticsImports(ref, db), db };
 }
 
-describe('dev analytics stub v2 frame parity', () => {
+describe('dev analytics stub v3 frame parity', () => {
     it('analytics_read encodes the fixed-layout snapshot frame', () => {
         const { imports, db } = harness();
         const n = imports.analytics_read(0, 0);
@@ -29,7 +29,7 @@ describe('dev analytics stub v2 frame parity', () => {
         const u64 = () => { const v = buf.readBigUInt64LE(p); p += 8; return v; };
         const f64 = () => { const v = buf.readDoubleLE(p); p += 8; return v; };
 
-        expect(u16()).toBe(2); // FRAME_VERSION
+        expect(u16()).toBe(3); // FRAME_VERSION
         u64(); // now_ms
         const count = u32();
         expect(count).toBe(42); // METRIC_COUNTERS (edge N_COUNTERS; no WasmDispatches)
@@ -44,10 +44,10 @@ describe('dev analytics stub v2 frame parity', () => {
         expect(life[41]).toBe(100n); // CacheMisses (id 41, was 42)
         expect(u64()).toBe(3n); // connectedStreams
         expect(u64()).toBe(65536n); // committedMemory
-        expect(u64()).toBe(5n); // reqMinuteUsed
-        expect(u64()).toBe(100n); // reqMinuteCap
-        expect(u64()).toBe(42n); // reqDayUsed
-        expect(u64()).toBe(5000n); // reqDayCap
+        expect(u64()).toBe(1_200n); // reqBurstUsed (current 3-min tumbling bucket)
+        expect(u64()).toBe(180_000n); // reqBurstCap (sustained 1000 rps * 180s window)
+        expect(u64()).toBe(250_000n); // req30dUsed (current 30-day bucket)
+        expect(u64()).toBe(10_000_000n); // req30dCap (30-day quota)
         // 7 LIVE per-second rates (f64 LE), appended after the windows.
         expect(f64()).toBeCloseTo(0.7); // rps
         expect(f64()).toBeCloseTo(68.2); // bytesInPerSec
@@ -66,7 +66,7 @@ describe('dev analytics stub v2 frame parity', () => {
         const buf = db.lastResult as unknown as Buffer;
         expect(n).toBe(buf.length);
         let p = 0;
-        expect(buf.readUInt16LE(p)).toBe(2); p += 2; // version
+        expect(buf.readUInt16LE(p)).toBe(3); p += 2; // version
         expect(buf.readUInt16LE(p)).toBe(0); p += 2; // metric id
         expect(buf.readUInt32LE(p)).toBe(3600); p += 4; // bucketSecs
         p += 8; // headMs

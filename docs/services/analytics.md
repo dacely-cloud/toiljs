@@ -110,19 +110,27 @@ Every getter below is a lifetime running total: it only ever goes up, and readin
 | `cacheMisses` | Cacheable responses that missed the cache |
 | `cacheRatio` | Derived **`f64`**: `cacheHits / (cacheHits + cacheMisses)`, a fraction from 0 to 1 (0 when there were no cacheable responses) |
 
-### Live gauges and request windows
+### Live gauges and request meters
 
-A few fields are not lifetime totals. They still read as `u64`.
+A few fields are not lifetime totals. They still read as `u64` (except the derived `sustainedRpsCap`, an `f64`).
 
 **Live gauges** are the current level right now, not a running total:
 
 - `connectedStreams`: streams connected at this moment.
 - `committedMemory`: wasm memory committed right now, in bytes.
 
-**Request windows** show your current rate-limit usage against your plan cap (a cap of `0` means unlimited):
+**Request meters** show where you sit against your plan. The model is a **sustained-rate ("unmetered pipe")** one, not a fixed per-minute ceiling. Your plan has a **sustained request rate** `X` (requests per second), measured over a **3-minute rolling window**. Two important consequences:
 
-- `reqMinuteUsed` / `reqMinuteCap`: requests used and the cap for the current 1-minute window.
-- `reqDayUsed` / `reqDayCap`: requests used and the cap for the current 24-hour window.
+- **Instantaneous spikes are free.** There is no per-tier cap on how fast you may burst inside a window; you may spike right up to the box's own hardware ceiling (the `firewall.global_pps` DDoS backstop, shared across all tenants). Nothing throttles you for a brief peak.
+- **Only sustained overuse throttles.** You get an HTTP `429` once your fleet-global request count over the *trailing* 3 minutes exceeds `X * 180` (the sustained rate integrated over the window), or once your 30-day quota is exhausted. "Fleet-global" means the count is summed across every edge location, not just the one machine serving you.
+
+Because the window **rolls**, a burst ages out gradually over the following 3 minutes rather than being forgiven all at once on a boundary. The `Retry-After` on a `429` tells you exactly how long until enough of it has decayed.
+
+The fields:
+
+- `reqBurstUsed` / `reqBurstCap`: fleet-global requests in the **trailing 3-minute rolling window**, and its allowance. This is exactly the number the edge compares against, so it never disagrees with why you were throttled. The allowance is `X * 180` (the window is `BURST_WINDOW_SECS = 180` seconds). A cap of `0` means **unmetered** (no sustained cap).
+- `req30dUsed` / `req30dCap`: fleet-global requests in the **current 30-day window**, and the 30-day quota. This one still tumbles, because it is a billing period rather than a rate. A quota of `0` means **unmetered**.
+- `sustainedRpsCap`: a convenience `f64` derived from the burst cap, `reqBurstCap / BURST_WINDOW_SECS`. This is your plan's sustained rate `X` in requests/second (`0.0` when unmetered), so you can show "1000 rps sustained" without doing the division yourself.
 
 There is also `nowMs`, the edge wall-clock time (in milliseconds) when the snapshot was taken, so you can show "as of" and compute how fresh the numbers are.
 
@@ -177,12 +185,12 @@ for (let i = 0; i < page.sites.length; i++) {
 
 ## Worked example: return everything
 
-This route reads the full snapshot and maps it into a typed response. Mapping is mechanical: every getter is a `u64` and every response field is a `u64`, so there are no casts. The example groups a representative field from each area; add the rest of the getters from the catalog above the same way.
+This route reads the full snapshot and maps it into a typed response. Mapping is mechanical: nearly every getter is a `u64` and maps to a `u64` field with no cast; the only `f64` values are the derived `cacheRatio` and `sustainedRpsCap`. The example groups a representative field from each area; add the rest of the getters from the catalog above the same way.
 
 ```ts
 import { RouteContext } from 'toiljs/server/runtime';
 
-/** The shape returned to the client. All fields are u64 except the one ratio. */
+/** The shape returned to the client. All fields are u64 except the two derived f64s (cacheRatio, sustainedRpsCap). */
 @data
 export class UsageReport {
     // requests / L1
@@ -202,11 +210,12 @@ export class UsageReport {
     // live gauges (current level, not a total)
     connectedStreams: u64 = 0;
     committedMemory: u64 = 0;
-    // request windows (cap 0 = unlimited)
-    requestsThisMinute: u64 = 0;
-    requestsThisMinuteCap: u64 = 0;
-    requestsToday: u64 = 0;
-    requestsTodayCap: u64 = 0;
+    // request meters (cap 0 = unmetered)
+    reqBurstUsed: u64 = 0;   // requests in the current 3-minute sustained-rate bucket
+    reqBurstCap: u64 = 0;    // per-bucket cap = sustained_rps * 180
+    req30dUsed: u64 = 0;     // requests in the current 30-day window
+    req30dCap: u64 = 0;      // 30-day quota
+    sustainedRpsCap: f64 = 0; // derived: reqBurstCap / 180 (the plan's sustained rps)
     // when the snapshot was read (edge ms)
     nowMs: u64 = 0;
 }
@@ -235,10 +244,11 @@ class Usage {
         out.connectedStreams = s.connectedStreams;
         out.committedMemory = s.committedMemory;
 
-        out.requestsThisMinute = s.reqMinuteUsed;
-        out.requestsThisMinuteCap = s.reqMinuteCap;
-        out.requestsToday = s.reqDayUsed;
-        out.requestsTodayCap = s.reqDayCap;
+        out.reqBurstUsed = s.reqBurstUsed;
+        out.reqBurstCap = s.reqBurstCap;
+        out.req30dUsed = s.req30dUsed;
+        out.req30dCap = s.req30dCap;
+        out.sustainedRpsCap = s.sustainedRpsCap;
 
         out.nowMs = s.nowMs;
         return out;
@@ -255,7 +265,8 @@ Under `toiljs dev`, the real per-domain metering does not exist (there is only o
 ## Gotchas and limits
 
 - **Totals never reset.** The counter getters are lifetime running totals. To see "requests in the last hour", use `series(...)` and sum the buckets, not the totals.
-- **Values are `u64`.** Map them into `u64` fields with no casts. The only non-integer field is `cacheRatio` (and `Series.ratePerSec`), which are `f64`.
+- **Values are `u64`.** Map them into `u64` fields with no casts. The non-integer fields are `cacheRatio` and `sustainedRpsCap` (and `Series.ratePerSec`), which are `f64`.
+- **Spikes are free; only sustained overuse throttles.** The request meters follow a sustained-rate model: you may burst up to the box's hardware ceiling, and throttling (`429`) starts only when the current 3-minute bucket passes `sustainedRpsCap * 180`, or when the 30-day quota runs out. A cap or quota of `0` means unmetered.
 - **Not per-user analytics.** These are infrastructure counters per domain. There is no way to record a custom event or attribute a number to a specific user.
 - **Cross-site reads need `dacely.com`.** `Analytics.site(...)` returns `null` for everyone else. Do not build a feature that reads another site's stats.
 - **Snapshots, not live streams.** Each call reads the current values once. `nowMs` tells you when.

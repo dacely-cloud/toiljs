@@ -23,11 +23,12 @@ class AnalyticsRoutes {
         out.liveConnectedStreams = stats.connectedStreams;
         out.liveCommittedMemoryBytes = stats.committedMemory;
 
-        // Request windows: current usage vs plan cap (cap 0 = unlimited).
-        out.requestsThisMinute = stats.reqMinuteUsed;
-        out.requestsThisMinuteCap = stats.reqMinuteCap;
-        out.requestsToday = stats.reqDayUsed;
-        out.requestsTodayCap = stats.reqDayCap;
+        // Request meters vs plan cap (cap 0 = unmetered). "This minute" now surfaces the 3-minute
+        // sustained-burst bucket; "today" now surfaces the 30-day quota (the metering model changed).
+        out.requestsThisMinute = stats.reqBurstUsed;
+        out.requestsThisMinuteCap = stats.reqBurstCap;
+        out.requestsToday = stats.req30dUsed;
+        out.requestsTodayCap = stats.req30dCap;
 
         // For historical, time-windowed values (per-bucket, not a lifetime total), see `/series` below.
         return out;
