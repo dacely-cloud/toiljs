@@ -308,9 +308,18 @@ export async function buildServer(root: string, auth: boolean = false): Promise<
         return;
     }
 
-    // Default request-only single-artifact path (no daemon/stream surface).
+    // Default request-only single-artifact path (no daemon/stream surface). Declare `hot` rather
+    // than leaving --targetMode off: with no explicit mode toilscript treats a source tree that
+    // declares no surface decorator as a plain AssemblyScript compile and omits `toil.surface`
+    // (to keep an ordinary AS build byte-identical). A toiljs server IS a Toil request artifact
+    // even before it grows its first `@rest`/`@data`, and the host refuses to load an artifact
+    // without that section, so a freshly scaffolded app would never deploy. `hot` is the mode the
+    // section already records for the default request artifact, so the bytes are unchanged for a
+    // project that has a surface; it only stops the section from going missing for one that
+    // doesn't. (`@daemon`/`@scheduled` are the only decorators `hot` rejects, and this branch runs
+    // exactly when the tree has neither.)
     await runToilscriptPass(root, binJs, files, {
-        mode: null,
+        mode: 'hot',
         outFile: null,
         withRpc: true,
         authUser: authOn,

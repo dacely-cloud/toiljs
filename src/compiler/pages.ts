@@ -1,12 +1,5 @@
-import { createRequire } from 'node:module';
-import path from 'node:path';
-
-import type * as TS from 'typescript';
-
-import { extractStaticExports } from './prerender.js';
+import { extractStaticExports, loadTypeScriptSync } from './prerender.js';
 import type { ScannedRoute } from './routes.js';
-
-type Ts = typeof TS;
 
 /**
  * A page in the build-time search index: its URL pattern, whether it's dynamic, and the
@@ -18,20 +11,6 @@ export interface PageIndexEntry {
     readonly path: string;
     readonly dynamic: boolean;
     readonly metadata: Record<string, unknown>;
-}
-
-/**
- * Loads the project's TypeScript synchronously (so {@link buildPageIndex} can run inside the sync
- * `generate()`), or `null` if it isn't installed, in which case pages are indexed by path only.
- */
-function loadTypeScriptSync(root: string): Ts | null {
-    try {
-        const require = createRequire(path.join(root, 'package.json'));
-        const mod = require('typescript') as { default?: Ts } & Ts;
-        return mod.default ?? mod;
-    } catch {
-        return null;
-    }
 }
 
 /** True when a route pattern has dynamic (`:param` / `*catch-all`) segments. */

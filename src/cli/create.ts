@@ -157,6 +157,7 @@ function scaffold(
         private: true,
         type: 'module',
         scripts: {
+            start: 'toiljs start',
             dev: 'toiljs dev',
             build: 'toiljs build',
             'build:server': 'toiljs build --server',

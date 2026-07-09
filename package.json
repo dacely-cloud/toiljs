@@ -148,7 +148,7 @@
         "react": ">=18.0.0",
         "react-dom": ">=18.0.0",
         "toilscript": ">=0.1.59",
-        "typescript": ">=6.0.0"
+        "typescript": ">=6.0.0 <7.0.0"
     },
     "overrides": {
         "elliptic": "file:./stubs/elliptic"

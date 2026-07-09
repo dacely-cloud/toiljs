@@ -12,15 +12,69 @@ import { injectSeoHtml, routeSeo } from './seo.js';
 
 type Ts = typeof TS;
 
-/** Loads the project's TypeScript (used to read each route's static `metadata`), or `null` if absent. */
+/**
+ * True when `mod` exposes the classic TypeScript compiler API the static extractor drives.
+ *
+ * Resolving `typescript` is not enough to know it can parse: TypeScript 7 (the native port) moved
+ * the compiler API off the package's main entry, which now exports only `version`. That module is a
+ * perfectly good object, so a truthy check passes and the first `ts.ScriptTarget.Latest` then dies
+ * with `Cannot read properties of undefined (reading 'Latest')`. Probe the members we actually use.
+ */
+function isCompilerApi(mod: unknown): mod is Ts {
+    const ts = mod as Partial<Ts> | null | undefined;
+    return (
+        typeof ts?.createSourceFile === 'function' &&
+        typeof ts.isVariableStatement === 'function' &&
+        typeof ts.ScriptTarget === 'object' &&
+        typeof ts.ScriptKind === 'object' &&
+        typeof ts.SyntaxKind === 'object'
+    );
+}
+
+/** Warn once per process: an unusable TypeScript silently costs baked metadata, so say so. */
+let warnedUnusable = false;
+function warnUnusableTypeScript(mod: unknown): void {
+    if (warnedUnusable) return;
+    warnedUnusable = true;
+    const version = (mod as { version?: string } | null)?.version;
+    process.stderr.write(
+        `  toil: typescript${version ? `@${version}` : ''} does not expose the compiler API ` +
+            `(TypeScript 7 moved it to 'typescript/unstable/*').\n` +
+            `  toil: route metadata will NOT be baked into the built HTML. Install typescript ^6 to restore it.\n`,
+    );
+}
+
+/**
+ * Resolves the project's TypeScript, used to read each route's static `metadata`. Returns `null`
+ * when it isn't installed (callers then index pages by path only) *or* when the resolved version
+ * doesn't expose the compiler API, which is warned about rather than crashing the build.
+ */
 export async function loadTypeScript(root: string): Promise<Ts | null> {
+    let mod: unknown;
     try {
         const resolved = createRequire(path.join(root, 'package.json')).resolve('typescript');
-        const mod = (await import(pathToFileURL(resolved).href)) as { default?: Ts } & Ts;
-        return mod.default ?? mod;
+        const ns = (await import(pathToFileURL(resolved).href)) as { default?: Ts } & Ts;
+        mod = ns.default ?? ns;
     } catch {
         return null;
     }
+    if (isCompilerApi(mod)) return mod;
+    warnUnusableTypeScript(mod);
+    return null;
+}
+
+/** The sync twin of {@link loadTypeScript}, for callers that can't await (e.g. `buildPageIndex`). */
+export function loadTypeScriptSync(root: string): Ts | null {
+    let mod: unknown;
+    try {
+        mod = createRequire(path.join(root, 'package.json'))('typescript');
+    } catch {
+        return null;
+    }
+    const ts = (mod as { default?: Ts })?.default ?? mod;
+    if (isCompilerApi(ts)) return ts;
+    warnUnusableTypeScript(ts);
+    return null;
 }
 
 /** Marks an AST node that isn't a static literal (so its value can't be baked at build). */
