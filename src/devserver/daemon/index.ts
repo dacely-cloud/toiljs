@@ -195,12 +195,19 @@ export class DaemonHost implements DaemonRuntime {
         const imports = buildDaemonImports(ref, this.state, this);
 
         // Fail-closed up front, with names, when the cold box imports anything outside its allowed
-        // surface (the request env subset + crypto + @data + daemon.*; NO response/stream
-        // functions). Mirrors `WasmServerModule.assertImportSurface` (section 7.1).
-        const provided = new Set(Object.keys((imports as { env: Record<string, unknown> }).env));
+        // surface (the request env subset + crypto + @data, and the separate `daemon` module; NO
+        // response/stream functions). Mirrors `WasmServerModule.assertImportSurface` (section 7.1).
+        // Both namespaces are checked: `daemon.*` is its own wasm module at the edge, so a guest
+        // that declares those names under `env` must fail HERE rather than trap only in production.
+        // A non-function import is rejected outright, as the edge does (`NonFunctionImport`):
+        // no memory/global/table is ever registered, so leaving one to fail later would
+        // surface as an opaque LinkError rather than a named, fail-closed diagnostic.
+        const provided = imports as Record<string, Record<string, unknown>>;
         const missing = WebAssembly.Module.imports(this.module)
-            .filter((i) => i.kind === 'function' && (i.module !== 'env' || !provided.has(i.name)))
-            .map((i) => `${i.module}.${i.name}`);
+            .filter(
+                (i) => i.kind !== 'function' || !Object.hasOwn(provided[i.module] ?? {}, i.name),
+            )
+            .map((i) => `${i.module}.${i.name}${i.kind === 'function' ? '' : ` (${i.kind})`}`);
         if (missing.length > 0) {
             this.log(
                 pc.red(

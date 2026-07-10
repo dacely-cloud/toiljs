@@ -10,6 +10,12 @@
  *   - Part 3 error bridge: a u16 subsystem code `c` is returned as `-(0x10000 + c)`;
  *     the buffer sentinels `-1` (TOO_SMALL) / `-2` (ABSENT) are unchanged.
  *
+ * These live in their OWN wasm module namespace, `daemon`, with BARE names, exactly
+ * as the edge registers them (toil-backend `src/wasm/cold/imports.rs`, `NS_DAEMON`).
+ * They are NOT dotted names under `env` like `data.*` / `crypto.*` are: a cold box
+ * that declares them that way resolves here and then trap-stubs at the edge, which
+ * is the one shape of drift a dev emulator must never hide.
+ *
  * The cold box also imports the request-surface `env.*` MINUS the response/stream
  * functions it must not have (no `set_status`/`set_header`/`respond_file`/
  * `client_ip`/`ratelimit_check`); it keeps `@data`/crypto/env/`Date.now`/email so a
@@ -38,9 +44,13 @@ export interface ResolvedDaemonConfig {
 
 /** RECONCILIATION Part 3 u16 error registry (the subset the daemon imports use). */
 export const enum AbiError {
-    DaemonScheduleRejected = 0x0403,
+    DaemonNotLeader = 0x0401,
+    DaemonLeaseLost = 0x0402,
     DaemonCallFailed = 0x0405,
 }
+
+/** The edge's `EPOCH_NONE` / "no such task" sentinel: a plain -1, not a bridged error. */
+const DAEMON_NONE = -1n;
 
 /** Encode a u16 subsystem error per the Part 3 negative-return bridge:
  *  `code = (-v) - 0x10000`, so `v = -(0x10000 + code)`. */
@@ -64,26 +74,27 @@ export interface DaemonRuntime {
  *  `number | bigint` individually, matching the existing db/crypto import maps). */
 type HostFnMap = Record<string, (...args: number[]) => number | bigint>;
 
-/** Build the `daemon.*` host imports, closing over the resident `DaemonRuntime`.
- *  These imports do not read guest memory (they answer from the resident scheduler
- *  state), so they take no `MemoryRef`. */
+/** Build the `daemon` namespace, closing over the resident `DaemonRuntime`. The names
+ *  are BARE (`is_leader`, not `daemon.is_leader`): they are keyed under the `daemon`
+ *  wasm module, matching the edge. These imports do not read guest memory (they answer
+ *  from the resident scheduler state), so they take no `MemoryRef`. */
 export function buildDaemonNamespace(rt: DaemonRuntime): HostFnMap {
     return {
-        'daemon.is_leader': (): number => (rt.isLeader() ? 1 : 0),
-        'daemon.current_epoch': (): bigint => rt.epoch(),
+        is_leader: (): number => (rt.isLeader() ? 1 : 0),
+        // The edge answers -1 (EPOCH_NONE) when this node does not hold the lease.
+        current_epoch: (): bigint => (rt.isLeader() ? rt.epoch() : DAEMON_NONE),
         // The dev lease never expires, so yield/sleep never report LEASE_LOST.
-        'daemon.yield': (): number => 0,
-        'daemon.sleep_ms': (_ms: number | bigint): number => 0,
-        'daemon.task_count': (): number => rt.taskCount(),
-        'daemon.next_fire_ms': (taskId: number): bigint => {
+        yield: (): number => 0,
+        sleep_ms: (_ms: number | bigint): number => 0,
+        task_count: (): number => rt.taskCount(),
+        // An unknown / never-firing task is -1 at the edge, NOT a bridged error.
+        next_fire_ms: (taskId: number): bigint => {
             const at = rt.nextFireMs(taskId);
-            return at === null
-                ? BigInt(encodeAbiError(AbiError.DaemonScheduleRejected))
-                : BigInt(at);
+            return at === null ? DAEMON_NONE : BigInt(at);
         },
         // Outbound HTTP call stub: dev returns a "call failed" sentinel rather than
         // performing real network I/O from a synchronous wasm import (section 5.4).
-        'daemon.http_call': (
+        http_call: (
             _reqPtr: number,
             _reqLen: number,
             _outPtr: number,
@@ -103,10 +114,9 @@ export function freshDaemonState(): DaemonState {
 }
 
 /**
- * The full `env` import object for the cold daemon box: the request-surface env
- * MINUS the response/stream functions (built by `buildEnvImports`), PLUS the
- * `daemon.*` namespace. The cold box has no `handle` entry and no response
- * surface.
+ * The import object for the cold daemon box: the request-surface `env` MINUS the
+ * response/stream functions (built by `buildEnvImports`), plus the separate
+ * `daemon` module. The cold box has no `handle` entry and no response surface.
  */
 export function buildDaemonImports(
     ref: MemoryRef,
@@ -118,7 +128,7 @@ export function buildDaemonImports(
             ...buildEnvImports(ref, state),
             ...buildCryptoImports(ref, state.crypto),
             ...buildDatabaseImports(ref, state.db),
-            ...buildDaemonNamespace(rt),
         },
+        daemon: buildDaemonNamespace(rt),
     };
 }

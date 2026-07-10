@@ -139,11 +139,57 @@ A daemon has a small set of host abilities beyond ordinary computation:
 
 > **Note:** In `toiljs dev` (the single-process local emulator), the daemon is always the leader (there is nothing to fail over to), and `http_call` is stubbed to return a "call failed" result rather than make real network requests. Everything else, including the schedule and your database writes, runs exactly as it does on the edge.
 
-### `http_call` is not callable from your code yet
+### The `Daemon` global
 
-An honest caveat, because it is easy to assume otherwise: **there is no guest-callable `http_call` API in toiljs today.** The capability itself is fully built on the *host* side (the edge implements the leader-only, SSRF-bounded, metered outbound call as a low-level host import, `daemon.http_call(reqPtr, reqLen, outPtr, outCap) -> i64`, and the dev emulator reserves the same name), but toiljs does **not** ship a friendly TypeScript wrapper you can call from a `@scheduled` method. There is no `daemon.httpCall(...)` (or similarly named) function in the standard library, so your daemon code cannot make an outbound HTTP request at the moment.
+Inside a `@daemon` class, `Daemon` is an ambient global (no import), like `Analytics`. It needs `toilscript` 0.1.60 or newer.
 
-Treat outbound HTTP from a daemon as **planned, not yet available**. When the guest binding lands it will behave exactly as described above (leader-fenced, SSRF-bounded, and metered, and its usage will show up in the `Analytics` counters `daemonHttpCallAttempts` / `daemonHttpCallFailures`). Until then, if a daemon needs data from an outside service, have that service write into [ToilDB](../database/README.md) some other way, and let the daemon read it from there.
+| Member | Description |
+| --- | --- |
+| `Daemon.isLeader(): bool` | Whether this worker currently holds the lease. A snapshot: re-check it inside a long task rather than trusting the value it started with. |
+| `Daemon.epoch(): i64` | The monotonic fencing token, bumped on every (re)acquire, or `-1` when this worker is not the leader. Stamp it into work that must not outlive the lease that authorized it. |
+| `Daemon.taskCount(): i32` | How many `@scheduled` tasks are registered. |
+| `Daemon.nextFireMs(taskId: i32): i64` | The next fire time for a task, in epoch milliseconds, or `-1` when the id is unknown or the cron never fires again. |
+| `Daemon.yieldNow(): DaemonError` | Give the edge a chance to observe a lost lease. `DaemonError.None` means you are still the leader. |
+| `Daemon.sleep(ms: i64): DaemonError` | Park the task. The edge clamps this to 3 seconds. `LeaseLost` means the lease went away while you slept, and the task should stop. |
+| `Daemon.httpCall(request, responseCap?)` | Make an outbound HTTP request. Returns a `DaemonHttpResponse`, or `null` on failure. |
+| `Daemon.lastError(): DaemonError` | The failure recorded by the most recent `Daemon` call. |
+
+### Outbound HTTP
+
+`Daemon.httpCall` performs the leader-fenced, SSRF-bounded, metered call described above. Its usage shows up in the `Analytics` counters `daemonHttpCallAttempts` / `daemonHttpCallFailures`.
+
+```ts
+@daemon
+class Jobs {
+    @scheduled('5m')
+    poll(): void {
+        const req = new DaemonHttpRequest('POST', 'https://api.example.com/events');
+        req.header('content-type', 'application/json');
+        req.body = Uint8Array.wrap(String.UTF8.encode('{"ping":true}'));
+
+        const res = Daemon.httpCall(req);
+        if (res == null) {
+            // Daemon.lastError(): NotLeader, CallFailed, ResponseTooLarge, BadEnvelope
+            return;
+        }
+        if (res.status == 200) App.events.add(new Event(res.text()));
+    }
+}
+```
+
+A `null` result is never ambiguous: read `Daemon.lastError()`.
+
+| `DaemonError` | Meaning |
+| --- | --- |
+| `NotLeader` | This worker does not hold the lease. The edge refused without touching the network. |
+| `LeaseLost` | The lease went away mid-call. |
+| `CallFailed` | The request did not complete: blocked by the SSRF guard, timed out, or the transport failed. |
+| `ResponseTooLarge` | The response did not fit your buffer. **The call already happened**, so do not blindly retry it: pass a larger `responseCap` instead. |
+| `BadEnvelope` | Your request broke a host cap (nothing was sent), or the response could not be parsed. |
+
+The caps the edge enforces, which `httpCall` checks in the guest so an over-cap request never costs you a round trip: the method is 1 to 16 bytes, the URL at most 8 KiB, at most 64 headers of at most 8 KiB each, and a request body of at most 256 KiB. Responses are truncated at 1 MiB; `responseCap` defaults to 64 KiB.
+
+In `toiljs dev` the emulator returns `CallFailed` for every `httpCall` rather than reaching the network, so a daemon that polls an external service does nothing locally. Everything else behaves as it does on the edge.
 
 ## The `main.daemon.ts` file (a separate tier)
 

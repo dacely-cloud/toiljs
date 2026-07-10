@@ -16,7 +16,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,11 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DaemonHost } from '../src/devserver/daemon/index.js';
-import type { ResolvedDaemonConfig } from '../src/devserver/daemon/host.js';
+import {
+    buildDaemonImports,
+    freshDaemonState,
+    type ResolvedDaemonConfig,
+} from '../src/devserver/daemon/host.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, 'fixtures', 'daemon-app.ts');
@@ -89,6 +93,44 @@ describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () =>
             `local toilscript not found at ${LOCAL_TOILSCRIPT_BIN}`,
         ).toBe(true);
         expect(toilscriptAvailable, 'cold compile of the @daemon fixture failed').toBe(true);
+    });
+
+    // The edge registers these in their OWN wasm module (`NS_DAEMON`), not as dotted
+    // names under `env` the way `data.*` and `crypto.*` are. A cold box that gets it
+    // wrong resolves against this emulator and then trap-stubs in production, so pin
+    // the namespace on both sides: the guest's declared imports, and what we provide.
+    it('declares its daemon imports in the `daemon` module with bare names', () => {
+        const module = new WebAssembly.Module(readFileSync(coldWasm));
+        const daemonImports = WebAssembly.Module.imports(module)
+            .filter((i) => i.module === 'daemon')
+            .map((i) => i.name)
+            .sort();
+        expect(daemonImports).toEqual(['current_epoch', 'is_leader', 'task_count']);
+        expect(
+            WebAssembly.Module.imports(module).filter((i) => i.name.startsWith('daemon.')),
+        ).toEqual([]);
+    });
+
+    it('provides the daemon host functions under the `daemon` namespace', () => {
+        const imports = buildDaemonImports({ memory: null }, freshDaemonState(), {
+            isLeader: () => true,
+            epoch: () => 1n,
+            taskCount: () => 0,
+            nextFireMs: () => null,
+        }) as unknown as Record<string, Record<string, unknown>>;
+        expect(Object.keys(imports).sort()).toEqual(['daemon', 'env']);
+        expect(Object.keys(imports.daemon).sort()).toEqual([
+            'current_epoch',
+            'http_call',
+            'is_leader',
+            'next_fire_ms',
+            'sleep_ms',
+            'task_count',
+            'yield',
+        ]);
+        expect(Object.keys(imports.env).some((k) => k.startsWith('daemon.'))).toBe(false);
+        // An unknown task is the edge's plain -1 sentinel, not a bridged error code.
+        expect((imports.daemon.next_fire_ms as (id: number) => bigint)(9)).toBe(-1n);
     });
 
     it('runs daemon_start exactly once on load', () => {

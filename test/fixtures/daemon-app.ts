@@ -1,21 +1,26 @@
 // A minimal @daemon fixture for the dev daemon-emulation test. It declares the
-// `daemon.*` host imports directly (so it needs no toiljs globals lib) and records
+// daemon host imports directly (so it needs no toiljs globals lib) and records
 // its activity into resident daemon wasm memory. Compiled with `--targetMode cold`
 // by the test.
 //
 //   onStart()          -> increments `started` and stamps the lease epoch
 //   tick()  @scheduled -> increments `tickFast`   (1s interval)
 //   sixHourly() cron   -> increments `tickCron`   (0 */6 * * *)
+//
+// The imports live in the `daemon` wasm module with BARE names, as the edge
+// registers them; they are not dotted names under `env`. toilscript's stdlib
+// exposes the same surface as the ambient `Daemon` class (`~lib/daemon`), which
+// real daemons should use instead of hand-declaring these.
 
 // @ts-nocheck — this is AssemblyScript source compiled by toilscript, not TS.
 
-@external("env", "daemon.is_leader")
+@external("daemon", "is_leader")
 declare function daemonIsLeader(): i32;
 
-@external("env", "daemon.current_epoch")
+@external("daemon", "current_epoch")
 declare function daemonCurrentEpoch(): i64;
 
-@external("env", "daemon.task_count")
+@external("daemon", "task_count")
 declare function daemonTaskCount(): i32;
 
 let started: i32 = 0;
