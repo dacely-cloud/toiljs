@@ -38,7 +38,7 @@ import { run } from './proc.js';
 import { accent, dim, version } from './ui.js';
 import { isPackageManager, isValidName, resolveProjectDir } from './validate.js';
 
-export type Template = 'app' | 'minimal';
+export type Template = 'app' | 'minimal' | 'agent';
 
 /**
  * The `server/migrations/` README, scaffolded by `create` and ensured by `doctor`/`update`. ToilDB
@@ -298,11 +298,16 @@ function scaffold(
         'server/migrations/README.md': MIGRATIONS_README,
     };
 
-    // The `app` template's client UI + server are copied from examples/basic at runtime; `minimal`
-    // ships an inline client + a minimal working server here.
+    // The `app` template's client UI + server are copied from examples/basic at runtime; the
+    // `minimal` and `agent` templates ship an inline client + working server here. `agent` adds
+    // one correctly-structured @rest endpoint (a @data model + controller) and a home page that
+    // calls it, the smallest complete client-to-backend loop for an agent to build on.
     if (template === 'minimal') {
         Object.assign(files, minimalClient(name, features));
         Object.assign(files, minimalServer());
+    } else if (template === 'agent') {
+        Object.assign(files, agentClient(name, features));
+        Object.assign(files, agentServer());
     }
 
     // Selected AI-assistant pointer files at the root (committed). The real docs are always seeded
@@ -363,6 +368,22 @@ declare namespace AuthService { const SESSION_COOKIE: string; const USER_COOKIE:
 interface __ToilAuthUser {}
 `;
 
+/** The `server/README.md` shipped by the inline templates: the folder-conventions map. */
+const SERVER_README =
+    '# server/\n\n' +
+    'Your ToilScript backend, compiled to a single WebAssembly module. One folder per concern:\n\n' +
+    '| Folder | What lives here |\n' +
+    '| --- | --- |\n' +
+    '| `main.ts` | The entry point: wires the handler and imports the surface modules. |\n' +
+    '| `core/` | The request handler and shared app logic (state, helpers). |\n' +
+    '| `models/` | `@data` classes, the typed wire model shared by HTTP and RPC. One type per file. |\n' +
+    '| `migrations/` | ToilDB schema migrations: a `<Type>.migration.ts` per evolving `@data` value type, holding the old shapes + the `@migrate` transform. |\n' +
+    '| `routes/` | `@rest` controllers (HTTP). One controller per file, named after its class. |\n' +
+    '| `services/` | `@service` classes and free `@remote` functions (typed RPC). |\n' +
+    '| `scheduled/` | Reserved for scheduled tasks (not shipped yet). |\n\n' +
+    'New decorated files are picked up automatically by `toiljs build`/`dev`; also add an import\n' +
+    'in `main.ts` so a direct `toilscript` run builds the same server.\n';
+
 /**
  * A minimal but working server for the `minimal` template (the `app` template copies
  * examples/basic/server). Same folder conventions as the full starter, just fewer files:
@@ -406,25 +427,86 @@ function minimalServer(): Record<string, string> {
             'export function abort(message: string, fileName: string, line: u32, column: u32): void {\n' +
             '    revertOnError(message, fileName, line, column);\n' +
             '}\n',
-        'server/README.md':
-            '# server/\n\n' +
-            'Your ToilScript backend, compiled to a single WebAssembly module. One folder per concern:\n\n' +
-            '| Folder | What lives here |\n' +
-            '| --- | --- |\n' +
-            '| `main.ts` | The entry point: wires the handler and imports the surface modules. |\n' +
-            '| `core/` | The request handler and shared app logic (state, helpers). |\n' +
-            '| `models/` | `@data` classes, the typed wire model shared by HTTP and RPC. One type per file. |\n' +
-            '| `migrations/` | ToilDB schema migrations: a `<Type>.migration.ts` per evolving `@data` value type, holding the old shapes + the `@migrate` transform. |\n' +
-            '| `routes/` | `@rest` controllers (HTTP). One controller per file, named after its class. |\n' +
-            '| `services/` | `@service` classes and free `@remote` functions (typed RPC). |\n' +
-            '| `scheduled/` | Reserved for scheduled tasks (not shipped yet). |\n\n' +
-            'New decorated files are picked up automatically by `toiljs build`/`dev`; also add an import\n' +
-            'in `main.ts` so a direct `toilscript` run builds the same server.\n',
+        'server/README.md': SERVER_README,
     };
 }
 
-/** The inline client UI for the `minimal` template (the `app` template copies examples/basic/client). */
-function minimalClient(name: string, features: StyleFeatures): Record<string, string> {
+/**
+ * A working server for the `agent` template: one correctly-structured `@rest` endpoint. A `@data`
+ * model under models/, a controller under routes/, an AppHandler that tries the REST controllers
+ * via `Rest.dispatch` (then yields to the client), and main.ts importing the route. The server
+ * build turns this into the typed `Server.REST.greeting.hello()` fetch the home page calls.
+ */
+function agentServer(): Record<string, string> {
+    return {
+        'server/toil-server-env.d.ts': TOIL_SERVER_ENV_DTS,
+        'server/models/Greeting.ts':
+            '/** The response body for `GET /greeting`. `@data` classes cross the wire as JSON and\n' +
+            ' *  land on the client as this exact typed class. One `@data` type per file. */\n' +
+            '@data\n' +
+            'export class Greeting {\n' +
+            "    message: string = '';\n" +
+            '}\n',
+        'server/routes/Greet.ts':
+            "import { Greeting } from '../models/Greeting';\n\n" +
+            '/**\n' +
+            ' * The greeting endpoint, mounted at `/greeting`. `@rest` / `@get` are ambient compiler\n' +
+            ' * decorators (no import). On the client this is one typed fetch:\n' +
+            ' *   await Server.REST.greeting.hello()\n' +
+            ' */\n' +
+            "@rest('greeting')\n" +
+            'class Greet {\n' +
+            '    /** `GET /greeting` - returns a `Greeting`, serialized to JSON for the client. */\n' +
+            "    @get('/')\n" +
+            '    public hello(): Greeting {\n' +
+            '        const g = new Greeting();\n' +
+            "        g.message = 'Hello from the toiljs backend';\n" +
+            '        return g;\n' +
+            '    }\n' +
+            '}\n',
+        'server/core/AppHandler.ts':
+            "import { Request, Response, Rest, ToilHandler } from 'toiljs/server/runtime';\n\n" +
+            '/**\n' +
+            ' * Every request enters here. The `@rest` controllers under routes/ are tried first via\n' +
+            ' * `Rest.dispatch`; anything they do not claim yields to the client (page routes, assets).\n' +
+            ' */\n' +
+            'export class AppHandler extends ToilHandler {\n' +
+            '    public handle(req: Request): Response {\n' +
+            '        // Rest.dispatch returns the first matching route\'s Response, or null when nothing\n' +
+            '        // matched. REST composes; it never takes over handle().\n' +
+            '        const hit = Rest.dispatch(req);\n' +
+            '        if (hit != null) {\n' +
+            '            return hit;\n' +
+            '        }\n' +
+            '        // Nothing matched: yield to the client. Under `toiljs dev` this falls through to\n' +
+            '        // Vite so the app renders at /.\n' +
+            '        return Response.unhandled();\n' +
+            '    }\n' +
+            '}\n',
+        'server/main.ts':
+            "import { Server } from 'toiljs/server/runtime';\n" +
+            "import { revertOnError } from 'toiljs/server/runtime/abort/abort';\n\n" +
+            "import { AppHandler } from './core/AppHandler';\n\n" +
+            '// Surface modules: import every @rest route (and @service/@remote RPC) here so a direct\n' +
+            '// `toilscript` run builds the same server `toiljs build` does.\n' +
+            "import './routes/Greet';\n\n" +
+            '// Wire your handler here.\n' +
+            'Server.handler = () => new AppHandler();\n\n' +
+            '// Required: re-export the WASM entry points and the abort hook.\n' +
+            "export * from 'toiljs/server/runtime/exports';\n" +
+            'export function abort(message: string, fileName: string, line: u32, column: u32): void {\n' +
+            '    revertOnError(message, fileName, line, column);\n' +
+            '}\n',
+        'server/README.md': SERVER_README,
+    };
+}
+
+/**
+ * The shared client shell for the inline templates (`minimal`, `agent`): the public assets,
+ * `toil.tsx` mount, global stylesheet, and the (optional) Tailwind entry. Each template layers
+ * its own `layout.tsx` + `routes/` on top; the `app` template copies examples/basic/client instead.
+ */
+function clientShell(name: string, features: StyleFeatures): Record<string, string> {
     const files: Record<string, string> = {
         'client/public/index.html':
             '<!doctype html>\n<html lang="en">\n  <head>\n' +
@@ -472,7 +554,17 @@ function minimalClient(name: string, features: StyleFeatures): Record<string, st
             'Toil.mount(routes, layout, notFound, globalError, slots);\n',
         [`client/${styleEntry(features.preprocessor)}`]: DEFAULT_STYLE_CONTENT,
         'client/components/.gitkeep': '# Place shared React components here.\n',
-        'client/layout.tsx': `import { type ReactNode } from 'react';
+    };
+    if (features.tailwind) files[`client/${TAILWIND_ENTRY}`] = TAILWIND_CSS;
+    return files;
+}
+
+/** The root `layout.tsx`: the app frame + a nav bar of `Toil.Link`s (one per `nav` entry). */
+function layoutTsx(name: string, nav: readonly { href: string; label: string }[]): string {
+    const links = nav
+        .map((l) => `                    <Toil.Link href="${l.href}">${l.label}</Toil.Link>`)
+        .join('\n');
+    return `import { type ReactNode } from 'react';
 
 export default function Layout({ children }: { children?: ReactNode }) {
     return (
@@ -488,14 +580,21 @@ export default function Layout({ children }: { children?: ReactNode }) {
                 }}>
                 <strong style={{ color: '#2563FF', fontSize: '1.1rem' }}>${path.basename(name)}</strong>
                 <nav style={{ display: 'flex', gap: '1rem' }}>
-                    <Toil.Link href="/">home</Toil.Link>
+${links}
                 </nav>
             </header>
             {children}
         </div>
     );
 }
-`,
+`;
+}
+
+/** The inline client UI for the `minimal` template (the `app` template copies examples/basic/client). */
+function minimalClient(name: string, features: StyleFeatures): Record<string, string> {
+    return {
+        ...clientShell(name, features),
+        'client/layout.tsx': layoutTsx(name, [{ href: '/', label: 'home' }]),
         'client/routes/index.tsx':
             'export default function Home() {\n' +
             '    return (\n        <main>\n' +
@@ -503,8 +602,49 @@ export default function Layout({ children }: { children?: ReactNode }) {
             '            <p>File-based routing, bundled by Vite, zero config.</p>\n' +
             '        </main>\n    );\n}\n',
     };
-    if (features.tailwind) files[`client/${TAILWIND_ENTRY}`] = TAILWIND_CSS;
-    return files;
+}
+
+/**
+ * The inline client UI for the `agent` template: two file-routed pages (basic routing) and a home
+ * page that calls the backend's one @rest endpoint through the generated, typed `Server.REST`
+ * fetch client. `Server` and `parseError` are client globals (no import), like `Toil`.
+ */
+function agentClient(name: string, features: StyleFeatures): Record<string, string> {
+    return {
+        ...clientShell(name, features),
+        'client/layout.tsx': layoutTsx(name, [
+            { href: '/', label: 'home' },
+            { href: '/about', label: 'about' },
+        ]),
+        'client/routes/index.tsx':
+            "import { useEffect, useState } from 'react';\n\n" +
+            '// The home page calls the backend. `Server.REST.greeting.hello()` is a real, typed\n' +
+            '// fetch generated from the @rest controller in server/routes/Greet.ts (see the\n' +
+            '// gitignored shared/server.ts, emitted by the server build). It needs the server running.\n' +
+            'export default function Home() {\n' +
+            "    const [message, setMessage] = useState('loading…');\n\n" +
+            '    useEffect(() => {\n' +
+            '        Server.REST.greeting\n' +
+            '            .hello()\n' +
+            '            .then((g) => setMessage(g.message))\n' +
+            '            .catch((err) => setMessage(parseError(err)));\n' +
+            '    }, []);\n\n' +
+            '    return (\n        <main>\n' +
+            '            <h1>Welcome to toiljs</h1>\n' +
+            '            <p>File-based routing on the client, a ToilScript backend behind one typed fetch.</p>\n' +
+            '            <p>\n' +
+            '                <code>GET /greeting</code> says: <strong>{message}</strong>\n' +
+            '            </p>\n' +
+            '        </main>\n    );\n}\n',
+        'client/routes/about.tsx':
+            'export default function About() {\n' +
+            '    return (\n        <main>\n' +
+            '            <h1>About</h1>\n' +
+            '            <p>\n' +
+            '                A second page, routed by its file name. Add more under <code>client/routes/</code>.\n' +
+            '            </p>\n' +
+            '        </main>\n    );\n}\n',
+    };
 }
 
 /**
@@ -625,6 +765,11 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
                 hint: 'the full ToilJS starter, landing page, layout, styles, demo routes',
             },
             { value: 'minimal', label: 'Minimal', hint: 'just a layout and a home route' },
+            {
+                value: 'agent',
+                label: 'Agent',
+                hint: 'minimal, plus one @rest endpoint the home page calls, a base to build on',
+            },
         ];
         const choice = await select({
             message: 'Which template?',
@@ -632,7 +777,7 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
             initialValue: 'app',
         });
         bail(choice);
-        template = choice === 'minimal' ? 'minimal' : 'app';
+        template = choice === 'minimal' || choice === 'agent' ? choice : 'app';
     }
 
     let preprocessor: Preprocessor = opts.preprocessor ?? 'css';

@@ -74,7 +74,7 @@ function parseArgs(argv: string[]): Flags {
             case '--template':
             case '-t': {
                 const t = argv[++i];
-                if (t === 'app' || t === 'minimal') flags.template = t;
+                if (t === 'app' || t === 'minimal' || t === 'agent') flags.template = t;
                 break;
             }
             case '--pm':
@@ -160,7 +160,7 @@ function printHelp(): void {
             cmd('--port <n>', 'dev/start: listen port (or PORT env / client.port; default 3000)'),
             cmd('--host <h>', 'dev/start: bind host, e.g. 0.0.0.0 (or HOST env / client.host; default 127.0.0.1)'),
             cmd('--threads <n>', 'start: production HTTP worker count'),
-            cmd('-t, --template', 'create: app | minimal'),
+            cmd('-t, --template', 'create: app | minimal | agent'),
             cmd('--style <name>', 'create/configure: css | sass | less | stylus'),
             cmd('--tailwind', 'create/configure: enable Tailwind (--no-tailwind to remove)'),
             cmd('--no-ai', 'create: skip AI assistant files (CLAUDE.md, etc.)'),
