@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.0.115] - 2026-07-11
+
+- Add the `agent` create template: a minimal scaffold with basic client routing and one
+  correctly-structured `@rest` endpoint the home page calls (`toiljs create <name> --template agent`).
+- Fix a Tailwind install failure: pin `tailwindcss` / `@tailwindcss/vite` to `^4.3.0` so they resolve
+  against the Vite 8 toiljs ships (older 4.x cap their Vite peer at `^7` and ERESOLVE on install).
+
+
 ## [v0.0.114] - 2026-07-10
 
 - No changes
