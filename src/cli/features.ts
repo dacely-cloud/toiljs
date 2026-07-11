@@ -36,13 +36,17 @@ export const PREPROCESSOR_PKG: Record<Preprocessor, string | null> = {
 /** Tailwind v4 packages. The framework auto-wires the Vite plugin when `@tailwindcss/vite` resolves. */
 export const TAILWIND_PKGS: readonly string[] = ['tailwindcss', '@tailwindcss/vite'];
 
-/** Pinned versions for every package these features may install. */
+/**
+ * Pinned versions for every package these features may install. `@tailwindcss/vite` must be
+ * `>= 4.3.0`: earlier 4.x releases cap their `vite` peer at `^7`, so they ERESOLVE against the
+ * Vite 8 toiljs ships (the "Tailwind broken on install" error). Keep both Tailwind pins in lockstep.
+ */
 export const PKG_VERSION: Record<string, string> = {
     sass: '^1.83.0',
     less: '^4.2.1',
     stylus: '^0.64.0',
-    tailwindcss: '^4.0.0',
-    '@tailwindcss/vite': '^4.0.0',
+    tailwindcss: '^4.3.0',
+    '@tailwindcss/vite': '^4.3.0',
 };
 
 /** Dedicated Tailwind entry (kept `.css` so no preprocessor touches its `@import`). */
