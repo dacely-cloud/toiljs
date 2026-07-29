@@ -4,15 +4,16 @@
 
 **First Edition**
 
-*by BlobMaster*
+_by BlobMaster_
 
-*"Everything that doesn't follow this law is shit code, broken, exploitable."*
+_"Everything that doesn't follow this law is shit code, broken, exploitable."_
 
 ---
 
 # TABLE OF CONTENTS
 
 ## [CHAPTER 1: TYPE SYSTEM ABSOLUTES](#chapter-1-type-system-absolutes)
+
 - [1.1 Forbidden Constructs](#11-forbidden-constructs)
 - [1.2 Numeric Types](#12-numeric-types)
 - [1.3 Enum Architecture](#13-enum-architecture)
@@ -26,24 +27,28 @@
 - [1.11 Const Assertions and Immutability](#111-const-assertions-and-immutability)
 
 ## [CHAPTER 2: RUNTIME SAFETY](#chapter-2-runtime-safety)
+
 - [2.1 Reflect API](#21-reflect-api)
 - [2.2 Object Security](#22-object-security)
 - [2.3 Proxy Pattern](#23-proxy-pattern)
 - [2.4 Defensive Programming](#24-defensive-programming)
 
 ## [CHAPTER 3: MEMORY MANAGEMENT](#chapter-3-memory-management)
+
 - [3.1 Allocation Principles](#31-allocation-principles)
 - [3.2 Weak References](#32-weak-references)
 - [3.3 Buffer Management](#33-buffer-management)
 - [3.4 Garbage Collection Optimization](#34-garbage-collection-optimization)
 
 ## [CHAPTER 4: CONCURRENCY](#chapter-4-concurrency)
+
 - [4.1 Promise Patterns](#41-promise-patterns)
 - [4.2 Atomics](#42-atomics)
 - [4.3 Workers](#43-workers)
 - [4.4 SharedArrayBuffer](#44-sharedarraybuffer)
 
 ## [CHAPTER 5: V8 OPTIMIZATION](#chapter-5-v8-optimization)
+
 - [5.1 Hidden Classes](#51-hidden-classes)
 - [5.2 Inline Caching](#52-inline-caching)
 - [5.3 Function Optimization](#53-function-optimization)
@@ -52,26 +57,31 @@
 - [5.6 Deoptimization Triggers](#56-deoptimization-triggers)
 
 ## [CHAPTER 6: RESOURCE MANAGEMENT](#chapter-6-resource-management)
+
 - [6.1 Disposable Pattern](#61-disposable-pattern)
 - [6.2 Error Handling](#62-error-handling)
 - [6.3 Result Types](#63-result-types)
 
 ## [CHAPTER 7: SYMBOLS AND PROTOCOLS](#chapter-7-symbols-and-protocols)
+
 - [7.1 Well-Known Symbols](#71-well-known-symbols)
 - [7.2 Custom Symbols](#72-custom-symbols)
 
 ## [CHAPTER 8: ITERATION](#chapter-8-iteration)
+
 - [8.1 Iterator Protocol](#81-iterator-protocol)
 - [8.2 Iterator Helpers](#82-iterator-helpers)
 - [8.3 Async Iteration](#83-async-iteration)
 
 ## [CHAPTER 9: BINARY DATA](#chapter-9-binary-data)
+
 - [9.1 ArrayBuffer Architecture](#91-arraybuffer-architecture)
 - [9.2 TypedArray Selection](#92-typedarray-selection)
 - [9.3 DataView Usage](#93-dataview-usage)
 - [9.4 Bitwise Operations](#94-bitwise-operations)
 
 ## [CHAPTER 10: MODERN APIs](#chapter-10-modern-apis)
+
 - [10.1 Array Methods](#101-array-methods)
 - [10.2 Object Methods](#102-object-methods)
 - [10.3 String Methods](#103-string-methods)
@@ -79,13 +89,16 @@
 - [10.5 Cryptography](#105-cryptography)
 
 ## [CHAPTER 11: DOCUMENTATION](#chapter-11-documentation)
+
 - [11.1 TSDoc Standard](#111-tsdoc-standard)
 
 ## [CHAPTER 12: MODULE ARCHITECTURE](#chapter-12-module-architecture)
+
 - [12.1 ESM Requirements](#121-esm-requirements)
 - [12.2 Global Augmentation](#122-global-augmentation)
 
 ## [CHAPTER 13: CODE QUALITY](#chapter-13-code-quality)
+
 - [13.1 Optimization Path](#131-optimization-path)
 - [13.2 Code Hygiene](#132-code-hygiene)
 - [13.3 Naming](#133-naming)
@@ -93,6 +106,7 @@
 - [13.5 Error Messages](#135-error-messages)
 
 ## [CHAPTER 14: SECURITY](#chapter-14-security)
+
 - [14.1 Input Validation](#141-input-validation)
 - [14.2 Cryptographic Safety](#142-cryptographic-safety)
 - [14.3 Resource Limits](#143-resource-limits)
@@ -147,6 +161,7 @@ The `unknown` type is mandatory at trust boundaries where external data enters t
 When external data enters your system, you genuinely do not know its shape. Using `unknown` forces narrowing through validation before the type system permits operations. This is correct behavior, not a workaround.
 
 **Required uses of `unknown`:**
+
 - JSON.parse results
 - Network response bodies
 - User input
@@ -155,6 +170,7 @@ When external data enters your system, you genuinely do not know its shape. Usin
 - Plugin/extension interfaces
 
 **Forbidden uses of `unknown`:**
+
 - Function parameters you control
 - Return types you define
 - Internal module interfaces
@@ -178,7 +194,7 @@ function processBad(data: unknown): unknown {
 }
 
 // CORRECT: model the actual type
-function processGood(data: TransactionInput): TransactionOutput {
+function processGood(data: OrderRequest): OrderResult {
     // Fully typed interface
 }
 ```
@@ -240,10 +256,10 @@ The `{}` type is forbidden. Contrary to intuition, `{}` does not mean "empty obj
 function bad(obj: {}): void {
     // All of these are valid:
 }
-bad('string');  // No error!
-bad(42);        // No error!
-bad(true);      // No error!
-bad({});        // No error!
+bad('string'); // No error!
+bad(42); // No error!
+bad(true); // No error!
+bad({}); // No error!
 
 // CORRECT - For truly empty objects
 type EmptyObject = Record<string, never>;
@@ -264,7 +280,8 @@ With `noImplicitAny` enabled (required), TypeScript raises an error whenever it 
 
 ```typescript
 // ERROR with noImplicitAny
-function bad(x) { // Parameter 'x' implicitly has an 'any' type
+function bad(x) {
+    // Parameter 'x' implicitly has an 'any' type
     return x;
 }
 
@@ -279,8 +296,9 @@ function good(x: string): string {
 The `number` type for unbounded or external integers is dangerous. JavaScript's `number` has only 53-bit integer precision. Values above `Number.MAX_SAFE_INTEGER` (9,007,199,254,740,991) silently lose precision.
 
 **Use `bigint` for:**
-- Satoshi amounts
-- Block heights
+
+- Money amounts in cents
+- Revision numbers
 - Timestamps in milliseconds
 - Database IDs
 - File sizes
@@ -288,6 +306,7 @@ The `number` type for unbounded or external integers is dangerous. JavaScript's 
 - Any value from external systems
 
 **Use `number` for:**
+
 - Array lengths
 - Loop counters
 - Small flags
@@ -297,7 +316,7 @@ The `number` type for unbounded or external integers is dangerous. JavaScript's 
 
 ```typescript
 // DANGEROUS - number can lose precision for large values
-const unsafeBalance: number = 9_007_199_254_740_993;  // Actually stores 9_007_199_254_740_992
+const unsafeBalance: number = 9_007_199_254_740_993; // Actually stores 9_007_199_254_740_992
 
 // CORRECT - bigint preserves precision
 const safeBalance: bigint = 9_007_199_254_740_993n;
@@ -310,11 +329,11 @@ Floating-point math for financial values is forbidden. Floats have representatio
 ```typescript
 // FORBIDDEN - floating point for money
 const price = 19.99;
-const total = price * 3;  // 59.96999999999999
+const total = price * 3; // 59.96999999999999
 
-// CORRECT - integer cents or satoshis
+// CORRECT - integer cents
 const priceInCents = 1999n;
-const total = priceInCents * 3n;  // 5997n exactly
+const total = priceInCents * 3n; // 5997n exactly
 ```
 
 ### 1.1.9 The Non-Null Assertion Restriction
@@ -646,7 +665,9 @@ class ForbiddenProcessor {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    public hack(data: any): void { /* ... */ }
+    public hack(data: any): void {
+        /* ... */
+    }
 }
 
 /**
@@ -798,7 +819,7 @@ function createFileReader(): FileReader {
 
 ### 1.1.19 Intermediate Alias Assignments Forbidden
 
-Intermediate assignments for the sole purpose of shortening property access are forbidden. Writing `const c = this.#cache` or `const cache = this.#cache` just to avoid typing `this.#cache` multiple times is lazy, obscures mutation targets, and breaks traceability. When you see `c.transaction.version = version`, you must hunt backwards to discover what `c` refers to. When you see `this.#cache.transaction.version = version`, the mutation target is immediately obvious.
+Intermediate assignments for the sole purpose of shortening property access are forbidden. Writing `const c = this.#cache` or `const cache = this.#cache` just to avoid typing `this.#cache` multiple times is lazy, obscures mutation targets, and breaks traceability. When you see `c.order.revision = revision`, you must hunt backwards to discover what `c` refers to. When you see `this.#cache.order.revision = revision`, the mutation target is immediately obvious.
 
 The only valid reasons for intermediate assignment are: passing the value to a function, destructuring for multiple reads (not writes), or when the property access itself is computationally expensive and profiling proves it.
 
@@ -807,62 +828,62 @@ The only valid reasons for intermediate assignment are: passing the value to a f
  * FORBIDDEN - pointless intermediate assignment to shorten access.
  * The reader cannot tell what is being mutated without scrolling up.
  */
-public updateVersion(version: number): void {
+public updateRevision(revision: number): void {
     const c = this.#cache;
-    c.transaction.version = version;
-    c.extractedTransaction = undefined;
+    c.order.revision = revision;
+    c.renderedOrder = undefined;
 }
 
 /**
  * ALSO FORBIDDEN - a longer variable name does not fix the problem.
  */
-public updateVersion(version: number): void {
+public updateRevision(revision: number): void {
     const cache = this.#cache;
-    cache.transaction.version = version;
-    cache.extractedTransaction = undefined;
+    cache.order.revision = revision;
+    cache.renderedOrder = undefined;
 }
 
 /**
  * CORRECT - direct property access. Mutation target is visible.
  */
-public updateVersion(version: number): void {
-    this.#cache.transaction.version = version;
-    this.#cache.extractedTransaction = undefined;
+public updateRevision(revision: number): void {
+    this.#cache.order.revision = revision;
+    this.#cache.renderedOrder = undefined;
 }
 
 /**
  * VALID - intermediate needed for a function call or destructured reads.
  */
 public submit(): void {
-    const transaction = this.#cache.transaction;
-    this.#broadcaster.submit(transaction);
+    const order = this.#cache.order;
+    this.#dispatcher.submit(order);
 }
 
 public computeHash(): Uint8Array {
-    const { version, inputs, outputs } = this.#cache.transaction;
-    return this.#hasher.hash(version, inputs, outputs);
+    const { revision, lineItems, adjustments } = this.#cache.order;
+    return this.#hasher.hash(revision, lineItems, adjustments);
 }
 ```
 
 ### 1.1.20 Stringly-Typed Dispatch Forbidden
 
-String literal parameters used to select behavior are forbidden. If a function behaves differently based on a string argument like `'feeRate'` or `'fee'`, it is performing stringly-typed dispatch, which is just untyped polymorphism with extra steps. Each distinct behavior should be its own function with a clear name. This makes the code self-documenting, eliminates impossible states, and allows the type system to verify each path independently.
+String literal parameters used to select behavior are forbidden. If a function behaves differently based on a string argument like `'taxRate'` or `'total'`, it is performing stringly-typed dispatch, which is just untyped polymorphism with extra steps. Each distinct behavior should be its own function with a clear name. This makes the code self-documenting, eliminates impossible states, and allows the type system to verify each path independently.
 
 ```typescript
 /**
  * FORBIDDEN - stringly-typed dispatch.
  * The function does two different things depending on a magic string.
  */
-function calculate(key: 'feeRate' | 'fee'): number {
-    if (key === 'feeRate' && this.#cache.feeRate !== undefined) {
-        return this.#cache.feeRate;
+function calculate(key: 'taxRate' | 'total'): number {
+    if (key === 'taxRate' && this.#cache.taxRate !== undefined) {
+        return this.#cache.taxRate;
     }
-    if (key === 'fee' && this.#cache.fee !== undefined) {
-        return this.#cache.fee;
+    if (key === 'total' && this.#cache.total !== undefined) {
+        return this.#cache.total;
     }
-    const value: number = key === 'feeRate'
-        ? this.#computeFeeRate()
-        : this.#computeFee();
+    const value: number = key === 'taxRate'
+        ? this.#computeTaxRate()
+        : this.#computeTotal();
     return value;
 }
 
@@ -870,22 +891,22 @@ function calculate(key: 'feeRate' | 'fee'): number {
  * CORRECT - separate functions with distinct names.
  * Each function has a single responsibility and a clear contract.
  */
-public calculateFeeRate(): number {
-    if (this.#cache.feeRate !== undefined) {
-        return this.#cache.feeRate;
+public calculateTaxRate(): number {
+    if (this.#cache.taxRate !== undefined) {
+        return this.#cache.taxRate;
     }
-    const rate: number = this.#computeFeeRate();
-    this.#cache.feeRate = rate;
+    const rate: number = this.#computeTaxRate();
+    this.#cache.taxRate = rate;
     return rate;
 }
 
-public calculateFee(): number {
-    if (this.#cache.fee !== undefined) {
-        return this.#cache.fee;
+public calculateTotal(): number {
+    if (this.#cache.total !== undefined) {
+        return this.#cache.total;
     }
-    const fee: number = this.#computeFee();
-    this.#cache.fee = fee;
-    return fee;
+    const total: number = this.#computeTotal();
+    this.#cache.total = total;
+    return total;
 }
 ```
 
@@ -896,28 +917,28 @@ Using truthy checks for cached numeric values is forbidden. The expression `if (
 ```typescript
 /**
  * FORBIDDEN - truthy check fails when the cached value is 0.
- * A fee of 0 satoshis is valid but would cause a re-computation.
+ * A total of 0 cents is valid (a fully discounted order) but would cause a re-computation.
  */
-public getFee(): number {
-    if (this.#cache.fee) {
-        return this.#cache.fee;
+public getTotal(): number {
+    if (this.#cache.total) {
+        return this.#cache.total;
     }
-    const fee: number = this.#computeFee();
-    this.#cache.fee = fee;
-    return fee;
+    const total: number = this.#computeTotal();
+    this.#cache.total = total;
+    return total;
 }
 
 /**
  * CORRECT - explicit undefined check handles 0 correctly.
  * Zero is a valid cached value and is returned without recomputation.
  */
-public getFee(): number {
-    if (this.#cache.fee !== undefined) {
-        return this.#cache.fee;
+public getTotal(): number {
+    if (this.#cache.total !== undefined) {
+        return this.#cache.total;
     }
-    const fee: number = this.#computeFee();
-    this.#cache.fee = fee;
-    return fee;
+    const total: number = this.#computeTotal();
+    this.#cache.total = total;
+    return total;
 }
 ```
 
@@ -930,63 +951,63 @@ Functions that communicate results by mutating a parameter object are forbidden.
  * FORBIDDEN - mutates the cache parameter to communicate results.
  * The caller must read the function body to know what changed.
  */
-function inputFinalizeGetAmts(
-    inputs: readonly Input[],
-    tx: Transaction,
-    cache: PsbtCache,
+function lineItemFinalizeGetAmts(
+    lineItems: readonly OrderLineItem[],
+    order: Order,
+    cache: OrderCache,
     mustFinalize: boolean,
 ): void {
     // ... somewhere deep inside ...
-    cache.fee = totalInputs - totalOutputs;
-    cache.feeRate = Math.floor(cache.fee / bytes);
+    cache.total = totalLineItems - totalAdjustments;
+    cache.taxRate = Math.floor(cache.total / itemCount);
 }
 
-// Caller has no idea where 'fee' came from:
-inputFinalizeGetAmts(inputs, tx, cache, true);
-const fee: number = cache.fee; // Magic value appeared on cache
+// Caller has no idea where 'total' came from:
+lineItemFinalizeGetAmts(lineItems, order, cache, true);
+const total: number = cache.total; // Magic value appeared on cache
 
 /**
  * CORRECT - explicit return value makes data flow visible.
  * The caller sees exactly what the function produces.
  */
 interface FinalizeResult {
-    readonly fee: number;
-    readonly feeRate: number;
+    readonly total: number;
+    readonly taxRate: number;
 }
 
 function computeFinalizedAmounts(
-    inputs: readonly Input[],
-    tx: Transaction,
+    lineItems: readonly OrderLineItem[],
+    order: Order,
     mustFinalize: boolean,
 ): FinalizeResult {
-    const totalInputs: number = inputs.reduce((sum, i) => sum + i.value, 0);
-    const totalOutputs: number = tx.outputs.reduce((sum, o) => sum + o.value, 0);
-    const fee: number = totalInputs - totalOutputs;
-    const bytes: number = tx.byteLength();
-    return { fee, feeRate: Math.floor(fee / bytes) };
+    const totalLineItems: number = lineItems.reduce((sum, i) => sum + i.value, 0);
+    const totalAdjustments: number = order.adjustments.reduce((sum, o) => sum + o.value, 0);
+    const total: number = totalLineItems - totalAdjustments;
+    const itemCount: number = order.lineItemCount();
+    return { total, taxRate: Math.floor(total / itemCount) };
 }
 
 // Caller sees the data flow explicitly:
-const { fee, feeRate }: FinalizeResult = computeFinalizedAmounts(inputs, tx, true);
+const { total, taxRate }: FinalizeResult = computeFinalizedAmounts(lineItems, order, true);
 ```
 
 ### 1.1.23 Dunder and Magic Property Names Forbidden
 
-Dunder (double-underscore) and magic property names like `__CACHE`, `__TX`, `__FEE_RATE`, and `__EXTRACTED_TX` are Python conventions that have no place in TypeScript. They do not provide encapsulation -- any code can access `obj.__CACHE`. They are ugly, harder to search, and signal that the author wanted privacy but chose the wrong language feature. Use proper `#private` fields for encapsulation, and use descriptive camelCase names for everything else.
+Dunder (double-underscore) and magic property names like `__CACHE`, `__ORDER`, `__TAX_RATE`, and `__EXTRACTED_ORDER` are Python conventions that have no place in TypeScript. They do not provide encapsulation -- any code can access `obj.__CACHE`. They are ugly, harder to search, and signal that the author wanted privacy but chose the wrong language feature. Use proper `#private` fields for encapsulation, and use descriptive camelCase names for everything else.
 
 ```typescript
 /**
  * FORBIDDEN - Python-style dunder properties.
  * No actual privacy. Ugly naming. Harder to refactor.
  */
-class ForbiddenPsbt {
-    private readonly __CACHE: PsbtCache;
-    private __TX: Transaction;
+class ForbiddenOrder {
+    private readonly __CACHE: OrderCache;
+    private __ORDER: Order;
 
     public updateVersion(version: number): void {
-        this.__TX.version = version;
-        this.__CACHE.__EXTRACTED_TX = undefined;
-        this.__CACHE.__FEE_RATE = undefined;
+        this.__ORDER.version = version;
+        this.__CACHE.__EXTRACTED_ORDER = undefined;
+        this.__CACHE.__TAX_RATE = undefined;
     }
 }
 
@@ -994,14 +1015,14 @@ class ForbiddenPsbt {
  * CORRECT - native #private fields with descriptive camelCase names.
  * True runtime encapsulation. Clean naming. Easy to search.
  */
-class CorrectPsbt {
-    readonly #cache: PsbtCache;
-    #transaction: Transaction;
+class CorrectOrder {
+    readonly #cache: OrderCache;
+    #order: Order;
 
     public updateVersion(version: number): void {
-        this.#transaction.version = version;
-        this.#cache.extractedTransaction = undefined;
-        this.#cache.feeRate = undefined;
+        this.#order.version = version;
+        this.#cache.extractedOrder = undefined;
+        this.#cache.taxRate = undefined;
     }
 }
 ```
@@ -1050,16 +1071,11 @@ Defining one-off arrow function factories inside constructors is forbidden. Patt
  */
 class ForbiddenComponent {
     public constructor(data: Uint8Array) {
-        const dpew = <T>(
-            obj: T,
-            attr: string,
-            enumerable: boolean,
-            writable: boolean,
-        ): void => {
+        const dpew = <T>(obj: T, attr: string, enumerable: boolean, writable: boolean): void => {
             Object.defineProperty(obj, attr, { enumerable, writable });
         };
         dpew(this, '__cache', false, true);
-        dpew(this, '__tx', false, true);
+        dpew(this, '__order', false, true);
     }
 }
 
@@ -1069,11 +1085,11 @@ class ForbiddenComponent {
  */
 class CorrectComponent {
     readonly #cache: ComponentCache;
-    readonly #transaction: Transaction;
+    readonly #order: Order;
 
     public constructor(data: Uint8Array) {
         this.#cache = ComponentCache.create();
-        this.#transaction = Transaction.fromBuffer(data);
+        this.#order = Order.fromBytes(data);
     }
 }
 ```
@@ -1085,54 +1101,54 @@ Catching errors and returning boolean success indicators is forbidden when the c
 ```typescript
 /**
  * FORBIDDEN - errors swallowed into booleans.
- * When all inputs fail, the error message is generic and useless.
+ * When all line items fail, the error message is generic and useless.
  */
-public signAllInputs(keyPair: SignerPair): boolean[] {
+public priceAllLineItems(priceBook: PriceBook): boolean[] {
     const results: boolean[] = [];
-    for (let i: number = 0; i < this.#inputs.length; i++) {
+    for (let i: number = 0; i < this.#lineItems.length; i++) {
         try {
-            this.signInput(i, keyPair);
+            this.priceLineItem(i, priceBook);
             results.push(true);
         } catch {
             results.push(false);
         }
     }
     if (results.every((v: boolean): boolean => !v)) {
-        throw new Error('No inputs were signed');
+        throw new Error('No line items were priced');
     }
     return results;
 }
 
 /**
  * CORRECT - structured result preserves error context.
- * The caller knows exactly which input failed and why.
+ * The caller knows exactly which line item failed and why.
  */
-interface SigningResult {
-    readonly inputIndex: number;
+interface PricingResult {
+    readonly lineItemIndex: number;
     readonly success: boolean;
     readonly error?: Error;
 }
 
-public signAllInputs(keyPair: SignerPair): readonly SigningResult[] {
-    const results: SigningResult[] = [];
-    for (let i: number = 0; i < this.#inputs.length; i++) {
+public priceAllLineItems(priceBook: PriceBook): readonly PricingResult[] {
+    const results: PricingResult[] = [];
+    for (let i: number = 0; i < this.#lineItems.length; i++) {
         try {
-            this.signInput(i, keyPair);
-            results.push({ inputIndex: i, success: true });
+            this.priceLineItem(i, priceBook);
+            results.push({ lineItemIndex: i, success: true });
         } catch (error: unknown) {
             const err: Error = error instanceof Error
                 ? error
                 : new Error(String(error));
-            results.push({ inputIndex: i, success: false, error: err });
+            results.push({ lineItemIndex: i, success: false, error: err });
         }
     }
-    const failures: readonly SigningResult[] = results.filter(
-        (r: SigningResult): boolean => !r.success,
+    const failures: readonly PricingResult[] = results.filter(
+        (r: PricingResult): boolean => !r.success,
     );
     if (failures.length === results.length) {
         throw new AggregateError(
-            failures.map((f: SigningResult): Error | undefined => f.error),
-            `All ${results.length} inputs failed to sign`,
+            failures.map((f: PricingResult): Error | undefined => f.error),
+            `All ${results.length} line items failed to price`,
         );
     }
     return results;
@@ -1148,16 +1164,16 @@ The `new Promise` constructor with manual `resolve`/`reject` is forbidden when `
  * FORBIDDEN - Promise constructor wrapping code that could be async/await.
  * Unnecessary nesting. Error handling is split between reject() and throws.
  */
-public signAllInputsAsync(
-    keyPair: AsyncSignerPair,
-): Promise<readonly SigningResult[]> {
+public priceAllLineItemsAsync(
+    priceBook: AsyncPriceBook,
+): Promise<readonly PricingResult[]> {
     return new Promise((resolve, reject) => {
-        if (!keyPair?.publicKey) {
-            return reject(new Error('Need valid key pair'));
+        if (!priceBook?.currency) {
+            return reject(new Error('Need valid price book'));
         }
         const promises: Promise<void>[] = [];
-        for (let i: number = 0; i < this.#inputs.length; i++) {
-            promises.push(this.signInputAsync(i, keyPair));
+        for (let i: number = 0; i < this.#lineItems.length; i++) {
+            promises.push(this.priceLineItemAsync(i, priceBook));
         }
         Promise.all(promises)
             .then(() => resolve(this.#results))
@@ -1168,14 +1184,14 @@ public signAllInputsAsync(
 /**
  * CORRECT - async/await. Linear flow. Single error handling model.
  */
-public async signAllInputsAsync(
-    keyPair: AsyncSignerPair,
-): Promise<readonly SigningResult[]> {
-    if (!keyPair?.publicKey) {
-        throw new Error('Need valid key pair with publicKey');
+public async priceAllLineItemsAsync(
+    priceBook: AsyncPriceBook,
+): Promise<readonly PricingResult[]> {
+    if (!priceBook?.currency) {
+        throw new Error('Need valid price book with currency');
     }
-    const promises: readonly Promise<void>[] = this.#inputs.map(
-        (_input: Input, i: number): Promise<void> => this.signInputAsync(i, keyPair),
+    const promises: readonly Promise<void>[] = this.#lineItems.map(
+        (_lineItem: OrderLineItem, i: number): Promise<void> => this.priceLineItemAsync(i, priceBook),
     );
     await Promise.all(promises);
     return this.#results;
@@ -1189,24 +1205,24 @@ Empty catch blocks and `catch (_)` with no body are forbidden. Silently swallowi
 ```typescript
 /**
  * FORBIDDEN - empty catch block silently swallows the error.
- * If fromOutputScript throws due to a bug, nobody will ever know.
+ * If formatLabel throws due to a bug, nobody will ever know.
  */
-let address: string | undefined;
+let label: string | undefined;
 try {
-    address = fromOutputScript(output.script, network);
+    label = formatLabel(item.metadata, locale);
 } catch (_) {}
 
 /**
  * CORRECT - explicit handling with documented intent.
  * The catch block explains why the error is expected and safe to handle.
  */
-let address: string | undefined;
+let label: string | undefined;
 try {
-    address = fromOutputScript(output.script, network);
+    label = formatLabel(item.metadata, locale);
 } catch {
-    // Non-standard scripts (OP_RETURN, bare multisig) cannot be decoded
-    // to addresses. This is expected and the address remains undefined.
-    address = undefined;
+    // Non-standard metadata (custom attributes, legacy records) cannot be
+    // formatted into a label. This is expected and the label remains undefined.
+    label = undefined;
 }
 ```
 
@@ -1223,17 +1239,17 @@ const cloned = JSON.parse(JSON.stringify(original));
 /**
  * CORRECT - structuredClone preserves more types and handles cycles.
  */
-const cloned: PsbtOptions = structuredClone(original);
+const cloned: OrderOptions = structuredClone(original);
 
 /**
  * CORRECT - explicit clone method for domain objects with custom semantics.
  */
-class TransactionCache {
-    readonly #fee: bigint | undefined;
-    readonly #feeRate: number | undefined;
+class OrderCache {
+    readonly #total: bigint | undefined;
+    readonly #taxRate: number | undefined;
 
-    public clone(): TransactionCache {
-        return new TransactionCache(this.#fee, this.#feeRate);
+    public clone(): OrderCache {
+        return new OrderCache(this.#total, this.#taxRate);
     }
 }
 ```
@@ -1247,63 +1263,63 @@ class TransactionCache {
  * FORBIDDEN - library code writing directly to console.
  * Cannot be silenced. Pollutes consumer's output.
  */
-function signInput(input: PsbtInput, keyPair: Signer): Uint8Array {
+function priceLineItem(lineItem: OrderLineItem, priceBook: PriceBook): bigint {
     console.warn(
-        'Warning: Signing non-segwit inputs without the full parent transaction'
-        + ' means there is a risk of signing a non-existent transaction.',
+        'Warning: Pricing line items without the full catalog entry' +
+            ' means there is a risk of charging for a product that no longer exists.',
     );
-    return keyPair.sign(input.hash);
+    return priceBook.priceLineItem(lineItem);
 }
 
 /**
  * CORRECT - warnings returned in the result type.
  * The consumer decides how to handle them.
  */
-interface SigningOutput {
-    readonly signature: Uint8Array;
+interface PricingResult {
+    readonly charge: bigint;
     readonly warnings: readonly string[];
 }
 
-function signInput(input: PsbtInput, keyPair: Signer): SigningOutput {
+function priceLineItem(lineItem: OrderLineItem, priceBook: PriceBook): PricingResult {
     const warnings: string[] = [];
-    if (!input.nonWitnessUtxo) {
+    if (!lineItem.catalogEntry) {
         warnings.push(
-            'Signing non-segwit input without full parent transaction.'
-            + ' Risk of signing a non-existent transaction.',
+            'Pricing a line item without its full catalog entry.' +
+                ' Risk of charging for a product that no longer exists.',
         );
     }
-    return { signature: keyPair.sign(input.hash), warnings };
+    return { charge: priceBook.priceLineItem(lineItem), warnings };
 }
 ```
 
 ### 1.1.31 Centralized Cache Invalidation Required
 
-Multiple cache invalidation sites are forbidden. When adding an input requires clearing seven cache fields, and adding an output requires clearing four of the same fields, and signing clears three more, you have a cache coherence nightmare. Any new method that forgets to clear the right fields introduces a silent bug. Encapsulate all cache invalidation in a single method that takes a scope parameter, and call that method from every mutation point.
+Multiple cache invalidation sites are forbidden. When adding a line item requires clearing seven cache fields, and adding an adjustment requires clearing four of the same fields, and finalizing clears three more, you have a cache coherence nightmare. Any new method that forgets to clear the right fields introduces a silent bug. Encapsulate all cache invalidation in a single method that takes a scope parameter, and call that method from every mutation point.
 
 ```typescript
 /**
  * FORBIDDEN - cache invalidation scattered across multiple methods.
  * Adding a new cached field requires updating every method.
  */
-class ForbiddenPsbt {
-    public addInput(input: PsbtInput): this {
-        this.#data.inputs.push(input);
-        this.#cache.fee = undefined;
-        this.#cache.feeRate = undefined;
-        this.#cache.extractedTx = undefined;
-        this.#cache.previousOutputs = undefined;
-        this.#cache.signingScripts = undefined;
+class ForbiddenOrder {
+    public addLineItem(lineItem: OrderLineItem): this {
+        this.#data.lineItems.push(lineItem);
+        this.#cache.total = undefined;
+        this.#cache.taxRate = undefined;
+        this.#cache.finalizedOrder = undefined;
+        this.#cache.previousAdjustments = undefined;
+        this.#cache.pricingScripts = undefined;
         this.#cache.values = undefined;
-        this.#cache.taprootHashCache = undefined;
+        this.#cache.hashCache = undefined;
         return this;
     }
 
-    public addOutput(output: PsbtOutput): this {
-        this.#data.outputs.push(output);
-        this.#cache.fee = undefined;
-        this.#cache.feeRate = undefined;
-        this.#cache.extractedTx = undefined;
-        this.#cache.taprootHashCache = undefined;
+    public addAdjustment(adjustment: OrderAdjustment): this {
+        this.#data.adjustments.push(adjustment);
+        this.#cache.total = undefined;
+        this.#cache.taxRate = undefined;
+        this.#cache.finalizedOrder = undefined;
+        this.#cache.hashCache = undefined;
         return this;
     }
 }
@@ -1312,28 +1328,28 @@ class ForbiddenPsbt {
  * CORRECT - single invalidation method with scope control.
  * Adding a new cached field requires updating only one method.
  */
-class CorrectPsbt {
-    #invalidateCache(scope: 'full' | 'outputs'): void {
-        this.#cache.fee = undefined;
-        this.#cache.feeRate = undefined;
-        this.#cache.extractedTx = undefined;
-        this.#cache.taprootHashCache = undefined;
+class CorrectOrder {
+    #invalidateCache(scope: 'full' | 'adjustments'): void {
+        this.#cache.total = undefined;
+        this.#cache.taxRate = undefined;
+        this.#cache.finalizedOrder = undefined;
+        this.#cache.hashCache = undefined;
         if (scope === 'full') {
-            this.#cache.previousOutputs = undefined;
-            this.#cache.signingScripts = undefined;
+            this.#cache.previousAdjustments = undefined;
+            this.#cache.pricingScripts = undefined;
             this.#cache.values = undefined;
         }
     }
 
-    public addInput(input: PsbtInput): this {
-        this.#data.inputs.push(input);
+    public addLineItem(lineItem: OrderLineItem): this {
+        this.#data.lineItems.push(lineItem);
         this.#invalidateCache('full');
         return this;
     }
 
-    public addOutput(output: PsbtOutput): this {
-        this.#data.outputs.push(output);
-        this.#invalidateCache('outputs');
+    public addAdjustment(adjustment: OrderAdjustment): this {
+        this.#data.adjustments.push(adjustment);
+        this.#invalidateCache('adjustments');
         return this;
     }
 }
@@ -1364,7 +1380,7 @@ function correct(data: Uint8Array): Uint8Array {
         return data;
     }
     throw new TypeError(
-        `Expected Uint8Array, got ${typeof data === 'object' ? data?.constructor?.name ?? 'null' : typeof data}`,
+        `Expected Uint8Array, got ${typeof data === 'object' ? (data?.constructor?.name ?? 'null') : typeof data}`,
     );
 }
 
@@ -1385,17 +1401,15 @@ function processData(data: unknown): Uint8Array {
 
 ### 1.1.33 Magic Default Buffers Forbidden
 
-Magic default buffers like `Buffer.from([2, 0, 0, 0, 0, 0, 0, 0, 0, 0])` are forbidden. Raw byte arrays with no explanation are meaningless to every reader who did not write them. They cannot be verified against a specification, they are fragile under refactoring, and they silently encode domain knowledge that should be documented. Use named constants with JSDoc comments that explain the byte-level format.
+Magic default buffers like `Buffer.from([77, 83, 2, 0, 0, 0, 0, 0])` are forbidden. Raw byte arrays with no explanation are meaningless to every reader who did not write them. They cannot be verified against a specification, they are fragile under refactoring, and they silently encode domain knowledge that should be documented. Use named constants with JSDoc comments that explain the byte-level format.
 
 ```typescript
 /**
  * FORBIDDEN - magic byte array with no explanation.
- * What does [2, 0, 0, 0, 0, 0, 0, 0, 0, 0] mean?
+ * What does [77, 83, 2, 0, 0, 0, 0, 0] mean?
  */
-class ForbiddenTransaction {
-    public constructor(
-        buffer: Uint8Array = new Uint8Array([2, 0, 0, 0, 0, 0, 0, 0, 0, 0]),
-    ) {
+class ForbiddenFrame {
+    public constructor(buffer: Uint8Array = new Uint8Array([77, 83, 2, 0, 0, 0, 0, 0])) {
         this.#parse(buffer);
     }
 }
@@ -1404,21 +1418,23 @@ class ForbiddenTransaction {
  * CORRECT - named constant with byte-level documentation.
  * Every byte is explained. The format is verifiable.
  */
-class CorrectTransaction {
+class CorrectFrame {
     /**
-     * Minimal valid transaction v2: version 2 (LE u32),
-     * zero inputs (varint), zero outputs (varint), locktime 0 (LE u32).
+     * Minimal valid frame header: magic "MS", version 2 (LE u16),
+     * payload length 0 (LE u32).
      */
-    static readonly #EMPTY_TX_V2: Uint8Array = new Uint8Array([
-        0x02, 0x00, 0x00, 0x00, // version = 2 (little-endian uint32)
-        0x00,                   // input count = 0 (varint)
-        0x00,                   // output count = 0 (varint)
-        0x00, 0x00, 0x00, 0x00, // locktime = 0 (little-endian uint32)
+    static readonly #EMPTY_FRAME: Uint8Array = new Uint8Array([
+        0x4d,
+        0x53, // magic bytes "MS"
+        0x02,
+        0x00, // version = 2 (little-endian uint16)
+        0x00,
+        0x00,
+        0x00,
+        0x00, // payload length = 0 (little-endian uint32)
     ]);
 
-    public constructor(
-        buffer: Uint8Array = CorrectTransaction.#EMPTY_TX_V2,
-    ) {
+    public constructor(buffer: Uint8Array = CorrectFrame.#EMPTY_FRAME) {
         this.#parse(buffer);
     }
 }
@@ -1426,52 +1442,52 @@ class CorrectTransaction {
 
 ### 1.1.34 Parameter Mutation Forbidden
 
-Mutating function parameters is forbidden. When a function modifies `tx.ins[idx].script`, `tx.ins[idx].witness`, or any other property on a passed-in object, the caller has no way to know this happened without reading the function's implementation. Functions should return new values. If mutation is absolutely necessary for performance, it must be explicit through naming (`mutateTransaction`) and parameter types (`cache: Mutable<PsbtCache>`).
+Mutating function parameters is forbidden. When a function modifies `order.lineItems[idx].charge`, `order.lineItems[idx].adjustments`, or any other property on a passed-in object, the caller has no way to know this happened without reading the function's implementation. Functions should return new values. If mutation is absolutely necessary for performance, it must be explicit through naming (`mutateOrder`) and parameter types (`cache: Mutable<OrderCache>`).
 
 ```typescript
 /**
- * FORBIDDEN - function silently mutates the transaction parameter.
+ * FORBIDDEN - function silently mutates the order parameter.
  * The caller's object is changed without consent or documentation.
  */
-function finalizeInput(
-    tx: Transaction,
-    inputIndex: number,
-    script: Uint8Array,
-    witness: readonly Uint8Array[],
+function finalizeLineItem(
+    order: Order,
+    lineItemIndex: number,
+    charge: bigint,
+    adjustments: readonly bigint[],
 ): void {
-    tx.ins[inputIndex].script = script;
-    tx.ins[inputIndex].witness = witness;
+    order.lineItems[lineItemIndex].charge = charge;
+    order.lineItems[lineItemIndex].adjustments = adjustments;
 }
 
 /**
  * CORRECT - return a new object with the changes applied.
  * The caller explicitly receives the result and decides what to do.
  */
-interface FinalizedInput {
-    readonly script: Uint8Array;
-    readonly witness: readonly Uint8Array[];
+interface FinalizedLineItem {
+    readonly charge: bigint;
+    readonly adjustments: readonly bigint[];
 }
 
-function finalizeInput(
-    input: TransactionInput,
-    script: Uint8Array,
-    witness: readonly Uint8Array[],
-): FinalizedInput {
-    return { script, witness };
+function finalizeLineItem(
+    lineItem: OrderLineItem,
+    charge: bigint,
+    adjustments: readonly bigint[],
+): FinalizedLineItem {
+    return { charge, adjustments };
 }
 
 /**
  * ACCEPTABLE - when mutation is required for performance,
  * make it explicit through naming and types.
  */
-function mutateTransactionInput(
-    tx: MutableTransaction,
-    inputIndex: number,
-    script: Uint8Array,
-    witness: readonly Uint8Array[],
+function mutateOrderLineItem(
+    order: MutableOrder,
+    lineItemIndex: number,
+    charge: bigint,
+    adjustments: readonly bigint[],
 ): void {
-    tx.ins[inputIndex].script = script;
-    tx.ins[inputIndex].witness = [...witness];
+    order.lineItems[lineItemIndex].charge = charge;
+    order.lineItems[lineItemIndex].adjustments = [...adjustments];
 }
 ```
 
@@ -1482,42 +1498,36 @@ Type assertions like `as unknown as TargetType` are forbidden for satisfying ret
 ```typescript
 /**
  * FORBIDDEN - double type assertion to force a return type.
- * If the runtime value does not match TapKeySig, nothing catches it.
+ * If the runtime value does not match LineCharge, nothing catches it.
  */
-function forbidden(
-    hashes: readonly HashForSig[],
-    sighashType: number,
-): TapKeySig {
-    return hashes
-        .filter((h: HashForSig): boolean => !h.leafHash)
-        .map((h: HashForSig): Uint8Array =>
-            serializeTaprootSignature(signSchnorr(h.hash), sighashType),
-        )[0] as unknown as TapKeySig;
+function forbidden(items: readonly LineItem[], taxRate: number): LineCharge {
+    return items
+        .filter((item: LineItem): boolean => !item.discount)
+        .map((item: LineItem): Uint8Array =>
+            serializeCharge(computePrice(item.sku), taxRate),
+        )[0] as unknown as LineCharge;
 }
 
 /**
  * CORRECT - proper typing and explicit undefined handling.
  * The type guard narrows the filter. The result is typed correctly.
  */
-interface KeyPathHash extends HashForSig {
-    readonly leafHash: undefined;
+interface BaseLineItem extends LineItem {
+    readonly discount: undefined;
 }
 
-function correct(
-    hashes: readonly HashForSig[],
-    sighashType: number,
-): TapKeySig {
-    const keyPathHashes: readonly KeyPathHash[] = hashes.filter(
-        (h: HashForSig): h is KeyPathHash => h.leafHash === undefined,
+function correct(items: readonly LineItem[], taxRate: number): LineCharge {
+    const baseItems: readonly BaseLineItem[] = items.filter(
+        (item: LineItem): item is BaseLineItem => item.discount === undefined,
     );
-    if (keyPathHashes.length === 0) {
-        throw new Error('No key path hash found for tap key signature');
+    if (baseItems.length === 0) {
+        throw new Error('No base line item found to charge');
     }
-    const signature: Uint8Array = serializeTaprootSignature(
-        signSchnorr(keyPathHashes[0].hash),
-        sighashType,
+    const charge: Uint8Array = serializeCharge(
+        computePrice(baseItems[0].sku),
+        taxRate,
     );
-    return createTapKeySig(signature);
+    return createLineCharge(charge);
 }
 ```
 
@@ -1531,26 +1541,21 @@ function correct(
  * Unclear intent. Easy to get the comparison wrong (> 0 vs >= 0 vs !== -1).
  */
 function forbidden(type: string): boolean {
-    return ['p2sh-p2wsh', 'p2wsh'].indexOf(type) >= 0;
+    return ['digital', 'subscription'].indexOf(type) >= 0;
 }
 
 /**
  * CORRECT - includes() communicates membership intent directly.
  */
 function correct(type: string): boolean {
-    return ['p2sh-p2wsh', 'p2wsh'].includes(type);
+    return ['digital', 'subscription'].includes(type);
 }
 
 /**
  * CORRECT - some() for complex membership with a predicate.
  */
-function containsInput(
-    inputs: readonly TransactionInput[],
-    targetHash: Uint8Array,
-): boolean {
-    return inputs.some(
-        (input: TransactionInput): boolean => bytesEqual(input.hash, targetHash),
-    );
+function containsLineItem(items: readonly OrderLineItem[], targetSku: Uint8Array): boolean {
+    return items.some((item: OrderLineItem): boolean => bytesEqual(item.sku, targetSku));
 }
 ```
 
@@ -1564,17 +1569,11 @@ Using `reduce` with a boolean accumulator to implement `every` or `some` semanti
  * Iterates the entire array. Unclear intent. No short-circuit.
  */
 function allSucceeded(results: readonly boolean[]): boolean {
-    return results.reduce(
-        (final: boolean, res: boolean): boolean => res && final,
-        true,
-    );
+    return results.reduce((final: boolean, res: boolean): boolean => res && final, true);
 }
 
 function anySucceeded(results: readonly boolean[]): boolean {
-    return results.reduce(
-        (final: boolean, res: boolean): boolean => res || final,
-        false,
-    );
+    return results.reduce((final: boolean, res: boolean): boolean => res || final, false);
 }
 
 /**
@@ -1591,38 +1590,38 @@ function anySucceeded(results: readonly boolean[]): boolean {
 
 ### 1.1.38 Fallback Object for Optional Chaining Forbidden
 
-Optional chaining into method calls that create phantom empty objects is forbidden. The pattern `(input || {}).partialSig` creates a new empty object when `input` is falsy, then accesses `.partialSig` on it, which returns `undefined`. This hides the fact that `input` was missing and causes silent undefined behavior downstream. Either throw early with a clear error message indicating the missing input, or use proper null checks that make the absence explicit.
+Optional chaining into method calls that create phantom empty objects is forbidden. The pattern `(lineItem || {}).charges` creates a new empty object when `lineItem` is falsy, then accesses `.charges` on it, which returns `undefined`. This hides the fact that `lineItem` was missing and causes silent undefined behavior downstream. Either throw early with a clear error message indicating the missing lineItem, or use proper null checks that make the absence explicit.
 
 ```typescript
 /**
  * FORBIDDEN - creates a phantom empty object to avoid a null check.
- * If input is undefined, this silently produces undefined
+ * If lineItem is undefined, this silently produces undefined
  * instead of telling the developer what went wrong.
  */
-function forbidden(input: PsbtInput | undefined): readonly Uint8Array[] | undefined {
-    const partialSig = (input || {}).partialSig;
-    return partialSig;
+function forbidden(lineItem: OrderLineItem | undefined): readonly bigint[] | undefined {
+    const charges = (lineItem || {}).charges;
+    return charges;
 }
 
 /**
  * CORRECT - explicit null check with a descriptive error.
  * The developer knows immediately what is missing.
  */
-function correct(input: PsbtInput | undefined, inputIndex: number): readonly Uint8Array[] {
-    if (!input) {
-        throw new Error(`Input at index ${inputIndex} does not exist`);
+function correct(lineItem: OrderLineItem | undefined, lineItemIndex: number): readonly bigint[] {
+    if (!lineItem) {
+        throw new Error(`Line item at index ${lineItemIndex} does not exist`);
     }
-    if (!input.partialSig) {
-        throw new Error(`Input at index ${inputIndex} has no partial signatures`);
+    if (!lineItem.charges) {
+        throw new Error(`Line item at index ${lineItemIndex} has no charges`);
     }
-    return input.partialSig;
+    return lineItem.charges;
 }
 
 /**
  * ALSO CORRECT - when absence is expected, use real optional chaining.
  */
-function safeGet(input: PsbtInput | undefined): readonly Uint8Array[] | undefined {
-    return input?.partialSig;
+function safeGet(lineItem: OrderLineItem | undefined): readonly bigint[] | undefined {
+    return lineItem?.charges;
 }
 ```
 
@@ -1633,56 +1632,56 @@ Re-exports from entry points are forbidden (per section 13.2.1), but the specifi
 ```typescript
 /**
  * FORBIDDEN - confusing dual exports of the same types.
- * Consumer sees ValidateSigFunction exported from both the entry
+ * Consumer sees ValidateChargeFunction exported from both the entry
  * point and the internal types file. Which is canonical?
  */
 // index.ts
-export type { ValidateSigFunction, PsbtInput } from './psbt/types.js';
+export type { ValidateChargeFunction, OrderLineItem } from './order/types.js';
 
-// psbt/types.ts
-export interface ValidateSigFunction {
-    (pubkey: Uint8Array, msghash: Uint8Array, signature: Uint8Array): boolean;
+// order/types.ts
+export interface ValidateChargeFunction {
+    (lineItem: OrderLineItem, orderId: string, charge: bigint): boolean;
 }
 
 /**
  * CORRECT - single canonical export from the entry point.
  * Internal types are imported, then explicitly re-exported once.
  */
-// psbt/types.ts (internal, not re-exported directly)
-export interface ValidateSigFunction {
-    (pubkey: Uint8Array, msghash: Uint8Array, signature: Uint8Array): boolean;
+// order/types.ts (internal, not re-exported directly)
+export interface ValidateChargeFunction {
+    (lineItem: OrderLineItem, orderId: string, charge: bigint): boolean;
 }
 
 // index.ts (single canonical export)
-import type { ValidateSigFunction } from './psbt/types.js';
-import type { PsbtInput } from './psbt/types.js';
-export type { ValidateSigFunction, PsbtInput };
+import type { ValidateChargeFunction } from './order/types.js';
+import type { OrderLineItem } from './order/types.js';
+export type { ValidateChargeFunction, OrderLineItem };
 ```
 
 ### 1.1.40 Mixed Error Handling Strategies Forbidden
 
-Functions that return `null` for "not found" alongside throwing for other error conditions are forbidden. A function that returns `null` when a script is missing but throws when a signature is invalid forces the caller to handle two completely different error models simultaneously: a null check and a try/catch. Pick one strategy per function. Either use a discriminated union Result type that encodes all failure modes, or throw for all error conditions with distinct error types. Never mix.
+Functions that return `null` for "not found" alongside throwing for other error conditions are forbidden. A function that returns `null` when a price is missing but throws when a price snapshot is invalid forces the caller to handle two completely different error models simultaneously: a null check and a try/catch. Pick one strategy per function. Either use a discriminated union Result type that encodes all failure modes, or throw for all error conditions with distinct error types. Never mix.
 
 ```typescript
 /**
  * FORBIDDEN - mixed error handling: null for some failures, throw for others.
  * The caller needs both a null check and a try/catch.
  */
-function forbidden(input: PsbtInput): GetScriptResult {
-    const res: GetScriptResult = {
-        script: null,   // null means "not found"?
-        isSegwit: false,
-        isP2SH: false,
-        isP2WSH: false,
+function forbidden(input: OrderLineItem): GetPriceResult {
+    const res: GetPriceResult = {
+        price: null, // null means "not found"?
+        isTaxable: false,
+        isOnSale: false,
+        isBackordered: false,
     };
 
-    if (!input.witnessUtxo && !input.nonWitnessUtxo) {
-        return res; // returns null script
+    if (!input.priceSnapshot && !input.catalogEntry) {
+        return res; // returns null price
     }
 
-    if (input.witnessUtxo) {
+    if (input.priceSnapshot) {
         // ... but throws here for invalid data
-        throw new Error('Invalid witness script');
+        throw new Error('Invalid price snapshot');
     }
 
     return res;
@@ -1692,34 +1691,34 @@ function forbidden(input: PsbtInput): GetScriptResult {
  * CORRECT - consistent discriminated union for all outcomes.
  * One pattern to check. No try/catch needed.
  */
-interface GetScriptSuccess {
+interface GetPriceSuccess {
     readonly success: true;
-    readonly script: Uint8Array;
-    readonly isSegwit: boolean;
-    readonly isP2SH: boolean;
-    readonly isP2WSH: boolean;
+    readonly price: bigint;
+    readonly isTaxable: boolean;
+    readonly isOnSale: boolean;
+    readonly isBackordered: boolean;
 }
 
-interface GetScriptFailure {
+interface GetPriceFailure {
     readonly success: false;
-    readonly reason: 'no_utxo' | 'invalid_script' | 'unsupported_type';
+    readonly reason: 'no_price' | 'invalid_price' | 'unsupported_type';
 }
 
-type GetScriptResult = GetScriptSuccess | GetScriptFailure;
+type GetPriceResult = GetPriceSuccess | GetPriceFailure;
 
-function correct(input: PsbtInput): GetScriptResult {
-    if (!input.witnessUtxo && !input.nonWitnessUtxo) {
-        return { success: false, reason: 'no_utxo' };
+function correct(input: OrderLineItem): GetPriceResult {
+    if (!input.priceSnapshot && !input.catalogEntry) {
+        return { success: false, reason: 'no_price' };
     }
-    if (!isValidScript(input)) {
-        return { success: false, reason: 'invalid_script' };
+    if (!isValidPrice(input)) {
+        return { success: false, reason: 'invalid_price' };
     }
     return {
         success: true,
-        script: input.witnessUtxo!.script,
-        isSegwit: true,
-        isP2SH: false,
-        isP2WSH: false,
+        price: input.priceSnapshot!.price,
+        isTaxable: true,
+        isOnSale: false,
+        isBackordered: false,
     };
 }
 ```
@@ -1733,16 +1732,16 @@ Using `delete` on an object property followed by `Object.defineProperty` or `Ref
  * FORBIDDEN - delete + defineProperty hack.
  * Destroys V8 hidden class. Breaks type safety. Prototype pollution risk.
  */
-function forbidden(input: PsbtInput): void {
-    delete (input as Record<string, unknown>).nonWitnessUtxo;
-    Reflect.defineProperty(input, 'nonWitnessUtxo', {
+function forbidden(lineItem: OrderLineItem): void {
+    delete (lineItem as Record<string, unknown>).catalogEntry;
+    Reflect.defineProperty(lineItem, 'catalogEntry', {
         enumerable: true,
         get(): Uint8Array | undefined {
-            return this._nonWitnessUtxoBuffer;
+            return this._catalogEntryBuffer;
         },
         set(data: Uint8Array): void {
-            this._nonWitnessUtxoBuffer = data;
-            this._nonWitnessUtxoTx = undefined;
+            this._catalogEntryBuffer = data;
+            this._catalogEntryRecord = undefined;
         },
     });
 }
@@ -1751,24 +1750,24 @@ function forbidden(input: PsbtInput): void {
  * CORRECT - design with getters from the start.
  * V8 hidden classes are stable. Type system is intact.
  */
-class PsbtInputWrapper {
-    #nonWitnessUtxoBuffer: Uint8Array | undefined;
-    #nonWitnessUtxoTransaction: Transaction | undefined;
+class OrderLineItemWrapper {
+    #catalogEntryBuffer: Uint8Array | undefined;
+    #catalogEntryRecord: CatalogRecord | undefined;
 
-    public get nonWitnessUtxo(): Uint8Array | undefined {
-        if (this.#nonWitnessUtxoBuffer !== undefined) {
-            return this.#nonWitnessUtxoBuffer;
+    public get catalogEntry(): Uint8Array | undefined {
+        if (this.#catalogEntryBuffer !== undefined) {
+            return this.#catalogEntryBuffer;
         }
-        if (this.#nonWitnessUtxoTransaction !== undefined) {
-            this.#nonWitnessUtxoBuffer = this.#nonWitnessUtxoTransaction.toBuffer();
-            return this.#nonWitnessUtxoBuffer;
+        if (this.#catalogEntryRecord !== undefined) {
+            this.#catalogEntryBuffer = this.#catalogEntryRecord.toBuffer();
+            return this.#catalogEntryBuffer;
         }
         return undefined;
     }
 
-    public set nonWitnessUtxo(data: Uint8Array | undefined) {
-        this.#nonWitnessUtxoBuffer = data;
-        this.#nonWitnessUtxoTransaction = undefined;
+    public set catalogEntry(data: Uint8Array | undefined) {
+        this.#catalogEntryBuffer = data;
+        this.#catalogEntryRecord = undefined;
     }
 }
 ```
@@ -1787,19 +1786,21 @@ const length: number = array.length;
 const retryCount: number = 3;
 const port: number = 8080;
 const flags: number = FLAG_A | FLAG_B | FLAG_C;
-for (let i = 0; i < length; i++) { /* ... */ }
+for (let i = 0; i < length; i++) {
+    /* ... */
+}
 ```
 
 ### 1.2.2 When to Use BigInt
 
-The `bigint` type is required for values that could grow large or where precision is critical: satoshi amounts, block heights, timestamps in milliseconds, database IDs, transaction counts, cumulative totals, file sizes, byte offsets in large files, or any value from external systems where you don't control the range.
+The `bigint` type is required for values that could grow large or where precision is critical: Money amounts in cents, revision numbers, timestamps in milliseconds, database IDs, event counts, cumulative totals, file sizes, byte offsets in large files, or any value from external systems where you don't control the range.
 
 ```typescript
 // CORRECT - bigint for potentially large or critical values
-const satoshis: bigint = 2_100_000_000_000_000n;
-const blockHeight: bigint = 850_000n;
+const cents: bigint = 2_500_000_000_000n;
+const revisionNumber: bigint = 1_000_000n;
 const timestampMs: bigint = BigInt(Date.now());
-const totalSupply: bigint = userBalances.reduce((sum, b) => sum + b, 0n);
+const cumulativeTotal: bigint = lineAmounts.reduce((sum, n) => sum + n, 0n);
 const fileOffset: bigint = 0x1_0000_0000n; // >4GB
 ```
 
@@ -1811,24 +1812,24 @@ The question to ask: "Can this value ever exceed 2^53 in any edge case?" If yes,
 // number - you control the bounds
 const maxRetries: number = 5;
 const arrayIndex: number = items.length - 1;
-const bitMask: number = 0xFF00;
+const bitMask: number = 0xff00;
 
 // bigint - external or unbounded
-const userId: bigint = BigInt(apiResponse.user_id);      // external system
-const tokenBalance: bigint = contract.balanceOf(addr);   // could be huge
-const accumulatedFees: bigint = sumAllFees();            // grows over time
+const userId: bigint = BigInt(apiResponse.user_id); // external system
+const orderTotal: bigint = order.computeTotal(); // could be huge
+const accumulatedFees: bigint = sumAllFees(); // grows over time
 ```
 
 ### 1.2.4 BigInt Literals
 
-Use `bigint` literals with the `n` suffix: `0n`, `100n`, `2_100_000_000_000_000n`. Never use `BigInt(largeNumberLiteral)` - the number literal loses precision before conversion.
+Use `bigint` literals with the `n` suffix: `0n`, `100n`, `9_999_999_999_999n`. Never use `BigInt(largeNumberLiteral)` - the number literal loses precision before conversion.
 
 ```typescript
 // CORRECT
 const amount = 9_007_199_254_740_993n;
 
 // WRONG - precision already lost in the number literal
-const broken = BigInt(9007199254740993);  // Wrong value!
+const broken = BigInt(9007199254740993); // Wrong value!
 ```
 
 ### 1.2.5 Converting from External APIs
@@ -1860,12 +1861,12 @@ Division with `bigint` truncates toward zero. For different rounding:
 ```typescript
 function divFloor(a: bigint, b: bigint): bigint {
     const result = a / b;
-    return (a < 0n !== b < 0n && a % b !== 0n) ? result - 1n : result;
+    return a < 0n !== b < 0n && a % b !== 0n ? result - 1n : result;
 }
 
 function divCeil(a: bigint, b: bigint): bigint {
     const result = a / b;
-    return (a > 0n === b > 0n && a % b !== 0n) ? result + 1n : result;
+    return a > 0n === b > 0n && a % b !== 0n ? result + 1n : result;
 }
 ```
 
@@ -1874,8 +1875,8 @@ function divCeil(a: bigint, b: bigint): bigint {
 For fixed-point decimal representation, use `bigint` with explicit scale:
 
 ```typescript
-const DECIMALS = 8n;
-const SCALE = 10n ** DECIMALS; // 100_000_000n
+const DECIMALS = 4n;
+const SCALE = 10n ** DECIMALS; // 10_000n
 
 type FixedPoint = Brand<bigint, 'FixedPoint'>;
 
@@ -1929,6 +1930,7 @@ const wrong = 1 << 64; // equals 1, not 2^64
 Native TypeScript `enum` declarations are forbidden. They generate runtime objects, prevent tree-shaking, have surprising behaviors with numeric enums and reverse mappings, and don't optimize well in V8.
 
 Native enums have these problems:
+
 1. They generate runtime code that can't be tree-shaken
 2. Numeric enums create reverse mappings that bloat bundle size
 3. They can be assigned any number, breaking type safety
@@ -1940,13 +1942,13 @@ Native enums have these problems:
 enum Status {
     Pending,
     Active,
-    Completed
+    Completed,
 }
 
 // FORBIDDEN - string enum still generates runtime object
 enum Direction {
-    Up = "UP",
-    Down = "DOWN"
+    Up = 'UP',
+    Down = 'DOWN',
 }
 
 // Numeric enums allow this nonsense:
@@ -1974,13 +1976,13 @@ type Status = (typeof Status)[keyof typeof Status];
 // Type is: 0 | 1 | 2
 
 // bigint values for large/unbounded enums
-const ChainId = {
-    Bitcoin: 0n,
-    Testnet: 1n,
-    Signet: 2n,
+const ChannelId = {
+    Retail: 0n,
+    Wholesale: 1n,
+    Marketplace: 2n,
 } as const;
 
-type ChainId = (typeof ChainId)[keyof typeof ChainId];
+type ChannelId = (typeof ChannelId)[keyof typeof ChannelId];
 // Type is: 0n | 1n | 2n
 
 // Usage - fully type safe
@@ -2089,10 +2091,10 @@ const OpCode = {
     OP_DUP: 0x76,
     OP_EQUAL: 0x87,
     OP_EQUALVERIFY: 0x88,
-    OP_HASH160: 0xa9,
-    OP_HASH256: 0xaa,
-    OP_CHECKSIG: 0xac,
-    OP_CHECKMULTISIG: 0xae,
+    OP_LINETOTAL: 0xa9,
+    OP_ORDERTOTAL: 0xaa,
+    OP_CHECKSTOCK: 0xac,
+    OP_CHECKALLSTOCK: 0xae,
 } as const;
 
 type OpCode = (typeof OpCode)[keyof typeof OpCode];
@@ -2102,9 +2104,9 @@ const OpCodeName = {
     [OpCode.OP_0]: 'OP_0',
     [OpCode.OP_PUSHDATA1]: 'OP_PUSHDATA1',
     [OpCode.OP_DUP]: 'OP_DUP',
-    [OpCode.OP_HASH160]: 'OP_HASH160',
+    [OpCode.OP_LINETOTAL]: 'OP_LINETOTAL',
     [OpCode.OP_EQUALVERIFY]: 'OP_EQUALVERIFY',
-    [OpCode.OP_CHECKSIG]: 'OP_CHECKSIG',
+    [OpCode.OP_CHECKSTOCK]: 'OP_CHECKSTOCK',
     // ... explicit mappings only for what you need
 } as const satisfies Partial<Record<OpCode, string>>;
 ```
@@ -2167,7 +2169,7 @@ type ReverseMap<T extends Record<string, string | number | symbol>> = {
  */
 function isEnumValue<T extends Record<string, unknown>>(
     enumObj: T,
-    value: unknown
+    value: unknown,
 ): value is T[keyof T] {
     return Object.values(enumObj).includes(value);
 }
@@ -2207,11 +2209,11 @@ type UserBad = {
 // - Type aliases for primitives
 // - Tuple types
 
-type Result<T, E> = Success<T> | Failure<E>;  // Union - use type
-type Combined = A & B;                         // Intersection - use type
+type Result<T, E> = Success<T> | Failure<E>; // Union - use type
+type Combined = A & B; // Intersection - use type
 type Readonly<T> = { readonly [K in keyof T]: T[K] }; // Mapped - use type
-type UserId = string;                          // Alias - use type
-type Point = readonly [number, number];        // Tuple - use type
+type UserId = string; // Alias - use type
+type Point = readonly [number, number]; // Tuple - use type
 ```
 
 ### 1.4.2 Interface Extension
@@ -2477,16 +2479,16 @@ interface QueryInterface {
     // Call signature - select elements
     (selector: string): ElementCollection;
     (element: Element): ElementCollection;
-    
+
     // Properties
     readonly version: string;
     readonly fn: PluginPrototype;
-    
+
     // Methods
     ajax(options: AjaxOptions): Promise<Response>;
     get(url: string): Promise<Response>;
     post(url: string, data: unknown): Promise<Response>;
-    
+
     // Index signature for plugins
     readonly [plugin: string]: unknown;
 }
@@ -2497,12 +2499,12 @@ interface QueryInterface {
 interface Assert {
     // Call signature
     (condition: boolean, message?: string): asserts condition;
-    
+
     // Methods
     equal<T>(actual: T, expected: T, message?: string): void;
     deepEqual<T>(actual: T, expected: T, message?: string): void;
     throws(fn: () => void, expected?: RegExp | Constructor<Error>): void;
-    
+
     // Nested namespace
     readonly strict: {
         (condition: boolean, message?: string): asserts condition;
@@ -2525,37 +2527,56 @@ Union types represent values that can be one of several types. Use union types f
  * Each variant has a literal type discriminator.
  */
 type Result<T, E = Error> =
-    | { readonly success: true; readonly value: T }
-    | { readonly success: false; readonly error: E };
+    { readonly success: true; readonly value: T } | { readonly success: false; readonly error: E };
 
 /**
  * State machine using discriminated unions.
  */
-type TransactionState =
-    | { readonly status: 'unsigned'; readonly inputs: readonly Input[]; readonly outputs: readonly Output[] }
-    | { readonly status: 'partially_signed'; readonly inputs: readonly Input[]; readonly outputs: readonly Output[]; readonly signatures: readonly Signature[] }
-    | { readonly status: 'fully_signed'; readonly raw: Uint8Array; readonly txid: TxId }
-    | { readonly status: 'broadcast'; readonly raw: Uint8Array; readonly txid: TxId; readonly broadcastTime: Date }
-    | { readonly status: 'confirmed'; readonly raw: Uint8Array; readonly txid: TxId; readonly blockHash: BlockHash; readonly confirmations: number };
+type OrderState =
+    | {
+          readonly status: 'unpriced';
+          readonly lineItems: readonly LineItem[];
+          readonly adjustments: readonly Adjustment[];
+      }
+    | {
+          readonly status: 'partially_priced';
+          readonly lineItems: readonly LineItem[];
+          readonly adjustments: readonly Adjustment[];
+          readonly charges: readonly Charge[];
+      }
+    | { readonly status: 'fully_priced'; readonly raw: Uint8Array; readonly orderId: OrderId }
+    | {
+          readonly status: 'submitted';
+          readonly raw: Uint8Array;
+          readonly orderId: OrderId;
+          readonly submittedTime: Date;
+      }
+    | {
+          readonly status: 'confirmed';
+          readonly raw: Uint8Array;
+          readonly orderId: OrderId;
+          readonly revisionNumber: RevisionNumber;
+          readonly confirmedAt: Date;
+      };
 
 /**
  * Exhaustive switch handling.
  */
-function processTransaction(tx: TransactionState): string {
-    switch (tx.status) {
-        case 'unsigned':
-            return 'Transaction needs signatures';
-        case 'partially_signed':
-            return `Transaction has ${tx.signatures.length} signatures`;
-        case 'fully_signed':
-            return `Ready to broadcast: ${tx.txid}`;
-        case 'broadcast':
-            return `Waiting for confirmation since ${tx.broadcastTime}`;
+function processOrder(order: OrderState): string {
+    switch (order.status) {
+        case 'unpriced':
+            return 'Order needs pricing';
+        case 'partially_priced':
+            return `Order has ${order.charges.length} charges`;
+        case 'fully_priced':
+            return `Ready to submit: ${order.orderId}`;
+        case 'submitted':
+            return `Waiting for confirmation since ${order.submittedTime}`;
         case 'confirmed':
-            return `Confirmed with ${tx.confirmations} confirmations`;
+            return `Confirmed at ${order.confirmedAt.toISOString()}`;
         default:
             // Exhaustiveness check - if we miss a case, this errors
-            const _exhaustive: never = tx;
+            const _exhaustive: never = order;
             throw new Error(`Unknown status: ${_exhaustive}`);
     }
 }
@@ -2601,26 +2622,30 @@ Always define named types or interfaces for return types. Never return inline ob
 
 ```typescript
 // FORBIDDEN - inline return type, undocumented, unreusable
-function analyze(tx: Transaction): { readonly fee: bigint; readonly size: number; readonly rate: bigint } {
+function analyze(order: Order): {
+    readonly total: bigint;
+    readonly size: number;
+    readonly rate: bigint;
+} {
     // ...
 }
 
 // CORRECT - named return type
-interface TransactionAnalysis {
-    readonly fee: bigint;
+interface OrderAnalysis {
+    readonly total: bigint;
     readonly size: number;
     readonly rate: bigint;
 }
 
-function analyze(tx: Transaction): TransactionAnalysis {
+function analyze(order: Order): OrderAnalysis {
     // ...
 }
 
 // Now consumers can import and use the return type
-import type { TransactionAnalysis } from './analysis.js';
+import type { OrderAnalysis } from './analysis.js';
 
-function formatAnalysis(analysis: TransactionAnalysis): string {
-    return `Fee: ${analysis.fee}, Size: ${analysis.size}, Rate: ${analysis.rate}`;
+function formatAnalysis(analysis: OrderAnalysis): string {
+    return `Total: ${analysis.total}, Size: ${analysis.size}, Rate: ${analysis.rate}`;
 }
 ```
 
@@ -2755,21 +2780,13 @@ type OmitMethods<T> = {
  * Deep mapped types.
  */
 
-type DeepReadonly<T> = T extends object
-    ? { readonly [P in keyof T]: DeepReadonly<T[P]> }
-    : T;
+type DeepReadonly<T> = T extends object ? { readonly [P in keyof T]: DeepReadonly<T[P]> } : T;
 
-type DeepPartial<T> = T extends object
-    ? { [P in keyof T]?: DeepPartial<T[P]> }
-    : T;
+type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
 
-type DeepRequired<T> = T extends object
-    ? { [P in keyof T]-?: DeepRequired<T[P]> }
-    : T;
+type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
 
-type DeepMutable<T> = T extends object
-    ? { -readonly [P in keyof T]: DeepMutable<T[P]> }
-    : T;
+type DeepMutable<T> = T extends object ? { -readonly [P in keyof T]: DeepMutable<T[P]> } : T;
 ```
 
 ### 1.4.4 Conditional Types
@@ -2815,7 +2832,9 @@ type ReturnType<T> = T extends (...args: readonly unknown[]) => infer R ? R : ne
 type Parameters<T> = T extends (...args: infer P) => unknown ? P : never;
 
 // Extract first parameter
-type FirstParameter<T> = T extends (first: infer F, ...args: readonly unknown[]) => unknown ? F : never;
+type FirstParameter<T> = T extends (first: infer F, ...args: readonly unknown[]) => unknown
+    ? F
+    : never;
 
 // Extract array element type
 type ElementType<T> = T extends readonly (infer E)[] ? E : never;
@@ -2834,16 +2853,23 @@ type ConstructorParameters<T> = T extends new (...args: infer P) => unknown ? P 
  */
 
 // Get type name as string literal
-type TypeName<T> =
-    T extends string ? 'string' :
-    T extends number ? 'number' :
-    T extends boolean ? 'boolean' :
-    T extends undefined ? 'undefined' :
-    T extends null ? 'null' :
-    T extends readonly unknown[] ? 'array' :
-    T extends (...args: readonly unknown[]) => unknown ? 'function' :
-    T extends object ? 'object' :
-    'unknown';
+type TypeName<T> = T extends string
+    ? 'string'
+    : T extends number
+      ? 'number'
+      : T extends boolean
+        ? 'boolean'
+        : T extends undefined
+          ? 'undefined'
+          : T extends null
+            ? 'null'
+            : T extends readonly unknown[]
+              ? 'array'
+              : T extends (...args: readonly unknown[]) => unknown
+                ? 'function'
+                : T extends object
+                  ? 'object'
+                  : 'unknown';
 
 // Make properties nullable
 type Nullable<T> = {
@@ -2879,15 +2905,15 @@ type SemVer = `${number}.${number}.${number}`;
 type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 /**
- * Bitcoin-specific patterns.
+ * Order-specific patterns.
  */
-type Bech32Address = `bc1q${string}` | `bc1p${string}`;
-type Bech32TestnetAddress = `tb1q${string}` | `tb1p${string}`;
-type LegacyAddress = `1${string}` | `3${string}`;
-type TestnetLegacyAddress = `m${string}` | `n${string}` | `2${string}`;
+type ModernOrderId = `ord-web-${string}` | `ord-app-${string}`;
+type SandboxModernOrderId = `sbx-web-${string}` | `sbx-app-${string}`;
+type LegacyOrderId = `pos-${string}` | `tel-${string}`;
+type SandboxLegacyOrderId = `sbx-pos-${string}` | `sbx-tel-${string}` | `sbx-mail-${string}`;
 
-type BitcoinAddress = Bech32Address | LegacyAddress;
-type TestnetAddress = Bech32TestnetAddress | TestnetLegacyAddress;
+type OrderId = ModernOrderId | LegacyOrderId;
+type SandboxId = SandboxModernOrderId | SandboxLegacyOrderId;
 
 /**
  * API route patterns.
@@ -2899,10 +2925,10 @@ type APIRoute = `${HTTPMethod} ${APIEndpoint}`;
 /**
  * Intrinsic string manipulation types.
  */
-type Upper = Uppercase<'hello'>;      // 'HELLO'
-type Lower = Lowercase<'HELLO'>;      // 'hello'
-type Cap = Capitalize<'hello'>;       // 'Hello'
-type Uncap = Uncapitalize<'Hello'>;   // 'hello'
+type Upper = Uppercase<'hello'>; // 'HELLO'
+type Lower = Lowercase<'HELLO'>; // 'hello'
+type Cap = Capitalize<'hello'>; // 'Hello'
+type Uncap = Uncapitalize<'Hello'>; // 'hello'
 
 /**
  * Complex template patterns.
@@ -2945,8 +2971,8 @@ type FirstParam<T> = T extends (arg: infer P, ...rest: readonly unknown[]) => un
 type LastParam<T> = T extends (arg: infer P) => unknown
     ? P
     : T extends (arg: unknown, ...rest: infer R) => unknown
-        ? LastParam<(...args: R) => unknown>
-        : never;
+      ? LastParam<(...args: R) => unknown>
+      : never;
 
 // Extract promise value
 type UnwrapPromise<T> = T extends Promise<infer U> ? UnwrapPromise<U> : T;
@@ -2975,12 +3001,11 @@ type AsyncFunctionParts<T> = T extends (...args: infer A) => Promise<infer R>
 /**
  * Infer in template literals.
  */
-type ExtractRouteParams<T extends string> = 
-    T extends `${string}:${infer Param}/${infer Rest}`
-        ? Param | ExtractRouteParams<Rest>
-        : T extends `${string}:${infer Param}`
-            ? Param
-            : never;
+type ExtractRouteParams<T extends string> = T extends `${string}:${infer Param}/${infer Rest}`
+    ? Param | ExtractRouteParams<Rest>
+    : T extends `${string}:${infer Param}`
+      ? Param
+      : never;
 
 type Params = ExtractRouteParams<'/users/:userId/posts/:postId'>;
 // 'userId' | 'postId'
@@ -2994,13 +3019,7 @@ Types can reference themselves for recursive structures.
 /**
  * JSON type - recursive union.
  */
-type JSON =
-    | string
-    | number
-    | boolean
-    | null
-    | readonly JSON[]
-    | { readonly [key: string]: JSON };
+type JSON = string | number | boolean | null | readonly JSON[] | { readonly [key: string]: JSON };
 
 /**
  * Tree structures.
@@ -3027,17 +3046,11 @@ interface LinkedListNode<T> {
 /**
  * Deep utility types (recursive).
  */
-type DeepReadonly<T> = T extends object
-    ? { readonly [P in keyof T]: DeepReadonly<T[P]> }
-    : T;
+type DeepReadonly<T> = T extends object ? { readonly [P in keyof T]: DeepReadonly<T[P]> } : T;
 
-type DeepPartial<T> = T extends object
-    ? { [P in keyof T]?: DeepPartial<T[P]> }
-    : T;
+type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
 
-type DeepRequired<T> = T extends object
-    ? { [P in keyof T]-?: DeepRequired<T[P]> }
-    : T;
+type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
 
 /**
  * Path types for nested property access.
@@ -3053,8 +3066,8 @@ type PathValue<T, P extends string> = P extends `${infer K}.${infer Rest}`
         ? PathValue<T[K], Rest>
         : never
     : P extends keyof T
-        ? T[P]
-        : never;
+      ? T[P]
+      : never;
 
 // Usage
 interface Config {
@@ -3076,9 +3089,7 @@ type HostType = PathValue<Config, 'database.host'>;
 /**
  * Flatten nested arrays.
  */
-type Flatten<T> = T extends readonly (infer E)[]
-    ? Flatten<E>
-    : T;
+type Flatten<T> = T extends readonly (infer E)[] ? Flatten<E> : T;
 
 type Nested = readonly [1, readonly [2, readonly [3, 4]]];
 type Flat = Flatten<Nested>; // 1 | 2 | 3 | 4
@@ -3110,163 +3121,158 @@ Every class must follow this exact structure, in this exact order:
 /**
  * Example class following the structure requirements.
  */
-class TransactionBuilder {
+class OrderBuilder {
     // 1. Static private fields
     static #instanceCount = 0;
-    static #registry = new Map<string, TransactionBuilder>();
-    
+    static #registry = new Map<string, OrderBuilder>();
+
     // 2. Static public fields
     static readonly VERSION = 2;
-    static readonly DEFAULT_SEQUENCE = 0xffffffff;
-    static readonly MAX_INPUTS = 100;
-    
+    static readonly MAX_QUANTITY = 0xffffffff;
+    static readonly MAX_LINE_ITEMS = 100;
+
     // 3. Static initialization blocks
     static {
         // Validate configuration
-        if (this.MAX_INPUTS > 1000) {
-            throw new Error('MAX_INPUTS too high');
+        if (this.MAX_LINE_ITEMS > 1000) {
+            throw new Error('MAX_LINE_ITEMS too high');
         }
         // Freeze class to prevent modification
         Object.freeze(this);
         Object.freeze(this.prototype);
     }
-    
+
     // 4. Private instance fields
     readonly #id: string;
-    readonly #inputs: Input[] = [];
-    readonly #outputs: Output[] = [];
+    readonly #lineItems: LineItem[] = [];
+    readonly #adjustments: Adjustment[] = [];
     #version: number;
-    #locktime: number;
-    
+    #revision: number;
+
     // 5. Protected instance fields (avoid when possible)
     protected readonly config: BuilderConfig;
-    
+
     // 6. Public readonly instance fields
-    readonly network: Network;
+    readonly currency: Currency;
     readonly createdAt: Date;
-    
+
     // 7. Public mutable instance fields (minimize)
     // Avoid these when possible
-    
+
     // 8. Constructor
-    constructor(network: Network, config: BuilderConfig = BuilderConfig.default()) {
+    constructor(currency: Currency, config: BuilderConfig = BuilderConfig.default()) {
         this.#id = crypto.randomUUID();
-        this.#version = TransactionBuilder.VERSION;
-        this.#locktime = 0;
+        this.#version = OrderBuilder.VERSION;
+        this.#revision = 0;
         this.config = config;
-        this.network = network;
+        this.currency = currency;
         this.createdAt = new Date();
-        
-        TransactionBuilder.#instanceCount++;
-        TransactionBuilder.#registry.set(this.#id, this);
+
+        OrderBuilder.#instanceCount++;
+        OrderBuilder.#registry.set(this.#id, this);
     }
-    
+
     // 9. Static factory methods
-    static create(network: Network): TransactionBuilder {
-        return new TransactionBuilder(network);
+    static create(currency: Currency): OrderBuilder {
+        return new OrderBuilder(currency);
     }
-    
-    static fromHex(hex: string, network: Network): TransactionBuilder {
-        const builder = new TransactionBuilder(network);
+
+    static fromHex(hex: string, currency: Currency): OrderBuilder {
+        const builder = new OrderBuilder(currency);
         builder.#parseHex(hex);
         return builder;
     }
-    
+
     static getInstanceCount(): number {
         return this.#instanceCount;
     }
-    
+
     // 10. Public getters/setters
     get id(): string {
         return this.#id;
     }
-    
+
     get version(): number {
         return this.#version;
     }
-    
+
     set version(v: number) {
         if (v < 1 || v > 2) {
             throw new RangeError('Version must be 1 or 2');
         }
         this.#version = v;
     }
-    
-    get inputCount(): number {
-        return this.#inputs.length;
+
+    get lineItemCount(): number {
+        return this.#lineItems.length;
     }
-    
-    get outputCount(): number {
-        return this.#outputs.length;
+
+    get adjustmentCount(): number {
+        return this.#adjustments.length;
     }
-    
+
     // 11. Public methods
-    addInput(input: Input): this {
-        this.#validateInput(input);
-        this.#inputs.push(input);
+    addLineItem(lineItem: LineItem): this {
+        this.#validateLineItem(lineItem);
+        this.#lineItems.push(lineItem);
         return this;
     }
-    
-    addOutput(output: Output): this {
-        this.#validateOutput(output);
-        this.#outputs.push(output);
+
+    addAdjustment(adjustment: Adjustment): this {
+        this.#validateAdjustment(adjustment);
+        this.#adjustments.push(adjustment);
         return this;
     }
-    
-    build(): Transaction {
-        this.#validateTransaction();
-        return this.#createTransaction();
+
+    build(): Order {
+        this.#validateOrder();
+        return this.#createOrder();
     }
-    
+
     toHex(): string {
         return this.#serialize().toString('hex');
     }
-    
+
     // 12. Protected methods
     protected validateConfig(): boolean {
         return this.config.isValid();
     }
-    
-    protected getInputs(): readonly Input[] {
-        return this.#inputs;
+
+    protected getLineItems(): readonly LineItem[] {
+        return this.#lineItems;
     }
-    
+
     // 13. Private methods
-    #validateInput(input: Input): void {
-        if (!input.txid || input.txid.length !== 32) {
-            throw new ValidationError('Invalid input txid');
+    #validateLineItem(lineItem: LineItem): void {
+        if (!lineItem.orderId || lineItem.orderId.length !== 32) {
+            throw new ValidationError('Invalid line item orderId');
         }
     }
-    
-    #validateOutput(output: Output): void {
-        if (output.value < 0n) {
-            throw new ValidationError('Output value cannot be negative');
+
+    #validateAdjustment(adjustment: Adjustment): void {
+        if (adjustment.value < 0n) {
+            throw new ValidationError('Adjustment value cannot be negative');
         }
     }
-    
-    #validateTransaction(): void {
-        if (this.#inputs.length === 0) {
-            throw new ValidationError('Transaction must have at least one input');
+
+    #validateOrder(): void {
+        if (this.#lineItems.length === 0) {
+            throw new ValidationError('Order must have at least one line item');
         }
-        if (this.#outputs.length === 0) {
-            throw new ValidationError('Transaction must have at least one output');
+        if (this.#adjustments.length === 0) {
+            throw new ValidationError('Order must have at least one adjustment');
         }
     }
-    
-    #createTransaction(): Transaction {
-        return new Transaction(
-            this.#version,
-            this.#inputs,
-            this.#outputs,
-            this.#locktime
-        );
+
+    #createOrder(): Order {
+        return new Order(this.#version, this.#lineItems, this.#adjustments, this.#revision);
     }
-    
+
     #serialize(): Uint8Array {
         // Serialization implementation
         return new Uint8Array();
     }
-    
+
     #parseHex(hex: string): void {
         // Parsing implementation
     }
@@ -3288,13 +3294,13 @@ class User {
     readonly role: Role;
     readonly createdAt: Date;
     readonly metadata: Readonly<Record<string, string>>;
-    
+
     constructor(
         id: string,
         name: string,
         email: string,
         role: Role = Role.User,
-        metadata: Readonly<Record<string, string>> = {}
+        metadata: Readonly<Record<string, string>> = {},
     ) {
         // Initialize in declaration order
         this.id = id;
@@ -3310,8 +3316,8 @@ class User {
 class BadUser {
     readonly id: string;
     readonly name: string;
-    readonly email?: string;  // Optional creates different shapes
-    
+    readonly email?: string; // Optional creates different shapes
+
     constructor(id: string, name: string, email?: string) {
         this.id = id;
         this.name = name;
@@ -3325,12 +3331,12 @@ class BadUser {
 class GoodUser {
     readonly id: string;
     readonly name: string;
-    readonly email: string | null;  // Explicit null, always present
-    
+    readonly email: string | null; // Explicit null, always present
+
     constructor(id: string, name: string, email: string | null = null) {
         this.id = id;
         this.name = name;
-        this.email = email;  // Always initialized
+        this.email = email; // Always initialized
     }
 }
 ```
@@ -3340,76 +3346,76 @@ class GoodUser {
 Use `#privateFields` for true runtime encapsulation. Unlike TypeScript's `private` keyword which is compile-time only, `#` fields are enforced at runtime by the JavaScript engine. They cannot be accessed outside the class, not through reflection, not through `Reflect.ownKeys`, not through any mechanism.
 
 ```typescript
-class Wallet {
+class Session {
     // True private - inaccessible from outside
-    readonly #privateKey: Uint8Array;
-    #balance: bigint;
-    
-    constructor(privateKey: Uint8Array) {
-        if (privateKey.length !== 32) {
-            throw new Error('Private key must be 32 bytes');
+    readonly #token: Uint8Array;
+    #requestCount: bigint;
+
+    constructor(token: Uint8Array) {
+        if (token.length !== 32) {
+            throw new Error('Token must be 32 bytes');
         }
-        this.#privateKey = privateKey;
-        this.#balance = 0n;
+        this.#token = token;
+        this.#requestCount = 0n;
     }
-    
+
     // Brand check using private field
     // This is the only way to verify genuine instances
-    static isWallet(value: unknown): value is Wallet {
+    static isSession(value: unknown): value is Session {
         try {
-            return #privateKey in (value as Wallet);
+            return #token in (value as Session);
         } catch {
             return false;
         }
     }
-    
-    get balance(): bigint {
-        return this.#balance;
+
+    get requestCount(): bigint {
+        return this.#requestCount;
     }
-    
+
     // Private methods
-    #derivePublicKey(): Uint8Array {
-        // Derivation using #privateKey
-        return new Uint8Array(33);
+    #snapshot(): Uint8Array {
+        // Internal snapshot of session state
+        return new Uint8Array(16);
     }
-    
-    #updateBalance(amount: bigint): void {
-        this.#balance += amount;
+
+    #recordRequest(): void {
+        this.#requestCount += 1n;
     }
-    
-    getAddress(): string {
-        const pubkey = this.#derivePublicKey();
-        // Address derivation
+
+    getLabel(): string {
+        const snapshot = this.#snapshot();
+        // Public label derivation
         return '';
     }
 }
 
 // Private fields are invisible
-const wallet = new Wallet(new Uint8Array(32));
-Object.keys(wallet);                    // []
-Object.getOwnPropertyNames(wallet);     // []
-Reflect.ownKeys(wallet);                // []
-JSON.stringify(wallet);                 // '{}'
+const session = new Session(new Uint8Array(32));
+Object.keys(session); // []
+Object.getOwnPropertyNames(session); // []
+Reflect.ownKeys(session); // []
+JSON.stringify(session); // '{}'
 
-// wallet.#privateKey                   // SyntaxError: Private field
-// wallet['#privateKey']                // undefined (different property)
+// session.#token                    // SyntaxError: Private field
+// session['#token']                 // undefined (different property)
 ```
 
 Never use TypeScript's `private` keyword for sensitive data. It provides no runtime protection:
 
 ```typescript
 // BAD: TypeScript private is compile-time only
-class BadWallet {
-    private privateKey: Uint8Array;  // NOT actually private!
-    
-    constructor(key: Uint8Array) {
-        this.privateKey = key;
+class BadSession {
+    private token: Uint8Array; // NOT actually private!
+
+    constructor(token: Uint8Array) {
+        this.token = token;
     }
 }
 
-const bad = new BadWallet(new Uint8Array(32));
-(bad as any).privateKey;  // Accessible!
-bad['privateKey'];        // Accessible!
+const bad = new BadSession(new Uint8Array(32));
+(bad as any).token; // Accessible!
+bad['token']; // Accessible!
 ```
 
 ### 1.5.4 Static Members
@@ -3422,11 +3428,11 @@ class ConnectionPool {
     static #instances = new Map<string, ConnectionPool>();
     static #maxPoolSize = 10;
     static #connectionCount = 0;
-    
+
     // Static public constants
     static readonly DEFAULT_TIMEOUT = 30000;
     static readonly MAX_RETRIES = 3;
-    
+
     // Static initialization
     static {
         // Load configuration
@@ -3437,11 +3443,11 @@ class ConnectionPool {
                 this.#maxPoolSize = parsed;
             }
         }
-        
+
         // Freeze to prevent modification
         Object.freeze(this);
     }
-    
+
     // Static factory
     static getInstance(name: string): ConnectionPool {
         let instance = this.#instances.get(name);
@@ -3451,25 +3457,25 @@ class ConnectionPool {
         }
         return instance;
     }
-    
+
     static getConnectionCount(): number {
         return this.#connectionCount;
     }
-    
+
     // Instance members
     readonly #name: string;
     readonly #connections: Connection[] = [];
-    
+
     private constructor(name: string) {
         this.#name = name;
     }
-    
+
     acquire(): Connection {
         ConnectionPool.#connectionCount++;
         // ... implementation
         return new Connection();
     }
-    
+
     release(connection: Connection): void {
         ConnectionPool.#connectionCount--;
         // ... implementation
@@ -3490,17 +3496,17 @@ abstract class Serializable {
      * Serialize to bytes. Must be implemented by subclasses.
      */
     abstract serialize(): Uint8Array;
-    
+
     /**
      * Deserialize from bytes. Must be implemented by subclasses.
      */
     abstract deserialize(data: Uint8Array): void;
-    
+
     /**
      * Get the serialized byte length. Must be implemented by subclasses.
      */
     abstract get byteLength(): number;
-    
+
     /**
      * Concrete method using abstract methods.
      * Subclasses inherit this implementation.
@@ -3511,17 +3517,17 @@ abstract class Serializable {
         instance.deserialize(data);
         return instance;
     }
-    
+
     /**
      * Concrete method for hex conversion.
      */
     toHex(): string {
         const bytes = this.serialize();
         return Array.from(bytes)
-            .map(b => b.toString(16).padStart(2, '0'))
+            .map((b) => b.toString(16).padStart(2, '0'))
             .join('');
     }
-    
+
     /**
      * Compare serialized forms.
      */
@@ -3539,26 +3545,26 @@ abstract class Serializable {
 /**
  * Concrete implementation.
  */
-class Transaction extends Serializable {
-    readonly #version: number;
-    readonly #inputs: readonly Input[];
-    readonly #outputs: readonly Output[];
-    readonly #locktime: number;
+class Order extends Serializable {
+    readonly #revision: number;
+    readonly #lineItems: readonly LineItem[];
+    readonly #adjustments: readonly Adjustment[];
+    readonly #placedAt: number;
     #cachedBytes: Uint8Array | null = null;
-    
+
     constructor(
-        version: number,
-        inputs: readonly Input[],
-        outputs: readonly Output[],
-        locktime: number
+        revision: number,
+        lineItems: readonly LineItem[],
+        adjustments: readonly Adjustment[],
+        placedAt: number,
     ) {
         super();
-        this.#version = version;
-        this.#inputs = inputs;
-        this.#outputs = outputs;
-        this.#locktime = locktime;
+        this.#revision = revision;
+        this.#lineItems = lineItems;
+        this.#adjustments = adjustments;
+        this.#placedAt = placedAt;
     }
-    
+
     override serialize(): Uint8Array {
         if (this.#cachedBytes) {
             return this.#cachedBytes;
@@ -3569,11 +3575,11 @@ class Transaction extends Serializable {
         this.#cachedBytes = bytes;
         return bytes;
     }
-    
+
     override deserialize(data: Uint8Array): void {
         // Parsing implementation
     }
-    
+
     override get byteLength(): number {
         // Calculate byte length
         return 0;
@@ -3595,16 +3601,16 @@ Class extension must follow these rules:
 class Animal {
     readonly name: string;
     readonly birthDate: Date;
-    
+
     constructor(name: string) {
         this.name = name;
         this.birthDate = new Date();
     }
-    
+
     speak(): string {
         return `${this.name} makes a sound`;
     }
-    
+
     getAge(): number {
         return Date.now() - this.birthDate.getTime();
     }
@@ -3613,18 +3619,18 @@ class Animal {
 class Dog extends Animal {
     readonly breed: string;
     readonly isGoodBoy: boolean;
-    
+
     constructor(name: string, breed: string) {
-        super(name);  // Must be first
+        super(name); // Must be first
         this.breed = breed;
-        this.isGoodBoy = true;  // Always true
+        this.isGoodBoy = true; // Always true
     }
-    
+
     // MUST use override keyword
     override speak(): string {
         return `${this.name} barks!`;
     }
-    
+
     // Dog-specific method
     fetch(): string {
         return `${this.name} fetches the ball`;
@@ -3633,16 +3639,16 @@ class Dog extends Animal {
 
 class Cat extends Animal {
     readonly indoor: boolean;
-    
+
     constructor(name: string, indoor: boolean = true) {
         super(name);
         this.indoor = indoor;
     }
-    
+
     override speak(): string {
         return `${this.name} meows`;
     }
-    
+
     // Cat-specific method
     ignore(): string {
         return `${this.name} ignores you completely`;
@@ -3651,7 +3657,7 @@ class Cat extends Animal {
 
 // Liskov Substitution - works with any Animal
 function makeSpeak(animal: Animal): string {
-    return animal.speak();  // Works with Dog, Cat, or any Animal
+    return animal.speak(); // Works with Dog, Cat, or any Animal
 }
 ```
 
@@ -3680,32 +3686,32 @@ interface Disposable {
 }
 
 /**
- * Transaction implements multiple interfaces.
+ * Order implements multiple interfaces.
  */
-class Transaction implements Hashable, Comparable<Transaction>, Cloneable<Transaction>, Disposable {
+class Order implements Hashable, Comparable<Order>, Cloneable<Order>, Disposable {
     readonly #data: Uint8Array;
     #disposed = false;
     #cachedHash: Uint8Array | null = null;
-    
+
     constructor(data: Uint8Array) {
         this.#data = data;
     }
-    
+
     // Hashable implementation
     get hashAlgorithm(): string {
-        return 'sha256d';
+        return 'sha256';
     }
-    
+
     hash(): Uint8Array {
         if (!this.#cachedHash) {
-            // Double SHA256
-            this.#cachedHash = sha256(sha256(this.#data));
+            // Content hash over the serialized order
+            this.#cachedHash = sha256(this.#data);
         }
         return this.#cachedHash;
     }
-    
+
     // Comparable implementation
-    compareTo(other: Transaction): number {
+    compareTo(other: Order): number {
         const thisHash = this.hash();
         const otherHash = other.hash();
         for (let i = 0; i < 32; i++) {
@@ -3714,21 +3720,21 @@ class Transaction implements Hashable, Comparable<Transaction>, Cloneable<Transa
         }
         return 0;
     }
-    
-    equals(other: Transaction): boolean {
+
+    equals(other: Order): boolean {
         return this.compareTo(other) === 0;
     }
-    
+
     // Cloneable implementation
-    clone(): Transaction {
-        return new Transaction(this.#data.slice());
+    clone(): Order {
+        return new Order(this.#data.slice());
     }
-    
+
     // Disposable implementation
     get disposed(): boolean {
         return this.#disposed;
     }
-    
+
     [Symbol.dispose](): void {
         if (!this.#disposed) {
             this.#disposed = true;
@@ -3756,7 +3762,7 @@ function Timestamped<TBase extends Constructor>(Base: TBase) {
     return class extends Base {
         readonly createdAt = new Date();
         updatedAt = new Date();
-        
+
         touch(): void {
             this.updatedAt = new Date();
         }
@@ -3769,19 +3775,19 @@ function Timestamped<TBase extends Constructor>(Base: TBase) {
 function Tagged<TBase extends Constructor>(Base: TBase) {
     return class extends Base {
         readonly #tags = new Set<string>();
-        
+
         addTag(tag: string): void {
             this.#tags.add(tag.toLowerCase());
         }
-        
+
         removeTag(tag: string): void {
             this.#tags.delete(tag.toLowerCase());
         }
-        
+
         hasTag(tag: string): boolean {
             return this.#tags.has(tag.toLowerCase());
         }
-        
+
         get tags(): readonly string[] {
             return [...this.#tags];
         }
@@ -3794,19 +3800,19 @@ function Tagged<TBase extends Constructor>(Base: TBase) {
 function Validatable<TBase extends Constructor>(Base: TBase) {
     return class extends Base {
         #validationErrors: string[] = [];
-        
+
         get isValid(): boolean {
             return this.#validationErrors.length === 0;
         }
-        
+
         get validationErrors(): readonly string[] {
             return this.#validationErrors;
         }
-        
+
         protected addError(error: string): void {
             this.#validationErrors.push(error);
         }
-        
+
         protected clearErrors(): void {
             this.#validationErrors = [];
         }
@@ -3832,7 +3838,7 @@ const ValidatableEntity = Validatable(Timestamped(BaseEntity));
 class Document extends TimestampedTaggedEntity {
     readonly title: string;
     readonly content: string;
-    
+
     constructor(title: string, content: string) {
         super();
         this.title = title;
@@ -3856,11 +3862,11 @@ class Protocol {
     static readonly #opcodeMap: ReadonlyMap<number, string>;
     static readonly #nameMap: ReadonlyMap<string, number>;
     static readonly #validOpcodes: ReadonlySet<number>;
-    
+
     // Static public constants
     static readonly VERSION = 1;
-    static readonly MAX_SCRIPT_SIZE = 10000;
-    
+    static readonly MAX_PROGRAM_SIZE = 10000;
+
     static {
         // Build lookup tables
         const opcodes: ReadonlyArray<readonly [number, string]> = [
@@ -3883,40 +3889,40 @@ class Protocol {
             [0x76, 'OP_DUP'],
             [0x87, 'OP_EQUAL'],
             [0x88, 'OP_EQUALVERIFY'],
-            [0xa9, 'OP_HASH160'],
-            [0xaa, 'OP_HASH256'],
-            [0xac, 'OP_CHECKSIG'],
-            [0xad, 'OP_CHECKSIGVERIFY'],
-            [0xae, 'OP_CHECKMULTISIG'],
+            [0xa9, 'OP_LINETOTAL'],
+            [0xaa, 'OP_ORDERTOTAL'],
+            [0xac, 'OP_CHECKSTOCK'],
+            [0xad, 'OP_CHECKSTOCKVERIFY'],
+            [0xae, 'OP_CHECKALLSTOCK'],
         ];
-        
+
         const opcodeMap = new Map<number, string>();
         const nameMap = new Map<string, number>();
         const validOpcodes = new Set<number>();
-        
+
         for (const [code, name] of opcodes) {
             opcodeMap.set(code, name);
             nameMap.set(name, code);
             validOpcodes.add(code);
         }
-        
+
         this.#opcodeMap = opcodeMap;
         this.#nameMap = nameMap;
         this.#validOpcodes = validOpcodes;
-        
+
         // Freeze class after initialization
         Object.freeze(this);
         Object.freeze(this.prototype);
     }
-    
+
     static getOpcodeName(code: number): string | undefined {
         return this.#opcodeMap.get(code);
     }
-    
+
     static getOpcodeValue(name: string): number | undefined {
         return this.#nameMap.get(name);
     }
-    
+
     static isValidOpcode(code: number): boolean {
         return this.#validOpcodes.has(code);
     }
@@ -3933,17 +3939,17 @@ Decorators modify class elements. Use for cross-cutting concerns like memoizatio
  */
 function memoize<This, Args extends readonly unknown[], Return>(
     target: (this: This, ...args: Args) => Return,
-    context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return>
+    context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return>,
 ): (this: This, ...args: Args) => Return {
     const cache = new Map<string, Return>();
-    
+
     return function (this: This, ...args: Args): Return {
         const key = JSON.stringify(args);
-        
+
         if (cache.has(key)) {
             return cache.get(key)!;
         }
-        
+
         const result = target.call(this, ...args);
         cache.set(key, result);
         return result;
@@ -3955,10 +3961,10 @@ function memoize<This, Args extends readonly unknown[], Return>(
  */
 function timed<This, Args extends readonly unknown[], Return>(
     target: (this: This, ...args: Args) => Return,
-    context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return>
+    context: ClassMethodDecoratorContext<This, (this: This, ...args: Args) => Return>,
 ): (this: This, ...args: Args) => Return {
     const methodName = String(context.name);
-    
+
     return function (this: This, ...args: Args): Return {
         const start = performance.now();
         const result = target.call(this, ...args);
@@ -3971,10 +3977,7 @@ function timed<This, Args extends readonly unknown[], Return>(
 /**
  * Class decorator to seal.
  */
-function sealed(
-    target: Function,
-    context: ClassDecoratorContext
-): void {
+function sealed(target: Function, context: ClassDecoratorContext): void {
     context.addInitializer(function () {
         Object.seal(this);
         Object.seal(this.prototype);
@@ -3984,10 +3987,7 @@ function sealed(
 /**
  * Class decorator to freeze.
  */
-function frozen(
-    target: Function,
-    context: ClassDecoratorContext
-): void {
+function frozen(target: Function, context: ClassDecoratorContext): void {
     context.addInitializer(function () {
         Object.freeze(this);
         Object.freeze(this.prototype);
@@ -3999,7 +3999,7 @@ function frozen(
  */
 function nonNegative<This, Value extends number>(
     target: undefined,
-    context: ClassFieldDecoratorContext<This, Value>
+    context: ClassFieldDecoratorContext<This, Value>,
 ): (initialValue: Value) => Value {
     return function (initialValue: Value): Value {
         if (initialValue < 0) {
@@ -4019,7 +4019,7 @@ class Calculator {
         if (n <= 1) return n;
         return this.fibonacci(n - 1) + this.fibonacci(n - 2);
     }
-    
+
     @timed
     heavyComputation(iterations: number): number {
         let result = 0;
@@ -4047,9 +4047,9 @@ function getLength<T extends { readonly length: number }>(item: T): number {
     return item.length;
 }
 
-getLength('hello');           // OK - string has length
-getLength([1, 2, 3]);         // OK - array has length
-getLength({ length: 10 });    // OK - object has length
+getLength('hello'); // OK - string has length
+getLength([1, 2, 3]); // OK - array has length
+getLength({ length: 10 }); // OK - object has length
 // getLength(42);             // Error - number has no length
 
 /**
@@ -4060,8 +4060,8 @@ function getProperty<T, K extends keyof T>(obj: T, key: K): T[K] {
 }
 
 const user = { name: 'Alice', age: 30 };
-getProperty(user, 'name');    // OK - 'name' is key of user
-getProperty(user, 'age');     // OK - 'age' is key of user
+getProperty(user, 'name'); // OK - 'name' is key of user
+getProperty(user, 'age'); // OK - 'age' is key of user
 // getProperty(user, 'email'); // Error - 'email' not in user
 
 /**
@@ -4082,9 +4082,7 @@ function process<T extends Identifiable & Timestamped>(entity: T): string {
 /**
  * Constructor constraint.
  */
-function createInstance<T>(
-    ctor: new () => T
-): T {
+function createInstance<T>(ctor: new () => T): T {
     return new ctor();
 }
 
@@ -4125,7 +4123,7 @@ interface Response<T = unknown, E extends Error = Error> {
 }
 
 // Usage - defaults applied
-const response1: Response = { status: 200 };  // T = unknown, E = Error
+const response1: Response = { status: 200 }; // T = unknown, E = Error
 const response2: Response<string> = { data: 'hello', status: 200 };
 const response3: Response<number, TypeError> = { status: 500 };
 
@@ -4134,32 +4132,28 @@ const response3: Response<number, TypeError> = { status: 500 };
  */
 class Container<T = unknown> {
     readonly #value: T;
-    
+
     constructor(value: T) {
         this.#value = value;
     }
-    
+
     get value(): T {
         return this.#value;
     }
-    
+
     map<U>(fn: (value: T) => U): Container<U> {
         return new Container(fn(this.#value));
     }
 }
 
-const container1 = new Container(42);      // T inferred as number
-const container2 = new Container<string>('hello');  // T explicit
-const container3: Container = new Container(null);  // T = unknown
+const container1 = new Container(42); // T inferred as number
+const container2 = new Container<string>('hello'); // T explicit
+const container3: Container = new Container(null); // T = unknown
 
 /**
  * Multiple defaults with dependencies.
  */
-interface Repository<
-    T extends Entity,
-    ID = string,
-    Query = Partial<T>
-> {
+interface Repository<T extends Entity, ID = string, Query = Partial<T>> {
     findById(id: ID): Promise<T | null>;
     find(query: Query): Promise<readonly T[]>;
     save(entity: T): Promise<T>;
@@ -4179,11 +4173,11 @@ function identity<T>(value: T): T {
     return value;
 }
 
-const str = identity('hello');  // T inferred as 'hello' (literal type)
-const num = identity(42);       // T inferred as 42 (literal type)
+const str = identity('hello'); // T inferred as 'hello' (literal type)
+const num = identity(42); // T inferred as 42 (literal type)
 
 // Explicit when you need wider type
-const strWide = identity<string>('hello');  // T is string, not 'hello'
+const strWide = identity<string>('hello'); // T is string, not 'hello'
 
 /**
  * Inference from multiple arguments.
@@ -4200,7 +4194,7 @@ const merged = merge({ a: 1 }, { b: 2 });
  */
 function createState<T>(
     initial: T,
-    validator: (value: NoInfer<T>) => boolean
+    validator: (value: NoInfer<T>) => boolean,
 ): { value: T; isValid: boolean } {
     return {
         value: initial,
@@ -4218,7 +4212,7 @@ const state = createState('hello', (v) => v.length > 0);
  */
 function processItems<T, R>(
     items: readonly T[],
-    processor: (item: T, index: number) => R
+    processor: (item: T, index: number) => R,
 ): readonly R[] {
     return items.map(processor);
 }
@@ -4268,13 +4262,20 @@ interface ReadonlyBox<out T> {
 }
 
 // Dog extends Animal
-class Animal { name = 'animal'; }
-class Dog extends Animal { breed = 'unknown'; }
+class Animal {
+    name = 'animal';
+}
+class Dog extends Animal {
+    breed = 'unknown';
+}
 
 // ReadonlyBox<Dog> is assignable to ReadonlyBox<Animal>
 // because Dog is subtype of Animal and T is covariant
-const dogBox: ReadonlyBox<Dog> = { value: new Dog(), map: (fn) => ({ value: fn(new Dog()), map: null as any }) };
-const animalBox: ReadonlyBox<Animal> = dogBox;  // OK
+const dogBox: ReadonlyBox<Dog> = {
+    value: new Dog(),
+    map: (fn) => ({ value: fn(new Dog()), map: null as any }),
+};
+const animalBox: ReadonlyBox<Animal> = dogBox; // OK
 
 /**
  * Contravariant example.
@@ -4286,9 +4287,9 @@ interface Comparator<in T> {
 // Comparator<Animal> is assignable to Comparator<Dog>
 // because Animal is supertype of Dog and T is contravariant
 const animalComparator: Comparator<Animal> = {
-    compare: (a, b) => a.name.localeCompare(b.name)
+    compare: (a, b) => a.name.localeCompare(b.name),
 };
-const dogComparator: Comparator<Dog> = animalComparator;  // OK
+const dogComparator: Comparator<Dog> = animalComparator; // OK
 ```
 
 ### 1.6.5 Higher-Kinded Type Patterns
@@ -4306,15 +4307,18 @@ interface TypeMap {
     Map: Map<unknown, unknown>;
 }
 
-type Apply<F extends keyof TypeMap, A> = 
-    F extends 'Array' ? A[] :
-    F extends 'Promise' ? Promise<A> :
-    F extends 'Set' ? Set<A> :
-    F extends 'Map' ? Map<A, unknown> :
-    never;
+type Apply<F extends keyof TypeMap, A> = F extends 'Array'
+    ? A[]
+    : F extends 'Promise'
+      ? Promise<A>
+      : F extends 'Set'
+        ? Set<A>
+        : F extends 'Map'
+          ? Map<A, unknown>
+          : never;
 
-type StringArray = Apply<'Array', string>;  // string[]
-type NumberPromise = Apply<'Promise', number>;  // Promise<number>
+type StringArray = Apply<'Array', string>; // string[]
+type NumberPromise = Apply<'Promise', number>; // Promise<number>
 
 /**
  * Functor-like pattern.
@@ -4324,7 +4328,7 @@ interface Mappable<F extends keyof TypeMap> {
 }
 
 const arrayMappable: Mappable<'Array'> = {
-    map: (arr, f) => arr.map(f)
+    map: (arr, f) => arr.map(f),
 };
 
 /**
@@ -4374,14 +4378,14 @@ declare const __brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [__brand]: B };
 
 /**
- * Common branded types for Bitcoin/crypto.
+ * Common branded types for orders and commerce.
  */
-type TxId = Brand<Uint8Array, 'TxId'>;
-type BlockHash = Brand<Uint8Array, 'BlockHash'>;
-type MerkleRoot = Brand<Uint8Array, 'MerkleRoot'>;
-type ScriptPubKey = Brand<Uint8Array, 'ScriptPubKey'>;
-type ScriptSig = Brand<Uint8Array, 'ScriptSig'>;
-type WitnessStack = Brand<readonly Uint8Array[], 'WitnessStack'>;
+type OrderHash = Brand<Uint8Array, 'OrderHash'>;
+type BatchHash = Brand<Uint8Array, 'BatchHash'>;
+type HistoryRoot = Brand<Uint8Array, 'HistoryRoot'>;
+type InvoiceBlob = Brand<Uint8Array, 'InvoiceBlob'>;
+type LabelBlob = Brand<Uint8Array, 'LabelBlob'>;
+type AttachmentList = Brand<readonly Uint8Array[], 'AttachmentList'>;
 type PrivateKey = Brand<Uint8Array, 'PrivateKey'>;
 type PublicKey = Brand<Uint8Array, 'PublicKey'>;
 type Signature = Brand<Uint8Array, 'Signature'>;
@@ -4392,12 +4396,12 @@ type Address = Brand<string, 'Address'>;
  * Use bigint for values that can be large or come from external systems.
  * Use number only for values bounded to stay small.
  */
-type Satoshis = Brand<bigint, 'Satoshis'>;
-type BlockHeight = Brand<bigint, 'BlockHeight'>;
+type Cents = Brand<bigint, 'Cents'>;
+type RevisionNumber = Brand<bigint, 'RevisionNumber'>;
 type Timestamp = Brand<bigint, 'Timestamp'>;
-type Confirmations = Brand<number, 'Confirmations'>;  // Always small
-type VoutIndex = Brand<number, 'VoutIndex'>;          // Always small
-type Sequence = Brand<number, 'Sequence'>;            // 32-bit field
+type ItemCount = Brand<number, 'ItemCount'>; // Always small
+type AdjustmentIndex = Brand<number, 'AdjustmentIndex'>; // Always small
+type StatusFlags = Brand<number, 'StatusFlags'>; // 32-bit field
 
 /**
  * ID branded types.
@@ -4421,51 +4425,51 @@ Apply brands through validated factory functions. Never cast directly without va
 
 ```typescript
 /**
- * TxId factory - validates and brands.
+ * OrderId factory - validates and brands.
  */
-function createTxId(bytes: Uint8Array): TxId {
+function createOrderId(bytes: Uint8Array): OrderId {
     if (bytes.length !== 32) {
-        throw new ValidationError(`TxId must be 32 bytes, got ${bytes.length}`);
+        throw new ValidationError(`OrderId must be 32 bytes, got ${bytes.length}`);
     }
-    return bytes as TxId;
+    return bytes as OrderId;
 }
 
-function txIdFromHex(hex: string): TxId {
+function orderIdFromString(hex: string): OrderId {
     if (hex.length !== 64) {
-        throw new ValidationError(`TxId hex must be 64 characters, got ${hex.length}`);
+        throw new ValidationError(`OrderId hex must be 64 characters, got ${hex.length}`);
     }
     if (!/^[0-9a-fA-F]+$/.test(hex)) {
-        throw new ValidationError('TxId hex contains invalid characters');
+        throw new ValidationError('OrderId hex contains invalid characters');
     }
     const bytes = hexToBytes(hex);
-    return createTxId(bytes);
+    return createOrderId(bytes);
 }
 
 /**
- * Satoshis factory - validates amount constraints.
+ * Cents factory - validates amount constraints.
  */
-const MAX_SATOSHIS = 2_100_000_000_000_000n;  // 21 million BTC
+const MAX_CENTS = 100_000_000_000n; // 1 billion dollars
 
-function createSatoshis(value: bigint): Satoshis {
+function createCents(value: bigint): Cents {
     if (value < 0n) {
-        throw new ValidationError('Satoshis cannot be negative');
+        throw new ValidationError('Cents cannot be negative');
     }
-    if (value > MAX_SATOSHIS) {
-        throw new ValidationError(`Satoshis exceeds maximum supply: ${value}`);
+    if (value > MAX_CENTS) {
+        throw new ValidationError(`Cents exceeds maximum: ${value}`);
     }
-    return value as Satoshis;
+    return value as Cents;
 }
 
-function satoshisFromBtc(btc: number): Satoshis {
-    if (!Number.isFinite(btc)) {
-        throw new ValidationError('BTC amount must be finite');
+function centsFromDollars(dollars: number): Cents {
+    if (!Number.isFinite(dollars)) {
+        throw new ValidationError('Dollar amount must be finite');
     }
-    if (btc < 0) {
-        throw new ValidationError('BTC amount cannot be negative');
+    if (dollars < 0) {
+        throw new ValidationError('Dollar amount cannot be negative');
     }
-    // Convert to satoshis (1 BTC = 100,000,000 satoshis)
-    const satoshis = BigInt(Math.round(btc * 100_000_000));
-    return createSatoshis(satoshis);
+    // Convert to cents (1 dollar = 100 cents)
+    const cents = BigInt(Math.round(dollars * 100));
+    return createCents(cents);
 }
 
 /**
@@ -4481,25 +4485,26 @@ function createEmail(value: string): Email {
 }
 
 /**
- * BlockHeight factory.
+ * RevisionNumber factory.
  */
-function createBlockHeight(value: bigint): BlockHeight {
+function createRevisionNumber(value: bigint): RevisionNumber {
     if (value < 0n) {
-        throw new ValidationError('Block height cannot be negative');
+        throw new ValidationError('Revision number cannot be negative');
     }
-    return value as BlockHeight;
+    return value as RevisionNumber;
 }
 
 /**
- * Address factory with network validation.
+ * Address factory with country validation.
  */
-function createAddress(value: string, network: 'mainnet' | 'testnet'): Address {
-    const isValid = network === 'mainnet'
-        ? /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(value)
-        : /^(tb1|[mn2])[a-zA-HJ-NP-Z0-9]{25,62}$/.test(value);
-    
+function createAddress(value: string, country: 'US' | 'CA'): Address {
+    const isValid =
+        country === 'US'
+            ? /^\d{5}(-\d{4})?$/.test(value)
+            : /^[A-Za-z]\d[A-Za-z] ?\d[A-Za-z]\d$/.test(value);
+
     if (!isValid) {
-        throw new ValidationError(`Invalid ${network} address: ${value}`);
+        throw new ValidationError(`Invalid ${country} address: ${value}`);
     }
     return value as Address;
 }
@@ -4511,17 +4516,17 @@ Type guards for branded types allow safe narrowing.
 
 ```typescript
 /**
- * Type guard for TxId.
+ * Type guard for OrderId.
  */
-function isTxId(value: Uint8Array): value is TxId {
+function isOrderId(value: Uint8Array): value is OrderId {
     return value.length === 32;
 }
 
 /**
- * Type guard for Satoshis.
+ * Type guard for Cents.
  */
-function isSatoshis(value: bigint): value is Satoshis {
-    return value >= 0n && value <= MAX_SATOSHIS;
+function isCents(value: bigint): value is Cents {
+    return value >= 0n && value <= MAX_CENTS;
 }
 
 /**
@@ -4541,18 +4546,18 @@ function isHexString(value: string): value is HexString {
 /**
  * Assertion functions for branded types.
  */
-function assertTxId(value: Uint8Array): asserts value is TxId {
+function assertOrderId(value: Uint8Array): asserts value is OrderId {
     if (value.length !== 32) {
-        throw new ValidationError(`Expected TxId (32 bytes), got ${value.length} bytes`);
+        throw new ValidationError(`Expected OrderId (32 bytes), got ${value.length} bytes`);
     }
 }
 
-function assertSatoshis(value: bigint): asserts value is Satoshis {
+function assertCents(value: bigint): asserts value is Cents {
     if (value < 0n) {
-        throw new ValidationError('Satoshis cannot be negative');
+        throw new ValidationError('Cents cannot be negative');
     }
-    if (value > MAX_SATOSHIS) {
-        throw new ValidationError('Satoshis exceeds maximum supply');
+    if (value > MAX_CENTS) {
+        throw new ValidationError('Cents exceeds maximum');
     }
 }
 
@@ -4565,15 +4570,15 @@ function assertEmail(value: string): asserts value is Email {
 /**
  * Usage example.
  */
-function processTransaction(txid: TxId, amount: Satoshis): void {
+function processOrder(orderId: OrderId, amount: Cents): void {
     // Both parameters are validated by their types
-    // Cannot accidentally pass a BlockHash where TxId is expected
-    console.log(`Processing ${amount} satoshis for tx ${txidToHex(txid)}`);
+    // Cannot accidentally pass a CustomerId where OrderId is expected
+    console.log(`Processing ${amount} cents for order ${orderIdToHex(orderId)}`);
 }
 
 // This would be a compile error:
-// const blockHash: BlockHash = createBlockHash(someBytes);
-// processTransaction(blockHash, amount);  // Error: BlockHash not assignable to TxId
+// const customerId: CustomerId = createCustomerId(someBytes);
+// processOrder(customerId, amount);  // Error: CustomerId not assignable to OrderId
 ```
 
 ---
@@ -4701,7 +4706,10 @@ type GreetReturn = ReturnType<typeof greet>;
  * ConstructorParameters<T> - Extract constructor parameters.
  */
 class MyClass {
-    constructor(public name: string, public value: number) {}
+    constructor(
+        public name: string,
+        public value: number,
+    ) {}
 }
 
 type MyClassParams = ConstructorParameters<typeof MyClass>;
@@ -4728,7 +4736,9 @@ type JustNumber = Awaited<NestedPromise>;
  * ThisParameterType<T> - Extract `this` parameter type.
  */
 function toHex(this: Uint8Array): string {
-    return Array.from(this).map(b => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(this)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
 }
 
 type ToHexThis = ThisParameterType<typeof toHex>;
@@ -4750,33 +4760,24 @@ Essential custom utility types for TypeScript Law compliance:
  * Deep readonly - makes all nested properties readonly.
  * Use for immutable data structures.
  */
-type DeepReadonly<T> = T extends object
-    ? { readonly [P in keyof T]: DeepReadonly<T[P]>
-   }
-    : T;
+type DeepReadonly<T> = T extends object ? { readonly [P in keyof T]: DeepReadonly<T[P]> } : T;
 
 /**
  * Deep partial - makes all nested properties optional.
  * Use for deep merge operations.
  */
-type DeepPartial<T> = T extends object
-    ? { [P in keyof T]?: DeepPartial<T[P]> }
-    : T;
+type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
 
 /**
  * Deep required - makes all nested properties required.
  */
-type DeepRequired<T> = T extends object
-    ? { [P in keyof T]-?: DeepRequired<T[P]> }
-    : T;
+type DeepRequired<T> = T extends object ? { [P in keyof T]-?: DeepRequired<T[P]> } : T;
 
 /**
  * Deep mutable - removes readonly from all nested properties.
  * Use only when mutation is explicitly needed.
  */
-type DeepMutable<T> = T extends object
-    ? { -readonly [P in keyof T]: DeepMutable<T[P]> }
-    : T;
+type DeepMutable<T> = T extends object ? { -readonly [P in keyof T]: DeepMutable<T[P]> } : T;
 
 /**
  * Mutable - removes readonly from top-level properties.
@@ -4802,14 +4803,14 @@ type RequiredKeys<T> = {
 /**
  * Function type with explicit parameter and return types.
  */
-type Fn<Args extends readonly unknown[] = readonly unknown[], R = unknown> =
-    (...args: Args) => R;
+type Fn<Args extends readonly unknown[] = readonly unknown[], R = unknown> = (...args: Args) => R;
 
 /**
  * Async function type.
  */
-type AsyncFn<Args extends readonly unknown[] = readonly unknown[], R = unknown> =
-    (...args: Args) => Promise<R>;
+type AsyncFn<Args extends readonly unknown[] = readonly unknown[], R = unknown> = (
+    ...args: Args
+) => Promise<R>;
 
 /**
  * Prettify - expands type for better IDE display.
@@ -4842,9 +4843,9 @@ type Exact<T, Shape> = T extends Shape
 /**
  * Union to intersection - converts union to intersection.
  */
-type UnionToIntersection<U> = (
-    U extends unknown ? (k: U) => void : never
-) extends (k: infer I) => void
+type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (
+    k: infer I,
+) => void
     ? I
     : never;
 
@@ -4856,8 +4857,8 @@ type Get<T, Path extends string> = Path extends `${infer K}.${infer Rest}`
         ? Get<T[K], Rest>
         : never
     : Path extends keyof T
-        ? T[Path]
-        : never;
+      ? T[Path]
+      : never;
 
 /**
  * Set nested property type by path.
@@ -4867,8 +4868,8 @@ type Set<T, Path extends string, V> = Path extends `${infer K}.${infer Rest}`
         ? { [P in keyof T]: P extends K ? Set<T[P], Rest, V> : T[P] }
         : never
     : Path extends keyof T
-        ? { [P in keyof T]: P extends Path ? V : T[P] }
-        : never;
+      ? { [P in keyof T]: P extends Path ? V : T[P] }
+      : never;
 
 /**
  * Nullable - makes type nullable.
@@ -4916,9 +4917,7 @@ type RequireOnlyOne<T, Keys extends keyof T = keyof T> = Pick<T, Exclude<keyof T
 /**
  * XOR - exclusive or for types.
  */
-type XOR<T, U> = (T | U) extends object
-    ? (Without<T, U> & U) | (Without<U, T> & T)
-    : T | U;
+type XOR<T, U> = T | U extends object ? (Without<T, U> & U) | (Without<U, T> & T) : T | U;
 
 type Without<T, U> = { [P in Exclude<keyof T, keyof U>]?: never };
 
@@ -4945,8 +4944,8 @@ interface Mixed {
     label: string;
 }
 
-type StringKeys = KeysMatching<Mixed, string>;   // 'name' | 'label'
-type NumberKeys = KeysMatching<Mixed, number>;   // 'age' | 'count'
+type StringKeys = KeysMatching<Mixed, string>; // 'name' | 'label'
+type NumberKeys = KeysMatching<Mixed, number>; // 'age' | 'count'
 type BooleanKeys = KeysMatching<Mixed, boolean>; // 'active'
 
 /**
@@ -4954,7 +4953,9 @@ type BooleanKeys = KeysMatching<Mixed, boolean>; // 'active'
  */
 type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 type ExpandRecursive<T> = T extends object
-    ? T extends infer O ? { [K in keyof O]: ExpandRecursive<O[K]> } : never
+    ? T extends infer O
+        ? { [K in keyof O]: ExpandRecursive<O[K]> }
+        : never
     : T;
 ```
 
@@ -4970,16 +4971,16 @@ Use types aggressively. Every generic constraint, every branded type, every disc
 // WEAK - runtime check, can be forgotten
 function transfer(from: string, to: string, amount: bigint): void {
     if (amount < 0n) throw new Error('Negative amount');
-    // Nothing prevents passing a block hash as 'from'
+    // Nothing prevents passing an order id as 'from'
 }
 
 // STRONG - compile-time guarantees, impossible to misuse
 type Address = Brand<string, 'Address'>;
-type Satoshis = Brand<bigint, 'Satoshis'>;
+type Cents = Brand<bigint, 'Cents'>;
 
-function transfer(from: Address, to: Address, amount: Satoshis): void {
+function transfer(from: Address, to: Address, amount: Cents): void {
     // Cannot pass wrong types - compiler rejects at call site
-    // Satoshis factory already validated non-negative
+    // Cents factory already validated non-negative
 }
 
 // WEAK - runtime exhaustiveness
@@ -4995,9 +4996,12 @@ type Status = (typeof Status)[keyof typeof Status];
 
 function getLabel(status: Status): string {
     switch (status) {
-        case Status.Pending: return 'Pending';
-        case Status.Active: return 'Active';
-        case Status.Completed: return 'Completed';
+        case Status.Pending:
+            return 'Pending';
+        case Status.Active:
+            return 'Active';
+        case Status.Completed:
+            return 'Completed';
         default:
             const _exhaustive: never = status;
             throw new Error(`Unhandled status: ${_exhaustive}`);
@@ -5018,7 +5022,7 @@ The following tsconfig.json options are mandatory. No exceptions. No "we'll enab
     "compilerOptions": {
         // Strict mode - enables all strict checks
         "strict": true,
-        
+
         // Individual strict flags (already enabled by strict, but explicit for clarity)
         "noImplicitAny": true,
         "strictNullChecks": true,
@@ -5028,7 +5032,7 @@ The following tsconfig.json options are mandatory. No exceptions. No "we'll enab
         "noImplicitThis": true,
         "useUnknownInCatchVariables": true,
         "alwaysStrict": true,
-        
+
         // Additional strict checks
         "noUnusedLocals": true,
         "noUnusedParameters": true,
@@ -5038,7 +5042,7 @@ The following tsconfig.json options are mandatory. No exceptions. No "we'll enab
         "noUncheckedIndexedAccess": true,
         "noImplicitOverride": true,
         "noPropertyAccessFromIndexSignature": true,
-        
+
         // Module settings
         "moduleResolution": "bundler",
         "module": "ESNext",
@@ -5048,13 +5052,13 @@ The following tsconfig.json options are mandatory. No exceptions. No "we'll enab
         "verbatimModuleSyntax": true,
         "esModuleInterop": true,
         "resolveJsonModule": true,
-        
+
         // Output settings
         "declaration": true,
         "declarationMap": true,
         "sourceMap": true,
         "outDir": "./dist",
-        
+
         // Consistency
         "forceConsistentCasingInFileNames": true,
         "skipLibCheck": true
@@ -5206,26 +5210,26 @@ interface Config {
 
 // With type annotation - loses literal types
 const config1: Config = {
-    host: 'localhost',  // Type: string
-    port: 3000,         // Type: number
-    ssl: false,         // Type: boolean
+    host: 'localhost', // Type: string
+    port: 3000, // Type: number
+    ssl: false, // Type: boolean
 };
 
-config1.port;  // Type: number (not 3000)
+config1.port; // Type: number (not 3000)
 
 // With satisfies - preserves literal types while validating
 const config2 = {
-    host: 'localhost',  // Type: "localhost"
-    port: 3000,         // Type: 3000
-    ssl: false,         // Type: false
+    host: 'localhost', // Type: "localhost"
+    port: 3000, // Type: 3000
+    ssl: false, // Type: false
 } satisfies Config;
 
-config2.port;  // Type: 3000 (literal)
+config2.port; // Type: 3000 (literal)
 
 // Catches errors while preserving types
 const config3 = {
     host: 'localhost',
-    port: 'invalid',  // Error: Type 'string' is not assignable to type 'number'
+    port: 'invalid', // Error: Type 'string' is not assignable to type 'number'
     ssl: false,
 } satisfies Config;
 
@@ -5238,7 +5242,7 @@ const colors = {
     blue: [0, 0, 255],
 } as const satisfies ColorMap;
 
-colors.red;  // Type: readonly [255, 0, 0]
+colors.red; // Type: readonly [255, 0, 0]
 ```
 
 ---
@@ -5250,6 +5254,7 @@ colors.red;  // Type: readonly [255, 0, 0]
 Everything should be readonly by default. Mutability is the exception, not the rule. This prevents bugs, enables V8 optimization, and makes code easier to reason about.
 
 When we construct new literal expressions with const assertions, we signal to the language that:
+
 - No literal types in that expression should be widened
 - Object literals get readonly properties
 - Array literals become readonly tuples
@@ -5265,12 +5270,12 @@ interface User {
 }
 
 // ALL class fields should be readonly unless mutation is justified
-class Transaction {
-    readonly #txid: TxId;
-    readonly #inputs: readonly Input[];
-    readonly #outputs: readonly Output[];
-    readonly version: number;  // Only mutable if there's a reason
-    
+class Order {
+    readonly #orderId: OrderId;
+    readonly #lineItems: readonly LineItem[];
+    readonly #adjustments: readonly Adjustment[];
+    readonly version: number; // Only mutable if there's a reason
+
     constructor(/* ... */) {
         // ...
     }
@@ -5300,7 +5305,7 @@ Use `as const` for all protocol constants, opcodes, and static configuration.
 
 ```typescript
 /**
- * Bitcoin script opcodes - immutable and type-safe.
+ * Order pipeline operation codes - immutable and type-safe.
  */
 const OP = {
     // Constants
@@ -5313,7 +5318,7 @@ const OP = {
     OP_RESERVED: 0x50,
     OP_1: 0x51,
     OP_TRUE: 0x51,
-    
+
     // Flow control
     OP_NOP: 0x61,
     OP_IF: 0x63,
@@ -5322,47 +5327,47 @@ const OP = {
     OP_ENDIF: 0x68,
     OP_VERIFY: 0x69,
     OP_RETURN: 0x6a,
-    
+
     // Stack
     OP_DUP: 0x76,
     OP_DROP: 0x75,
     OP_SWAP: 0x7c,
-    
+
     // Comparison
     OP_EQUAL: 0x87,
     OP_EQUALVERIFY: 0x88,
-    
-    // Crypto
-    OP_RIPEMD160: 0xa6,
-    OP_SHA256: 0xa8,
-    OP_HASH160: 0xa9,
-    OP_HASH256: 0xaa,
-    OP_CHECKSIG: 0xac,
-    OP_CHECKSIGVERIFY: 0xad,
-    OP_CHECKMULTISIG: 0xae,
+
+    // Checks
+    OP_APPLYDISCOUNT: 0xa6,
+    OP_APPLYTAX: 0xa8,
+    OP_LINETOTAL: 0xa9,
+    OP_ORDERTOTAL: 0xaa,
+    OP_CHECKSTOCK: 0xac,
+    OP_CHECKSTOCKVERIFY: 0xad,
+    OP_CHECKALLSTOCK: 0xae,
 } as const;
 
 type OpCode = (typeof OP)[keyof typeof OP];
 
-// Sighash flags
-const SIGHASH = {
+// Validation flags
+const VALIDATE = {
     ALL: 0x01,
     NONE: 0x02,
     SINGLE: 0x03,
-    ANYONECANPAY: 0x80,
-    ALL_ANYONECANPAY: 0x81,
-    NONE_ANYONECANPAY: 0x82,
-    SINGLE_ANYONECANPAY: 0x83,
+    SKIPSTOCK: 0x80,
+    ALL_SKIPSTOCK: 0x81,
+    NONE_SKIPSTOCK: 0x82,
+    SINGLE_SKIPSTOCK: 0x83,
 } as const;
 
-type SighashFlag = (typeof SIGHASH)[keyof typeof SIGHASH];
+type ValidateFlag = (typeof VALIDATE)[keyof typeof VALIDATE];
 
-// Script templates
-const SCRIPT_TEMPLATES = {
-    P2PKH: [OP.OP_DUP, OP.OP_HASH160, 'PUBKEYHASH', OP.OP_EQUALVERIFY, OP.OP_CHECKSIG],
-    P2SH: [OP.OP_HASH160, 'SCRIPTHASH', OP.OP_EQUAL],
-    P2WPKH: [OP.OP_0, 'PUBKEYHASH'],
-    P2WSH: [OP.OP_0, 'SCRIPTHASH'],
+// Order templates
+const ORDER_TEMPLATES = {
+    STANDARD: [OP.OP_DUP, OP.OP_LINETOTAL, 'LINEHASH', OP.OP_EQUALVERIFY, OP.OP_CHECKSTOCK],
+    BUNDLE: [OP.OP_LINETOTAL, 'BUNDLEHASH', OP.OP_EQUAL],
+    DIGITAL: [OP.OP_0, 'LINEHASH'],
+    SUBSCRIPTION: [OP.OP_0, 'BUNDLEHASH'],
 } as const;
 ```
 
@@ -5376,14 +5381,14 @@ For both compile-time and runtime immutability:
  */
 function deepFreeze<T extends object>(obj: T): DeepReadonly<T> {
     const propNames = Reflect.ownKeys(obj);
-    
+
     for (const name of propNames) {
         const value = (obj as Record<PropertyKey, unknown>)[name];
         if (value && typeof value === 'object') {
             deepFreeze(value);
         }
     }
-    
+
     return Object.freeze(obj) as DeepReadonly<T>;
 }
 
@@ -5392,13 +5397,13 @@ const CONFIG = deepFreeze({
     version: 1,
     network: {
         host: 'localhost',
-        port: 8332,
+        port: 8080,
         timeout: 30000,
     },
     limits: {
-        maxInputs: 100,
-        maxOutputs: 100,
-        maxScriptSize: 10000,
+        maxLineItems: 100,
+        maxAdjustments: 100,
+        maxPayloadSize: 10000,
     },
 } as const);
 
@@ -5432,8 +5437,8 @@ function processStack(input: StackElement[]): Uint8Array[] {
 }
 
 // TRANSITION PATTERN - when full adoption isn't immediate
-type Stack = readonly StackElement[];        // readonly for consumers
-type MutableStack = StackElement[];          // explicit mutable for builders
+type Stack = readonly StackElement[]; // readonly for consumers
+type MutableStack = StackElement[]; // explicit mutable for builders
 
 function buildStack(): Stack {
     const result: MutableStack = [];
@@ -5455,30 +5460,28 @@ For typed array constants, follow these rules based on visibility:
 ```typescript
 // INTERNAL CONSTANT - documentation sufficient
 /** @internal Do not mutate */
-const EC_P: Uint8Array = fromHex(
-    'fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f'
+const LOOKUP_TABLE: Uint8Array = fromHex(
+    '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
 );
 
 // EXPORTED CONSTANT - factory required
-const EC_P_SOURCE: readonly number[] = Object.freeze([
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-    0xff, 0xff, 0xff, 0xfe, 0xff, 0xff, 0xfc, 0x2f,
+const LOOKUP_TABLE_SOURCE: readonly number[] = Object.freeze([
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
 ]);
 
-export function getEcP(): Uint8Array {
-    return new Uint8Array(EC_P_SOURCE);
+export function getLookupTable(): Uint8Array {
+    return new Uint8Array(LOOKUP_TABLE_SOURCE);
 }
 
 // FORBIDDEN - false sense of security
-export const EC_P = Object.freeze(fromHex('...'));
-// Elements still mutable: EC_P[0] = 0x00 does NOT throw
+export const LOOKUP_TABLE = Object.freeze(fromHex('...'));
+// Elements still mutable: LOOKUP_TABLE[0] = 0x00 does NOT throw
 
 // FORBIDDEN - bypassable defensive copy
-export const getEcP = (): Uint8Array => _source.slice();
+export const getLookupTable = (): Uint8Array => _source.slice();
 // Bypassable via .buffer access:
-// new Uint8Array(getEcP().buffer)[0] = 0x00 mutates the original
+// new Uint8Array(getLookupTable().buffer)[0] = 0x00 mutates the original
 ```
 
 ---
@@ -5499,7 +5502,7 @@ Use `Reflect.get` for safe property access that works correctly with proxies and
 function safeGet<T extends object, K extends keyof T>(
     target: T,
     property: K,
-    receiver?: unknown
+    receiver?: unknown,
 ): T[K] | undefined {
     try {
         return Reflect.get(target, property, receiver);
@@ -5514,7 +5517,7 @@ function safeGet<T extends object, K extends keyof T>(
  */
 class Parent {
     #value = 42;
-    
+
     get value(): number {
         return this.#value;
     }
@@ -5522,7 +5525,7 @@ class Parent {
 
 class Child extends Parent {
     #multiplier = 2;
-    
+
     override get value(): number {
         return super.value * this.#multiplier;
     }
@@ -5531,10 +5534,10 @@ class Child extends Parent {
 const child = new Child();
 
 // Direct access uses child as receiver
-child.value;  // 84
+child.value; // 84
 
 // Reflect.get with explicit receiver
-Reflect.get(child, 'value', child);  // 84
+Reflect.get(child, 'value', child); // 84
 
 // Wrong receiver would give wrong result
 // Reflect.get(child, 'value', {});  // Error - can't access private
@@ -5553,7 +5556,7 @@ function safeSet<T extends object, K extends keyof T>(
     target: T,
     property: K,
     value: T[K],
-    receiver?: unknown
+    receiver?: unknown,
 ): boolean {
     try {
         return Reflect.set(target, property, value, receiver);
@@ -5565,8 +5568,8 @@ function safeSet<T extends object, K extends keyof T>(
 // Example: fails gracefully on frozen objects
 const frozen = Object.freeze({ value: 1 });
 const success = Reflect.set(frozen, 'value', 2);
-console.log(success);  // false
-console.log(frozen.value);  // 1 (unchanged)
+console.log(success); // false
+console.log(frozen.value); // 1 (unchanged)
 
 /**
  * Safe property definition with descriptors.
@@ -5574,7 +5577,7 @@ console.log(frozen.value);  // 1 (unchanged)
 function safeDefineProperty<T extends object>(
     target: T,
     property: PropertyKey,
-    descriptor: PropertyDescriptor
+    descriptor: PropertyDescriptor,
 ): boolean {
     try {
         return Reflect.defineProperty(target, property, descriptor);
@@ -5595,10 +5598,7 @@ const success = safeDefineProperty(obj, 'readonly', {
 /**
  * Safe property deletion.
  */
-function safeDelete<T extends object>(
-    target: T,
-    property: PropertyKey
-): boolean {
+function safeDelete<T extends object>(target: T, property: PropertyKey): boolean {
     try {
         return Reflect.deleteProperty(target, property);
     } catch {
@@ -5612,7 +5612,7 @@ Object.defineProperty(obj2, 'permanent', {
     value: 1,
     configurable: false,
 });
-Reflect.deleteProperty(obj2, 'permanent');  // false
+Reflect.deleteProperty(obj2, 'permanent'); // false
 ```
 
 ### 2.1.3 Property Inspection
@@ -5621,10 +5621,7 @@ Reflect.deleteProperty(obj2, 'permanent');  // false
 /**
  * Check property existence safely.
  */
-function safeHas<T extends object>(
-    target: T,
-    property: PropertyKey
-): boolean {
+function safeHas<T extends object>(target: T, property: PropertyKey): boolean {
     try {
         return Reflect.has(target, property);
     } catch {
@@ -5645,15 +5642,15 @@ const sym = Symbol('b');
 Object.defineProperty(obj, sym, { value: 2, enumerable: false });
 Object.defineProperty(obj, 'c', { value: 3, enumerable: false });
 
-Reflect.ownKeys(obj);  // ['a', 'c', Symbol(b)]
-Object.keys(obj);      // ['a'] (only enumerable string keys)
+Reflect.ownKeys(obj); // ['a', 'c', Symbol(b)]
+Object.keys(obj); // ['a'] (only enumerable string keys)
 
 /**
  * Get property descriptor safely.
  */
 function getDescriptor<T extends object>(
     target: T,
-    property: PropertyKey
+    property: PropertyKey,
 ): PropertyDescriptor | undefined {
     return Reflect.getOwnPropertyDescriptor(target, property);
 }
@@ -5669,10 +5666,7 @@ function getPrototype<T extends object>(target: T): object | null {
     return Reflect.getPrototypeOf(target);
 }
 
-function setPrototype<T extends object>(
-    target: T,
-    proto: object | null
-): boolean {
+function setPrototype<T extends object>(target: T, proto: object | null): boolean {
     return Reflect.setPrototypeOf(target, proto);
 }
 
@@ -5698,7 +5692,7 @@ function preventExtensions<T extends object>(target: T): boolean {
 function safeApply<T, A extends readonly unknown[], R>(
     func: (this: T, ...args: A) => R,
     thisArg: T,
-    args: A
+    args: A,
 ): R {
     return Reflect.apply(func, thisArg, args);
 }
@@ -5709,7 +5703,7 @@ function safeApply<T, A extends readonly unknown[], R>(
 function safeConstruct<T>(
     target: new (...args: readonly unknown[]) => T,
     args: readonly unknown[],
-    newTarget?: new (...args: readonly unknown[]) => T
+    newTarget?: new (...args: readonly unknown[]) => T,
 ): T {
     return Reflect.construct(target, args, newTarget);
 }
@@ -5723,7 +5717,7 @@ class Parent {
 
 class Child extends Parent {}
 
-Reflect.construct(Parent, [], Child);  // Logs "Child"
+Reflect.construct(Parent, [], Child); // Logs "Child"
 ```
 
 ---
@@ -5741,16 +5735,16 @@ Reflect.construct(Parent, [], Child);  // Logs "Child"
 function deepFreeze<T extends object>(obj: T): Readonly<T> {
     // Get all property keys including symbols
     const propNames = Reflect.ownKeys(obj);
-    
+
     // Freeze nested objects first
     for (const name of propNames) {
         const value = (obj as Record<PropertyKey, unknown>)[name];
-        
+
         if (value && typeof value === 'object' && !Object.isFrozen(value)) {
             deepFreeze(value as object);
         }
     }
-    
+
     return Object.freeze(obj);
 }
 
@@ -5837,7 +5831,7 @@ Object.defineProperty(obj, 'CONSTANT', {
 Object.defineProperty(obj, 'hidden', {
     value: 'secret',
     writable: true,
-    enumerable: false,  // Won't appear in for...in or Object.keys
+    enumerable: false, // Won't appear in for...in or Object.keys
     configurable: true,
 });
 
@@ -5916,11 +5910,11 @@ function hardenPrototypes(): void {
         BigInt64Array.prototype,
         BigUint64Array.prototype,
     ];
-    
+
     for (const proto of prototypes) {
         Object.freeze(proto);
     }
-    
+
     // Also freeze key constructors
     Object.freeze(Object);
     Object.freeze(Array);
@@ -5951,14 +5945,14 @@ function createDictionary<V>(): Record<string, V> {
 const dict = createDictionary<number>();
 
 // No prototype properties
-dict.constructor;       // undefined
-dict.toString;          // undefined
-dict.hasOwnProperty;    // undefined
-dict.__proto__;         // undefined
+dict.constructor; // undefined
+dict.toString; // undefined
+dict.hasOwnProperty; // undefined
+dict.__proto__; // undefined
 
 // Safe to use any key
-dict['constructor'] = 1;  // Just a regular property
-dict['__proto__'] = 2;    // Just a regular property
+dict['constructor'] = 1; // Just a regular property
+dict['__proto__'] = 2; // Just a regular property
 
 /**
  * Safe property check for null-prototype objects.
@@ -5968,8 +5962,8 @@ function hasKey<T extends object>(obj: T, key: PropertyKey): boolean {
 }
 
 // Or use Object.hasOwn directly (ES2022+)
-Object.hasOwn(dict, 'constructor');  // true (we added it)
-Object.hasOwn({}, 'constructor');    // false (inherited)
+Object.hasOwn(dict, 'constructor'); // true (we added it)
+Object.hasOwn({}, 'constructor'); // false (inherited)
 ```
 
 ---
@@ -5990,20 +5984,20 @@ interface ProxyHandler<T extends object> {
     set?(target: T, property: PropertyKey, value: unknown, receiver: unknown): boolean;
     has?(target: T, property: PropertyKey): boolean;
     deleteProperty?(target: T, property: PropertyKey): boolean;
-    
+
     // Property enumeration
     ownKeys?(target: T): ArrayLike<PropertyKey>;
     getOwnPropertyDescriptor?(target: T, property: PropertyKey): PropertyDescriptor | undefined;
     defineProperty?(target: T, property: PropertyKey, descriptor: PropertyDescriptor): boolean;
-    
+
     // Prototype
     getPrototypeOf?(target: T): object | null;
     setPrototypeOf?(target: T, prototype: object | null): boolean;
-    
+
     // Extensibility
     isExtensible?(target: T): boolean;
     preventExtensions?(target: T): boolean;
-    
+
     // Function calls (only for callable targets)
     apply?(target: T, thisArg: unknown, args: unknown[]): unknown;
     construct?(target: T, args: unknown[], newTarget: Function): object;
@@ -6025,18 +6019,18 @@ function createLoggingProxy<T extends object>(target: T, name: string): T {
             console.log(`GET ${name}.${String(property)} = ${value}`);
             return value;
         },
-        
+
         set(target, property, value, receiver) {
             console.log(`SET ${name}.${String(property)} = ${value}`);
             return Reflect.set(target, property, value, receiver);
         },
-        
+
         has(target, property) {
             const result = Reflect.has(target, property);
             console.log(`HAS ${name}.${String(property)} = ${result}`);
             return result;
         },
-        
+
         deleteProperty(target, property) {
             console.log(`DELETE ${name}.${String(property)}`);
             return Reflect.deleteProperty(target, property);
@@ -6049,18 +6043,16 @@ function createLoggingProxy<T extends object>(target: T, name: string): T {
  */
 function createValidatingProxy<T extends object>(
     target: T,
-    validators: Partial<{ [K in keyof T]: (value: T[K]) => boolean }>
+    validators: Partial<{ [K in keyof T]: (value: T[K]) => boolean }>,
 ): T {
     return new Proxy(target, {
         set(target, property, value, receiver) {
             const validator = validators[property as keyof T];
-            
+
             if (validator && !validator(value as T[keyof T])) {
-                throw new ValidationError(
-                    `Invalid value for ${String(property)}: ${value}`
-                );
+                throw new ValidationError(`Invalid value for ${String(property)}: ${value}`);
             }
-            
+
             return Reflect.set(target, property, value, receiver);
         },
     });
@@ -6079,11 +6071,11 @@ const user = createValidatingProxy<User>(
         name: (v) => v.length > 0 && v.length < 100,
         age: (v) => Number.isInteger(v) && v >= 0 && v < 150,
         email: (v) => v.includes('@') && v.includes('.'),
-    }
+    },
 );
 
-user.name = 'Alice';  // OK
-user.age = 30;        // OK
+user.name = 'Alice'; // OK
+user.age = 30; // OK
 // user.age = -5;     // Throws ValidationError
 
 /**
@@ -6116,7 +6108,9 @@ Revocable proxies can be disabled, making all operations throw.
  * Create revocable access to a resource.
  * Once revoked, all access throws TypeError.
  */
-function createRevocableAccess<T extends object>(target: T): {
+function createRevocableAccess<T extends object>(
+    target: T,
+): {
     proxy: T;
     revoke: () => void;
 } {
@@ -6136,7 +6130,7 @@ function createRevocableAccess<T extends object>(target: T): {
 // Usage
 const { proxy, revoke } = createRevocableAccess({ secret: 'data' });
 
-console.log(proxy.secret);  // 'data'
+console.log(proxy.secret); // 'data'
 
 revoke();
 
@@ -6146,18 +6140,15 @@ revoke();
 /**
  * Time-limited access pattern.
  */
-function createTimeLimitedAccess<T extends object>(
-    target: T,
-    durationMs: number
-): T {
+function createTimeLimitedAccess<T extends object>(target: T, durationMs: number): T {
     const { proxy, revoke } = Proxy.revocable(target, {
         get(target, property, receiver) {
             return Reflect.get(target, property, receiver);
         },
     });
-    
+
     setTimeout(revoke, durationMs);
-    
+
     return proxy;
 }
 ```
@@ -6180,7 +6171,7 @@ const badHandler: ProxyHandler<{ readonly a: number }> = {
     getOwnPropertyDescriptor(target, property) {
         if (property === 'a') {
             // Can't say non-configurable property doesn't exist
-            return undefined;  // Throws TypeError
+            return undefined; // Throws TypeError
         }
         return Reflect.getOwnPropertyDescriptor(target, property);
     },
@@ -6192,47 +6183,43 @@ const obj = Object.freeze({ a: 1 });
 
 ### 2.3.5 Type-Safe Dynamic Dispatch
 
-A typed contract-client pattern demonstrates Proxy for type-safe dynamic method dispatch:
+A typed remote-service client demonstrates Proxy for type-safe dynamic method dispatch:
 
 ```typescript
-interface ContractMethods {
-    balanceOf(address: Address): Promise<bigint>;
-    transfer(to: Address, amount: bigint): Promise<boolean>;
-    allowance(owner: Address, spender: Address): Promise<bigint>;
+const internal = Symbol.for('_service_internal');
+
+interface OrderServiceMethods {
+    getOrder(id: OrderId): Promise<Order>;
+    submitOrder(order: Order): Promise<boolean>;
+    refundOrder(id: OrderId, amount: bigint): Promise<boolean>;
 }
 
-abstract class BaseContract<T extends ContractMethods> {
-    readonly #interface: ContractInterface;
-    readonly #address: Address;
-    readonly #provider: Provider;
-    
-    protected constructor(
-        address: Address,
-        abi: ContractABI,
-        provider: Provider
-    ) {
-        this.#address = address;
-        this.#interface = new ContractInterface(abi);
-        this.#provider = provider;
+abstract class BaseService<T extends OrderServiceMethods> {
+    readonly #schema: ServiceSchema;
+    readonly #endpoint: string;
+    readonly #transport: Transport;
+
+    protected constructor(endpoint: string, spec: ServiceSpec, transport: Transport) {
+        this.#endpoint = endpoint;
+        this.#schema = new ServiceSchema(spec);
+        this.#transport = transport;
     }
-    
-    protected getFunction(
-        name: string
-    ): ((...args: unknown[]) => Promise<unknown>) | undefined {
-        if (this.#interface.hasFunction(name)) {
+
+    protected getFunction(name: string): ((...args: unknown[]) => Promise<unknown>) | undefined {
+        if (this.#schema.hasMethod(name)) {
             return this.#createCall(name);
         }
         return undefined;
     }
-    
+
     #createCall(name: string): (...args: unknown[]) => Promise<unknown> {
         return async (...args: unknown[]): Promise<unknown> => {
-            const encoded = this.#interface.encodeFunctionData(name, args);
-            const result = await this.#provider.call({
-                to: this.#address,
-                data: encoded,
+            const encoded = this.#schema.encodeRequest(name, args);
+            const result = await this.#transport.send({
+                endpoint: this.#endpoint,
+                body: encoded,
             });
-            return this.#interface.decodeFunctionResult(name, result);
+            return this.#schema.decodeResponse(name, result);
         };
     }
 }
@@ -6258,46 +6245,46 @@ type ValidationResult<T> =
 class Validator<T> {
     readonly #checks: readonly ((value: unknown) => string | null)[];
     readonly #transform: (value: unknown) => T;
-    
+
     private constructor(
         checks: readonly ((value: unknown) => string | null)[],
-        transform: (value: unknown) => T
+        transform: (value: unknown) => T,
     ) {
         this.#checks = checks;
         this.#transform = transform;
     }
-    
+
     static create<T>(transform: (value: unknown) => T): Validator<T> {
         return new Validator([], transform);
     }
-    
+
     check(predicate: (value: unknown) => boolean, message: string): Validator<T> {
         return new Validator(
-            [...this.#checks, (v) => predicate(v) ? null : message],
-            this.#transform
+            [...this.#checks, (v) => (predicate(v) ? null : message)],
+            this.#transform,
         );
     }
-    
+
     validate(input: unknown): ValidationResult<T> {
         const errors: string[] = [];
-        
+
         for (const check of this.#checks) {
             const error = check(input);
             if (error !== null) {
                 errors.push(error);
             }
         }
-        
+
         if (errors.length > 0) {
             return { valid: false, errors };
         }
-        
+
         try {
             return { valid: true, value: this.#transform(input) };
         } catch (e) {
-            return { 
-                valid: false, 
-                errors: [e instanceof Error ? e.message : 'Transform failed'] 
+            return {
+                valid: false,
+                errors: [e instanceof Error ? e.message : 'Transform failed'],
             };
         }
     }
@@ -6307,30 +6294,34 @@ class Validator<T> {
  * Common validators.
  */
 const Validators = {
-    string: Validator.create<string>((v) => String(v))
-        .check((v) => typeof v === 'string', 'Must be a string'),
-    
+    string: Validator.create<string>((v) => String(v)).check(
+        (v) => typeof v === 'string',
+        'Must be a string',
+    ),
+
     nonEmptyString: Validator.create<string>((v) => String(v))
         .check((v) => typeof v === 'string', 'Must be a string')
         .check((v) => (v as string).length > 0, 'Must not be empty'),
-    
+
     positiveInteger: Validator.create<number>((v) => Number(v))
         .check((v) => typeof v === 'number', 'Must be a number')
         .check((v) => Number.isInteger(v), 'Must be an integer')
         .check((v) => (v as number) > 0, 'Must be positive'),
-    
-    uint8Array: Validator.create<Uint8Array>((v) => v as Uint8Array)
-        .check((v) => v instanceof Uint8Array, 'Must be Uint8Array'),
-    
-    txId: Validator.create<TxId>((v) => v as TxId)
+
+    uint8Array: Validator.create<Uint8Array>((v) => v as Uint8Array).check(
+        (v) => v instanceof Uint8Array,
+        'Must be Uint8Array',
+    ),
+
+    orderId: Validator.create<OrderId>((v) => v as OrderId)
         .check((v) => v instanceof Uint8Array, 'Must be Uint8Array')
         .check((v) => (v as Uint8Array).length === 32, 'Must be 32 bytes'),
-    
-    satoshis: Validator.create<Satoshis>((v) => BigInt(v as bigint) as Satoshis)
+
+    cents: Validator.create<Cents>((v) => BigInt(v as bigint) as Cents)
         .check((v) => typeof v === 'bigint', 'Must be bigint')
         .check((v) => (v as bigint) >= 0n, 'Must be non-negative')
-        .check((v) => (v as bigint) <= 2_100_000_000_000_000n, 'Exceeds max supply'),
-    
+        .check((v) => (v as bigint) <= 9_999_999_999_999n, 'Exceeds maximum order total'),
+
     hexString: Validator.create<HexString>((v) => (v as string).toLowerCase() as HexString)
         .check((v) => typeof v === 'string', 'Must be a string')
         .check((v) => /^[0-9a-fA-F]*$/.test(v as string), 'Must be hex characters')
@@ -6348,7 +6339,7 @@ Use assertion functions to narrow types after validation.
  */
 class AssertionError extends Error {
     readonly context: Readonly<Record<string, unknown>>;
-    
+
     constructor(message: string, context: Readonly<Record<string, unknown>> = {}) {
         super(message);
         this.name = 'AssertionError';
@@ -6363,7 +6354,7 @@ class AssertionError extends Error {
 function assert(
     condition: boolean,
     message: string,
-    context?: Readonly<Record<string, unknown>>
+    context?: Readonly<Record<string, unknown>>,
 ): asserts condition {
     if (!condition) {
         throw new AssertionError(message, context);
@@ -6373,10 +6364,7 @@ function assert(
 /**
  * Assert value is defined (not null or undefined).
  */
-function assertDefined<T>(
-    value: T | null | undefined,
-    name: string
-): asserts value is T {
+function assertDefined<T>(value: T | null | undefined, name: string): asserts value is T {
     if (value === null || value === undefined) {
         throw new AssertionError(`${name} must be defined`, { value });
     }
@@ -6388,7 +6376,7 @@ function assertDefined<T>(
 function assertType<T>(
     value: unknown,
     guard: (v: unknown) => v is T,
-    typeName: string
+    typeName: string,
 ): asserts value is T {
     if (!guard(value)) {
         throw new AssertionError(`Expected ${typeName}`, { actualType: typeof value });
@@ -6401,63 +6389,45 @@ function assertType<T>(
 function assertMinLength<T>(
     array: readonly T[],
     minLength: number,
-    name: string
+    name: string,
 ): asserts array is readonly T[] & { readonly length: number } {
     if (array.length < minLength) {
-        throw new AssertionError(
-            `${name} must have at least ${minLength} elements`,
-            { actualLength: array.length }
-        );
+        throw new AssertionError(`${name} must have at least ${minLength} elements`, {
+            actualLength: array.length,
+        });
     }
 }
 
 /**
  * Assert value is within range.
  */
-function assertRange(
-    value: number,
-    min: number,
-    max: number,
-    name: string
-): void {
+function assertRange(value: number, min: number, max: number, name: string): void {
     if (value < min || value > max) {
-        throw new AssertionError(
-            `${name} must be between ${min} and ${max}`,
-            { value, min, max }
-        );
+        throw new AssertionError(`${name} must be between ${min} and ${max}`, { value, min, max });
     }
 }
 
 /**
  * Assert bigint is within range.
  */
-function assertBigIntRange(
-    value: bigint,
-    min: bigint,
-    max: bigint,
-    name: string
-): void {
+function assertBigIntRange(value: bigint, min: bigint, max: bigint, name: string): void {
     if (value < min || value > max) {
-        throw new AssertionError(
-            `${name} must be between ${min} and ${max}`,
-            { value: value.toString(), min: min.toString(), max: max.toString() }
-        );
+        throw new AssertionError(`${name} must be between ${min} and ${max}`, {
+            value: value.toString(),
+            min: min.toString(),
+            max: max.toString(),
+        });
     }
 }
 
 /**
  * Assert byte array has exact length.
  */
-function assertByteLength(
-    bytes: Uint8Array,
-    expectedLength: number,
-    name: string
-): void {
+function assertByteLength(bytes: Uint8Array, expectedLength: number, name: string): void {
     if (bytes.length !== expectedLength) {
-        throw new AssertionError(
-            `${name} must be exactly ${expectedLength} bytes`,
-            { actualLength: bytes.length }
-        );
+        throw new AssertionError(`${name} must be exactly ${expectedLength} bytes`, {
+            actualLength: bytes.length,
+        });
     }
 }
 
@@ -6465,10 +6435,7 @@ function assertByteLength(
  * Unreachable code assertion for exhaustiveness checks.
  */
 function assertNever(value: never, message?: string): never {
-    throw new AssertionError(
-        message ?? `Unexpected value: ${JSON.stringify(value)}`,
-        { value }
-    );
+    throw new AssertionError(message ?? `Unexpected value: ${JSON.stringify(value)}`, { value });
 }
 ```
 
@@ -6570,23 +6537,17 @@ function isPromise<T>(value: unknown): value is Promise<T> {
 /**
  * Structural type guards.
  */
-function hasProperty<K extends PropertyKey>(
-    obj: unknown,
-    key: K
-): obj is Record<K, unknown> {
+function hasProperty<K extends PropertyKey>(obj: unknown, key: K): obj is Record<K, unknown> {
     return isObject(obj) && key in obj;
 }
 
-function hasOwnProperty<K extends PropertyKey>(
-    obj: unknown,
-    key: K
-): obj is Record<K, unknown> {
+function hasOwnProperty<K extends PropertyKey>(obj: unknown, key: K): obj is Record<K, unknown> {
     return isObject(obj) && Object.hasOwn(obj, key);
 }
 
 function hasProperties<K extends PropertyKey>(
     obj: unknown,
-    keys: readonly K[]
+    keys: readonly K[],
 ): obj is Record<K, unknown> {
     if (!isObject(obj)) return false;
     for (const key of keys) {
@@ -6598,10 +6559,7 @@ function hasProperties<K extends PropertyKey>(
 /**
  * Array element type guards.
  */
-function isArrayOf<T>(
-    value: unknown,
-    guard: (v: unknown) => v is T
-): value is readonly T[] {
+function isArrayOf<T>(value: unknown, guard: (v: unknown) => v is T): value is readonly T[] {
     return isArray(value) && value.every(guard);
 }
 
@@ -6612,36 +6570,34 @@ function isNonEmptyArray<T>(value: readonly T[]): value is readonly [T, ...T[]] 
 /**
  * Create type guard from validation schema.
  */
-function createTypeGuard<T>(
-    schema: {
-        readonly [K in keyof T]: (value: unknown) => value is T[K];
-    }
-): (value: unknown) => value is T {
+function createTypeGuard<T>(schema: {
+    readonly [K in keyof T]: (value: unknown) => value is T[K];
+}): (value: unknown) => value is T {
     return (value: unknown): value is T => {
         if (!isObject(value)) return false;
-        
+
         for (const key of Object.keys(schema) as (keyof T)[]) {
             const guard = schema[key];
             if (!guard((value as Record<keyof T, unknown>)[key])) {
                 return false;
             }
         }
-        
+
         return true;
     };
 }
 
 // Usage
-interface Transaction {
-    readonly txid: Uint8Array;
+interface Order {
+    readonly orderId: Uint8Array;
     readonly version: number;
-    readonly locktime: number;
+    readonly revision: number;
 }
 
-const isTransaction = createTypeGuard<Transaction>({
-    txid: isUint8Array,
+const isOrder = createTypeGuard<Order>({
+    orderId: isUint8Array,
     version: isInteger,
-    locktime: isInteger,
+    revision: isInteger,
 });
 ```
 
@@ -6653,10 +6609,7 @@ Wrap dangerous operations in safe wrappers.
 /**
  * Safe JSON parsing.
  */
-function safeJsonParse<T>(
-    json: string,
-    validator: (value: unknown) => value is T
-): T | null {
+function safeJsonParse<T>(json: string, validator: (value: unknown) => value is T): T | null {
     try {
         const parsed: unknown = JSON.parse(json);
         return validator(parsed) ? parsed : null;
@@ -6682,7 +6635,7 @@ function safeJsonStringify(value: unknown): string | null {
 function safeGet<T, K extends keyof T>(
     obj: T | null | undefined,
     key: K,
-    defaultValue: T[K]
+    defaultValue: T[K],
 ): T[K] {
     if (obj === null || obj === undefined) {
         return defaultValue;
@@ -6694,11 +6647,7 @@ function safeGet<T, K extends keyof T>(
 /**
  * Safe array access.
  */
-function safeArrayGet<T>(
-    array: readonly T[],
-    index: number,
-    defaultValue: T
-): T {
+function safeArrayGet<T>(array: readonly T[], index: number, defaultValue: T): T {
     if (index < 0 || index >= array.length) {
         return defaultValue;
     }
@@ -6708,10 +6657,7 @@ function safeArrayGet<T>(
 /**
  * Safe map get with type narrowing.
  */
-function safeMapGet<K, V>(
-    map: ReadonlyMap<K, V>,
-    key: K
-): V | undefined {
+function safeMapGet<K, V>(map: ReadonlyMap<K, V>, key: K): V | undefined {
     return map.get(key);
 }
 
@@ -6800,14 +6746,14 @@ function checkedSet<T>(array: T[], index: number, value: T): void {
 function checkedReadUint32(
     buffer: Uint8Array,
     offset: number,
-    littleEndian: boolean = true
+    littleEndian: boolean = true,
 ): number {
     if (offset < 0 || offset + 4 > buffer.length) {
         throw new RangeError(
-            `Cannot read uint32 at offset ${offset}, buffer length ${buffer.length}`
+            `Cannot read uint32 at offset ${offset}, buffer length ${buffer.length}`,
         );
     }
-    
+
     const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     return view.getUint32(offset, littleEndian);
 }
@@ -6819,17 +6765,17 @@ function checkedWriteUint32(
     buffer: Uint8Array,
     offset: number,
     value: number,
-    littleEndian: boolean = true
+    littleEndian: boolean = true,
 ): void {
     if (offset < 0 || offset + 4 > buffer.length) {
         throw new RangeError(
-            `Cannot write uint32 at offset ${offset}, buffer length ${buffer.length}`
+            `Cannot write uint32 at offset ${offset}, buffer length ${buffer.length}`,
         );
     }
-    if (value < 0 || value > 0xFFFFFFFF) {
+    if (value < 0 || value > 0xffffffff) {
         throw new RangeError(`Value ${value} out of uint32 range`);
     }
-    
+
     const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     view.setUint32(offset, value, littleEndian);
 }
@@ -6837,15 +6783,9 @@ function checkedWriteUint32(
 /**
  * Checked slice - validates bounds.
  */
-function checkedSlice(
-    buffer: Uint8Array,
-    start: number,
-    end: number
-): Uint8Array {
+function checkedSlice(buffer: Uint8Array, start: number, end: number): Uint8Array {
     if (start < 0 || end < start || end > buffer.length) {
-        throw new RangeError(
-            `Invalid slice [${start}, ${end}) for buffer length ${buffer.length}`
-        );
+        throw new RangeError(`Invalid slice [${start}, ${end}) for buffer length ${buffer.length}`);
     }
     return buffer.slice(start, end);
 }
@@ -6853,14 +6793,10 @@ function checkedSlice(
 /**
  * Checked subarray - validates bounds, returns view.
  */
-function checkedSubarray(
-    buffer: Uint8Array,
-    start: number,
-    end: number
-): Uint8Array {
+function checkedSubarray(buffer: Uint8Array, start: number, end: number): Uint8Array {
     if (start < 0 || end < start || end > buffer.length) {
         throw new RangeError(
-            `Invalid subarray [${start}, ${end}) for buffer length ${buffer.length}`
+            `Invalid subarray [${start}, ${end}) for buffer length ${buffer.length}`,
         );
     }
     return buffer.subarray(start, end);
@@ -6883,17 +6819,17 @@ Allocation is the enemy of performance in hot paths. Every allocation triggers G
  */
 class BufferPool {
     static readonly #pools: ReadonlyMap<number, Uint8Array[]> = new Map([
-        [32, []],   // Hash outputs
-        [33, []],   // Compressed public keys
-        [64, []],   // Signatures
-        [65, []],   // Uncompressed public keys
-        [256, []],  // Small scripts
+        [32, []], // Digest buffers
+        [48, []], // Header buffers
+        [64, []], // Token buffers
+        [128, []], // Record buffers
+        [256, []], // Small payloads
         [1024, []], // Medium buffers
         [4096, []], // Large buffers
     ]);
-    
+
     static readonly #MAX_POOL_SIZE = 100;
-    
+
     /**
      * Acquire a buffer from the pool or allocate new.
      */
@@ -6904,7 +6840,7 @@ class BufferPool {
         }
         return new Uint8Array(size);
     }
-    
+
     /**
      * Return a buffer to the pool for reuse.
      */
@@ -6917,7 +6853,7 @@ class BufferPool {
         }
         // If pool is full or no pool exists, let GC collect it
     }
-    
+
     /**
      * Acquire and fill with data.
      */
@@ -6926,7 +6862,7 @@ class BufferPool {
         buffer.set(data);
         return buffer;
     }
-    
+
     /**
      * Get pool statistics.
      */
@@ -6947,35 +6883,31 @@ class ObjectPool<T> {
     readonly #factory: () => T;
     readonly #reset: (obj: T) => void;
     readonly #maxSize: number;
-    
-    constructor(
-        factory: () => T,
-        reset: (obj: T) => void,
-        maxSize: number = 100
-    ) {
+
+    constructor(factory: () => T, reset: (obj: T) => void, maxSize: number = 100) {
         this.#factory = factory;
         this.#reset = reset;
         this.#maxSize = maxSize;
     }
-    
+
     acquire(): T {
         if (this.#pool.length > 0) {
             return this.#pool.pop()!;
         }
         return this.#factory();
     }
-    
+
     release(obj: T): void {
         if (this.#pool.length < this.#maxSize) {
             this.#reset(obj);
             this.#pool.push(obj);
         }
     }
-    
+
     get size(): number {
         return this.#pool.length;
     }
-    
+
     preallocate(count: number): void {
         const toCreate = Math.min(count, this.#maxSize) - this.#pool.length;
         for (let i = 0; i < toCreate; i++) {
@@ -6992,25 +6924,28 @@ interface Point {
 
 const pointPool = new ObjectPool<Point>(
     () => ({ x: 0, y: 0 }),
-    (p) => { p.x = 0; p.y = 0; }
+    (p) => {
+        p.x = 0;
+        p.y = 0;
+    },
 );
 
 // In hot path
 function processPoints(coords: readonly [number, number][]): number {
     let sumX = 0;
     let sumY = 0;
-    
+
     for (const [x, y] of coords) {
         const point = pointPool.acquire();
         point.x = x;
         point.y = y;
-        
+
         sumX += point.x;
         sumY += point.y;
-        
+
         pointPool.release(point);
     }
-    
+
     return sumX + sumY;
 }
 ```
@@ -7023,49 +6958,49 @@ Prefer stack-allocated primitives over heap-allocated objects in hot paths.
 /**
  * BAD: Creates objects in hot loop.
  */
-function processTransactionsBad(txs: readonly RawTransaction[]): TxStats {
-    const stats: TxStats = { totalInputs: 0, totalOutputs: 0, totalValue: 0n };
-    
-    for (const tx of txs) {
+function processOrdersBad(orders: readonly RawOrder[]): OrderStats {
+    const stats: OrderStats = { totalLineItems: 0, totalAdjustments: 0, totalValue: 0n };
+
+    for (const order of orders) {
         // Creates new object every iteration
-        const parsed = parseTransaction(tx);
-        stats.totalInputs += parsed.inputs.length;
-        stats.totalOutputs += parsed.outputs.length;
+        const parsed = parseOrder(order);
+        stats.totalLineItems += parsed.lineItems.length;
+        stats.totalAdjustments += parsed.adjustments.length;
         stats.totalValue += parsed.totalValue;
     }
-    
+
     return stats;
 }
 
 /**
  * GOOD: Uses primitives and pre-allocated structures.
  */
-function processTransactionsGood(txs: readonly RawTransaction[]): TxStats {
+function processOrdersGood(orders: readonly RawOrder[]): OrderStats {
     // Single allocation for result
-    let totalInputs = 0;
-    let totalOutputs = 0;
+    let totalLineItems = 0;
+    let totalAdjustments = 0;
     let totalValue = 0n;
-    
+
     // Reusable parser state
-    const parser = TransactionParser.acquire();
-    
+    const parser = OrderParser.acquire();
+
     try {
-        for (const tx of txs) {
+        for (const order of orders) {
             // Parser reuses internal buffers
-            parser.parse(tx);
-            
+            parser.parse(order);
+
             // Read primitives, no allocation
-            totalInputs += parser.inputCount;
-            totalOutputs += parser.outputCount;
+            totalLineItems += parser.lineItemCount;
+            totalAdjustments += parser.adjustmentCount;
             totalValue += parser.totalValue;
-            
+
             parser.reset();
         }
     } finally {
-        TransactionParser.release(parser);
+        OrderParser.release(parser);
     }
-    
-    return { totalInputs, totalOutputs, totalValue };
+
+    return { totalLineItems, totalAdjustments, totalValue };
 }
 
 /**
@@ -7091,7 +7026,7 @@ class StringInterner {
     static readonly #cache = new Map<string, string>();
     static readonly #MAX_SIZE = 10000;
     static readonly #MAX_STRING_LENGTH = 100;
-    
+
     /**
      * Intern a string - returns cached instance if exists.
      */
@@ -7100,12 +7035,12 @@ class StringInterner {
         if (str.length > this.#MAX_STRING_LENGTH) {
             return str;
         }
-        
+
         const cached = this.#cache.get(str);
         if (cached !== undefined) {
             return cached;
         }
-        
+
         // Evict if too large (simple strategy)
         if (this.#cache.size >= this.#MAX_SIZE) {
             const firstKey = this.#cache.keys().next().value;
@@ -7113,32 +7048,32 @@ class StringInterner {
                 this.#cache.delete(firstKey);
             }
         }
-        
+
         this.#cache.set(str, str);
         return str;
     }
-    
+
     /**
      * Check if string is interned.
      */
     static isInterned(str: string): boolean {
         return this.#cache.has(str);
     }
-    
+
     /**
      * Clear the cache.
      */
     static clear(): void {
         this.#cache.clear();
     }
-    
+
     static get size(): number {
         return this.#cache.size;
     }
 }
 
 // Usage for opcode names, error messages, etc.
-const opcodeName = StringInterner.intern('OP_CHECKSIG');
+const opcodeName = StringInterner.intern('OP_CHECKSTOCK');
 ```
 
 ---
@@ -7170,7 +7105,7 @@ class TrackedObject {
             lastAccess: new Date(),
         });
     }
-    
+
     access(): void {
         const state = privateData.get(this);
         if (state) {
@@ -7178,11 +7113,11 @@ class TrackedObject {
             state.lastAccess = new Date();
         }
     }
-    
+
     getStats(): { readonly accessCount: number; readonly age: number } | null {
         const state = privateData.get(this);
         if (!state) return null;
-        
+
         return {
             accessCount: state.accessCount,
             age: Date.now() - state.createdAt.getTime(),
@@ -7207,33 +7142,33 @@ class WeakCache<K extends object, V extends object> {
     readonly #registry = new FinalizationRegistry<K>((key) => {
         this.#cache.delete(key);
     });
-    
+
     get(key: K): V | undefined {
         const ref = this.#cache.get(key);
         if (!ref) return undefined;
-        
+
         const value = ref.deref();
         if (!value) {
             // Reference was collected, clean up
             this.#cache.delete(key);
             return undefined;
         }
-        
+
         return value;
     }
-    
+
     set(key: K, value: V): void {
         const existing = this.#cache.get(key);
         if (existing) {
             // Unregister old value from finalization
             this.#registry.unregister(existing);
         }
-        
+
         const ref = new WeakRef(value);
         this.#cache.set(key, ref);
         this.#registry.register(value, key, ref);
     }
-    
+
     delete(key: K): boolean {
         const ref = this.#cache.get(key);
         if (ref) {
@@ -7241,11 +7176,11 @@ class WeakCache<K extends object, V extends object> {
         }
         return this.#cache.delete(key);
     }
-    
+
     has(key: K): boolean {
         return this.get(key) !== undefined;
     }
-    
+
     clear(): void {
         for (const [key, ref] of this.#cache) {
             this.#registry.unregister(ref);
@@ -7255,26 +7190,26 @@ class WeakCache<K extends object, V extends object> {
 }
 
 /**
- * Transaction cache with weak references.
+ * Order cache with weak references.
  */
-class TransactionCache {
-    readonly #cache = new WeakCache<TxId, Transaction>();
-    
-    get(txid: TxId): Transaction | undefined {
-        return this.#cache.get(txid);
+class OrderCache {
+    readonly #cache = new WeakCache<OrderId, Order>();
+
+    get(orderId: OrderId): Order | undefined {
+        return this.#cache.get(orderId);
     }
-    
-    set(txid: TxId, tx: Transaction): void {
-        this.#cache.set(txid, tx);
+
+    set(orderId: OrderId, order: Order): void {
+        this.#cache.set(orderId, order);
     }
-    
-    getOrCreate(txid: TxId, factory: () => Transaction): Transaction {
-        const existing = this.get(txid);
+
+    getOrCreate(orderId: OrderId, factory: () => Order): Order {
+        const existing = this.get(orderId);
         if (existing) return existing;
-        
-        const tx = factory();
-        this.set(txid, tx);
-        return tx;
+
+        const order = factory();
+        this.set(orderId, order);
+        return order;
     }
 }
 ```
@@ -7293,11 +7228,11 @@ class ResourceTracker {
         console.warn(`Resource ${id} was garbage collected without being disposed`);
         // Could also log to monitoring system
     });
-    
+
     static track(resource: object, id: string): void {
         this.#registry.register(resource, id, resource);
     }
-    
+
     static untrack(resource: object): void {
         this.#registry.unregister(resource);
     }
@@ -7309,12 +7244,12 @@ class ResourceTracker {
 class FileHandle implements Disposable {
     readonly #id: string;
     #disposed = false;
-    
+
     constructor(path: string) {
         this.#id = `FileHandle:${path}:${Date.now()}`;
         ResourceTracker.track(this, this.#id);
     }
-    
+
     [Symbol.dispose](): void {
         if (!this.#disposed) {
             this.#disposed = true;
@@ -7322,7 +7257,7 @@ class FileHandle implements Disposable {
             // Close file handle
         }
     }
-    
+
     get disposed(): boolean {
         return this.#disposed;
     }
@@ -7353,26 +7288,26 @@ Understand when operations return views vs copies.
  * Changes to view affect original and vice versa.
  */
 const original = new Uint8Array([1, 2, 3, 4, 5]);
-const view = original.subarray(1, 4);  // [2, 3, 4]
+const view = original.subarray(1, 4); // [2, 3, 4]
 
 view[0] = 99;
-console.log(original);  // [1, 99, 3, 4, 5] - original changed!
+console.log(original); // [1, 99, 3, 4, 5] - original changed!
 
 /**
  * Slice returns a COPY - independent memory.
  * Changes to copy don't affect original.
  */
-const copy = original.slice(1, 4);  // [99, 3, 4]
+const copy = original.slice(1, 4); // [99, 3, 4]
 
 copy[0] = 100;
-console.log(original);  // [1, 99, 3, 4, 5] - original unchanged
+console.log(original); // [1, 99, 3, 4, 5] - original unchanged
 
 /**
  * Transfer moves ownership - original becomes unusable.
  */
 const buffer = new ArrayBuffer(1024);
-const transferred = buffer.transfer();  // New buffer with same content
-console.log(buffer.byteLength);  // 0 - original is detached
+const transferred = buffer.transfer(); // New buffer with same content
+console.log(buffer.byteLength); // 0 - original is detached
 
 /**
  * Buffer utilities with explicit copy/view semantics.
@@ -7384,30 +7319,30 @@ const BufferUtils = {
     view(buffer: Uint8Array, start: number, length: number): Uint8Array {
         return buffer.subarray(start, start + length);
     },
-    
+
     /**
      * Create a copy of buffer range. Allocates new memory.
      */
     copy(buffer: Uint8Array, start: number = 0, end: number = buffer.length): Uint8Array {
         return buffer.slice(start, end);
     },
-    
+
     /**
      * Concatenate buffers. Always allocates.
      */
     concat(buffers: readonly Uint8Array[]): Uint8Array {
         const totalLength = buffers.reduce((sum, buf) => sum + buf.length, 0);
         const result = new Uint8Array(totalLength);
-        
+
         let offset = 0;
         for (const buffer of buffers) {
             result.set(buffer, offset);
             offset += buffer.length;
         }
-        
+
         return result;
     },
-    
+
     /**
      * Compare buffers for equality.
      */
@@ -7418,13 +7353,13 @@ const BufferUtils = {
         }
         return true;
     },
-    
+
     /**
      * Constant-time comparison for cryptographic use.
      */
     constantTimeEquals(a: Uint8Array, b: Uint8Array): boolean {
         if (a.length !== b.length) return false;
-        
+
         let result = 0;
         for (let i = 0; i < a.length; i++) {
             result |= a[i]! ^ b[i]!;
@@ -7447,17 +7382,17 @@ class ChunkedReader {
     #buffer: Uint8Array;
     #position: number = 0;
     #end: number = 0;
-    
+
     constructor(chunkSize: number = 64 * 1024) {
         this.#chunkSize = chunkSize;
         this.#buffer = new Uint8Array(chunkSize);
     }
-    
+
     /**
      * Process data in chunks.
      */
     async *readChunks(
-        source: AsyncIterable<Uint8Array>
+        source: AsyncIterable<Uint8Array>,
     ): AsyncGenerator<Uint8Array, void, undefined> {
         for await (const chunk of source) {
             // If chunk fits in remaining buffer space
@@ -7469,10 +7404,10 @@ class ChunkedReader {
                 if (this.#end > this.#position) {
                     yield this.#buffer.subarray(this.#position, this.#end);
                 }
-                
+
                 // Reset and handle chunk
                 this.#position = 0;
-                
+
                 if (chunk.length > this.#buffer.length) {
                     // Chunk larger than buffer, yield directly
                     yield chunk;
@@ -7484,13 +7419,13 @@ class ChunkedReader {
                 }
             }
         }
-        
+
         // Yield any remaining data
         if (this.#end > this.#position) {
             yield this.#buffer.subarray(this.#position, this.#end);
         }
     }
-    
+
     reset(): void {
         this.#position = 0;
         this.#end = 0;
@@ -7506,55 +7441,55 @@ class RingBuffer<T> {
     #head: number = 0;
     #tail: number = 0;
     #size: number = 0;
-    
+
     constructor(capacity: number) {
         this.#capacity = capacity;
         this.#buffer = new Array(capacity);
     }
-    
+
     push(item: T): boolean {
         if (this.#size >= this.#capacity) {
-            return false;  // Full
+            return false; // Full
         }
-        
+
         this.#buffer[this.#tail] = item;
         this.#tail = (this.#tail + 1) % this.#capacity;
         this.#size++;
         return true;
     }
-    
+
     pop(): T | undefined {
         if (this.#size === 0) {
             return undefined;
         }
-        
+
         const item = this.#buffer[this.#head];
-        this.#buffer[this.#head] = undefined;  // Allow GC
+        this.#buffer[this.#head] = undefined; // Allow GC
         this.#head = (this.#head + 1) % this.#capacity;
         this.#size--;
         return item;
     }
-    
+
     peek(): T | undefined {
         return this.#size > 0 ? this.#buffer[this.#head] : undefined;
     }
-    
+
     get size(): number {
         return this.#size;
     }
-    
+
     get capacity(): number {
         return this.#capacity;
     }
-    
+
     get isFull(): boolean {
         return this.#size >= this.#capacity;
     }
-    
+
     get isEmpty(): boolean {
         return this.#size === 0;
     }
-    
+
     clear(): void {
         this.#buffer.fill(undefined);
         this.#head = 0;
@@ -7587,7 +7522,7 @@ function setupBadHandler(largeData: readonly string[]): () => void {
 
 // GOOD: Extract only what's needed
 function setupGoodHandler(largeData: readonly string[]): () => void {
-    const firstItem = largeData[0];  // Capture only what's needed
+    const firstItem = largeData[0]; // Capture only what's needed
     return () => {
         console.log(firstItem);
     };
@@ -7600,7 +7535,7 @@ function setupGoodHandler(largeData: readonly string[]): () => void {
 // BAD: Creates new function each iteration
 function processBad(items: readonly Item[]): void {
     for (const item of items) {
-        item.onUpdate((value) => console.log(value));  // New function each time
+        item.onUpdate((value) => console.log(value)); // New function each time
     }
 }
 
@@ -7608,7 +7543,7 @@ function processBad(items: readonly Item[]): void {
 function processGood(items: readonly Item[]): void {
     const handler = (value: unknown) => console.log(value);
     for (const item of items) {
-        item.onUpdate(handler);  // Same function reference
+        item.onUpdate(handler); // Same function reference
     }
 }
 
@@ -7618,7 +7553,7 @@ function processGood(items: readonly Item[]): void {
 
 // BAD: Creates temporary object each call
 function distanceBad(p1: Point, p2: Point): number {
-    const delta = { x: p2.x - p1.x, y: p2.y - p1.y };  // Temporary object
+    const delta = { x: p2.x - p1.x, y: p2.y - p1.y }; // Temporary object
     return Math.sqrt(delta.x * delta.x + delta.y * delta.y);
 }
 
@@ -7637,7 +7572,7 @@ function distanceGood(p1: Point, p2: Point): number {
 function mapBad<T, U>(items: readonly T[], fn: (item: T) => U): U[] {
     const result: U[] = [];
     for (const item of items) {
-        result.push(fn(item));  // May cause reallocation
+        result.push(fn(item)); // May cause reallocation
     }
     return result;
 }
@@ -7660,7 +7595,7 @@ V8 uses generational garbage collection. Understand the implications.
 /**
  * Young generation: Short-lived objects are cheap to allocate and collect.
  * Old generation: Long-lived objects are more expensive to manage.
- * 
+ *
  * Patterns:
  * 1. Short-lived temporaries are fine - they never leave young gen
  * 2. Avoid storing young objects in old objects (write barrier overhead)
@@ -7673,7 +7608,7 @@ V8 uses generational garbage collection. Understand the implications.
  */
 class BadCache {
     #data: Map<string, { value: unknown; timestamp: number }> = new Map();
-    
+
     set(key: string, value: unknown): void {
         // Each entry is a new object that may get promoted to old gen
         // while 'value' might still be in young gen
@@ -7689,20 +7624,20 @@ class BetterCache {
     readonly #values = new Map<string, unknown>();
     // Timestamps are primitives - no GC pointer issues
     readonly #timestamps = new Map<string, number>();
-    
+
     set(key: string, value: unknown): void {
         this.#values.set(key, value);
         this.#timestamps.set(key, Date.now());
     }
-    
+
     get(key: string): { value: unknown; timestamp: number } | undefined {
         const value = this.#values.get(key);
         const timestamp = this.#timestamps.get(key);
-        
+
         if (value === undefined || timestamp === undefined) {
             return undefined;
         }
-        
+
         // Create result object on demand - short-lived
         return { value, timestamp };
     }
@@ -7730,12 +7665,12 @@ function createDeferredOld<T>(): {
 } {
     let resolve!: (value: T) => void;
     let reject!: (reason: unknown) => void;
-    
+
     const promise = new Promise<T>((res, rej) => {
         resolve = res;
         reject = rej;
     });
-    
+
     return { promise, resolve, reject };
 }
 
@@ -7759,7 +7694,7 @@ class AsyncQueue<T> {
         resolve: (value: T) => void;
         reject: (reason: unknown) => void;
     } | null = null;
-    
+
     push(item: T): void {
         if (this.#waiter) {
             const { resolve } = this.#waiter;
@@ -7769,17 +7704,17 @@ class AsyncQueue<T> {
             this.#queue.push(item);
         }
     }
-    
+
     async pop(): Promise<T> {
         if (this.#queue.length > 0) {
             return this.#queue.shift()!;
         }
-        
+
         const { promise, resolve, reject } = Promise.withResolvers<T>();
         this.#waiter = { resolve, reject };
         return promise;
     }
-    
+
     close(reason: Error): void {
         if (this.#waiter) {
             this.#waiter.reject(reason);
@@ -7801,23 +7736,21 @@ declare global {
          * throwing if any rejected. Prevents unhandled rejections.
          */
         safeAll<T extends readonly unknown[] | []>(
-            values: T
+            values: T,
         ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
-        
-        safeAll<T>(
-            values: Iterable<T | PromiseLike<T>>
-        ): Promise<Awaited<T>[]>;
+
+        safeAll<T>(values: Iterable<T | PromiseLike<T>>): Promise<Awaited<T>[]>;
     }
 }
 
 Promise.safeAll = async function safeAll<T>(
-    values: Iterable<T | PromiseLike<T>>
+    values: Iterable<T | PromiseLike<T>>,
 ): Promise<Awaited<T>[]> {
     const results = await Promise.allSettled(values);
     const unwrapped: Awaited<T>[] = new Array(results.length);
-    
+
     let firstError: unknown = null;
-    
+
     for (let i = 0; i < results.length; i++) {
         const result = results[i]!;
         if (result.status === 'rejected') {
@@ -7828,11 +7761,11 @@ Promise.safeAll = async function safeAll<T>(
             unwrapped[i] = result.value as Awaited<T>;
         }
     }
-    
+
     if (firstError !== null) {
         throw firstError;
     }
-    
+
     return unwrapped;
 };
 
@@ -7845,15 +7778,11 @@ export {};
  * Usage comparison.
  */
 async function example(): Promise<void> {
-    const tasks = [
-        fetch('/api/a'),
-        fetch('/api/b'),
-        fetch('/api/c'),
-    ];
-    
+    const tasks = [fetch('/api/a'), fetch('/api/b'), fetch('/api/c')];
+
     // DANGEROUS: If /api/a fails fast, /api/b and /api/c may reject unhandled
     // const results = await Promise.all(tasks);
-    
+
     // SAFE: Waits for all to settle, then throws first error
     const results = await Promise.safeAll(tasks);
 }
@@ -7869,8 +7798,8 @@ Use the right combinator for the use case.
  * Use when you need all results and any failure should abort.
  */
 async function fetchAllUsers(ids: readonly string[]): Promise<readonly User[]> {
-    const promises = ids.map(id => fetchUser(id));
-    return Promise.safeAll(promises);  // Use safeAll for safety
+    const promises = ids.map((id) => fetchUser(id));
+    return Promise.safeAll(promises); // Use safeAll for safety
 }
 
 /**
@@ -7878,25 +7807,23 @@ async function fetchAllUsers(ids: readonly string[]): Promise<readonly User[]> {
  * Use when you want results from successful operations even if some fail.
  */
 async function fetchUsersWithPartialFailure(
-    ids: readonly string[]
+    ids: readonly string[],
 ): Promise<{ users: readonly User[]; errors: readonly Error[] }> {
     const results = await Promise.allSettled(ids.map(fetchUser));
-    
+
     const users: User[] = [];
     const errors: Error[] = [];
-    
+
     for (const result of results) {
         if (result.status === 'fulfilled') {
             users.push(result.value);
         } else {
             errors.push(
-                result.reason instanceof Error
-                    ? result.reason
-                    : new Error(String(result.reason))
+                result.reason instanceof Error ? result.reason : new Error(String(result.reason)),
             );
         }
     }
-    
+
     return { users, errors };
 }
 
@@ -7904,14 +7831,11 @@ async function fetchUsersWithPartialFailure(
  * Promise.race - First to settle wins.
  * Use for timeouts, cancellation, competitive fetching.
  */
-async function fetchWithTimeout<T>(
-    promise: Promise<T>,
-    timeoutMs: number
-): Promise<T> {
+async function fetchWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     const timeout = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new TimeoutError(`Timeout after ${timeoutMs}ms`)), timeoutMs);
     });
-    
+
     return Promise.race([promise, timeout]);
 }
 
@@ -7919,14 +7843,11 @@ async function fetchWithTimeout<T>(
  * Promise.any - First to succeed wins.
  * Use when you have multiple sources and want the first success.
  */
-async function fetchFromMirrors<T>(
-    mirrors: readonly string[],
-    path: string
-): Promise<T> {
-    const attempts = mirrors.map(mirror => 
-        fetch(`${mirror}${path}`).then(r => r.json() as Promise<T>)
+async function fetchFromMirrors<T>(mirrors: readonly string[], path: string): Promise<T> {
+    const attempts = mirrors.map((mirror) =>
+        fetch(`${mirror}${path}`).then((r) => r.json() as Promise<T>),
     );
-    
+
     return Promise.any(attempts);
     // Throws AggregateError only if ALL fail
 }
@@ -7937,14 +7858,14 @@ async function fetchFromMirrors<T>(
  */
 async function processSequentially<T, R>(
     items: readonly T[],
-    processor: (item: T, index: number) => Promise<R>
+    processor: (item: T, index: number) => Promise<R>,
 ): Promise<readonly R[]> {
     const results: R[] = [];
-    
+
     for (let i = 0; i < items.length; i++) {
         results.push(await processor(items[i]!, i));
     }
-    
+
     return results;
 }
 
@@ -7955,23 +7876,23 @@ async function processSequentially<T, R>(
 async function processWithConcurrency<T, R>(
     items: readonly T[],
     processor: (item: T) => Promise<R>,
-    concurrency: number
+    concurrency: number,
 ): Promise<readonly R[]> {
     const results: R[] = new Array(items.length);
     let index = 0;
-    
+
     async function worker(): Promise<void> {
         while (index < items.length) {
             const currentIndex = index++;
             results[currentIndex] = await processor(items[currentIndex]!);
         }
     }
-    
+
     const workers: Promise<void>[] = [];
     for (let i = 0; i < Math.min(concurrency, items.length); i++) {
         workers.push(worker());
     }
-    
+
     await Promise.safeAll(workers);
     return results;
 }
@@ -7989,7 +7910,7 @@ Best practices for async code organization.
 
 // BAD: Unnecessary async
 async function getBad(): Promise<number> {
-    return 42;  // Creates promise unnecessarily
+    return 42; // Creates promise unnecessarily
 }
 
 // GOOD: Return promise directly if not awaiting
@@ -8010,7 +7931,7 @@ async function fetchData(): Promise<Data> {
 // BAD: Can't make constructor async
 class BadService {
     #data: Data;
-    
+
     constructor() {
         // Can't await here!
         // this.#data = await loadData();
@@ -8020,11 +7941,11 @@ class BadService {
 // GOOD: Factory pattern
 class GoodService {
     readonly #data: Data;
-    
+
     private constructor(data: Data) {
         this.#data = data;
     }
-    
+
     static async create(): Promise<GoodService> {
         const data = await loadData();
         return new GoodService(data);
@@ -8039,7 +7960,7 @@ async function processUserRequest(userId: string): Promise<Response> {
         const user = await fetchUser(userId);
         const permissions = await fetchPermissions(user.id);
         const data = await processWithPermissions(user, permissions);
-        
+
         return { status: 200, data };
     } catch (error) {
         // Handle at boundary, not inside each function
@@ -8049,7 +7970,7 @@ async function processUserRequest(userId: string): Promise<Response> {
         if (error instanceof PermissionError) {
             return { status: 403, error: 'Access denied' };
         }
-        
+
         // Log unexpected errors
         console.error('Unexpected error:', error);
         return { status: 500, error: 'Internal error' };
@@ -8061,22 +7982,22 @@ async function processUserRequest(userId: string): Promise<Response> {
  */
 async function* fetchPages<T>(
     baseUrl: string,
-    pageSize: number = 100
+    pageSize: number = 100,
 ): AsyncGenerator<T, void, undefined> {
     let cursor: string | null = null;
-    
+
     do {
         const url = cursor
             ? `${baseUrl}?cursor=${cursor}&limit=${pageSize}`
             : `${baseUrl}?limit=${pageSize}`;
-        
+
         const response = await fetch(url);
-        const data = await response.json() as { items: T[]; nextCursor: string | null };
-        
+        const data = (await response.json()) as { items: T[]; nextCursor: string | null };
+
         for (const item of data.items) {
             yield item;
         }
-        
+
         cursor = data.nextCursor;
     } while (cursor !== null);
 }
@@ -8124,11 +8045,7 @@ function atomicDecrement(index: number = 0): number {
  * Atomic compare-and-swap (CAS) - foundation of lock-free algorithms.
  * Atomically: if current == expected, set to replacement; return actual value.
  */
-function compareAndSwap(
-    index: number,
-    expected: number,
-    replacement: number
-): number {
+function compareAndSwap(index: number, expected: number, replacement: number): number {
     return Atomics.compareExchange(counter, index, expected, replacement);
 }
 
@@ -8170,11 +8087,11 @@ Implement blocking synchronization primitives.
  */
 class AtomicMutex {
     readonly #state: Int32Array;
-    
+
     constructor(sharedBuffer: SharedArrayBuffer, offset: number = 0) {
         this.#state = new Int32Array(sharedBuffer, offset, 1);
     }
-    
+
     /**
      * Acquire the lock. Blocks until acquired.
      */
@@ -8186,19 +8103,19 @@ class AtomicMutex {
                 // Successfully acquired
                 return;
             }
-            
+
             // Wait until notified (state might change)
             Atomics.wait(this.#state, 0, 1);
         }
     }
-    
+
     /**
      * Try to acquire without blocking.
      */
     tryLock(): boolean {
         return Atomics.compareExchange(this.#state, 0, 0, 1) === 0;
     }
-    
+
     /**
      * Release the lock.
      */
@@ -8215,19 +8132,19 @@ class AtomicMutex {
  */
 class AtomicSemaphore {
     readonly #count: Int32Array;
-    
+
     constructor(sharedBuffer: SharedArrayBuffer, offset: number, initialCount: number) {
         this.#count = new Int32Array(sharedBuffer, offset, 1);
         Atomics.store(this.#count, 0, initialCount);
     }
-    
+
     /**
      * Acquire a permit. Blocks if none available.
      */
     acquire(): void {
         while (true) {
             const current = Atomics.load(this.#count, 0);
-            
+
             if (current > 0) {
                 // Try to decrement
                 const actual = Atomics.compareExchange(this.#count, 0, current, current - 1);
@@ -8238,12 +8155,12 @@ class AtomicSemaphore {
                 // CAS failed, retry
                 continue;
             }
-            
+
             // No permits, wait
             Atomics.wait(this.#count, 0, 0);
         }
     }
-    
+
     /**
      * Release a permit.
      */
@@ -8251,7 +8168,7 @@ class AtomicSemaphore {
         Atomics.add(this.#count, 0, 1);
         Atomics.notify(this.#count, 0, 1);
     }
-    
+
     /**
      * Get current available permits.
      */
@@ -8267,10 +8184,10 @@ async function asyncWait(
     array: Int32Array,
     index: number,
     expected: number,
-    timeout?: number
+    timeout?: number,
 ): Promise<'ok' | 'not-equal' | 'timed-out'> {
     const result = Atomics.waitAsync(array, index, expected, timeout);
-    
+
     if (result.async) {
         return result.value;
     }
@@ -8292,74 +8209,74 @@ class LockFreeStack<T> {
     readonly #values: T[];
     readonly #freeList: Int32Array;
     readonly #capacity: number;
-    
+
     // Special values
     static readonly #NULL = -1;
-    
+
     constructor(sharedBuffer: SharedArrayBuffer, capacity: number) {
         this.#capacity = capacity;
-        
+
         // Layout in shared buffer:
         // [0]: head index
         // [1]: free list head
         // [2..capacity+2]: next indices
-        
+
         let offset = 0;
         this.#headIndex = new Int32Array(sharedBuffer, offset, 1);
         offset += 4;
-        
+
         this.#freeList = new Int32Array(sharedBuffer, offset, 1);
         offset += 4;
-        
+
         this.#nextIndices = new Int32Array(sharedBuffer, offset, capacity);
-        
+
         // Values stored separately (not in shared buffer)
         this.#values = new Array(capacity);
-        
+
         // Initialize
         Atomics.store(this.#headIndex, 0, LockFreeStack.#NULL);
         Atomics.store(this.#freeList, 0, 0);
-        
+
         // Build free list
         for (let i = 0; i < capacity - 1; i++) {
             Atomics.store(this.#nextIndices, i, i + 1);
         }
         Atomics.store(this.#nextIndices, capacity - 1, LockFreeStack.#NULL);
     }
-    
+
     /**
      * Push item onto stack. Returns false if full.
      */
     push(value: T): boolean {
         // Allocate node from free list
         let nodeIndex: number;
-        
+
         while (true) {
             nodeIndex = Atomics.load(this.#freeList, 0);
             if (nodeIndex === LockFreeStack.#NULL) {
-                return false;  // Stack full
+                return false; // Stack full
             }
-            
+
             const nextFree = Atomics.load(this.#nextIndices, nodeIndex);
             if (Atomics.compareExchange(this.#freeList, 0, nodeIndex, nextFree) === nodeIndex) {
-                break;  // Successfully allocated
+                break; // Successfully allocated
             }
         }
-        
+
         // Store value
         this.#values[nodeIndex] = value;
-        
+
         // Push onto stack
         while (true) {
             const oldHead = Atomics.load(this.#headIndex, 0);
             Atomics.store(this.#nextIndices, nodeIndex, oldHead);
-            
+
             if (Atomics.compareExchange(this.#headIndex, 0, oldHead, nodeIndex) === oldHead) {
-                return true;  // Successfully pushed
+                return true; // Successfully pushed
             }
         }
     }
-    
+
     /**
      * Pop item from stack. Returns undefined if empty.
      */
@@ -8367,31 +8284,31 @@ class LockFreeStack<T> {
         while (true) {
             const oldHead = Atomics.load(this.#headIndex, 0);
             if (oldHead === LockFreeStack.#NULL) {
-                return undefined;  // Stack empty
+                return undefined; // Stack empty
             }
-            
+
             const newHead = Atomics.load(this.#nextIndices, oldHead);
-            
+
             if (Atomics.compareExchange(this.#headIndex, 0, oldHead, newHead) === oldHead) {
                 // Successfully popped
                 const value = this.#values[oldHead];
-                this.#values[oldHead] = undefined as T;  // Allow GC
-                
+                this.#values[oldHead] = undefined as T; // Allow GC
+
                 // Return node to free list
                 while (true) {
                     const oldFree = Atomics.load(this.#freeList, 0);
                     Atomics.store(this.#nextIndices, oldHead, oldFree);
-                    
+
                     if (Atomics.compareExchange(this.#freeList, 0, oldFree, oldHead) === oldFree) {
                         break;
                     }
                 }
-                
+
                 return value;
             }
         }
     }
-    
+
     /**
      * Check if stack is empty.
      */
@@ -8422,37 +8339,37 @@ class WorkerPool {
         reject: (error: unknown) => void;
     }> = [];
     readonly #workerTasks = new WeakMap<Worker, typeof this.#taskQueue[number]>();
-    
+
     private constructor(workers: Worker[]) {
         this.#workers = workers;
         this.#available = [...workers];
-        
+
         for (const worker of workers) {
             worker.onmessage = (event) => this.#handleMessage(worker, event);
             worker.onerror = (event) => this.#handleError(worker, event);
         }
     }
-    
+
     /**
      * Create a worker pool.
      */
     static create(workerUrl: string | URL, poolSize: number): WorkerPool {
         const workers: Worker[] = [];
-        
+
         for (let i = 0; i < poolSize; i++) {
             workers.push(new Worker(workerUrl, { type: 'module' }));
         }
-        
+
         return new WorkerPool(workers);
     }
-    
+
     /**
      * Execute a task on an available worker.
      */
     execute<T>(task: WorkerTask): Promise<T> {
         return new Promise((resolve, reject) => {
             const queuedTask = { task, resolve, reject };
-            
+
             const worker = this.#available.pop();
             if (worker) {
                 this.#dispatch(worker, queuedTask);
@@ -8461,14 +8378,14 @@ class WorkerPool {
             }
         });
     }
-    
+
     /**
      * Execute multiple tasks in parallel.
      */
     async executeAll<T>(tasks: readonly WorkerTask[]): Promise<readonly T[]> {
         return Promise.safeAll(tasks.map(task => this.execute<T>(task)));
     }
-    
+
     /**
      * Terminate all workers.
      */
@@ -8478,14 +8395,14 @@ class WorkerPool {
         }
         this.#workers.length = 0;
         this.#available.length = 0;
-        
+
         // Reject queued tasks
         for (const { reject } of this.#taskQueue) {
             reject(new Error('Worker pool terminated'));
         }
         this.#taskQueue.length = 0;
     }
-    
+
     #dispatch(
         worker: Worker,
         task: typeof this.#taskQueue[number]
@@ -8493,29 +8410,29 @@ class WorkerPool {
         this.#workerTasks.set(worker, task);
         worker.postMessage(task.task);
     }
-    
+
     #handleMessage(worker: Worker, event: MessageEvent): void {
         const task = this.#workerTasks.get(worker);
         this.#workerTasks.delete(worker);
-        
+
         if (task) {
             task.resolve(event.data);
         }
-        
+
         this.#scheduleNext(worker);
     }
-    
+
     #handleError(worker: Worker, event: ErrorEvent): void {
         const task = this.#workerTasks.get(worker);
         this.#workerTasks.delete(worker);
-        
+
         if (task) {
             task.reject(new Error(event.message));
         }
-        
+
         this.#scheduleNext(worker);
     }
-    
+
     #scheduleNext(worker: Worker): void {
         const next = this.#taskQueue.shift();
         if (next) {
@@ -8524,15 +8441,15 @@ class WorkerPool {
             this.#available.push(worker);
         }
     }
-    
+
     get poolSize(): number {
         return this.#workers.length;
     }
-    
+
     get availableWorkers(): number {
         return this.#available.length;
     }
-    
+
     get queuedTasks(): number {
         return this.#taskQueue.length;
     }
@@ -8559,7 +8476,7 @@ function sendToWorker(
         readonly type: string;
         readonly buffer: ArrayBuffer;
         readonly metadata: object;
-    }
+    },
 ): void {
     // Transfer the buffer - sender loses access
     worker.postMessage(
@@ -8568,19 +8485,16 @@ function sendToWorker(
             buffer: data.buffer,
             metadata: data.metadata,
         },
-        { transfer: [data.buffer] }
+        { transfer: [data.buffer] },
     );
-    
+
     // data.buffer is now detached (0 length)
 }
 
 /**
  * Structured clone with selective transfer.
  */
-function cloneWithTransfer<T extends object>(
-    value: T,
-    transferables: readonly Transferable[]
-): T {
+function cloneWithTransfer<T extends object>(value: T, transferables: readonly Transferable[]): T {
     return structuredClone(value, { transfer: [...transferables] });
 }
 
@@ -8596,29 +8510,32 @@ interface TransferableMessage<T extends string, D> {
 
 class TypedWorkerChannel<
     ToWorker extends TransferableMessage<string, unknown>,
-    FromWorker extends TransferableMessage<string, unknown>
+    FromWorker extends TransferableMessage<string, unknown>,
 > {
     readonly #worker: Worker;
-    readonly #pending = new Map<number, {
-        resolve: (value: FromWorker['data']) => void;
-        reject: (error: unknown) => void;
-    }>();
+    readonly #pending = new Map<
+        number,
+        {
+            resolve: (value: FromWorker['data']) => void;
+            reject: (error: unknown) => void;
+        }
+    >();
     #nextId = 0;
-    
+
     constructor(worker: Worker) {
         this.#worker = worker;
         this.#worker.onmessage = (event) => this.#handleMessage(event);
         this.#worker.onerror = (event) => this.#handleError(event);
     }
-    
+
     send(message: Omit<ToWorker, 'id'>): Promise<FromWorker['data']> {
         const id = this.#nextId++;
-        
+
         return new Promise((resolve, reject) => {
             this.#pending.set(id, { resolve, reject });
-            
+
             const fullMessage = { ...message, id } as ToWorker;
-            
+
             if (message.transferList) {
                 this.#worker.postMessage(fullMessage, {
                     transfer: [...message.transferList],
@@ -8628,17 +8545,17 @@ class TypedWorkerChannel<
             }
         });
     }
-    
+
     #handleMessage(event: MessageEvent<FromWorker>): void {
         const { id, data } = event.data;
         const pending = this.#pending.get(id);
-        
+
         if (pending) {
             this.#pending.delete(id);
             pending.resolve(data);
         }
     }
-    
+
     #handleError(event: ErrorEvent): void {
         // Reject all pending requests
         for (const { reject } of this.#pending.values()) {
@@ -8680,27 +8597,27 @@ interface SharedStateLayout {
 
 function createSharedStateLayout(dataSize: number): SharedStateLayout {
     let offset = 0;
-    
+
     const counterOffset = offset;
-    const counterSize = 4;  // Int32
+    const counterSize = 4; // Int32
     offset += counterSize;
-    
+
     // Align to 4 bytes
     offset = (offset + 3) & ~3;
-    
+
     const flagsOffset = offset;
-    const flagsSize = 4;  // Int32 for flags
+    const flagsSize = 4; // Int32 for flags
     offset += flagsSize;
-    
+
     // Align to 8 bytes for data
     offset = (offset + 7) & ~7;
-    
+
     const dataOffset = offset;
     offset += dataSize;
-    
+
     // Total size aligned to 8 bytes
     const totalSize = (offset + 7) & ~7;
-    
+
     return {
         counterOffset,
         counterSize,
@@ -8721,52 +8638,52 @@ class SharedState {
     readonly #flags: Int32Array;
     readonly #data: Uint8Array;
     readonly #layout: SharedStateLayout;
-    
+
     constructor(buffer: SharedArrayBuffer, layout: SharedStateLayout) {
         this.#buffer = buffer;
         this.#layout = layout;
-        
+
         this.#counter = new Int32Array(buffer, layout.counterOffset, 1);
         this.#flags = new Int32Array(buffer, layout.flagsOffset, 1);
         this.#data = new Uint8Array(buffer, layout.dataOffset, layout.dataSize);
     }
-    
+
     static create(dataSize: number): SharedState {
         const layout = createSharedStateLayout(dataSize);
         const buffer = new SharedArrayBuffer(layout.totalSize);
         return new SharedState(buffer, layout);
     }
-    
+
     get buffer(): SharedArrayBuffer {
         return this.#buffer;
     }
-    
+
     get layout(): SharedStateLayout {
         return this.#layout;
     }
-    
+
     // Counter operations
     incrementCounter(): number {
         return Atomics.add(this.#counter, 0, 1);
     }
-    
+
     getCounter(): number {
         return Atomics.load(this.#counter, 0);
     }
-    
+
     // Flag operations
     setFlag(bit: number): void {
         Atomics.or(this.#flags, 0, 1 << bit);
     }
-    
+
     clearFlag(bit: number): void {
         Atomics.and(this.#flags, 0, ~(1 << bit));
     }
-    
+
     hasFlag(bit: number): boolean {
         return (Atomics.load(this.#flags, 0) & (1 << bit)) !== 0;
     }
-    
+
     // Data access (requires external synchronization)
     getData(): Uint8Array {
         return this.#data;
@@ -8787,24 +8704,24 @@ class SPSCQueue {
     // [0-3]: head (producer writes)
     // [4-7]: tail (consumer writes)
     // [8+]: data buffer
-    
+
     readonly #head: Int32Array;
     readonly #tail: Int32Array;
     readonly #data: Uint8Array;
     readonly #capacity: number;
-    
+
     constructor(sharedBuffer: SharedArrayBuffer, capacity: number) {
         this.#head = new Int32Array(sharedBuffer, 0, 1);
         this.#tail = new Int32Array(sharedBuffer, 4, 1);
         this.#data = new Uint8Array(sharedBuffer, 8, capacity);
         this.#capacity = capacity;
     }
-    
+
     static create(capacity: number): SPSCQueue {
         const buffer = new SharedArrayBuffer(8 + capacity);
         return new SPSCQueue(buffer, capacity);
     }
-    
+
     /**
      * Try to enqueue a byte. Returns false if full.
      * Only call from producer thread.
@@ -8812,17 +8729,17 @@ class SPSCQueue {
     tryEnqueue(value: number): boolean {
         const head = Atomics.load(this.#head, 0);
         const tail = Atomics.load(this.#tail, 0);
-        
+
         const nextHead = (head + 1) % this.#capacity;
         if (nextHead === tail) {
-            return false;  // Queue full
+            return false; // Queue full
         }
-        
+
         this.#data[head] = value;
         Atomics.store(this.#head, 0, nextHead);
         return true;
     }
-    
+
     /**
      * Try to dequeue a byte. Returns undefined if empty.
      * Only call from consumer thread.
@@ -8830,17 +8747,17 @@ class SPSCQueue {
     tryDequeue(): number | undefined {
         const head = Atomics.load(this.#head, 0);
         const tail = Atomics.load(this.#tail, 0);
-        
+
         if (head === tail) {
-            return undefined;  // Queue empty
+            return undefined; // Queue empty
         }
-        
+
         const value = this.#data[tail]!;
         const nextTail = (tail + 1) % this.#capacity;
         Atomics.store(this.#tail, 0, nextTail);
         return value;
     }
-    
+
     /**
      * Get approximate size (may be stale).
      */
@@ -8849,15 +8766,15 @@ class SPSCQueue {
         const tail = Atomics.load(this.#tail, 0);
         return (head - tail + this.#capacity) % this.#capacity;
     }
-    
+
     isEmpty(): boolean {
         return Atomics.load(this.#head, 0) === Atomics.load(this.#tail, 0);
     }
-    
+
     isFull(): boolean {
         const head = Atomics.load(this.#head, 0);
         const tail = Atomics.load(this.#tail, 0);
-        return ((head + 1) % this.#capacity) === tail;
+        return (head + 1) % this.#capacity === tail;
     }
 }
 ```
@@ -8878,31 +8795,31 @@ Every object in V8 has an internal hidden class. Adding, deleting, or reordering
  */
 function createPointBad(x?: number, y?: number): { x: number; y: number } {
     const point: { x?: number; y?: number } = {};
-    
+
     if (x !== undefined) {
-        point.x = x;  // Hidden class transition: {} -> {x}
+        point.x = x; // Hidden class transition: {} -> {x}
     }
     if (y !== undefined) {
-        point.y = y;  // Hidden class transition: {x} -> {x, y}
+        point.y = y; // Hidden class transition: {x} -> {x, y}
     }
-    
+
     // Missing properties filled with defaults
     point.x ??= 0;
     point.y ??= 0;
-    
+
     return point as { x: number; y: number };
 }
 
 // These create DIFFERENT hidden classes:
-const p1 = createPointBad(1, 2);  // {} -> {x} -> {x, y}
-const p2 = createPointBad(1);     // {} -> {x} -> {x, y} (different path for y)
-const p3 = createPointBad();      // {} -> {x} -> {x, y} (different path)
+const p1 = createPointBad(1, 2); // {} -> {x} -> {x, y}
+const p2 = createPointBad(1); // {} -> {x} -> {x, y} (different path for y)
+const p3 = createPointBad(); // {} -> {x} -> {x, y} (different path)
 
 /**
  * GOOD: Always initialize in the same order.
  */
 function createPointGood(x: number = 0, y: number = 0): { x: number; y: number } {
-    return { x, y };  // Always same shape
+    return { x, y }; // Always same shape
 }
 
 // All share the SAME hidden class:
@@ -8916,7 +8833,7 @@ const g3 = createPointGood(0, 0);
 class Point {
     readonly x: number;
     readonly y: number;
-    
+
     constructor(x: number = 0, y: number = 0) {
         this.x = x;
         this.y = y;
@@ -8939,11 +8856,11 @@ Never add properties dynamically after object creation.
  */
 class BadUser {
     name: string;
-    
+
     constructor(name: string) {
         this.name = name;
     }
-    
+
     addMetadata(key: string, value: string): void {
         // This creates a new hidden class for EACH unique key!
         (this as Record<string, unknown>)[key] = value;
@@ -8951,12 +8868,12 @@ class BadUser {
 }
 
 const user1 = new BadUser('Alice');
-user1.addMetadata('age', '30');     // Hidden class change
-user1.addMetadata('email', 'a@b');  // Another hidden class change
+user1.addMetadata('age', '30'); // Hidden class change
+user1.addMetadata('email', 'a@b'); // Another hidden class change
 
 const user2 = new BadUser('Bob');
-user2.addMetadata('email', 'b@c');  // Different hidden class than user1!
-user2.addMetadata('age', '25');     // Different again!
+user2.addMetadata('email', 'b@c'); // Different hidden class than user1!
+user2.addMetadata('age', '25'); // Different again!
 
 // user1 and user2 have DIFFERENT hidden classes even with same final properties
 // because properties were added in different orders!
@@ -8967,12 +8884,12 @@ user2.addMetadata('age', '25');     // Different again!
 class GoodUser {
     readonly name: string;
     readonly metadata: Map<string, string>;
-    
+
     constructor(name: string) {
         this.name = name;
         this.metadata = new Map();
     }
-    
+
     setMetadata(key: string, value: string): void {
         this.metadata.set(key, value);
     }
@@ -8994,7 +8911,7 @@ interface UserMetadata {
 class BestUser {
     readonly name: string;
     readonly metadata: UserMetadata;
-    
+
     constructor(name: string) {
         this.name = name;
         this.metadata = {
@@ -9015,14 +8932,14 @@ Never delete properties. Set to null or undefined instead.
  * BAD: Deleting properties.
  */
 function clearSensitiveDataBad(user: { password?: string; data: string }): void {
-    delete user.password;  // Creates new hidden class!
+    delete user.password; // Creates new hidden class!
 }
 
 /**
  * GOOD: Set to undefined.
  */
 function clearSensitiveDataGood(user: { password: string | undefined; data: string }): void {
-    user.password = undefined;  // Same hidden class
+    user.password = undefined; // Same hidden class
 }
 
 /**
@@ -9068,9 +8985,9 @@ function processPointPoly(point: { x: number; y?: number; z?: number }): number 
 }
 
 // Different shapes - slower
-processPointPoly({ x: 1 });              // Shape 1
-processPointPoly({ x: 1, y: 2 });        // Shape 2
-processPointPoly({ x: 1, y: 2, z: 3 });  // Shape 3
+processPointPoly({ x: 1 }); // Shape 1
+processPointPoly({ x: 1, y: 2 }); // Shape 2
+processPointPoly({ x: 1, y: 2, z: 3 }); // Shape 3
 
 /**
  * Megamorphic - receives 5+ different shapes.
@@ -9084,13 +9001,13 @@ function processAny(obj: object): void {
 /**
  * Keep functions monomorphic in hot paths.
  */
-class TransactionProcessor {
-    // All transactions have same shape
-    process(tx: Transaction): ProcessResult {
+class OrderProcessor {
+    // All orders have same shape
+    process(order: Order): ProcessResult {
         return {
-            txid: tx.txid,
-            fee: tx.fee,
-            size: tx.size,
+            orderId: order.orderId,
+            total: order.total,
+            size: order.size,
         };
     }
 }
@@ -9139,7 +9056,7 @@ calculateStrings('3', '4');
 function processInput(input: number | string): number {
     // Convert once at boundary
     const num = typeof input === 'number' ? input : parseFloat(input);
-    
+
     // Pass known type to hot path
     return hotPath(num);
 }
@@ -9205,7 +9122,7 @@ Certain patterns trigger deoptimization.
 function sumBad(): number {
     let total = 0;
     for (let i = 0; i < arguments.length; i++) {
-        total += arguments[i];  // Deoptimizes!
+        total += arguments[i]; // Deoptimizes!
     }
     return total;
 }
@@ -9227,7 +9144,7 @@ function sumGood(...numbers: readonly number[]): number {
 function processWithTryCatchBad(items: readonly Item[]): void {
     for (const item of items) {
         try {
-            processItem(item);  // Try-catch prevents optimization
+            processItem(item); // Try-catch prevents optimization
         } catch (e) {
             handleError(e);
         }
@@ -9240,7 +9157,7 @@ function processWithTryCatchBad(items: readonly Item[]): void {
 function processWithTryCatchGood(items: readonly Item[]): void {
     try {
         for (const item of items) {
-            processItem(item);  // Hot loop can be optimized
+            processItem(item); // Hot loop can be optimized
         }
     } catch (e) {
         handleError(e);
@@ -9251,7 +9168,7 @@ function processWithTryCatchGood(items: readonly Item[]): void {
  * BAD: eval or with.
  */
 function dangerous(code: string): void {
-    eval(code);  // Completely disables optimization for entire function
+    eval(code); // Completely disables optimization for entire function
 }
 
 // Never use eval. Never use with.
@@ -9262,7 +9179,7 @@ function dangerous(code: string): void {
 function Foo() {}
 Foo.prototype.x = 1;
 // Later...
-Foo.prototype.y = 2;  // Invalidates optimizations for all Foo instances
+Foo.prototype.y = 2; // Invalidates optimizations for all Foo instances
 
 /**
  * GOOD: Define complete prototype upfront.
@@ -9292,7 +9209,7 @@ const array = [1, 2, 3, 4, 5];
  */
 function sumFastest(arr: readonly number[]): number {
     let sum = 0;
-    const len = arr.length;  // Cache length
+    const len = arr.length; // Cache length
     for (let i = 0; i < len; i++) {
         sum += arr[i]!;
     }
@@ -9328,7 +9245,9 @@ function sumMedium(arr: readonly number[]): number {
  */
 function sumSlower(arr: readonly number[]): number {
     let sum = 0;
-    arr.forEach(num => { sum += num; });
+    arr.forEach((num) => {
+        sum += num;
+    });
     return sum;
 }
 
@@ -9356,7 +9275,7 @@ Move invariant computations out of loops.
  */
 function processBad(items: readonly Item[], config: Config): void {
     for (let i = 0; i < items.length; i++) {
-        const threshold = config.baseThreshold * config.multiplier;  // Invariant!
+        const threshold = config.baseThreshold * config.multiplier; // Invariant!
         if (items[i]!.value > threshold) {
             processItem(items[i]!);
         }
@@ -9367,9 +9286,9 @@ function processBad(items: readonly Item[], config: Config): void {
  * GOOD: Hoist invariant out of loop.
  */
 function processGood(items: readonly Item[], config: Config): void {
-    const threshold = config.baseThreshold * config.multiplier;  // Computed once
-    const len = items.length;  // Cache length
-    
+    const threshold = config.baseThreshold * config.multiplier; // Computed once
+    const len = items.length; // Cache length
+
     for (let i = 0; i < len; i++) {
         if (items[i]!.value > threshold) {
             processItem(items[i]!);
@@ -9382,7 +9301,8 @@ function processGood(items: readonly Item[], config: Config): void {
  */
 function sumPropertiesBad(obj: { values: readonly number[] }): number {
     let sum = 0;
-    for (let i = 0; i < obj.values.length; i++) {  // obj.values accessed each iteration
+    for (let i = 0; i < obj.values.length; i++) {
+        // obj.values accessed each iteration
         sum += obj.values[i]!;
     }
     return sum;
@@ -9392,10 +9312,10 @@ function sumPropertiesBad(obj: { values: readonly number[] }): number {
  * GOOD: Cache property reference.
  */
 function sumPropertiesGood(obj: { values: readonly number[] }): number {
-    const values = obj.values;  // Cache reference
-    const len = values.length;  // Cache length
+    const values = obj.values; // Cache reference
+    const len = values.length; // Cache length
     let sum = 0;
-    
+
     for (let i = 0; i < len; i++) {
         sum += values[i]!;
     }
@@ -9427,7 +9347,7 @@ V8 optimizes integers in Smi range (approximately -2^30 to 2^30-1 on 64-bit).
  */
 function smiMath(a: number, b: number): number {
     // All values in Smi range - fast
-    return (a + b) | 0;  // | 0 ensures integer
+    return (a + b) | 0; // | 0 ensures integer
 }
 
 /**
@@ -9442,8 +9362,8 @@ function heapNumberMath(a: number, b: number): number {
  * Integer truncation patterns for 32-bit operations.
  * Use number for intentional 32-bit ops (checksums, hashes, CRCs).
  */
-const toInt32 = (n: number): number => n | 0;      // Truncate to signed 32-bit
-const toUint32 = (n: number): number => n >>> 0;   // Truncate to unsigned 32-bit
+const toInt32 = (n: number): number => n | 0; // Truncate to signed 32-bit
+const toUint32 = (n: number): number => n >>> 0; // Truncate to unsigned 32-bit
 
 // 32-bit rotation - number is correct here
 const rotl32 = (x: number, n: number): number => ((x << n) | (x >>> (32 - n))) >>> 0;
@@ -9467,12 +9387,12 @@ function fastIntOps(a: number, b: number): number {
 // - Values bounded by application logic to stay small
 
 // Use BigInt for:
-// - Satoshi amounts, block heights, timestamps
+// - Money amounts in cents, revision numbers, timestamps
 // - Database IDs, file sizes, byte offsets
 // - Values from external systems
 // - Any value that could exceed 2^53
 
-const MAX_SAFE = Number.MAX_SAFE_INTEGER;  // 9007199254740991
+const MAX_SAFE = Number.MAX_SAFE_INTEGER; // 9007199254740991
 
 function safeAdd(a: number, b: number): number | bigint {
     if (a > MAX_SAFE - b) {
@@ -9491,7 +9411,7 @@ Understand floating point limitations.
 /**
  * Floating point precision issues.
  */
-console.log(0.1 + 0.2);  // 0.30000000000000004
+console.log(0.1 + 0.2); // 0.30000000000000004
 
 /**
  * Safe comparison with epsilon.
@@ -9501,10 +9421,10 @@ function floatEquals(a: number, b: number, epsilon: number = Number.EPSILON): bo
 }
 
 /**
- * For money, use integers (cents/satoshis).
+ * For money, use integers (cents).
  */
-const priceInCents = 1999;  // $19.99
-const btcInSatoshis = 100000000n;  // 1 BTC
+const priceInCents = 1999; // $19.99
+const orderTotalInCents = 100000000n; // $1,000,000.00
 
 /**
  * Avoid repeated small additions.
@@ -9523,14 +9443,14 @@ function sumBad(items: readonly { value: number }[]): number {
 function sumKahan(items: readonly { value: number }[]): number {
     let sum = 0;
     let compensation = 0;
-    
+
     for (const item of items) {
         const y = item.value - compensation;
         const t = sum + y;
-        compensation = (t - sum) - y;
+        compensation = t - sum - y;
         sum = t;
     }
-    
+
     return sum;
 }
 ```
@@ -9550,57 +9470,59 @@ Avoid these patterns in hot code.
 
 // 1. Using 'arguments'
 function bad1(): void {
-    console.log(arguments);  // Deopt
+    console.log(arguments); // Deopt
 }
 
 // 2. Changing parameter types
 function bad2(x: number): void {
-    x = 'string' as unknown as number;  // Deopt
+    x = 'string' as unknown as number; // Deopt
 }
 
 // 3. Deleting properties
 function bad3(obj: { a?: number }): void {
-    delete obj.a;  // Deopt + hidden class change
+    delete obj.a; // Deopt + hidden class change
 }
 
 // 4. Out-of-bounds array access
 function bad4(arr: number[]): void {
-    const x = arr[arr.length + 1];  // Deopt
+    const x = arr[arr.length + 1]; // Deopt
 }
 
 // 5. Changing array types
 function bad5(): void {
     const arr: (number | string)[] = [1, 2, 3];
-    arr.push('string');  // Changes internal type
+    arr.push('string'); // Changes internal type
 }
 
 // 6. Sparse arrays
 function bad6(): void {
     const arr: number[] = [];
-    arr[1000] = 1;  // Creates sparse array
+    arr[1000] = 1; // Creates sparse array
 }
 
 // 7. Prototype modification
 function bad7(): void {
-    Object.prototype.x = 1;  // Invalidates everything
+    Object.prototype.x = 1; // Invalidates everything
 }
 
 // 8. With statement
 function bad8(obj: object): void {
-    with (obj) {  // Deopt entire function
+    with (obj) {
+        // Deopt entire function
         // ...
     }
 }
 
 // 9. eval
 function bad9(code: string): void {
-    eval(code);  // Deopt entire function
+    eval(code); // Deopt entire function
 }
 
 // 10. try-catch in loop
 function bad10(items: Item[]): void {
     for (const item of items) {
-        try {  // Deopt loop
+        try {
+            // Deopt loop
             process(item);
         } catch {}
     }
@@ -9617,7 +9539,7 @@ function good1(...args: unknown[]): void {
 
 // 2. Don't reassign parameters
 function good2(x: number): void {
-    const value = x;  // Use new variable
+    const value = x; // Use new variable
 }
 
 // 3. Set to null/undefined
@@ -9696,12 +9618,12 @@ interface AsyncDisposable {
 class DatabaseConnection implements Disposable {
     readonly #connectionId: string;
     #closed = false;
-    
+
     constructor(connectionString: string) {
         this.#connectionId = crypto.randomUUID();
         console.log(`Opening connection ${this.#connectionId}`);
     }
-    
+
     query(sql: string): QueryResult {
         if (this.#closed) {
             throw new Error('Connection is closed');
@@ -9709,7 +9631,7 @@ class DatabaseConnection implements Disposable {
         // Execute query...
         return { rows: [] };
     }
-    
+
     [Symbol.dispose](): void {
         if (!this.#closed) {
             this.#closed = true;
@@ -9717,7 +9639,7 @@ class DatabaseConnection implements Disposable {
             // Release connection back to pool
         }
     }
-    
+
     get closed(): boolean {
         return this.#closed;
     }
@@ -9728,9 +9650,9 @@ class DatabaseConnection implements Disposable {
  */
 function executeQuery(sql: string): QueryResult {
     using connection = new DatabaseConnection('postgres://...');
-    
+
     const result = connection.query(sql);
-    
+
     // Connection automatically closed when scope exits
     // Even on throw, return, break, continue
     return result;
@@ -9742,9 +9664,9 @@ function executeQuery(sql: string): QueryResult {
 function copyFile(source: string, dest: string): void {
     using sourceFile = openFile(source, 'r');
     using destFile = openFile(dest, 'w');
-    
+
     // Copy data...
-    
+
     // On exit: destFile disposed first, then sourceFile
 }
 ```
@@ -9760,22 +9682,22 @@ For resources requiring async cleanup, use `await using`.
 class AsyncConnection implements AsyncDisposable {
     readonly #id: string;
     #connected = false;
-    
+
     private constructor(id: string) {
         this.#id = id;
     }
-    
+
     static async connect(url: string): Promise<AsyncConnection> {
         const conn = new AsyncConnection(crypto.randomUUID());
         await conn.#doConnect(url);
         return conn;
     }
-    
+
     async #doConnect(url: string): Promise<void> {
         // Async connection logic
         this.#connected = true;
     }
-    
+
     async query(sql: string): Promise<QueryResult> {
         if (!this.#connected) {
             throw new Error('Not connected');
@@ -9783,7 +9705,7 @@ class AsyncConnection implements AsyncDisposable {
         // Async query execution
         return { rows: [] };
     }
-    
+
     async [Symbol.asyncDispose](): Promise<void> {
         if (this.#connected) {
             this.#connected = false;
@@ -9791,7 +9713,7 @@ class AsyncConnection implements AsyncDisposable {
             await this.#gracefulDisconnect();
         }
     }
-    
+
     async #gracefulDisconnect(): Promise<void> {
         // Send disconnect packet, wait for acknowledgment
     }
@@ -9802,9 +9724,9 @@ class AsyncConnection implements AsyncDisposable {
  */
 async function executeAsyncQuery(sql: string): Promise<QueryResult> {
     await using connection = await AsyncConnection.connect('postgres://...');
-    
+
     const result = await connection.query(sql);
-    
+
     // Connection gracefully closed with await
     return result;
 }
@@ -9815,7 +9737,7 @@ async function executeAsyncQuery(sql: string): Promise<QueryResult> {
 async function complexOperation(): Promise<void> {
     using syncResource = new SyncResource();
     await using asyncResource = await AsyncResource.create();
-    
+
     // Both disposed on exit
     // async first, then sync (reverse declaration order)
 }
@@ -9831,18 +9753,18 @@ Aggregate multiple disposables for coordinated cleanup.
  */
 function createResourceBundle(): Disposable {
     const stack = new DisposableStack();
-    
+
     // Add disposable resources
     const conn1 = stack.use(new DatabaseConnection('db1'));
     const conn2 = stack.use(new DatabaseConnection('db2'));
-    
+
     // Add non-disposable values with cleanup functions
     const tempFile = createTempFile();
     stack.adopt(tempFile, (file) => deleteTempFile(file));
-    
+
     // Add arbitrary cleanup callbacks
     stack.defer(() => console.log('All resources cleaned up'));
-    
+
     // Return the stack as a disposable
     // When disposed, all resources are cleaned up in reverse order
     return stack;
@@ -9853,14 +9775,14 @@ function createResourceBundle(): Disposable {
  */
 function transferOwnership(): DatabaseConnection {
     const stack = new DisposableStack();
-    
+
     const conn = stack.use(new DatabaseConnection('db'));
-    
+
     // Do some setup...
-    
+
     // Move conn out of stack - it won't be disposed when stack is
     const moved = stack.move();
-    
+
     // Stack is now empty, conn is returned
     // Caller is responsible for disposing conn
     return conn;
@@ -9871,14 +9793,14 @@ function transferOwnership(): DatabaseConnection {
  */
 async function createAsyncBundle(): Promise<AsyncDisposable> {
     const stack = new AsyncDisposableStack();
-    
+
     const conn = await AsyncConnection.connect('url');
     stack.use(conn);
-    
+
     stack.defer(async () => {
         await cleanupAsync();
     });
-    
+
     return stack;
 }
 
@@ -9887,15 +9809,15 @@ async function createAsyncBundle(): Promise<AsyncDisposable> {
  */
 class SafeDisposableStack {
     readonly #disposables: Disposable[] = [];
-    
+
     use<T extends Disposable>(disposable: T): T {
         this.#disposables.push(disposable);
         return disposable;
     }
-    
+
     [Symbol.dispose](): void {
         const errors: Error[] = [];
-        
+
         // Dispose in reverse order, collecting errors
         for (let i = this.#disposables.length - 1; i >= 0; i--) {
             try {
@@ -9904,7 +9826,7 @@ class SafeDisposableStack {
                 errors.push(e instanceof Error ? e : new Error(String(e)));
             }
         }
-        
+
         // If any errors, throw aggregate
         if (errors.length > 0) {
             throw new AggregateError(errors, 'Errors during disposal');
@@ -9934,7 +9856,7 @@ class DatabaseError extends Error {
 
 class QueryError extends Error {
     readonly query: string;
-    
+
     constructor(query: string, options?: { cause?: unknown }) {
         super(`Query failed: ${query.substring(0, 50)}...`, options);
         this.name = 'QueryError';
@@ -9966,18 +9888,18 @@ async function getUserData(userId: string): Promise<UserData> {
 function getErrorChain(error: unknown): Error[] {
     const chain: Error[] = [];
     let current: unknown = error;
-    
+
     while (current instanceof Error) {
         chain.push(current);
         current = current.cause;
     }
-    
+
     return chain;
 }
 
 function logErrorChain(error: unknown): void {
     const chain = getErrorChain(error);
-    
+
     console.error('Error chain:');
     for (let i = 0; i < chain.length; i++) {
         const err = chain[i]!;
@@ -9998,21 +9920,21 @@ abstract class BaseError extends Error {
     abstract readonly code: string;
     readonly timestamp: Date;
     readonly context: Readonly<Record<string, unknown>>;
-    
+
     constructor(
         message: string,
         context: Readonly<Record<string, unknown>> = {},
-        options?: { cause?: unknown }
+        options?: { cause?: unknown },
     ) {
         super(message, options);
         this.name = this.constructor.name;
         this.timestamp = new Date();
         this.context = context;
-        
+
         // Capture stack trace
         Error.captureStackTrace?.(this, this.constructor);
     }
-    
+
     toJSON(): object {
         return {
             name: this.name,
@@ -10021,9 +9943,10 @@ abstract class BaseError extends Error {
             timestamp: this.timestamp.toISOString(),
             context: this.context,
             stack: this.stack,
-            cause: this.cause instanceof Error 
-                ? { name: this.cause.name, message: this.cause.message }
-                : this.cause,
+            cause:
+                this.cause instanceof Error
+                    ? { name: this.cause.name, message: this.cause.message }
+                    : this.cause,
         };
     }
 }
@@ -10034,12 +9957,8 @@ abstract class BaseError extends Error {
 class ValidationError extends BaseError {
     readonly code = 'VALIDATION_ERROR';
     readonly field?: string;
-    
-    constructor(
-        message: string,
-        field?: string,
-        context?: Readonly<Record<string, unknown>>
-    ) {
+
+    constructor(message: string, field?: string, context?: Readonly<Record<string, unknown>>) {
         super(message, { ...context, field });
         this.field = field;
     }
@@ -10052,7 +9971,7 @@ class NotFoundError extends BaseError {
     readonly code = 'NOT_FOUND';
     readonly resource: string;
     readonly id: string;
-    
+
     constructor(resource: string, id: string) {
         super(`${resource} not found: ${id}`, { resource, id });
         this.resource = resource;
@@ -10067,7 +9986,7 @@ class PermissionError extends BaseError {
     readonly code = 'PERMISSION_DENIED';
     readonly action: string;
     readonly resource: string;
-    
+
     constructor(action: string, resource: string) {
         super(`Permission denied: ${action} on ${resource}`, { action, resource });
         this.action = action;
@@ -10082,13 +10001,8 @@ class NetworkError extends BaseError {
     readonly code = 'NETWORK_ERROR';
     readonly url: string;
     readonly status?: number;
-    
-    constructor(
-        message: string,
-        url: string,
-        status?: number,
-        options?: { cause?: unknown }
-    ) {
+
+    constructor(message: string, url: string, status?: number, options?: { cause?: unknown }) {
         super(message, { url, status }, options);
         this.url = url;
         this.status = status;
@@ -10096,32 +10010,25 @@ class NetworkError extends BaseError {
 }
 
 /**
- * Transaction errors for blockchain.
+ * Order errors for order history.
  */
-class TransactionError extends BaseError {
-    readonly code = 'TRANSACTION_ERROR';
-    readonly txid?: string;
-    
-    constructor(
-        message: string,
-        txid?: string,
-        options?: { cause?: unknown }
-    ) {
-        super(message, { txid }, options);
-        this.txid = txid;
+class OrderError extends BaseError {
+    readonly code = 'ORDER_ERROR';
+    readonly orderId?: string;
+
+    constructor(message: string, orderId?: string, options?: { cause?: unknown }) {
+        super(message, { orderId }, options);
+        this.orderId = orderId;
     }
 }
 
-class InsufficientFundsError extends TransactionError {
+class InsufficientFundsError extends OrderError {
     override readonly code = 'INSUFFICIENT_FUNDS';
     readonly required: bigint;
     readonly available: bigint;
-    
+
     constructor(required: bigint, available: bigint) {
-        super(
-            `Insufficient funds: need ${required}, have ${available}`,
-            undefined
-        );
+        super(`Insufficient funds: need ${required}, have ${available}`, undefined);
         this.required = required;
         this.available = available;
     }
@@ -10139,26 +10046,21 @@ Handle multiple errors from parallel operations.
 async function processAllItems(items: readonly Item[]): Promise<ProcessResult[]> {
     const results: ProcessResult[] = [];
     const errors: Error[] = [];
-    
+
     await Promise.allSettled(
         items.map(async (item, index) => {
             try {
                 results[index] = await processItem(item);
             } catch (e) {
-                errors.push(
-                    new Error(`Item ${index} failed`, { cause: e })
-                );
+                errors.push(new Error(`Item ${index} failed`, { cause: e }));
             }
-        })
+        }),
     );
-    
+
     if (errors.length > 0) {
-        throw new AggregateError(
-            errors,
-            `${errors.length} items failed to process`
-        );
+        throw new AggregateError(errors, `${errors.length} items failed to process`);
     }
-    
+
     return results;
 }
 
@@ -10168,7 +10070,7 @@ async function processAllItems(items: readonly Item[]): Promise<ProcessResult[]>
 function handleAggregateError(error: AggregateError): void {
     console.error(`Aggregate error: ${error.message}`);
     console.error(`${error.errors.length} individual errors:`);
-    
+
     for (const err of error.errors) {
         if (err instanceof Error) {
             console.error(`  - ${err.message}`);
@@ -10199,8 +10101,7 @@ Use discriminated unions for explicit error handling.
  * Result type - success or failure.
  */
 type Result<T, E = Error> =
-    | { readonly success: true; readonly value: T }
-    | { readonly success: false; readonly error: E };
+    { readonly success: true; readonly value: T } | { readonly success: false; readonly error: E };
 
 /**
  * Result constructors.
@@ -10235,30 +10136,21 @@ function unwrapOr<T, E>(result: Result<T, E>, defaultValue: T): T {
     return result.success ? result.value : defaultValue;
 }
 
-function map<T, U, E>(
-    result: Result<T, E>,
-    fn: (value: T) => U
-): Result<U, E> {
+function map<T, U, E>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> {
     if (result.success) {
         return ok(fn(result.value));
     }
     return result;
 }
 
-function mapErr<T, E, F>(
-    result: Result<T, E>,
-    fn: (error: E) => F
-): Result<T, F> {
+function mapErr<T, E, F>(result: Result<T, E>, fn: (error: E) => F): Result<T, F> {
     if (!result.success) {
         return err(fn(result.error));
     }
     return result;
 }
 
-function flatMap<T, U, E>(
-    result: Result<T, E>,
-    fn: (value: T) => Result<U, E>
-): Result<U, E> {
+function flatMap<T, U, E>(result: Result<T, E>, fn: (value: T) => Result<U, E>): Result<U, E> {
     if (result.success) {
         return fn(result.value);
     }
@@ -10286,22 +10178,16 @@ function divide(a: number, b: number): Result<number, Error> {
 function calculate(aStr: string, bStr: string): Result<number, Error> {
     const aResult = parseNumber(aStr);
     if (!aResult.success) return aResult;
-    
+
     const bResult = parseNumber(bStr);
     if (!bResult.success) return bResult;
-    
+
     return divide(aResult.value, bResult.value);
 }
 
 // Or with flatMap
 function calculateFluent(aStr: string, bStr: string): Result<number, Error> {
-    return flatMap(
-        parseNumber(aStr),
-        (a) => flatMap(
-            parseNumber(bStr),
-            (b) => divide(a, b)
-        )
-    );
+    return flatMap(parseNumber(aStr), (a) => flatMap(parseNumber(bStr), (b) => divide(a, b)));
 }
 ```
 
@@ -10313,9 +10199,7 @@ For values that may or may not exist.
 /**
  * Option type - some value or none.
  */
-type Option<T> =
-    | { readonly some: true; readonly value: T }
-    | { readonly some: false };
+type Option<T> = { readonly some: true; readonly value: T } | { readonly some: false };
 
 /**
  * Option constructors.
@@ -10355,10 +10239,7 @@ function mapOption<T, U>(option: Option<T>, fn: (value: T) => U): Option<U> {
     return option.some ? some(fn(option.value)) : none();
 }
 
-function flatMapOption<T, U>(
-    option: Option<T>,
-    fn: (value: T) => Option<U>
-): Option<U> {
+function flatMapOption<T, U>(option: Option<T>, fn: (value: T) => Option<U>): Option<U> {
     return option.some ? fn(option.value) : none();
 }
 
@@ -10375,17 +10256,11 @@ function findUser(id: string): Option<User> {
 }
 
 function getUserEmail(id: string): Option<string> {
-    return flatMapOption(
-        findUser(id),
-        (user) => fromNullable(user.email)
-    );
+    return flatMapOption(findUser(id), (user) => fromNullable(user.email));
 }
 
 function getVerifiedUserEmail(id: string): Option<string> {
-    return filter(
-        getUserEmail(id),
-        (email) => email.includes('@')
-    );
+    return filter(getUserEmail(id), (email) => email.includes('@'));
 }
 ```
 
@@ -10405,13 +10280,13 @@ class Range {
     readonly #start: number;
     readonly #end: number;
     readonly #step: number;
-    
+
     constructor(start: number, end: number, step: number = 1) {
         this.#start = start;
         this.#end = end;
         this.#step = step;
     }
-    
+
     *[Symbol.iterator](): Generator<number, void, undefined> {
         for (let i = this.#start; i < this.#end; i += this.#step) {
             yield i;
@@ -10421,10 +10296,10 @@ class Range {
 
 // Usage
 for (const n of new Range(0, 10, 2)) {
-    console.log(n);  // 0, 2, 4, 6, 8
+    console.log(n); // 0, 2, 4, 6, 8
 }
 
-const numbers = [...new Range(1, 5)];  // [1, 2, 3, 4]
+const numbers = [...new Range(1, 5)]; // [1, 2, 3, 4]
 
 /**
  * Symbol.asyncIterator - async iteration.
@@ -10433,16 +10308,16 @@ class AsyncRange {
     readonly #start: number;
     readonly #end: number;
     readonly #delay: number;
-    
+
     constructor(start: number, end: number, delay: number = 100) {
         this.#start = start;
         this.#end = end;
         this.#delay = delay;
     }
-    
+
     async *[Symbol.asyncIterator](): AsyncGenerator<number, void, undefined> {
         for (let i = this.#start; i < this.#end; i++) {
-            await new Promise(resolve => setTimeout(resolve, this.#delay));
+            await new Promise((resolve) => setTimeout(resolve, this.#delay));
             yield i;
         }
     }
@@ -10451,7 +10326,7 @@ class AsyncRange {
 // Usage
 async function consumeAsync(): Promise<void> {
     for await (const n of new AsyncRange(0, 5)) {
-        console.log(n);  // Logs 0, 1, 2, 3, 4 with delays
+        console.log(n); // Logs 0, 1, 2, 3, 4 with delays
     }
 }
 ```
@@ -10462,31 +10337,31 @@ async function consumeAsync(): Promise<void> {
 /**
  * Symbol.toStringTag - customize Object.prototype.toString.
  */
-class Transaction {
-    readonly txid: string;
-    
-    constructor(txid: string) {
-        this.txid = txid;
+class Order {
+    readonly orderId: string;
+
+    constructor(orderId: string) {
+        this.orderId = orderId;
     }
-    
+
     get [Symbol.toStringTag](): string {
-        return 'Transaction';
+        return 'Order';
     }
 }
 
-const tx = new Transaction('abc123');
-Object.prototype.toString.call(tx);  // '[object Transaction]'
+const order = new Order('abc123');
+Object.prototype.toString.call(order);  // '[object Order]'
 
 /**
  * Symbol.toPrimitive - control type coercion.
  */
 class Money {
     readonly #cents: number;
-    
+
     constructor(cents: number) {
         this.#cents = cents;
     }
-    
+
     [Symbol.toPrimitive](hint: 'number' | 'string' | 'default'): number | string {
         switch (hint) {
             case 'number':
@@ -10530,7 +10405,7 @@ const spreadable = {
     [Symbol.isConcatSpreadable]: true,
 };
 
-[1, 2].concat(spreadable);  // [1, 2, 'a', 'b']
+[1, 2].concat(spreadable); // [1, 2, 'a', 'b']
 
 const notSpreadable = {
     length: 2,
@@ -10539,21 +10414,21 @@ const notSpreadable = {
     [Symbol.isConcatSpreadable]: false,
 };
 
-[1, 2].concat(notSpreadable);  // [1, 2, { length: 2, 0: 'a', 1: 'b', ... }]
+[1, 2].concat(notSpreadable); // [1, 2, { length: 2, 0: 'a', 1: 'b', ... }]
 
 /**
  * Symbol.species - control constructor for derived objects.
  */
 class MyArray<T> extends Array<T> {
     static get [Symbol.species](): ArrayConstructor {
-        return Array;  // map, filter, etc. return plain Array
+        return Array; // map, filter, etc. return plain Array
     }
 }
 
 const myArr = new MyArray(1, 2, 3);
-const mapped = myArr.map(x => x * 2);
-mapped instanceof MyArray;  // false
-mapped instanceof Array;    // true
+const mapped = myArr.map((x) => x * 2);
+mapped instanceof MyArray; // false
+mapped instanceof Array; // true
 
 /**
  * Symbol.match, Symbol.replace, Symbol.search, Symbol.split
@@ -10561,21 +10436,21 @@ mapped instanceof Array;    // true
  */
 class CaseInsensitiveMatcher {
     readonly #pattern: string;
-    
+
     constructor(pattern: string) {
         this.#pattern = pattern.toLowerCase();
     }
-    
+
     [Symbol.match](str: string): RegExpMatchArray | null {
         const index = str.toLowerCase().indexOf(this.#pattern);
         if (index === -1) return null;
-        
+
         const result = [str.substring(index, index + this.#pattern.length)] as RegExpMatchArray;
         result.index = index;
         result.input = str;
         return result;
     }
-    
+
     [Symbol.search](str: string): number {
         return str.toLowerCase().indexOf(this.#pattern);
     }
@@ -10601,19 +10476,19 @@ class CaseInsensitiveMatcher {
 const privateData = Symbol('privateData');
 const anotherPrivate = Symbol('privateData');
 
-privateData === anotherPrivate;  // false - different symbols
+privateData === anotherPrivate; // false - different symbols
 
 const obj = {
     [privateData]: 'secret',
 };
 
 // Symbol keys are not enumerable by default methods
-Object.keys(obj);            // []
-JSON.stringify(obj);         // '{}'
+Object.keys(obj); // []
+JSON.stringify(obj); // '{}'
 
 // But discoverable via specific APIs
-Object.getOwnPropertySymbols(obj);  // [Symbol(privateData)]
-Reflect.ownKeys(obj);               // [Symbol(privateData)]
+Object.getOwnPropertySymbols(obj); // [Symbol(privateData)]
+Reflect.ownKeys(obj); // [Symbol(privateData)]
 
 /**
  * Global registry symbols - shared across realms.
@@ -10621,11 +10496,11 @@ Reflect.ownKeys(obj);               // [Symbol(privateData)]
 const sharedKey = Symbol.for('myapp.sharedKey');
 const sameKey = Symbol.for('myapp.sharedKey');
 
-sharedKey === sameKey;  // true - same symbol from registry
+sharedKey === sameKey; // true - same symbol from registry
 
 // Get key for registered symbol
-Symbol.keyFor(sharedKey);  // 'myapp.sharedKey'
-Symbol.keyFor(privateData);  // undefined - not registered
+Symbol.keyFor(sharedKey); // 'myapp.sharedKey'
+Symbol.keyFor(privateData); // undefined - not registered
 ```
 
 ### 7.2.2 Symbol Use Cases
@@ -10638,11 +10513,11 @@ const internal = Symbol('internal');
 
 class SecureClass {
     [internal]: InternalState;
-    
+
     constructor() {
         this[internal] = { secret: 'hidden' };
     }
-    
+
     getPublicData(): PublicData {
         // Access internal state
         return transformToPublic(this[internal]);
@@ -10680,7 +10555,7 @@ interface WithMetadata {
 
 function setMetadata<T extends object>(
     obj: T,
-    metadata: Readonly<Record<string, unknown>>
+    metadata: Readonly<Record<string, unknown>>,
 ): T & WithMetadata {
     (obj as WithMetadata)[metadataKey] = metadata;
     return obj as T & WithMetadata;
@@ -10734,25 +10609,25 @@ interface IterableIterator<T> extends Iterator<T> {
 class CountingIterator implements IterableIterator<number> {
     #current: number;
     readonly #end: number;
-    
+
     constructor(start: number, end: number) {
         this.#current = start;
         this.#end = end;
     }
-    
+
     next(): IteratorResult<number, void> {
         if (this.#current < this.#end) {
             return { done: false, value: this.#current++ };
         }
         return { done: true, value: undefined };
     }
-    
+
     return(value?: void): IteratorResult<number, void> {
         // Called when iteration is terminated early
-        this.#current = this.#end;  // Exhaust iterator
+        this.#current = this.#end; // Exhaust iterator
         return { done: true, value };
     }
-    
+
     [Symbol.iterator](): IterableIterator<number> {
         return this;
     }
@@ -10761,7 +10636,7 @@ class CountingIterator implements IterableIterator<number> {
 // Usage
 const iter = new CountingIterator(0, 3);
 for (const n of iter) {
-    console.log(n);  // 0, 1, 2
+    console.log(n); // 0, 1, 2
 }
 ```
 
@@ -10778,7 +10653,7 @@ function* range(start: number, end: number, step: number = 1): Generator<number>
 }
 
 for (const n of range(0, 10, 2)) {
-    console.log(n);  // 0, 2, 4, 6, 8
+    console.log(n); // 0, 2, 4, 6, 8
 }
 
 /**
@@ -10790,12 +10665,12 @@ function* countWithTotal(n: number): Generator<number, number, undefined> {
         yield i;
         total += i;
     }
-    return total;  // Return value when done
+    return total; // Return value when done
 }
 
 const gen = countWithTotal(5);
 for (const value of gen) {
-    console.log(value);  // 0, 1, 2, 3, 4
+    console.log(value); // 0, 1, 2, 3, 4
 }
 // Note: return value (10) is not yielded in for...of
 
@@ -10806,7 +10681,7 @@ while (!result.done) {
     console.log(result.value);
     result = gen2.next();
 }
-console.log('Total:', result.value);  // Total: 10
+console.log('Total:', result.value); // Total: 10
 
 /**
  * Bidirectional communication with generators.
@@ -10814,28 +10689,28 @@ console.log('Total:', result.value);  // Total: 10
 function* accumulator(): Generator<number, void, number> {
     let total = 0;
     while (true) {
-        const input = yield total;  // Yield current, receive next
+        const input = yield total; // Yield current, receive next
         total += input;
     }
 }
 
 const acc = accumulator();
-acc.next();           // { value: 0, done: false } - start generator
-acc.next(5);          // { value: 5, done: false } - send 5
-acc.next(10);         // { value: 15, done: false } - send 10
-acc.next(3);          // { value: 18, done: false } - send 3
+acc.next(); // { value: 0, done: false } - start generator
+acc.next(5); // { value: 5, done: false } - send 5
+acc.next(10); // { value: 15, done: false } - send 10
+acc.next(3); // { value: 18, done: false } - send 3
 
 /**
  * yield* delegation.
  */
 function* flatten<T>(arrays: Iterable<Iterable<T>>): Generator<T> {
     for (const array of arrays) {
-        yield* array;  // Delegate to nested iterable
+        yield* array; // Delegate to nested iterable
     }
 }
 
 const nested = [[1, 2], [3, 4], [5]];
-console.log([...flatten(nested)]);  // [1, 2, 3, 4, 5]
+console.log([...flatten(nested)]); // [1, 2, 3, 4, 5]
 ```
 
 ---
@@ -10855,13 +10730,13 @@ const iter = Iterator.from([1, 2, 3, 4, 5]);
 /**
  * map - transform each value.
  */
-const doubled = iter.map(x => x * 2);
+const doubled = iter.map((x) => x * 2);
 // Lazy - no computation until iterated
 
 /**
  * filter - select values.
  */
-const evens = iter.filter(x => x % 2 === 0);
+const evens = iter.filter((x) => x % 2 === 0);
 
 /**
  * take - limit count.
@@ -10876,16 +10751,16 @@ const afterTwo = iter.drop(2);
 /**
  * flatMap - map and flatten.
  */
-const expanded = iter.flatMap(x => [x, x * 10]);
+const expanded = iter.flatMap((x) => [x, x * 10]);
 
 /**
  * Chain operations lazily.
  */
 const result = Iterator.from([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-    .filter(x => x % 2 === 0)    // 2, 4, 6, 8, 10
-    .map(x => x * 2)              // 4, 8, 12, 16, 20
-    .take(3)                      // 4, 8, 12
-    .toArray();                   // [4, 8, 12]
+    .filter((x) => x % 2 === 0) // 2, 4, 6, 8, 10
+    .map((x) => x * 2) // 4, 8, 12, 16, 20
+    .take(3) // 4, 8, 12
+    .toArray(); // [4, 8, 12]
 
 // Only 3 elements computed, rest never processed!
 
@@ -10900,16 +10775,16 @@ const arr = iter.toArray();
 const sum = iter.reduce((acc, x) => acc + x, 0);
 
 // forEach - side effects
-iter.forEach(x => console.log(x));
+iter.forEach((x) => console.log(x));
 
 // some - test any match
-const hasEven = iter.some(x => x % 2 === 0);
+const hasEven = iter.some((x) => x % 2 === 0);
 
 // every - test all match
-const allPositive = iter.every(x => x > 0);
+const allPositive = iter.every((x) => x > 0);
 
 // find - first match
-const firstEven = iter.find(x => x % 2 === 0);
+const firstEven = iter.find((x) => x % 2 === 0);
 ```
 
 ### 8.2.2 Custom Iterator Helpers
@@ -10918,12 +10793,9 @@ const firstEven = iter.find(x => x % 2 === 0);
 /**
  * Chunk iterator into groups.
  */
-function* chunk<T>(
-    iterable: Iterable<T>,
-    size: number
-): Generator<T[], void, undefined> {
+function* chunk<T>(iterable: Iterable<T>, size: number): Generator<T[], void, undefined> {
     let chunk: T[] = [];
-    
+
     for (const item of iterable) {
         chunk.push(item);
         if (chunk.length === size) {
@@ -10931,7 +10803,7 @@ function* chunk<T>(
             chunk = [];
         }
     }
-    
+
     if (chunk.length > 0) {
         yield chunk;
     }
@@ -10943,15 +10815,12 @@ console.log([...chunk([1, 2, 3, 4, 5], 2)]);
 /**
  * Window/sliding window.
  */
-function* window<T>(
-    iterable: Iterable<T>,
-    size: number
-): Generator<T[], void, undefined> {
+function* window<T>(iterable: Iterable<T>, size: number): Generator<T[], void, undefined> {
     const buffer: T[] = [];
-    
+
     for (const item of iterable) {
         buffer.push(item);
-        
+
         if (buffer.length === size) {
             yield [...buffer];
             buffer.shift();
@@ -10968,16 +10837,18 @@ console.log([...window([1, 2, 3, 4, 5], 3)]);
 function* zip<T extends readonly Iterable<unknown>[]>(
     ...iterables: T
 ): Generator<{ [K in keyof T]: T[K] extends Iterable<infer U> ? U : never }> {
-    const iterators = iterables.map(it => it[Symbol.iterator]());
-    
+    const iterators = iterables.map((it) => it[Symbol.iterator]());
+
     while (true) {
-        const results = iterators.map(it => it.next());
-        
-        if (results.some(r => r.done)) {
+        const results = iterators.map((it) => it.next());
+
+        if (results.some((r) => r.done)) {
             break;
         }
-        
-        yield results.map(r => r.value) as { [K in keyof T]: T[K] extends Iterable<infer U> ? U : never };
+
+        yield results.map((r) => r.value) as {
+            [K in keyof T]: T[K] extends Iterable<infer U> ? U : never;
+        };
     }
 }
 
@@ -10989,7 +10860,7 @@ console.log([...zip([1, 2, 3], ['a', 'b', 'c'])]);
  */
 function* enumerate<T>(
     iterable: Iterable<T>,
-    start: number = 0
+    start: number = 0,
 ): Generator<[number, T], void, undefined> {
     let index = start;
     for (const item of iterable) {
@@ -10998,7 +10869,7 @@ function* enumerate<T>(
 }
 
 for (const [i, char] of enumerate('abc')) {
-    console.log(i, char);  // 0 'a', 1 'b', 2 'c'
+    console.log(i, char); // 0 'a', 1 'b', 2 'c'
 }
 
 /**
@@ -11006,10 +10877,10 @@ for (const [i, char] of enumerate('abc')) {
  */
 function* unique<T>(
     iterable: Iterable<T>,
-    keyFn: (item: T) => unknown = (x) => x
+    keyFn: (item: T) => unknown = (x) => x,
 ): Generator<T, void, undefined> {
     const seen = new Set<unknown>();
-    
+
     for (const item of iterable) {
         const key = keyFn(item);
         if (!seen.has(key)) {
@@ -11019,14 +10890,14 @@ function* unique<T>(
     }
 }
 
-console.log([...unique([1, 2, 2, 3, 3, 3])]);  // [1, 2, 3]
+console.log([...unique([1, 2, 2, 3, 3, 3])]); // [1, 2, 3]
 
 /**
  * Take while predicate is true.
  */
 function* takeWhile<T>(
     iterable: Iterable<T>,
-    predicate: (item: T) => boolean
+    predicate: (item: T) => boolean,
 ): Generator<T, void, undefined> {
     for (const item of iterable) {
         if (!predicate(item)) break;
@@ -11034,17 +10905,17 @@ function* takeWhile<T>(
     }
 }
 
-console.log([...takeWhile([1, 2, 3, 4, 5], x => x < 4)]);  // [1, 2, 3]
+console.log([...takeWhile([1, 2, 3, 4, 5], (x) => x < 4)]); // [1, 2, 3]
 
 /**
  * Drop while predicate is true.
  */
 function* dropWhile<T>(
     iterable: Iterable<T>,
-    predicate: (item: T) => boolean
+    predicate: (item: T) => boolean,
 ): Generator<T, void, undefined> {
     let dropping = true;
-    
+
     for (const item of iterable) {
         if (dropping && predicate(item)) {
             continue;
@@ -11054,7 +10925,7 @@ function* dropWhile<T>(
     }
 }
 
-console.log([...dropWhile([1, 2, 3, 4, 5], x => x < 3)]);  // [3, 4, 5]
+console.log([...dropWhile([1, 2, 3, 4, 5], (x) => x < 3)]); // [3, 4, 5]
 ```
 
 ---
@@ -11069,12 +10940,12 @@ console.log([...dropWhile([1, 2, 3, 4, 5], x => x < 3)]);  // [3, 4, 5]
  */
 async function* fetchPages<T>(url: string): AsyncGenerator<T[], void, undefined> {
     let cursor: string | null = null;
-    
+
     do {
         const fullUrl = cursor ? `${url}?cursor=${cursor}` : url;
         const response = await fetch(fullUrl);
-        const data = await response.json() as { items: T[]; nextCursor: string | null };
-        
+        const data = (await response.json()) as { items: T[]; nextCursor: string | null };
+
         yield data.items;
         cursor = data.nextCursor;
     } while (cursor !== null);
@@ -11083,11 +10954,11 @@ async function* fetchPages<T>(url: string): AsyncGenerator<T[], void, undefined>
 // Usage
 async function getAllUsers(): Promise<User[]> {
     const allUsers: User[] = [];
-    
+
     for await (const page of fetchPages<User>('/api/users')) {
         allUsers.push(...page);
     }
-    
+
     return allUsers;
 }
 
@@ -11096,7 +10967,7 @@ async function getAllUsers(): Promise<User[]> {
  */
 async function* asyncMap<T, U>(
     source: AsyncIterable<T>,
-    fn: (item: T) => U | Promise<U>
+    fn: (item: T) => U | Promise<U>,
 ): AsyncGenerator<U, void, undefined> {
     for await (const item of source) {
         yield await fn(item);
@@ -11105,7 +10976,7 @@ async function* asyncMap<T, U>(
 
 async function* asyncFilter<T>(
     source: AsyncIterable<T>,
-    predicate: (item: T) => boolean | Promise<boolean>
+    predicate: (item: T) => boolean | Promise<boolean>,
 ): AsyncGenerator<T, void, undefined> {
     for await (const item of source) {
         if (await predicate(item)) {
@@ -11116,7 +10987,7 @@ async function* asyncFilter<T>(
 
 async function* asyncTake<T>(
     source: AsyncIterable<T>,
-    count: number
+    count: number,
 ): AsyncGenerator<T, void, undefined> {
     let taken = 0;
     for await (const item of source) {
@@ -11139,11 +11010,11 @@ async function asyncCollect<T>(source: AsyncIterable<T>): Promise<T[]> {
  */
 async function* buffer<T>(
     source: AsyncIterable<T>,
-    size: number
+    size: number,
 ): AsyncGenerator<T, void, undefined> {
     const buffer: T[] = [];
     const { promise: readyPromise, resolve: ready } = Promise.withResolvers<void>();
-    
+
     // Fill buffer in background
     const fillBuffer = async () => {
         for await (const item of source) {
@@ -11152,12 +11023,12 @@ async function* buffer<T>(
                 ready();
             }
         }
-        ready();  // Signal done even if not full
+        ready(); // Signal done even if not full
     };
-    
+
     fillBuffer();
     await readyPromise;
-    
+
     while (buffer.length > 0) {
         yield buffer.shift()!;
     }
@@ -11178,37 +11049,37 @@ async function* buffer<T>(
  * Cannot be directly accessed, must use views.
  */
 const buffer = new ArrayBuffer(32);
-console.log(buffer.byteLength);  // 32
+console.log(buffer.byteLength); // 32
 
 /**
  * Check if buffer is detached.
  */
-console.log(buffer.detached);  // false
+console.log(buffer.detached); // false
 
 /**
  * Transfer ownership to new buffer.
  */
 const transferred = buffer.transfer();
-console.log(buffer.detached);       // true
-console.log(buffer.byteLength);     // 0
+console.log(buffer.detached); // true
+console.log(buffer.byteLength); // 0
 console.log(transferred.byteLength); // 32
 
 /**
  * Transfer with resize.
  */
 const resized = transferred.transfer(64);
-console.log(resized.byteLength);  // 64
+console.log(resized.byteLength); // 64
 
 /**
  * Resizable ArrayBuffer.
  */
 const resizable = new ArrayBuffer(16, { maxByteLength: 64 });
-console.log(resizable.byteLength);     // 16
-console.log(resizable.maxByteLength);  // 64
-console.log(resizable.resizable);      // true
+console.log(resizable.byteLength); // 16
+console.log(resizable.maxByteLength); // 64
+console.log(resizable.resizable); // true
 
 resizable.resize(32);
-console.log(resizable.byteLength);  // 32
+console.log(resizable.byteLength); // 32
 
 /**
  * SharedArrayBuffer - for multi-threaded access.
@@ -11232,15 +11103,15 @@ const uint16 = new Uint16Array(buffer);
 const uint32 = new Uint32Array(buffer);
 const float32 = new Float32Array(buffer);
 
-console.log(uint8.length);    // 16 elements
-console.log(uint16.length);   // 8 elements
-console.log(uint32.length);   // 4 elements
-console.log(float32.length);  // 4 elements
+console.log(uint8.length); // 16 elements
+console.log(uint16.length); // 8 elements
+console.log(uint32.length); // 4 elements
+console.log(float32.length); // 4 elements
 
 // Writing through one view affects others
-uint8[0] = 0xFF;
+uint8[0] = 0xff;
 uint8[1] = 0x00;
-console.log(uint16[0]);  // Depends on endianness
+console.log(uint16[0]); // Depends on endianness
 
 /**
  * Partial views with offset and length.
@@ -11249,9 +11120,9 @@ const fullBuffer = new ArrayBuffer(100);
 
 // View bytes 20-39 (20 bytes)
 const partial = new Uint8Array(fullBuffer, 20, 20);
-console.log(partial.byteOffset);  // 20
-console.log(partial.byteLength);  // 20
-console.log(partial.buffer === fullBuffer);  // true
+console.log(partial.byteOffset); // 20
+console.log(partial.byteLength); // 20
+console.log(partial.buffer === fullBuffer); // true
 
 /**
  * View from existing TypedArray.
@@ -11259,14 +11130,14 @@ console.log(partial.buffer === fullBuffer);  // true
 const source = new Uint8Array([1, 2, 3, 4, 5]);
 
 // subarray - shares buffer (view)
-const view = source.subarray(1, 4);  // [2, 3, 4]
+const view = source.subarray(1, 4); // [2, 3, 4]
 view[0] = 99;
-console.log(source);  // [1, 99, 3, 4, 5]
+console.log(source); // [1, 99, 3, 4, 5]
 
 // slice - copies data (new buffer)
-const copy = source.slice(1, 4);  // [99, 3, 4]
+const copy = source.slice(1, 4); // [99, 3, 4]
 copy[0] = 100;
-console.log(source);  // [1, 99, 3, 4, 5] - unchanged
+console.log(source); // [1, 99, 3, 4, 5] - unchanged
 ```
 
 ---
@@ -11279,28 +11150,28 @@ console.log(source);  // [1, 99, 3, 4, 5] - unchanged
 /**
  * Integer TypedArrays.
  */
-const int8 = new Int8Array(4);      // -128 to 127
-const uint8 = new Uint8Array(4);    // 0 to 255
-const uint8c = new Uint8ClampedArray(4);  // 0-255, clamped not wrapped
-const int16 = new Int16Array(4);    // -32768 to 32767
-const uint16 = new Uint16Array(4);  // 0 to 65535
-const int32 = new Int32Array(4);    // -2^31 to 2^31-1
-const uint32 = new Uint32Array(4);  // 0 to 2^32-1
+const int8 = new Int8Array(4); // -128 to 127
+const uint8 = new Uint8Array(4); // 0 to 255
+const uint8c = new Uint8ClampedArray(4); // 0-255, clamped not wrapped
+const int16 = new Int16Array(4); // -32768 to 32767
+const uint16 = new Uint16Array(4); // 0 to 65535
+const int32 = new Int32Array(4); // -2^31 to 2^31-1
+const uint32 = new Uint32Array(4); // 0 to 2^32-1
 
 /**
  * BigInt TypedArrays (64-bit).
  */
-const bigInt64 = new BigInt64Array(4);   // -2^63 to 2^63-1
+const bigInt64 = new BigInt64Array(4); // -2^63 to 2^63-1
 const bigUint64 = new BigUint64Array(4); // 0 to 2^64-1
 
 // Elements are BigInt, not number
-bigInt64[0] = 9007199254740993n;  // Beyond MAX_SAFE_INTEGER
+bigInt64[0] = 9007199254740993n; // Beyond MAX_SAFE_INTEGER
 
 /**
  * Float TypedArrays.
  */
-const float32 = new Float32Array(4);  // 32-bit IEEE 754
-const float64 = new Float64Array(4);  // 64-bit IEEE 754
+const float32 = new Float32Array(4); // 32-bit IEEE 754
+const float64 = new Float64Array(4); // 64-bit IEEE 754
 
 /**
  * Clamped vs wrapped overflow.
@@ -11308,11 +11179,11 @@ const float64 = new Float64Array(4);  // 64-bit IEEE 754
 const regular = new Uint8Array([0]);
 const clamped = new Uint8ClampedArray([0]);
 
-regular[0] = 300;   // Wraps: 300 % 256 = 44
-clamped[0] = 300;   // Clamps: 255 (max)
+regular[0] = 300; // Wraps: 300 % 256 = 44
+clamped[0] = 300; // Clamps: 255 (max)
 
-regular[0] = -10;   // Wraps: 246
-clamped[0] = -10;   // Clamps: 0 (min)
+regular[0] = -10; // Wraps: 246
+clamped[0] = -10; // Clamps: 0 (min)
 ```
 
 ### 9.2.2 Selection Guidelines
@@ -11333,7 +11204,7 @@ const signature = new Uint8Array(64);
  * - Image pixel data
  * - Audio samples (8-bit)
  */
-const imageData = new Uint8ClampedArray(width * height * 4);  // RGBA
+const imageData = new Uint8ClampedArray(width * height * 4); // RGBA
 
 /**
  * Use Int32Array/Uint32Array for:
@@ -11352,7 +11223,7 @@ Atomics.add(counters, 0, 1);
  * - Large counters
  */
 const timestamps = new BigUint64Array(100);
-timestamps[0] = BigInt(Date.now()) * 1000000n;  // Nanoseconds
+timestamps[0] = BigInt(Date.now()) * 1000000n; // Nanoseconds
 
 /**
  * Use Float32Array for:
@@ -11361,9 +11232,15 @@ timestamps[0] = BigInt(Date.now()) * 1000000n;  // Nanoseconds
  * - Memory-efficient floats
  */
 const vertices = new Float32Array([
-    0.0, 0.5, 0.0,   // Vertex 1
-    -0.5, -0.5, 0.0, // Vertex 2
-    0.5, -0.5, 0.0,  // Vertex 3
+    0.0,
+    0.5,
+    0.0, // Vertex 1
+    -0.5,
+    -0.5,
+    0.0, // Vertex 2
+    0.5,
+    -0.5,
+    0.0, // Vertex 3
 ]);
 
 /**
@@ -11403,8 +11280,8 @@ view.setUint32(4, 0x12345678, false);
 /**
  * Read with correct endianness.
  */
-const littleEndian = view.getUint32(0, true);   // 0x12345678
-const bigEndian = view.getUint32(4, false);     // 0x12345678
+const littleEndian = view.getUint32(0, true); // 0x12345678
+const bigEndian = view.getUint32(4, false); // 0x12345678
 
 /**
  * All DataView methods.
@@ -11442,18 +11319,18 @@ const f64 = view.getFloat64(offset, littleEndian);
 
 ```typescript
 /**
- * Bitcoin transaction parsing example.
+ * Binary order export record parsing example.
  */
-class TransactionParser {
+class OrderRecordParser {
     readonly #buffer: Uint8Array;
     readonly #view: DataView;
     #offset = 0;
-    
+
     constructor(data: Uint8Array) {
         this.#buffer = data;
         this.#view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     }
-    
+
     /**
      * Read little-endian uint32.
      */
@@ -11462,7 +11339,7 @@ class TransactionParser {
         this.#offset += 4;
         return value;
     }
-    
+
     /**
      * Read little-endian uint64 as bigint.
      */
@@ -11471,31 +11348,31 @@ class TransactionParser {
         this.#offset += 8;
         return value;
     }
-    
+
     /**
-     * Read variable-length integer (Bitcoin CompactSize).
+     * Read a LEB128 unsigned variable-length integer.
      */
-    readVarInt(): bigint {
-        const first = this.readUint8();
-        
-        if (first < 0xFD) {
-            return BigInt(first);
-        } else if (first === 0xFD) {
-            return BigInt(this.readUint16());
-        } else if (first === 0xFE) {
-            return BigInt(this.readUint32());
-        } else {
-            return this.readUint64();
+    readVarUint(): bigint {
+        let result = 0n;
+        let shift = 0n;
+        for (;;) {
+            const byte = this.readUint8();
+            result |= BigInt(byte & 0x7f) << shift;
+            if ((byte & 0x80) === 0) {
+                break;
+            }
+            shift += 7n;
         }
+        return result;
     }
-    
+
     /**
      * Read uint8.
      */
     readUint8(): number {
         return this.#buffer[this.#offset++]!;
     }
-    
+
     /**
      * Read uint16 little-endian.
      */
@@ -11504,7 +11381,7 @@ class TransactionParser {
         this.#offset += 2;
         return value;
     }
-    
+
     /**
      * Read bytes.
      */
@@ -11513,20 +11390,18 @@ class TransactionParser {
         this.#offset += length;
         return bytes;
     }
-    
+
     /**
-     * Read hash (32 bytes, reversed for display).
+     * Read a 32-byte record id.
      */
-    readHash(): Uint8Array {
-        const hash = this.readBytes(32);
-        // Bitcoin displays hashes in reverse byte order
-        return hash.slice().reverse();
+    readRecordId(): Uint8Array {
+        return this.readBytes(32).slice();
     }
-    
+
     get position(): number {
         return this.#offset;
     }
-    
+
     get remaining(): number {
         return this.#buffer.length - this.#offset;
     }
@@ -11545,25 +11420,25 @@ class TransactionParser {
  */
 
 // AND - both bits must be 1
-const and = 0b1010 & 0b1100;  // 0b1000 = 8
+const and = 0b1010 & 0b1100; // 0b1000 = 8
 
 // OR - either bit can be 1
-const or = 0b1010 | 0b1100;   // 0b1110 = 14
+const or = 0b1010 | 0b1100; // 0b1110 = 14
 
 // XOR - bits must be different
-const xor = 0b1010 ^ 0b1100;  // 0b0110 = 6
+const xor = 0b1010 ^ 0b1100; // 0b0110 = 6
 
 // NOT - flip all bits (returns signed int32)
-const not = ~0b1010;          // -11 (signed)
+const not = ~0b1010; // -11 (signed)
 
 // Left shift - multiply by 2^n
-const left = 0b0001 << 3;     // 0b1000 = 8
+const left = 0b0001 << 3; // 0b1000 = 8
 
 // Right shift (signed) - divide by 2^n, preserves sign
-const right = -8 >> 2;        // -2 (sign preserved)
+const right = -8 >> 2; // -2 (sign preserved)
 
 // Right shift (unsigned) - divide by 2^n, fills with 0
-const rightU = -8 >>> 2;      // 1073741822 (large positive)
+const rightU = -8 >>> 2; // 1073741822 (large positive)
 
 /**
  * Common bit manipulation patterns.
@@ -11610,14 +11485,14 @@ function countBits(value: number): number {
 }
 
 // Or use Math.clz32 and other intrinsics
-const leadingZeros = Math.clz32(0b00001111);  // 28
+const leadingZeros = Math.clz32(0b00001111); // 28
 
 /**
  * Bit flags pattern.
  */
 const Permissions = {
-    READ: 1 << 0,    // 0b001 = 1
-    WRITE: 1 << 1,   // 0b010 = 2
+    READ: 1 << 0, // 0b001 = 1
+    WRITE: 1 << 1, // 0b010 = 2
     EXECUTE: 1 << 2, // 0b100 = 4
 } as const;
 
@@ -11625,44 +11500,42 @@ type Permission = (typeof Permissions)[keyof typeof Permissions];
 
 class PermissionSet {
     #flags: number = 0;
-    
+
     add(permission: Permission): this {
         this.#flags |= permission;
         return this;
     }
-    
+
     remove(permission: Permission): this {
         this.#flags &= ~permission;
         return this;
     }
-    
+
     has(permission: Permission): boolean {
         return (this.#flags & permission) === permission;
     }
-    
+
     hasAll(...permissions: Permission[]): boolean {
         const mask = permissions.reduce((acc, p) => acc | p, 0);
         return (this.#flags & mask) === mask;
     }
-    
+
     hasAny(...permissions: Permission[]): boolean {
         const mask = permissions.reduce((acc, p) => acc | p, 0);
         return (this.#flags & mask) !== 0;
     }
-    
+
     get value(): number {
         return this.#flags;
     }
 }
 
 // Usage
-const perms = new PermissionSet()
-    .add(Permissions.READ)
-    .add(Permissions.EXECUTE);
+const perms = new PermissionSet().add(Permissions.READ).add(Permissions.EXECUTE);
 
-perms.has(Permissions.READ);     // true
-perms.has(Permissions.WRITE);    // false
-perms.hasAll(Permissions.READ, Permissions.EXECUTE);  // true
+perms.has(Permissions.READ); // true
+perms.has(Permissions.WRITE); // false
+perms.hasAll(Permissions.READ, Permissions.EXECUTE); // true
 ```
 
 ---
@@ -11678,32 +11551,32 @@ perms.hasAll(Permissions.READ, Permissions.EXECUTE);  // true
  * toReversed - returns new reversed array.
  */
 const arr = [1, 2, 3, 4, 5];
-const reversed = arr.toReversed();  // [5, 4, 3, 2, 1]
-console.log(arr);  // [1, 2, 3, 4, 5] - unchanged
+const reversed = arr.toReversed(); // [5, 4, 3, 2, 1]
+console.log(arr); // [1, 2, 3, 4, 5] - unchanged
 
 /**
  * toSorted - returns new sorted array.
  */
 const nums = [3, 1, 4, 1, 5];
-const sorted = nums.toSorted((a, b) => a - b);  // [1, 1, 3, 4, 5]
-console.log(nums);  // [3, 1, 4, 1, 5] - unchanged
+const sorted = nums.toSorted((a, b) => a - b); // [1, 1, 3, 4, 5]
+console.log(nums); // [3, 1, 4, 1, 5] - unchanged
 
 /**
  * toSpliced - returns new array with splice applied.
  */
 const items = ['a', 'b', 'c', 'd'];
-const spliced = items.toSpliced(1, 2, 'x', 'y');  // ['a', 'x', 'y', 'd']
-console.log(items);  // ['a', 'b', 'c', 'd'] - unchanged
+const spliced = items.toSpliced(1, 2, 'x', 'y'); // ['a', 'x', 'y', 'd']
+console.log(items); // ['a', 'b', 'c', 'd'] - unchanged
 
 /**
  * with - returns new array with element replaced.
  */
 const original = [1, 2, 3, 4, 5];
-const modified = original.with(2, 99);  // [1, 2, 99, 4, 5]
-console.log(original);  // [1, 2, 3, 4, 5] - unchanged
+const modified = original.with(2, 99); // [1, 2, 99, 4, 5]
+console.log(original); // [1, 2, 3, 4, 5] - unchanged
 
 // Supports negative indices
-const last = original.with(-1, 100);  // [1, 2, 3, 4, 100]
+const last = original.with(-1, 100); // [1, 2, 3, 4, 100]
 ```
 
 ### 10.1.2 Search Methods
@@ -11714,8 +11587,8 @@ const last = original.with(-1, 100);  // [1, 2, 3, 4, 100]
  */
 const numbers = [1, 2, 3, 4, 5, 4, 3, 2, 1];
 
-const lastEven = numbers.findLast(n => n % 2 === 0);  // 2
-const lastIndex = numbers.findLastIndex(n => n % 2 === 0);  // 7
+const lastEven = numbers.findLast((n) => n % 2 === 0); // 2
+const lastIndex = numbers.findLastIndex((n) => n % 2 === 0); // 7
 
 /**
  * Array.fromAsync - create array from async iterable.
@@ -11726,13 +11599,10 @@ async function* asyncGenerator(): AsyncGenerator<number> {
     yield 3;
 }
 
-const fromAsync = await Array.fromAsync(asyncGenerator());  // [1, 2, 3]
+const fromAsync = await Array.fromAsync(asyncGenerator()); // [1, 2, 3]
 
 // With mapping function
-const mapped = await Array.fromAsync(
-    asyncGenerator(),
-    async (n) => n * 2
-);  // [2, 4, 6]
+const mapped = await Array.fromAsync(asyncGenerator(), async (n) => n * 2); // [2, 4, 6]
 ```
 
 ### 10.1.3 Grouping Methods
@@ -11747,20 +11617,20 @@ const people = [
     { name: 'Charlie', age: 25 },
 ];
 
-const byAge = Object.groupBy(people, person => person.age);
+const byAge = Object.groupBy(people, (person) => person.age);
 // { 25: [{name: 'Alice'...}, {name: 'Charlie'...}], 30: [{name: 'Bob'...}] }
 
 // Returns null-prototype object
-Object.getPrototypeOf(byAge);  // null
+Object.getPrototypeOf(byAge); // null
 
 /**
  * Map.groupBy - group into Map.
  */
-const byAgeMap = Map.groupBy(people, person => person.age);
+const byAgeMap = Map.groupBy(people, (person) => person.age);
 // Map { 25 => [...], 30 => [...] }
 
 // Useful when keys aren't strings
-const byObject = Map.groupBy(items, item => item.category);
+const byObject = Map.groupBy(items, (item) => item.category);
 // Keys can be objects
 ```
 
@@ -11772,23 +11642,24 @@ const byObject = Map.groupBy(items, item => item.category);
 /**
  * Object.hasOwn - safe own property check.
  */
-const obj = Object.create(null);  // No prototype
+const obj = Object.create(null); // No prototype
 obj.key = 'value';
 
 // obj.hasOwnProperty('key');  // Error! No prototype
-Object.hasOwn(obj, 'key');       // true - always works
+Object.hasOwn(obj, 'key'); // true - always works
 
 /**
  * Object.fromEntries - inverse of Object.entries.
  */
-const entries: [string, number][] = [['a', 1], ['b', 2]];
-const fromEntries = Object.fromEntries(entries);  // { a: 1, b: 2 }
+const entries: [string, number][] = [
+    ['a', 1],
+    ['b', 2],
+];
+const fromEntries = Object.fromEntries(entries); // { a: 1, b: 2 }
 
 // Transform object
 const original = { a: 1, b: 2, c: 3 };
-const doubled = Object.fromEntries(
-    Object.entries(original).map(([k, v]) => [k, v * 2])
-);  // { a: 2, b: 4, c: 6 }
+const doubled = Object.fromEntries(Object.entries(original).map(([k, v]) => [k, v * 2])); // { a: 2, b: 4, c: 6 }
 
 /**
  * structuredClone - deep clone.
@@ -11808,10 +11679,7 @@ const cloned = structuredClone(complex);
 
 // Clone with transfer
 const buffer = new ArrayBuffer(1024);
-const clonedWithTransfer = structuredClone(
-    { buffer },
-    { transfer: [buffer] }
-);
+const clonedWithTransfer = structuredClone({ buffer }, { transfer: [buffer] });
 // Original buffer is detached
 ```
 
@@ -11824,27 +11692,27 @@ const clonedWithTransfer = structuredClone(
  * String well-formed checks.
  */
 const valid = 'Hello 👋';
-const invalid = 'Hello \uD800';  // Lone surrogate
+const invalid = 'Hello \uD800'; // Lone surrogate
 
-valid.isWellFormed();    // true
-invalid.isWellFormed();  // false
+valid.isWellFormed(); // true
+invalid.isWellFormed(); // false
 
-valid.toWellFormed();    // 'Hello 👋'
-invalid.toWellFormed();  // 'Hello �' (replacement character)
+valid.toWellFormed(); // 'Hello 👋'
+invalid.toWellFormed(); // 'Hello �' (replacement character)
 
 /**
  * String.prototype.at - supports negative indices.
  */
 const str = 'Hello';
-str.at(0);   // 'H'
-str.at(-1);  // 'o'
-str.at(-2);  // 'l'
+str.at(0); // 'H'
+str.at(-1); // 'o'
+str.at(-2); // 'l'
 
 /**
  * replaceAll - replace all occurrences.
  */
 const text = 'foo bar foo baz foo';
-text.replaceAll('foo', 'qux');  // 'qux bar qux baz qux'
+text.replaceAll('foo', 'qux'); // 'qux bar qux baz qux'
 
 // With regex (must have g flag)
 text.replaceAll(/foo/g, 'qux');
@@ -11853,8 +11721,8 @@ text.replaceAll(/foo/g, 'qux');
  * trimStart / trimEnd.
  */
 const padded = '  hello  ';
-padded.trimStart();  // 'hello  '
-padded.trimEnd();    // '  hello'
+padded.trimStart(); // 'hello  '
+padded.trimEnd(); // '  hello'
 ```
 
 ---
@@ -11869,7 +11737,7 @@ const re = /(?<word>\w+)/dg;
 const text = 'Hello World';
 const match = re.exec(text)!;
 
-match.indices;        // [[0, 5], [0, 5]]
+match.indices; // [[0, 5], [0, 5]]
 match.indices.groups; // { word: [0, 5] }
 
 /**
@@ -11878,29 +11746,29 @@ match.indices.groups; // { word: [0, 5] }
 const dateRe = /(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})/;
 const dateMatch = '2024-03-15'.match(dateRe)!;
 
-dateMatch.groups!.year;   // '2024'
-dateMatch.groups!.month;  // '03'
-dateMatch.groups!.day;    // '15'
+dateMatch.groups!.year; // '2024'
+dateMatch.groups!.month; // '03'
+dateMatch.groups!.day; // '15'
 
 /**
  * Lookbehind assertions.
  */
 // Positive lookbehind
 const priceRe = /(?<=\$)\d+/;
-'$100'.match(priceRe)![0];  // '100'
+'$100'.match(priceRe)![0]; // '100'
 
 // Negative lookbehind
 const notPriceRe = /(?<!\$)\d+/;
-'€100'.match(notPriceRe)![0];  // '100'
+'€100'.match(notPriceRe)![0]; // '100'
 
 /**
  * Unicode property escapes.
  */
 const greekRe = /\p{Script=Greek}+/u;
-greekRe.test('αβγ');  // true
+greekRe.test('αβγ'); // true
 
 const emojiRe = /\p{Emoji}/u;
-emojiRe.test('👋');  // true
+emojiRe.test('👋'); // true
 
 /**
  * v flag - set operations.
@@ -11947,22 +11815,19 @@ async function generateKeyPair(): Promise<CryptoKeyPair> {
     return crypto.subtle.generateKey(
         {
             name: 'ECDSA',
-            namedCurve: 'P-256',  // Note: secp256k1 not supported
+            namedCurve: 'P-256', // P-256 is broadly supported
         },
-        true,  // extractable
-        ['sign', 'verify']
+        true, // extractable
+        ['sign', 'verify'],
     );
 }
 
 // Sign data
-async function sign(
-    privateKey: CryptoKey,
-    data: Uint8Array
-): Promise<Uint8Array> {
+async function sign(privateKey: CryptoKey, data: Uint8Array): Promise<Uint8Array> {
     const signature = await crypto.subtle.sign(
         { name: 'ECDSA', hash: 'SHA-256' },
         privateKey,
-        data
+        data,
     );
     return new Uint8Array(signature);
 }
@@ -11971,29 +11836,20 @@ async function sign(
 async function verify(
     publicKey: CryptoKey,
     signature: Uint8Array,
-    data: Uint8Array
+    data: Uint8Array,
 ): Promise<boolean> {
-    return crypto.subtle.verify(
-        { name: 'ECDSA', hash: 'SHA-256' },
-        publicKey,
-        signature,
-        data
-    );
+    return crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, publicKey, signature, data);
 }
 
 // AES encryption
 async function encrypt(
     key: CryptoKey,
-    data: Uint8Array
+    data: Uint8Array,
 ): Promise<{ iv: Uint8Array; ciphertext: Uint8Array }> {
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    
-    const ciphertext = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        data
-    );
-    
+
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+
     return { iv, ciphertext: new Uint8Array(ciphertext) };
 }
 
@@ -12001,31 +11857,24 @@ async function encrypt(
 async function decrypt(
     key: CryptoKey,
     iv: Uint8Array,
-    ciphertext: Uint8Array
+    ciphertext: Uint8Array,
 ): Promise<Uint8Array> {
-    const plaintext = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        ciphertext
-    );
-    
+    const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+
     return new Uint8Array(plaintext);
 }
 
 // HKDF key derivation
-async function deriveKey(
-    password: string,
-    salt: Uint8Array
-): Promise<CryptoKey> {
+async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey> {
     const encoder = new TextEncoder();
     const keyMaterial = await crypto.subtle.importKey(
         'raw',
         encoder.encode(password),
         'PBKDF2',
         false,
-        ['deriveKey']
+        ['deriveKey'],
     );
-    
+
     return crypto.subtle.deriveKey(
         {
             name: 'PBKDF2',
@@ -12036,7 +11885,7 @@ async function deriveKey(
         keyMaterial,
         { name: 'AES-GCM', length: 256 },
         true,
-        ['encrypt', 'decrypt']
+        ['encrypt', 'decrypt'],
     );
 }
 ```
@@ -12049,118 +11898,118 @@ async function deriveKey(
 
 ### 11.1.1 Basic Tags
 
-~~~typescript
+````typescript
 /**
  * Calculates the SHA-256 hash of the input data.
- * 
+ *
  * @param data - The input bytes to hash
  * @returns The 32-byte hash digest
  * @throws {TypeError} If data is not a Uint8Array
- * 
+ *
  * @example
  * ```typescript
  * const hash = sha256(new Uint8Array([1, 2, 3]));
  * console.log(hash.length); // 32
  * ```
- * 
+ *
  * @remarks
  * This function uses the Web Crypto API internally.
  * For Node.js, ensure you're using a version with
  * Web Crypto support or use the crypto module directly.
- * 
- * @see {@link sha256d} for double SHA-256
- * @see {@link hash160} for RIPEMD160(SHA256(x))
+ *
+ * @see {@link sha512} for the 64-byte SHA-512 digest
+ * @see {@link hmacSha256} for keyed HMAC hashing
  */
 function sha256(data: Uint8Array): Uint8Array {
     // Implementation
 }
 
 /**
- * A Bitcoin transaction input.
- * 
+ * An order line item.
+ *
  * @remarks
- * Inputs reference previous transaction outputs (UTXOs)
- * and provide the unlocking script to spend them.
+ * Line items reference catalog entries (products)
+ * and provide the pricing data used to charge for them.
  */
-interface TransactionInput {
+interface OrderLineItem {
     /**
-     * The transaction ID of the output being spent.
+     * The order ID this line item belongs to.
      * @readonly
      */
-    readonly txid: TxId;
-    
+    readonly orderId: OrderId;
+
     /**
-     * The output index within the referenced transaction.
+     * The line index within the referenced order.
      * @readonly
      */
-    readonly vout: VoutIndex;
-    
+    readonly lineIndex: LineIndex;
+
     /**
-     * The unlocking script (scriptSig).
-     * Empty for SegWit inputs.
+     * The product SKU (stock keeping unit).
+     * Empty for adjustment-only line items.
      * @readonly
      */
-    readonly scriptSig: ScriptSig;
-    
+    readonly sku: Sku;
+
     /**
-     * The sequence number.
-     * Used for relative timelocks (BIP 68).
-     * @defaultValue 0xffffffff
+     * The quantity ordered.
+     * Used for tiered pricing (rule 68).
+     * @defaultValue 1
      * @readonly
      */
-    readonly sequence: Sequence;
-    
+    readonly quantity: Quantity;
+
     /**
-     * Witness data for SegWit inputs.
+     * Price snapshot data for cached line items.
      * @readonly
      */
-    readonly witness: WitnessStack;
+    readonly priceSnapshot: PriceSnapshot;
 }
-~~~
+````
 
 ### 11.1.2 Advanced Tags
 
-~~~typescript
+````typescript
 /**
- * Creates a new transaction builder.
- * 
- * @typeParam T - The transaction type being built
- * 
- * @param network - The Bitcoin network (mainnet, testnet, regtest)
+ * Creates a new order builder.
+ *
+ * @typeParam T - The order type being built
+ *
+ * @param channel - The sales channel (web, mobile, pos)
  * @param options - Builder configuration options
- * @param options.version - Transaction version (1 or 2)
- * @param options.locktime - Transaction locktime
- * 
- * @returns A new transaction builder instance
- * 
- * @throws {ValidationError} If network is invalid
+ * @param options.version - Order version (1 or 2)
+ * @param options.revision - Order revision number
+ *
+ * @returns A new order builder instance
+ *
+ * @throws {ValidationError} If channel is invalid
  * @throws {RangeError} If version is not 1 or 2
- * 
+ *
  * @example
  * Basic usage:
  * ```typescript
- * const builder = createBuilder('mainnet');
- * builder.addInput(txid, vout);
- * builder.addOutput(address, amount);
- * const tx = builder.build();
+ * const builder = createBuilder('web');
+ * builder.addLineItem(sku, quantity);
+ * builder.addAdjustment(code, amount);
+ * const order = builder.build();
  * ```
- * 
+ *
  * @example
  * With options:
  * ```typescript
- * const builder = createBuilder('testnet', {
+ * const builder = createBuilder('mobile', {
  *   version: 2,
- *   locktime: 700000,
+ *   revision: 4,
  * });
  * ```
- * 
+ *
  * @public
  * @since 2.0.0
  */
-function createBuilder<T extends Transaction>(
-    network: Network,
+function createBuilder<T extends Order>(
+    channel: Channel,
     options?: BuilderOptions
-): TransactionBuilder<T> {
+): OrderBuilder<T> {
     // Implementation
 }
 
@@ -12168,16 +12017,16 @@ function createBuilder<T extends Transaction>(
  * @deprecated Use {@link createBuilder} instead.
  * Will be removed in version 3.0.0.
  */
-function newTransactionBuilder(network: Network): TransactionBuilder {
-    return createBuilder(network);
+function newOrderBuilder(channel: Channel): OrderBuilder {
+    return createBuilder(channel);
 }
 
 /**
  * @internal
- * Internal helper for transaction serialization.
+ * Internal helper for order serialization.
  * Not part of the public API.
  */
-function serializeInternal(tx: Transaction): Uint8Array {
+function serializeInternal(order: Order): Uint8Array {
     // Implementation
 }
 
@@ -12203,11 +12052,11 @@ function experimentalFeature(): void {
 /**
  * GOOD: First paragraph is the summary.
  * Keep it concise - it appears in hover tooltips.
- * 
+ *
  * @remarks
  * Extended details go in remarks.
  * Can be multiple paragraphs.
- * 
+ *
  * Include implementation notes, edge cases,
  * and usage guidelines here.
  */
@@ -12252,7 +12101,7 @@ function experimentalFeature(): void {
  * expect(result.success).toBe(true);
  * ```
  */
-~~~
+````
 
 ---
 
@@ -12268,19 +12117,19 @@ function experimentalFeature(): void {
  */
 
 // Named exports - preferred
-export function processTransaction(tx: Transaction): Result {
+export function processOrder(order: Order): Result {
     // Implementation
 }
 
-export class TransactionBuilder {
+export class OrderBuilder {
     // Implementation
 }
 
-export interface Transaction {
+export interface Order {
     // Definition
 }
 
-export type TxId = Brand<Uint8Array, 'TxId'>;
+export type OrderId = Brand<Uint8Array, 'OrderId'>;
 
 // Default export - use sparingly
 export default class MainClass {
@@ -12288,8 +12137,8 @@ export default class MainClass {
 }
 
 // Re-exports
-export { Transaction } from './transaction.js';
-export type { TransactionInput } from './input.js';
+export { Order } from './order.js';
+export type { OrderLineItem } from './line-item.js';
 
 // Namespace re-export
 export * from './types.js';
@@ -12298,8 +12147,8 @@ export * as utils from './utils.js';
 /**
  * Import styles.
  */
-import { Transaction, processTransaction } from './transaction.js';
-import type { TransactionInput } from './input.js';
+import { Order, processOrder } from './order.js';
+import type { OrderLineItem } from './line-item.js';
 import * as crypto from './crypto.js';
 import DefaultClass from './default.js';
 
@@ -12310,7 +12159,7 @@ import type { SomeType } from './types.js';
  * Always use .js extension in imports.
  * TypeScript compiles to JS, the runtime needs .js.
  */
-import { helper } from './helper.js';  // GOOD
+import { helper } from './helper.js'; // GOOD
 // import { helper } from './helper';  // BAD - may fail at runtime
 ```
 
@@ -12323,27 +12172,23 @@ import { helper } from './helper.js';  // GOOD
 
 // Export public types
 export type {
-    Transaction,
-    TransactionInput,
-    TransactionOutput,
-    TxId,
+    Order,
+    OrderLineItem,
+    OrderAdjustment,
+    OrderId,
     Address,
-    Satoshis,
+    Cents,
 } from './types.js';
 
 // Export public classes
-export { TransactionBuilder } from './builder.js';
-export { Wallet } from './wallet.js';
+export { OrderBuilder } from './builder.js';
+export { Account } from './account.js';
 
 // Export public functions
-export {
-    createTransaction,
-    signTransaction,
-    broadcastTransaction,
-} from './transaction.js';
+export { createOrder, finalizeOrder, submitOrder } from './order.js';
 
 // Export constants
-export { NETWORK_MAINNET, NETWORK_TESTNET } from './constants.js';
+export { STORE_PRODUCTION, STORE_SANDBOX } from './constants.js';
 
 // DO NOT export internal utilities
 // They can be inlined by bundler if not exported
@@ -12406,23 +12251,21 @@ declare global {
          * Safely await all promises, collecting errors.
          */
         safeAll<T extends readonly unknown[] | []>(
-            values: T
+            values: T,
         ): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }>;
     }
-    
+
     interface ArrayConstructor {
         /**
          * Create array from async iterable.
          */
-        fromAsync<T>(
-            iterable: AsyncIterable<T>
-        ): Promise<T[]>;
+        fromAsync<T>(iterable: AsyncIterable<T>): Promise<T[]>;
     }
 }
 
 // Implementation
 Promise.safeAll = async function safeAll<T>(
-    values: Iterable<T | PromiseLike<T>>
+    values: Iterable<T | PromiseLike<T>>,
 ): Promise<Awaited<T>[]> {
     // Implementation
 };
@@ -12492,7 +12335,7 @@ Object.freeze(Promise.safeAll);
 
 ## B.2 Required
 
-`readonly` everywhere, `as const` for literals, `#privateFields`, `override` keyword, exhaustiveness checks, properties in declaration order, Reflect in Proxy traps, exported types for all variants, defensive edge case checks, lazy computation, `bigint` for amounts/heights/IDs/timestamps, `number` for lengths/counters/flags/indices, range validation at boundaries.
+`readonly` everywhere, `as const` for literals, `#privateFields`, `override` keyword, exhaustiveness checks, properties in declaration order, Reflect in Proxy traps, exported types for all variants, defensive edge case checks, lazy computation, `bigint` for amounts/revisions/IDs/timestamps, `number` for lengths/counters/flags/indices, range validation at boundaries.
 
 ## B.3 Patterns
 
@@ -12502,16 +12345,16 @@ const Status = { Pending: 0, Active: 1, Completed: 2 } as const;
 type Status = (typeof Status)[keyof typeof Status];
 
 // Enum (bigint for large/unbounded values)
-const ChainId = { Bitcoin: 0n, Testnet: 1n, Signet: 2n } as const;
-type ChainId = (typeof ChainId)[keyof typeof ChainId];
+const ChannelId = { Web: 0n, Mobile: 1n, Retail: 2n } as const;
+type ChannelId = (typeof ChannelId)[keyof typeof ChannelId];
 
 // Brand
 declare const __brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [__brand]: B };
 
 // Numeric brands
-type Satoshis = Brand<bigint, 'Satoshis'>;
-type BlockHeight = Brand<bigint, 'BlockHeight'>;
+type Cents = Brand<bigint, 'Cents'>;
+type RevisionNumber = Brand<bigint, 'RevisionNumber'>;
 
 // Result (with exported variants)
 export interface Success<T> { readonly success: true; readonly value: T; }
@@ -12537,52 +12380,52 @@ const toInt32 = (x: number): number => x | 0;
 
 ## B.4 Type System
 
-| Pattern | Use Case |
-|---------|----------|
-| `interface` | Object shapes |
-| `type` | Unions, intersections, mapped types |
-| `as const` | Literal preservation, enums |
-| `satisfies` | Validation with narrow inference |
-| `Brand<T, B>` | Nominal typing |
-| `readonly` | Default for all properties |
+| Pattern       | Use Case                            |
+| ------------- | ----------------------------------- |
+| `interface`   | Object shapes                       |
+| `type`        | Unions, intersections, mapped types |
+| `as const`    | Literal preservation, enums         |
+| `satisfies`   | Validation with narrow inference    |
+| `Brand<T, B>` | Nominal typing                      |
+| `readonly`    | Default for all properties          |
 
 ## B.5 Runtime Safety
 
-| Method | Purpose |
-|--------|---------|
-| `Reflect.get()` | Safe property access |
-| `Reflect.set()` | Safe property modification |
-| `Object.freeze()` | Full immutability |
-| `Object.seal()` | Fixed shape, mutable values |
-| `Object.create(null)` | Prototype-free dictionary |
+| Method                | Purpose                     |
+| --------------------- | --------------------------- |
+| `Reflect.get()`       | Safe property access        |
+| `Reflect.set()`       | Safe property modification  |
+| `Object.freeze()`     | Full immutability           |
+| `Object.seal()`       | Fixed shape, mutable values |
+| `Object.create(null)` | Prototype-free dictionary   |
 
 ## B.6 Resource Management
 
-| Pattern | Use Case |
-|---------|----------|
-| `using` | Sync disposal |
-| `await using` | Async disposal |
-| `Symbol.dispose` | Disposal protocol |
+| Pattern           | Use Case           |
+| ----------------- | ------------------ |
+| `using`           | Sync disposal      |
+| `await using`     | Async disposal     |
+| `Symbol.dispose`  | Disposal protocol  |
 | `DisposableStack` | Multiple resources |
 
 ## B.7 Concurrency
 
-| API | Purpose |
-|-----|---------|
-| `Promise.safeAll()` | Safe parallel execution |
-| `Promise.withResolvers()` | External resolution |
-| `Atomics.*` | Thread-safe operations |
-| `SharedArrayBuffer` | Shared memory |
+| API                       | Purpose                 |
+| ------------------------- | ----------------------- |
+| `Promise.safeAll()`       | Safe parallel execution |
+| `Promise.withResolvers()` | External resolution     |
+| `Atomics.*`               | Thread-safe operations  |
+| `SharedArrayBuffer`       | Shared memory           |
 
 ## B.8 V8 Optimization
 
-| Rule | Reason |
-|------|--------|
-| Same property order | Hidden class stability |
+| Rule                  | Reason                 |
+| --------------------- | ---------------------- |
+| Same property order   | Hidden class stability |
 | No dynamic properties | Hidden class stability |
-| Monomorphic functions | Inline caching |
-| Smi range integers | Fast path optimization |
-| Indexed for loops | Best loop performance |
+| Monomorphic functions | Inline caching         |
+| Smi range integers    | Fast path optimization |
+| Indexed for loops     | Best loop performance  |
 
 ## B.9 Principles
 
@@ -12596,4 +12439,34 @@ const toInt32 = (x: number): number => x | 0;
 
 ---
 
-*"Everything that doesn't follow this law is shit code, broken, exploitable."*
+_"Everything that doesn't follow this law is shit code, broken, exploitable."_
+
+---
+
+# PROJECT CONVENTIONS — NERVA CODE
+
+These are project-specific standards for this repository, layered on top of the law above.
+
+## File & Folder Naming
+
+- **Folders are lowercase.** Every directory under `src/` uses a single lowercase word that names its purpose: `interface/`, `managers/`, `networking/`, `graphics/`, `catalog/`, `component/` (and nested `component/onboarding/`, `component/command/`, `component/goal/`).
+- **Files are PascalCase**, named after the primary type/class/component they export: `ConnectionManager.ts`, `EngineClient.ts`, `CommandPalette.tsx`, `Theme.ts`. One primary export per file.
+- The single entry point `src/Main.tsx` is the only PascalCase file at the `src/` root.
+
+## Structure
+
+- **No barrel/index files.** Never add `index.ts` re-export files. Import each symbol from the file that defines it.
+- **Classes for non-UI logic** (managers, clients, registries, pure math); **functional Solid components** for UI. Shared types live in `interface/` as `interface`/`type`.
+- **Purpose folders:** `interface/` (shared types), `managers/` (stateful singletons/registries), `networking/` (transport), `graphics/` (visual math), `catalog/` (static data), `component/` (Solid UI, with feature subfolders).
+
+## Popups
+
+- Anything a command surfaces (menus, palettes, prompts) renders through the dialog stack as a **floating popup overlay** (absolutely positioned, above page content) — it must never shift or reflow the page behind it. Only the first-run onboarding flow renders full-screen.
+
+## Comments
+
+- **TSDoc only.** The sole permitted comment form is a TSDoc block (`/** … */`). Every exported declaration — class, function, component, interface, type, const enum, and public/protected class member — MUST carry a TSDoc comment describing it.
+- **No `//` line comments** anywhere in `.ts`/`.tsx` source, with one exception: the two-line SPDX license header at the top of every file (`// SPDX-FileCopyrightText` / `// SPDX-License-Identifier`), which is required by REUSE.
+- **No decorative or section-divider comments** (e.g. `// --- transcript mutation ---`). Structure code with functions and files, not comment banners.
+- A module-level overview goes in a `/** … */` block immediately above the file's primary export (after the SPDX header), not in a `//` block.
+- Explanatory notes about a piece of logic belong in the TSDoc of the declaration they concern (its `@remarks`), not as inline `//` comments inside the body.
