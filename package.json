@@ -133,7 +133,7 @@
         "eslint-plugin-react-refresh": "^0.5.3",
         "hash-wasm": "^4.12.0",
         "juice": "^12.1.1",
-        "nodemailer": "^9.0.3",
+        "nodemailer": "^10.0.1",
         "picocolors": "^1.1.1",
         "sharp": "^0.35.3",
         "toilscript": "^0.1.60",
