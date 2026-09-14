@@ -35,7 +35,7 @@ function lint(source: string, rules: Record<string, unknown>) {
     );
     const result = spawnSync(
         path.join(root, 'node_modules/.bin/oxlint'),
-        ['--type-aware', '--format', 'json', 'input.ts'],
+        ['--type-aware', '--threads', '1', '--format', 'json', 'input.ts'],
         { cwd: dir, encoding: 'utf8' },
     );
     if (result.error) throw result.error;
@@ -50,7 +50,7 @@ describe('Oxlint with TypeScript 7', () => {
         const result = lint('async function work(): Promise<number> { return 1; }\nwork();', {
             'typescript/no-floating-promises': 'error',
         });
-        expect(result.status).toBe(1);
+        expect(result.status, result.stdout + result.stderr).toBe(1);
         expect(result.diagnostics).toHaveLength(1);
         expect(result.diagnostics[0].code).toContain('no-floating-promises');
     });
@@ -73,8 +73,8 @@ function nested<T extends Bytes>(value: T) { value.toString(); }
 `,
             { 'toiljs/no-uint8array-tostring': 'error' },
         );
-        expect(result.status).toBe(1);
-        expect(result.diagnostics).toHaveLength(6);
+        expect(result.status, result.stdout + result.stderr).toBe(1);
+        expect(result.diagnostics, result.stdout + result.stderr).toHaveLength(6);
         expect(result.diagnostics.every((d) => d.code.includes('no-uint8array-tostring'))).toBe(
             true,
         );
@@ -98,7 +98,7 @@ bytes.toString('hex');
 `,
             { 'toiljs/no-uint8array-tostring': 'error' },
         );
-        expect(result.status).toBe(0);
+        expect(result.status, result.stdout + result.stderr).toBe(0);
         expect(result.diagnostics).toEqual([]);
     });
 });

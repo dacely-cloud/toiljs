@@ -50,7 +50,7 @@ jobs:
           npm run lint --prefix examples/streams -- --format default --threads 1
 
       - name: Test including the example WebAssembly integrations
-        run: npm test
+        run: npm test -- --maxWorkers=2
 
       - name: Generate TypeScript 7 API reference
         run: node scripts/gen-api-docs.mjs
