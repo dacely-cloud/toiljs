@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.117] - 2026-09-14
+
+### Other Changes
+
+- feat!: upgrade to TypeScript 7 and Oxlint ([#213](https://github.com/dacely-cloud/toiljs/pull/213)) by @BlobMaster41
+
+
+
+
 ## [v0.0.116] - 2026-07-29
 
 - No changes
