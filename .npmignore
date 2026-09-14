@@ -1,11 +1,11 @@
 .vs
-./docs
-./src
+docs
+src
 !/build
-./tests
-./.github
-./.vscode
-./.idea
+tests
+.github
+.vscode
+.idea
 .DS_Store
 
 # Examples: ship basic/client + basic/server (the `toiljs create` starters), not build artifacts.
@@ -23,3 +23,10 @@ stubs
 
 # Generated per app build into the lib globals dir (auth email templates); never shipped.
 server/globals/_auth_emails.ts
+
+# Repository verification and local artifacts
+test
+coverage
+oxlint.config.ts
+scripts/gen-api-docs.mjs
+build/docs

@@ -102,7 +102,7 @@ export function version(): string {
     return '0.0.0';
 }
 
-// eslint-disable-next-line no-control-regex -- matching our own escape sequences is the point
+// oxlint-disable-next-line no-control-regex -- matching our own escape sequences is the point
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
 /** The on-screen width of `s`, ignoring ANSI color codes. */

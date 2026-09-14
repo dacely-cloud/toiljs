@@ -42,11 +42,11 @@ export const TAILWIND_PKGS: readonly string[] = ['tailwindcss', '@tailwindcss/vi
  * Vite 8 toiljs ships (the "Tailwind broken on install" error). Keep both Tailwind pins in lockstep.
  */
 export const PKG_VERSION: Record<string, string> = {
-    sass: '^1.83.0',
-    less: '^4.2.1',
+    sass: '^1.104.1',
+    less: '^4.9.1',
     stylus: '^0.64.0',
-    tailwindcss: '^4.3.0',
-    '@tailwindcss/vite': '^4.3.0',
+    tailwindcss: '^4.3.3',
+    '@tailwindcss/vite': '^4.3.3',
 };
 
 /** Dedicated Tailwind entry (kept `.css` so no preprocessor touches its `@import`). */

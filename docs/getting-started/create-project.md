@@ -4,7 +4,7 @@ Scaffold a brand-new toiljs app with one command. The CLI asks a few questions, 
 
 ## Why and when
 
-`toiljs create` is how every project starts. It wires up the enforced toiljs presets (TypeScript, ESLint, and Prettier config), the file-based routing, and a working client and server, so you get a project that builds and runs on the first try. Use it for a new app. To bring an **existing** React app into toiljs instead, see [Migrating](./migrating.md).
+`toiljs create` is how every project starts. It wires up the enforced toiljs presets (TypeScript 7, Oxlint + tsgolint, and Prettier config), the file-based routing, and a working client and server, so you get a project that builds and runs on the first try. Use it for a new app. To bring an **existing** React app into toiljs instead, see [Migrating](./migrating.md).
 
 ## The command
 
@@ -61,7 +61,7 @@ my-app/
   toil.config.ts          client/build config (SEO, images, page transitions)
   toilconfig.json         server (wasm) build config for toilscript
   tsconfig.json           TypeScript config for the client
-  eslint.config.js        linting preset
+  oxlint.config.ts        linting preset
   .prettierrc             formatting preset
   .gitignore              ignores build output, generated files, and .env files
   toil-env.d.ts           generated editor types for client globals (Toil.*)

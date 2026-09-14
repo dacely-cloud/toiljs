@@ -5,6 +5,13 @@
  * live in `doctor.ts`. Mirrors the pure/IO split of `validate.ts` and `features.ts`.
  */
 import { type Preprocessor } from './features.js';
+import {
+    isSupportedTypeScriptRange,
+    isSupportedTypeScriptVersion,
+    TYPESCRIPT_SUPPORTED,
+    TYPESCRIPT_FIX_RANGE,
+} from './typescript.js';
+export { TYPESCRIPT_SUPPORTED, TYPESCRIPT_FIX_RANGE } from './typescript.js';
 
 export type CheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -83,13 +90,6 @@ export function checkPeer(name: string, installed: string | null, range: string)
     };
 }
 
-/** The TypeScript range toiljs supports, and the range `doctor --fix` pins an unsupported one to. */
-export const TYPESCRIPT_SUPPORTED = '>=6.0.0 <7.0.0';
-export const TYPESCRIPT_FIX_RANGE = '^6.0.3';
-
-/** First TypeScript major that dropped the JavaScript compiler API (the native port). */
-const TYPESCRIPT_NATIVE_MAJOR = 7;
-
 /**
  * The major a dependency range floats to: the first number in the range, once the comparators are
  * stripped (`^7.0.2` -> 7, `>=6.0.0 <7.0.0` -> 6). Returns null for a range that names no version
@@ -100,60 +100,19 @@ export function rangeMajor(range: string): number | null {
     return m ? Number(m[1]) : null;
 }
 
-/**
- * TypeScript 7 is the native (Go) port: it publishes `tsc` but no longer exports the JavaScript
- * compiler API, whose main entry is now just `{ version, versionMajorMinor }`. toiljs reads each
- * route's static `metadata` through that API to bake SEO tags into the built HTML, and the eslint
- * and typedoc presets load it too. So a TS 7 install does not fail loudly, it silently stops baking
- * metadata (and hard-crashes typescript-eslint), which is worth a `fail` rather than a warning.
- *
- * `installed` is the version resolved from node_modules (authoritative, it is what actually runs);
- * `declared` is the project's package.json range, which is flagged when it *admits* 7 even if the
- * currently-installed copy is older, since the next install would break.
- */
+/** Diagnose the installed compiler and whether the next install stays on TypeScript 7. */
 export function checkTypeScript(installed: string | null, declared: string | null): Check {
-    const id = 'peer:typescript';
-    const label = 'typescript';
-    const unsupported = (version: string, detail: string): Check => ({
-        id,
-        label,
-        status: 'fail',
-        detail,
-        fix:
-            `TypeScript ${version} removed the JavaScript compiler API (it moved to ` +
-            `'typescript/unstable/*'), which toiljs's route-metadata extractor, the eslint preset, ` +
-            `and typedoc all load. Pin typescript to "${TYPESCRIPT_FIX_RANGE}" and reinstall ` +
-            `(\`toiljs doctor --fix\` does this).`,
-    });
-
-    if (installed === null) {
-        return {
-            id,
-            label,
-            status: 'fail',
-            detail: `not installed (requires ${TYPESCRIPT_SUPPORTED})`,
-            fix: `Install typescript@"${TYPESCRIPT_FIX_RANGE}".`,
-        };
-    }
-
-    const installedMajor = rangeMajor(installed);
-    if (installedMajor !== null && installedMajor >= TYPESCRIPT_NATIVE_MAJOR) {
-        return unsupported(String(installedMajor), `${installed} installed, unsupported`);
-    }
-
-    // Installed copy is fine, but the declared range would pull an unsupported major next install.
-    const declaredMajor = declared === null ? null : rangeMajor(declared);
-    if (declaredMajor !== null && declaredMajor >= TYPESCRIPT_NATIVE_MAJOR) {
-        return unsupported(String(declaredMajor), `package.json declares ${declared ?? ''}`);
-    }
-
-    const ok = satisfiesMin(installed, TYPESCRIPT_SUPPORTED);
+    const installedOk = installed !== null && isSupportedTypeScriptVersion(installed);
+    const declaredOk = declared === null || isSupportedTypeScriptRange(declared);
     return {
-        id,
-        label,
-        status: ok ? 'pass' : 'warn',
-        detail: `${installed} (requires ${TYPESCRIPT_SUPPORTED})`,
-        fix: ok ? undefined : `Update typescript to ${TYPESCRIPT_SUPPORTED}.`,
+        id: 'peer:typescript',
+        label: 'typescript',
+        status: installedOk && declaredOk ? 'pass' : 'fail',
+        detail: `${installed ?? 'not installed'} (requires ${TYPESCRIPT_SUPPORTED})${declaredOk ? '' : `; package.json declares ${declared}`}`,
+        fix:
+            installedOk && declaredOk
+                ? undefined
+                : `Migrate to TypeScript 7: set typescript to "${TYPESCRIPT_FIX_RANGE}" and reinstall. Run \`toiljs doctor --fix\` to update the declaration; replace ESLint with the toiljs/oxlint preset.`,
     };
 }
 
@@ -503,7 +462,7 @@ export const RPC_TOILSCRIPT_MIN = '0.1.27';
 
 /** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
 export interface RpcFacts {
-    /** `build:server` runs toilscript with `--rpcModule`. */
+    /** `build:server` uses the framework build, or toilscript with `--rpcModule`. */
     readonly buildServerWired: boolean;
     /** tsconfig includes `shared` and has the `shared/*` path alias. */
     readonly tsconfigWired: boolean;
@@ -577,22 +536,19 @@ export function checkRestDispatch(f: RestFacts): Check {
     };
 }
 
-/**
- * Whether the server's tsconfig wires the toilscript language-service plugin. The compiler turns
- * each `@collection` field into a STATIC handle (`GuestbookDb.totals`) and injects the `@data`
- * codec / `@user` members, none of which stock TypeScript can see, so without the plugin the editor
- * false-flags them as TS2339. The plugin (editor-only; never runs under `tsc`) clears them.
- */
+/** Legacy JavaScript language-service plugins cannot run in the native TypeScript 7 server. */
 export function checkServerTsPlugin(present: boolean): Check {
-    return present
-        ? { id: 'server-ts-plugin', label: 'toilscript editor plugin', status: 'pass' }
-        : {
-              id: 'server-ts-plugin',
-              label: 'toilscript editor plugin',
-              status: 'warn',
-              detail: 'server tsconfig is missing the toilscript LS plugin, so the editor wrongly flags @database static collections (e.g. GuestbookDb.totals) and @data members as TS2339',
-              fix: 'Run `toiljs doctor --fix` to add { "plugins": [{ "name": "toilscript/std/ts-plugin.cjs" }] } to your server tsconfig, then pick the workspace TypeScript version and restart the TS server.',
-          };
+    return {
+        id: 'server-ts-plugin',
+        label: 'TypeScript 7 editor migration',
+        status: present ? 'warn' : 'pass',
+        detail: present
+            ? 'The legacy toilscript JavaScript language-service plugin cannot run in the TypeScript 7 native language server.'
+            : undefined,
+        fix: present
+            ? 'Run `toiljs doctor --fix` to remove the legacy plugin. Use `toiljs build --server` for the WebAssembly dialect diagnostics.'
+            : undefined,
+    };
 }
 
 /**
@@ -640,7 +596,7 @@ export function checkAuthSecrets(f: AuthFacts): Check {
         label: 'Session secret',
         status: 'warn',
         detail: 'auth is used but AUTH_SESSION_SECRET is unset: sessions fall back to a PUBLISHED key, so anyone can forge a session cookie and skip login',
-        fix: 'Set AUTH_SESSION_SECRET to a long random value in .env.secrets (local) and on your deploy target (also AUTH_OPRF_SEED / AUTH_KEM_SK if you use password login). Generate one: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))".',
+        fix: "Set AUTH_SESSION_SECRET to a long random value in .env.secrets (local) and on your deploy target (also AUTH_OPRF_SEED / AUTH_KEM_SK if you use password login). Generate one: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\".",
     };
 }
 

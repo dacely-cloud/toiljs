@@ -160,7 +160,9 @@ function connectStreamWT<TSend = Uint8Array>(
             .then(() => {
                 opened = true;
                 writer = transport.datagrams.writable.getWriter();
-                const reader = transport.datagrams.readable.getReader();
+                const reader = (
+                    transport.datagrams.readable as ReadableStream<Uint8Array>
+                ).getReader();
                 void (async (): Promise<void> => {
                     try {
                         for (;;) {
@@ -179,7 +181,7 @@ function connectStreamWT<TSend = Uint8Array>(
                 })();
                 resolve(channel);
             })
-            .catch((e) => reject(e instanceof Error ? e : new Error(String(e))));
+            .catch((e: unknown) => reject(e instanceof Error ? e : new Error(String(e))));
     });
 }
 

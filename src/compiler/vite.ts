@@ -83,7 +83,10 @@ function sharedResolverPlugin(cfg: ResolvedToilConfig): PluginOption {
             // `Server.<rpc>()` / `Server.REST` / `Server.Stream` would throw "client not loaded". Inject a
             // side-effect import from the always-loaded route manifest; idempotent and a no-op for a
             // client-only project (no shared/server.ts).
-            if ((id.split('?')[0] ?? id).replace(/\\/g, '/') === routesModule && fs.existsSync(serverModule)) {
+            if (
+                (id.split('?')[0] ?? id).replace(/\\/g, '/') === routesModule &&
+                fs.existsSync(serverModule)
+            ) {
                 return { code: `import 'shared/server';\n${code}`, map: null };
             }
             return null;
@@ -228,11 +231,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             cssCodeSplit: false,
             assetsInlineLimit: 10000,
             chunkSizeWarningLimit: 3000,
-            commonjsOptions: {
-                strictRequires: true,
-                transformMixedEsModules: true,
-            },
-            rollupOptions: {
+            rolldownOptions: {
                 output: {
                     chunkFileNames: 'assets/[name]-[hash].js',
                     assetFileNames: (assetInfo) => assetFileName(assetInfo.names[0] ?? ''),

@@ -1,7 +1,7 @@
 /**
  * Dev DAEMON emulation end-to-end (doc 08 section 5; RECONCILIATION Part 2 cold
  * exports). Compiles a real `@daemon` fixture to `release-cold.wasm` with the
- * LOCAL toilscript (`--targetMode cold`), then drives the `DaemonHost` against it
+ * published toilscript (`--targetMode cold`), then drives the `DaemonHost` against it
  * and asserts:
  *
  *   - `daemon_start()` runs exactly once on load (and the optional `onStart`).
@@ -32,10 +32,8 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(here, 'fixtures', 'daemon-app.ts');
-// The LOCAL toilscript build (branch feat/streams-phase0-compiler) that supports
-// `--targetMode`. The published dependency does not, so the test links the local
-// bin directly (the same cross-repo link the two-pass build relies on in dev).
-const LOCAL_TOILSCRIPT_BIN = join(here, '..', '..', 'toilscript', 'bin', 'toilscript.js');
+// Exercise the installed published compiler in local runs and CI.
+const TOILSCRIPT_BIN = join(here, '..', 'node_modules', 'toilscript', 'bin', 'toilscript.js');
 
 const DAEMON_CFG: ResolvedDaemonConfig = {
     region: null,
@@ -46,11 +44,11 @@ const DAEMON_CFG: ResolvedDaemonConfig = {
     maxTasks: 64,
 };
 
-/** Compile `src` to `outWasm` with the local toilscript under `--targetMode cold`. */
+/** Compile `src` to `outWasm` with the installed toilscript under `--targetMode cold`. */
 function compileCold(src: string, outWasm: string): { ok: boolean; output: string } {
     const r = spawnSync(
         'node',
-        [LOCAL_TOILSCRIPT_BIN, src, '-o', outWasm, '--runtime', 'stub', '--targetMode', 'cold'],
+        [TOILSCRIPT_BIN, src, '-o', outWasm, '--runtime', 'stub', '--targetMode', 'cold'],
         { encoding: 'utf8' },
     );
     return {
@@ -66,10 +64,9 @@ let toilscriptAvailable = false;
 beforeAll(() => {
     tmp = mkdtempSync(join(tmpdir(), 'daemon-emu-'));
     coldWasm = join(tmp, 'release-cold.wasm');
-    if (!existsSync(LOCAL_TOILSCRIPT_BIN)) return;
     const { ok, output } = compileCold(FIXTURE, coldWasm);
     toilscriptAvailable = ok;
-    if (!ok) process.stderr.write(`local toilscript cold compile failed:\n${output}\n`);
+    if (!ok) process.stderr.write(`installed toilscript cold compile failed:\n${output}\n`);
 });
 
 afterAll(() => {
@@ -82,15 +79,14 @@ afterEach(() => {
 
 const counter = (host: DaemonHost, name: string): number => host.callI32Export(`${name}Count`) ?? 0;
 
-// Needs the local toilscript dev build (with --targetMode); skip where the
-// sibling repo is absent (e.g. CI, which has only the published dep).
-describe.skipIf(!existsSync(LOCAL_TOILSCRIPT_BIN))('dev daemon emulation', () => {
+// The compiler is a required dependency; a missing binary fails these tests.
+describe('dev daemon emulation', () => {
     it('compiles the @daemon fixture to a cold artifact', () => {
-        // Guard: every assertion below depends on the local toilscript link. A hard
-        // failure here (rather than a silent skip) surfaces the cross-repo break.
+        // Guard: every assertion below depends on the installed toilscript link. A hard
+        // failure here (rather than a silent skip) surfaces the compiler regression.
         expect(
-            existsSync(LOCAL_TOILSCRIPT_BIN),
-            `local toilscript not found at ${LOCAL_TOILSCRIPT_BIN}`,
+            existsSync(TOILSCRIPT_BIN),
+            `installed toilscript not found at ${TOILSCRIPT_BIN}`,
         ).toBe(true);
         expect(toilscriptAvailable, 'cold compile of the @daemon fixture failed').toBe(true);
     });

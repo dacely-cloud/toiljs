@@ -46,7 +46,7 @@ function list(m: WasmServerModule) {
         body: new Uint8Array(0),
     });
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// oxlint-disable-next-line typescript/no-explicit-any
 const json = (r: { body: Uint8Array }): any => JSON.parse(Buffer.from(r.body).toString());
 
 describe.skipIf(!haveWasm)('guestbook demo: ToilDB events + counter persist across requests', () => {
@@ -97,7 +97,7 @@ describe.skipIf(!haveWasm)('guestbook demo: ToilDB events + counter persist acro
             // 2. downgrade that event on disk to the v1 shape: GuestEntry encodes
             //    author + message + at(u64), so dropping the trailing 8 bytes yields a
             //    valid GuestEntryV1; re-stamp it with v1's schema_version.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // oxlint-disable-next-line typescript/no-explicit-any
             const snap: any = JSON.parse(fs.readFileSync(file, 'utf8'));
             const evKey = Object.keys(snap.events)[0];
             const buf = Buffer.from(snap.events[evKey][0].v, 'base64');

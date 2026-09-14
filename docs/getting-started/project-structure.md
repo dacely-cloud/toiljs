@@ -33,7 +33,7 @@ These files sit in your project root.
 | `toil.config.ts` | **Client and build config.** Uses `defineConfig` to set SEO, images, page transitions, and dev options. | tooling only |
 | `toilconfig.json` | **Server (wasm) build config** for toilscript: the entry file, the output `.wasm` path, and low-level compile options. You rarely edit this. | tooling only |
 | `tsconfig.json` | TypeScript config for the client (`client/`, `shared/`, `emails/`). Extends `toiljs/tsconfig`. | tooling only |
-| `eslint.config.js` | Linting preset (`toiljs/eslint`). | tooling only |
+| `oxlint.config.ts` | Linting preset (`toiljs/oxlint`). | tooling only |
 | `.prettierrc` | Formatting preset (`toiljs/prettier`). | tooling only |
 | `.prettierignore` | Files Prettier should skip (generated files). | tooling only |
 | `.gitignore` | Ignores `build/`, `.toil/`, generated files, and your `.env` files. | tooling only |

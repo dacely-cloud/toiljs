@@ -26,23 +26,36 @@ nvm use 24
 
 You also need a package manager. **npm** comes with Node.js, so you already have it. toiljs also supports **pnpm**, **yarn**, and **bun** if you prefer one of those.
 
-### TypeScript 6, not 7
+### TypeScript 7
 
-toiljs requires **TypeScript 6** (`>=6.0.0 <7.0.0`). TypeScript 7 is not supported yet.
+toiljs requires **TypeScript 7** (`>=7.0.2 <8.0.0`). The native compiler is shipped in the
+`typescript` package and still uses the `tsc` command. Vite 8 bundles the React 19 frontend.
+Route metadata and search indexing use Oxc parsing; they do not need the old JavaScript compiler API.
 
-TypeScript 7 is the native (Go) port of the compiler. It ships a much faster `tsc`, but its package no longer exports the JavaScript compiler API, whose main entry is now just `{ version, versionMajorMinor }`. toiljs reads each route's static `metadata` export through that API to bake your SEO tags into the built HTML, and the `toiljs/eslint` preset loads it too. On TypeScript 7 the metadata baking silently stops (your built pages lose their tags) and typescript-eslint fails to load at all.
+For an existing project:
 
-Pin TypeScript in your `package.json`:
-
-```json
-{
-    "devDependencies": {
-        "typescript": "^6.0.3"
-    }
-}
+```sh
+npm uninstall eslint typescript-eslint @typescript-eslint/utils @eslint/js @eslint-react/eslint-plugin eslint-plugin-react-refresh
+npm install -D typescript@^7.0.2 oxlint@latest oxlint-tsgolint@latest
 ```
 
-`toiljs doctor` flags an unsupported TypeScript, and `toiljs doctor --fix` pins it back for you. `toiljs update` will not upgrade you into TypeScript 7. Support will land once the tools toiljs builds on can read the new `typescript/unstable/*` API.
+Replace `eslint.config.js` with `oxlint.config.ts`:
+
+```ts
+import toiljs from 'toiljs/oxlint';
+export default toiljs;
+```
+
+Set `lint` to `oxlint --type-aware client` and keep `typecheck` as `tsc --noEmit`.
+The shared preset retains the former strict TypeScript rules, severities, React Hooks checks,
+Fast Refresh export exceptions, blank-line rule, and custom byte-array rule. Built-in semantic
+rules run in tsgolint; the custom byte-array Oxlint plugin queries the TypeScript 7 native checker.
+See [toolchain migration](./typescript7.md) for custom configurations and editor setup.
+
+`toiljs doctor` checks the installed compiler, the declared version range, and type-aware lint
+configuration. `doctor --fix` migrates TypeScript declarations to `^7.0.2`. Reinstall afterward.
+`toiljs update` only applies TypeScript ranges confined to supported 7.x versions, including when
+using `--target patch` on an older project.
 
 ## Install the CLI
 

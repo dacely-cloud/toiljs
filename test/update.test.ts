@@ -44,12 +44,14 @@ describe('buildRows', () => {
 });
 
 describe('withheldUpgrades', () => {
-    it('withholds an upgrade into typescript 7 (the native port has no compiler API)', () => {
-        expect(withheldUpgrades({ typescript: '^7.0.2', react: '^20.0.0' })).toEqual(['typescript']);
+    it('offers TypeScript 7 updates', () => {
+        expect(withheldUpgrades({ typescript: '^7.0.2', react: '^20.0.0' })).toEqual([]);
     });
 
-    it('still offers typescript bumps inside the supported major', () => {
-        expect(withheldUpgrades({ typescript: '^6.1.0' })).toEqual([]);
+    it('withholds TypeScript 6 and future majors', () => {
+        for (const range of ['^6.1.0', '^8.0.0', '>=7', '*', 'latest', '7.0.3-beta.1']) {
+            expect(withheldUpgrades({ typescript: range })).toEqual(['typescript']);
+        }
     });
 
     it('ignores packages with no declared ceiling', () => {

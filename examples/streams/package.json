@@ -6,21 +6,22 @@
         "dev": "toiljs dev",
         "build": "toiljs build",
         "build:server": "toiljs build --server",
-        "lint": "eslint client",
+        "lint": "oxlint --type-aware client",
         "typecheck": "tsc --noEmit",
         "format": "prettier --write \"client/**/*.{ts,tsx,css,scss,less}\" \"client/public/**/*.html\" \"server/**/*.ts\""
     },
     "dependencies": {
-        "react": "^19.2.7",
-        "react-dom": "^19.2.7",
-        "toiljs": "^0.0.113"
+        "react": "^19.3.0",
+        "react-dom": "^19.3.0",
+        "toiljs": "file:../.."
     },
     "devDependencies": {
-        "@types/react": "^19.2.17",
-        "@types/react-dom": "^19.2.3",
-        "eslint": "^10.6.0",
-        "prettier": "^3.9.5",
+        "@types/react": "^19.3.0",
+        "@types/react-dom": "^19.3.0",
+        "prettier": "^3.9.6",
         "toilscript": "^0.1.60",
-        "typescript": "^6.0.3"
+        "typescript": "^7.0.2",
+        "oxlint": "^1.83.0",
+        "oxlint-tsgolint": "^7.0.2001"
     }
 }

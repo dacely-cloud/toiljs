@@ -24,16 +24,32 @@ jobs:
           node-version: '24.x'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
 
-      - name: Test
-        # The example wasm is not built here, so the wasm-gated end-to-end specs
-        # (ssr-render, example-guestbook) skip; the SSR unit tests (golden
-        # byte-identity, attr holes, extraction, codegen) and the rest run.
-        run: npx vitest run
+      - name: Typecheck and lint with TypeScript 7
+        run: |
+          npm run typecheck
+          npm run lint
+
+      - name: Build and check the examples
+        run: |
+          npm ci --prefix examples/basic
+          npm ci --prefix examples/streams
+          npm run build --prefix examples/basic
+          npm run build --prefix examples/streams
+          npm run typecheck --prefix examples/basic
+          npm run typecheck --prefix examples/streams
+          npm run lint --prefix examples/basic
+          npm run lint --prefix examples/streams
+
+      - name: Test including the example WebAssembly integrations
+        run: npm test
+
+      - name: Generate TypeScript 7 API reference
+        run: node scripts/gen-api-docs.mjs
 
   publish:
     if: ${{ startsWith(github.ref, 'refs/tags/') }}
@@ -55,11 +71,14 @@ jobs:
           node-version: '24.x'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update npm
-        run: npm install -g npm@11.18.0 # pinned: npm 12's global install drops `sigstore`, breaking --provenance
+      - name: Install the latest npm toolchain
+        # A local install retains npm's bundled provenance dependencies.
+        run: |
+          npm install --prefix "$RUNNER_TEMP/toil-npm" npm@12.0.2
+          echo "$RUNNER_TEMP/toil-npm/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build the project
         run: npm run build

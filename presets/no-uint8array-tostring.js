@@ -1,54 +1,26 @@
-/**
- * ESLint rule: disallow `.toString()` on Uint8Array (and branded byte types), which returns
- * comma-separated decimals instead of hex.
- */
-import { AST_NODE_TYPES, ESLintUtils } from '@typescript-eslint/utils';
-import { SyntaxKind } from 'typescript';
+/** Oxlint plugin using the TypeScript 7 native checker for branded byte arrays. */
+import path from 'node:path';
+import { API } from 'typescript/unstable/sync';
+import { SyntaxKind } from 'typescript/unstable/ast';
 
-function isUint8ArrayType(type, checker) {
-    const symbol = type.getSymbol();
-    if (symbol?.getName() === 'Uint8Array') {
-        return true;
+function isUint8ArrayType(type, checker, ancestors = new Set()) {
+    if (!type || ancestors.has(type.id)) return false;
+    const seen = new Set(ancestors).add(type.id);
+    if (type.getSymbol()?.name === 'Uint8Array') return true;
+    if (type.getBaseTypes()?.some((base) => isUint8ArrayType(base, checker, seen))) return true;
+    if (type.isIntersectionType())
+        return type.getTypes().some((part) => isUint8ArrayType(part, checker, seen));
+    if (type.isUnionType()) {
+        const parts = type.getTypes();
+        return parts.length > 0 && parts.every((part) => isUint8ArrayType(part, checker, seen));
     }
-
-    const baseTypes = type.getBaseTypes?.();
-    if (baseTypes) {
-        for (const baseType of baseTypes) {
-            if (isUint8ArrayType(baseType, checker)) {
-                return true;
-            }
-        }
-    }
-
-    if (type.isIntersection()) {
-        for (const subType of type.types) {
-            if (isUint8ArrayType(subType, checker)) {
-                return true;
-            }
-        }
-    }
-
-    if (type.isUnion()) {
-        return (
-            type.types.length > 0 &&
-            type.types.every((subType) => isUint8ArrayType(subType, checker))
-        );
-    }
-
-    const constraint = type.getConstraint?.();
-    if (constraint && isUint8ArrayType(constraint, checker)) {
-        return true;
-    }
-
-    return false;
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint && constraint.id !== type.id
+        ? isUint8ArrayType(constraint, checker, seen)
+        : false;
 }
 
-/**
- * Types whose toString() is the dangerous default behavior we want to catch.
- * If toString is declared on any type NOT in this set, it has been
- * intentionally overridden and we should leave it alone.
- */
-const DEFAULT_TOSTRING_OWNERS = new Set([
+const DEFAULT_OWNERS = new Set([
     'Object',
     'Uint8Array',
     'Int8Array',
@@ -63,138 +35,133 @@ const DEFAULT_TOSTRING_OWNERS = new Set([
     'BigUint64Array',
 ]);
 
-/**
- * Given a declaration node, walk up the AST parents to find the enclosing
- * class or interface name. More reliable than checker.getTypeAtLocation(decl.parent),
- * which can return odd results for .d.ts files.
- */
-function getEnclosingClassName(decl) {
-    let current = decl.parent;
-    while (current) {
-        if (
-            current.kind === SyntaxKind.ClassDeclaration ||
-            current.kind === SyntaxKind.ClassExpression ||
-            current.kind === SyntaxKind.InterfaceDeclaration
-        ) {
-            if (current.name) {
-                return current.name.text;
+function hasOverride(symbol) {
+    for (const handle of symbol?.declarations ?? []) {
+        let node = handle.resolve()?.parent;
+        while (node) {
+            if (
+                [
+                    SyntaxKind.ClassDeclaration,
+                    SyntaxKind.ClassExpression,
+                    SyntaxKind.InterfaceDeclaration,
+                ].includes(node.kind)
+            ) {
+                const name = node.name?.text;
+                if (name && !DEFAULT_OWNERS.has(name)) return true;
+                break;
             }
-        }
-
-        current = current.parent;
-    }
-
-    return undefined;
-}
-
-/**
- * Checks whether the resolved toString() on this type is a custom override
- * rather than the default Uint8Array/Object prototype version.
- */
-function hasCustomToString(type, checker) {
-    const toStringSymbol = type.getProperty('toString');
-    if (!toStringSymbol) {
-        return false;
-    }
-
-    const declarations = toStringSymbol.getDeclarations();
-    if (!declarations || declarations.length === 0) {
-        return false;
-    }
-
-    for (const decl of declarations) {
-        const ownerName = getEnclosingClassName(decl);
-        if (ownerName && !DEFAULT_TOSTRING_OWNERS.has(ownerName)) {
-            return true;
+            node = node.parent;
         }
     }
-
-    const apparentType = checker.getApparentType(type);
-    if (apparentType !== type) {
-        const apparentToString = apparentType.getProperty('toString');
-        if (apparentToString && apparentToString !== toStringSymbol) {
-            const apparentDecls = apparentToString.getDeclarations();
-            if (apparentDecls) {
-                for (const decl of apparentDecls) {
-                    const ownerName = getEnclosingClassName(decl);
-                    if (ownerName && !DEFAULT_TOSTRING_OWNERS.has(ownerName)) {
-                        return true;
-                    }
-                }
-            }
-        }
-    }
-
     return false;
 }
 
-const createRule = ESLintUtils.RuleCreator(
-    (name) => `https://github.com/dacely-cloud/toiljs/tree/main/presets#${name}`,
-);
+function hasCustomToString(type, checker) {
+    if (hasOverride(checker.getPropertyOfType(type, 'toString'))) return true;
+    const apparent = checker.getApparentType(type);
+    return (
+        apparent &&
+        apparent.id !== type.id &&
+        hasOverride(checker.getPropertyOfType(apparent, 'toString'))
+    );
+}
 
-const rule = createRule({
-    name: 'no-uint8array-tostring',
+export const rule = {
     meta: {
         type: 'problem',
         docs: {
             description:
-                'Disallow .toString() on Uint8Array and branded types (Script, Bytes32, etc.) which produces comma-separated decimals instead of hex',
-        },
-        messages: {
-            noUint8ArrayToString:
-                '{{typeName}}.toString() returns comma-separated decimals (e.g. "0,32,70,107"), not a hex string. ' +
-                'Use Buffer.from(arr).toString("hex") or toHex() instead.',
+                'Disallow the default Uint8Array.toString(), including branded byte types.',
         },
         schema: [],
+        messages: {
+            noUint8ArrayToString:
+                '{{typeName}}.toString() returns comma-separated decimals (e.g. "0,32,70,107"), not a hex string. Use Buffer.from(arr).toString("hex") or toHex() instead.',
+        },
     },
-    defaultOptions: [],
     create(context) {
-        const services = ESLintUtils.getParserServices(context);
-        const checker = services.program.getTypeChecker();
-
+        const calls = [];
         return {
             CallExpression(node) {
+                const callee = node.callee;
                 if (
-                    node.callee.type !== AST_NODE_TYPES.MemberExpression ||
-                    node.callee.property.type !== AST_NODE_TYPES.Identifier ||
-                    node.callee.property.name !== 'toString' ||
-                    node.arguments.length > 0
-                ) {
-                    return;
-                }
-
-                const objectNode = node.callee.object;
-                const tsNode = services.esTreeNodeToTSNodeMap.get(objectNode);
-                const type = checker.getTypeAtLocation(tsNode);
-
-                if (!isUint8ArrayType(type, checker)) {
-                    return;
-                }
-
-                if (hasCustomToString(type, checker)) {
-                    return;
-                }
-
-                const typeName = checker.typeToString(type);
-                context.report({
-                    node,
-                    messageId: 'noUint8ArrayToString',
-                    data: { typeName },
+                    callee.type === 'MemberExpression' &&
+                    callee.property.type === 'Identifier' &&
+                    callee.property.name === 'toString' &&
+                    node.arguments.length === 0
+                )
+                    calls.push(node);
+            },
+            'Program:exit'() {
+                if (calls.length === 0) return;
+                const file = path.resolve(context.filename);
+                // Use the actual lint input, including editor buffers and fix passes.
+                const api = new API({
+                    cwd: context.cwd,
+                    fs: {
+                        readFile: (name) =>
+                            path.resolve(name) === file ? context.sourceCode.text : undefined,
+                    },
                 });
+                let snapshot;
+                try {
+                    snapshot = api.updateSnapshot({ openFiles: [file] });
+                    const project = snapshot.getDefaultProjectForFile(file);
+                    if (!project) throw new Error(`No TypeScript 7 project for ${file}`);
+                    const checker = project.checker;
+                    const source = project.program.getSourceFile(file);
+                    if (!source) throw new Error(`No TypeScript 7 source file for ${file}`);
+                    const wanted = new Map(
+                        calls.map((node) => [node.callee.object.range.join(':'), undefined]),
+                    );
+                    function visit(node) {
+                        const key = `${node.getStart(source)}:${node.end}`;
+                        if (wanted.has(key)) wanted.set(key, node);
+                        node.forEachChild(visit);
+                    }
+                    visit(source);
+                    const receivers = calls.map((node) => {
+                        const receiver = wanted.get(node.callee.object.range.join(':'));
+                        if (!receiver) throw new Error(`Cannot map byte-array receiver in ${file}`);
+                        return receiver;
+                    });
+                    const types = checker.getTypeAtLocation(receivers);
+                    for (let i = 0; i < calls.length; i++) {
+                        const type = types[i];
+                        if (isUint8ArrayType(type, checker) && !hasCustomToString(type, checker)) {
+                            context.report({
+                                node: calls[i],
+                                messageId: 'noUint8ArrayToString',
+                                data: { typeName: checker.typeToString(type) },
+                            });
+                        }
+                    }
+                } finally {
+                    snapshot?.dispose();
+                    api.close();
+                }
             },
         };
     },
-});
-
-const plugin = {
-    meta: {
-        name: 'eslint-plugin-no-uint8array-tostring',
-        version: '1.0.0',
-    },
-    rules: {
-        'no-uint8array-tostring': rule,
-    },
 };
 
-export default plugin;
-export { rule };
+export default {
+    meta: { name: 'toiljs', version: '2.0.0' },
+    rules: {
+        'no-uint8array-tostring': rule,
+        // Legacy octal literals are invalid in modules; retain this check for script inputs too.
+        'no-octal': {
+            meta: {
+                type: 'problem',
+                schema: [],
+                messages: { octal: 'Octal literals should not be used.' },
+            },
+            create: (context) => ({
+                Literal(node) {
+                    if (typeof node.value === 'number' && /^0[0-7]+$/.test(node.raw))
+                        context.report({ node, messageId: 'octal' });
+                },
+            }),
+        },
+    },
+};

@@ -10,7 +10,7 @@ import { llmsTxt, robotsTxt, sitemapXml } from './seo.js';
 /**
  * Contents of the root `toil-env.d.ts`: ambient global types so `new DataWriter()` etc. resolve
  * in the IDE without an import. Script-mode declaration (no top-level import/export → the
- * `declare const`s are truly global, and it's not a module that could confuse ESLint's project
+ * `declare const`s are truly global, and it's not a module that could confuse the native compiler's project
  * service); the inline `import('toiljs/io')` type only needs the normal `toiljs/io` export.
  * Lives at the project root because TypeScript's `include` globs skip dot-directories.
  * Exported so `toiljs create` can write it during scaffolding, before the first dev/build.

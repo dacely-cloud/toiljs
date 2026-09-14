@@ -196,7 +196,7 @@ export async function toEnvelopeRequest(request: Request): Promise<EnvelopeReque
     const body = hasBody ? new Uint8Array(await request.buffer()) : new Uint8Array(0);
     const xff = request.headers['x-forwarded-for'];
     const clientIp =
-        typeof xff === 'string' && xff.length > 0 ? xff.split(',')[0]!.trim() : '127.0.0.1';
+        typeof xff === 'string' && xff.length > 0 ? xff.split(',')[0].trim() : '127.0.0.1';
     return {
         method: request.method,
         path: request.url,

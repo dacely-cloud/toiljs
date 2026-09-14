@@ -9,6 +9,7 @@ import path from 'node:path';
 
 import { cancel, intro, isCancel, multiselect, note, outro, spinner } from '@clack/prompts';
 
+import { isSupportedTypeScriptRange } from './typescript.js';
 import { MIGRATIONS_README } from './create.js';
 import { capture, run } from './proc.js';
 import { buildRows, type Bump, parseNcuJson, type UpdateRow, withheldUpgrades } from './updates.js';
@@ -47,7 +48,21 @@ function readDependencies(pkgPath: string): Record<string, string> {
         for (const [k, val] of Object.entries(v)) if (typeof val === 'string') out[k] = val;
         return out;
     };
-    return { ...merge(pkg.dependencies), ...merge(pkg.devDependencies) };
+    const fields = [
+        pkg.peerDependencies,
+        pkg.optionalDependencies,
+        pkg.dependencies,
+        pkg.devDependencies,
+    ].map(merge);
+    const merged = Object.assign({}, ...fields) as Record<string, string>;
+    // Do not hide an unsupported peer/optional declaration behind a supported dev dependency.
+    for (const deps of fields) {
+        if (typeof deps.typescript === 'string' && !isSupportedTypeScriptRange(deps.typescript)) {
+            merged.typescript = deps.typescript;
+            break;
+        }
+    }
+    return merged;
 }
 
 /**
@@ -115,9 +130,7 @@ function noteWithheld(names: readonly string[]): void {
         names.map((n) => `${dim('-')} ${n}`).join('\n') +
             '\n\n' +
             dim(
-                'Held back: this major is not supported by toiljs yet. TypeScript 7 is the native\n' +
-                    'port and ships no JavaScript compiler API, so route metadata would stop being\n' +
-                    'baked into the built HTML and typescript-eslint would not load.',
+                'Held back: toiljs supports TypeScript 7 only. Compiler updates must stay within 7.x.',
             ),
         warn('Not upgraded'),
     );
@@ -166,11 +179,22 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
         process.exitCode = 1;
         return;
     }
-    // Hold back upgrades into a major toiljs cannot run on (typescript 7), so neither the picker nor
-    // a `-y` run can install one. `--reject` keeps ncu from applying them during `-u` below.
     const upgraded = parseNcuJson(res.stdout);
     const withheld = withheldUpgrades(upgraded);
     for (const name of withheld) delete upgraded[name];
+    // Even --target patch must offer a migration if the current compiler is unsupported.
+    if (!isSupportedTypeScriptRange(currentDeps.typescript ?? '') && !upgraded.typescript) {
+        const versions = await capture('npm', ['view', 'typescript@7', 'version', '--json'], root);
+        if (versions.code !== 0)
+            throw new Error('Could not resolve a supported TypeScript 7 release.');
+        const parsed: unknown = JSON.parse(versions.stdout);
+        const candidates =
+            typeof parsed === 'string' ? [parsed] : Array.isArray(parsed) ? parsed : [];
+        const latest = candidates.filter((v): v is string => typeof v === 'string').at(-1);
+        if (!latest || !isSupportedTypeScriptRange(`^${latest}`))
+            throw new Error('Registry returned no supported TypeScript 7 release.');
+        upgraded.typescript = `^${latest}`;
+    }
 
     const rows = buildRows(upgraded, currentDeps);
     if (rows.length === 0) {
@@ -215,14 +239,36 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
         return;
     }
 
+    // Apply the exact reviewed versions; a second ncu query could select a different major.
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as Record<string, unknown>;
+    const targetTypeScript = selected.includes('typescript')
+        ? upgraded.typescript
+        : currentDeps.typescript;
+    if (!targetTypeScript || !isSupportedTypeScriptRange(targetTypeScript)) {
+        throw new Error('Select the TypeScript 7 migration before installing updates.');
+    }
     s.start('Updating package.json');
-    const applyAll = selected.length === rows.length;
-    const reject = withheld.length > 0 ? ['--reject', withheld.join(' ')] : [];
-    await run(
-        'npx',
-        ncuArgs(applyAll ? ['-u', ...reject] : ['-u', '--filter', selected.join(' '), ...reject]),
-        root,
-    );
+    for (const name of selected) {
+        let found = false;
+        for (const field of [
+            'dependencies',
+            'devDependencies',
+            'peerDependencies',
+            'optionalDependencies',
+        ]) {
+            const deps = pkg[field] as Record<string, string> | undefined;
+            if (deps && Object.hasOwn(deps, name)) {
+                deps[name] = upgraded[name];
+                found = true;
+            }
+        }
+        if (!found) {
+            const deps = (pkg.devDependencies ?? {}) as Record<string, string>;
+            deps[name] = upgraded[name];
+            pkg.devDependencies = deps;
+        }
+    }
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
     s.stop('package.json updated');
 
     // Run the install with VISIBLE output (so a failure is diagnosable — npm

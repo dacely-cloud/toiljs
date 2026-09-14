@@ -112,7 +112,7 @@ interface PackageJson {
     devDependencies?: Record<string, string>;
 }
 
-function bail<T>(value: T | symbol): asserts value is T {
+function bail<T>(value: T): asserts value is Exclude<T, symbol> {
     if (isCancel(value)) {
         cancel('Configuration cancelled.');
         process.exit(0);

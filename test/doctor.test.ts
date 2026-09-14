@@ -93,23 +93,30 @@ describe('config + environment checks', () => {
         expect(checkPeer('react', '^19.0.0', '>=18.0.0').status).toBe('pass');
     });
 
-    it('checkTypeScript fails an installed 7.x (the native port, no compiler API)', () => {
-        const check = checkTypeScript('7.0.2', '^7.0.2');
-        expect(check.status).toBe('fail');
-        expect(check.detail).toContain('7.0.2');
-        expect(check.fix).toContain('^6.0.3');
-    });
-
-    it('checkTypeScript fails a declared 7.x even while a supported copy is installed', () => {
-        // The installed copy still works, but the next install would pull the native port.
-        expect(checkTypeScript('6.0.3', '^7.0.0').status).toBe('fail');
-        expect(checkTypeScript('6.0.3', '>=7').status).toBe('fail');
-    });
-
-    it('checkTypeScript passes a supported 6.x and warns below the floor', () => {
-        expect(checkTypeScript('6.0.3', '^6.0.3').status).toBe('pass');
-        expect(checkTypeScript('5.9.3', '^5.9.0').status).toBe('warn');
+    it('requires an installed TypeScript 7 compiler', () => {
+        expect(checkTypeScript('7.0.2', '^7.0.2').status).toBe('pass');
+        expect(checkTypeScript('6.0.3', '^7.0.2').status).toBe('fail');
+        expect(checkTypeScript('8.0.0', '^7.0.2').status).toBe('fail');
         expect(checkTypeScript(null, null).status).toBe('fail');
+        expect(checkTypeScript('6.0.3', '^6.0.3').fix).toContain('^7.0.2');
+    });
+
+    it('rejects declarations that can install another major or an unsupported release', () => {
+        for (const range of [
+            '^6.0.3',
+            '>=7',
+            '*',
+            'latest',
+            '^7.0.2 || ^8',
+            '^7.0.0',
+            '7.0.3-beta.1',
+            'npm:typescript@^7.0.2',
+        ]) {
+            expect(checkTypeScript('7.0.2', range).status, range).toBe('fail');
+        }
+        for (const range of ['^7.0.2', '~7.0.2', '7.0.2', '>=7.0.2 <8', '7.1.x']) {
+            expect(checkTypeScript('7.0.2', range).status, range).toBe('pass');
+        }
     });
 
     it('rangeMajor reads the major a range floats to, ignoring comparators', () => {
@@ -221,14 +228,10 @@ describe('checkPrettierPlugin', () => {
 });
 
 describe('checkServerTsPlugin', () => {
-    it('passes when the toilscript LS plugin is wired', () => {
-        expect(checkServerTsPlugin(true).status).toBe('pass');
-    });
-    it('warns (not fails) when missing, naming the TS2339 false positive and --fix', () => {
-        const c = checkServerTsPlugin(false);
-        expect(c.status).toBe('warn');
-        expect(c.detail).toContain('TS2339');
-        expect(c.fix).toContain('--fix');
+    it('warns about plugins that cannot run in the native compiler', () => {
+        expect(checkServerTsPlugin(true).status).toBe('warn');
+        expect(checkServerTsPlugin(true).fix).toContain('doctor --fix');
+        expect(checkServerTsPlugin(false).status).toBe('pass');
     });
 });
 

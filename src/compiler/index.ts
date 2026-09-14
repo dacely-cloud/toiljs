@@ -492,7 +492,8 @@ export function assertNoStreamInRequestTier(root: string, split: SurfaceSplit): 
     const seen = new Set<string>();
     const queue = [...split.request];
     while (queue.length > 0) {
-        const rel = queue.pop()!;
+        const rel = queue.pop();
+        if (rel === undefined) break;
         if (seen.has(rel)) continue;
         seen.add(rel);
         if (streamSet.has(rel)) {
@@ -543,7 +544,7 @@ interface PassOptions {
 }
 
 /** Run one toilscript pass. The toilscript CLI flag is `--targetMode` (camelCase). */
-function runToilscriptPass(
+async function runToilscriptPass(
     root: string,
     binJs: string,
     files: string[],
@@ -571,7 +572,7 @@ function runToilscriptPass(
     args.push('--noConfigEntries');
     args.push('--disableWarning', '235');
 
-    return new Promise<void>((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
         const child = spawn(process.execPath, args, { cwd: root, stdio: 'inherit' });
         child.on('error', reject);
         child.on('close', (code) =>
@@ -584,6 +585,22 @@ function runToilscriptPass(
                   ),
         );
     });
+    if (opts.withRpc) {
+        const generated = path.join(root, 'shared/server.ts');
+        if (fs.existsSync(generated)) {
+            const source = fs.readFileSync(generated, 'utf8');
+            const updated = migrateGeneratedRpcClient(source);
+            if (source !== updated) fs.writeFileSync(generated, updated);
+        }
+    }
+}
+
+/** DataWriter.toBytes() owns an ArrayBuffer; preserve that type at the generated fetch boundary. */
+export function migrateGeneratedRpcClient(source: string): string {
+    return source.replace(
+        /(async function __toilRpcCall\(__id: number, __body: )Uint8Array(?=\))/,
+        '$1Uint8Array<ArrayBuffer>',
+    );
 }
 
 /**
@@ -1000,7 +1017,9 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
             pc.cyan(`http://${shownHost}:${pc.bold(String(front.port))}/`) +
             pc.dim('  (wasm server + vite)') +
             (isExposedHost(front.host)
-                ? pc.yellow(`\n  ⚠  exposed on ${front.host}:${String(front.port)} (not just loopback)`)
+                ? pc.yellow(
+                      `\n  ⚠  exposed on ${front.host}:${String(front.port)} (not just loopback)`,
+                  )
                 : '') +
             '\n',
     );
@@ -1150,7 +1169,13 @@ function lebU(buf: Buffer, pos: number): [number, number] {
 
 /** The bytes of the named wasm custom section, or `null` if absent/truncated. */
 function customSectionBytes(wasm: Buffer, want: string): Buffer | null {
-    if (wasm.length < 8 || wasm[0] !== 0x00 || wasm[1] !== 0x61 || wasm[2] !== 0x73 || wasm[3] !== 0x6d)
+    if (
+        wasm.length < 8 ||
+        wasm[0] !== 0x00 ||
+        wasm[1] !== 0x61 ||
+        wasm[2] !== 0x73 ||
+        wasm[3] !== 0x6d
+    )
         return null;
     let pos = 8;
     try {
@@ -1301,8 +1326,13 @@ function emitStreamClientSurface(
     const catalog = readStreamCatalog(wasm);
     if (catalog.length === 0) return;
 
-    const classByRoute = new Map(scanStreamSource(root, streamFiles).map((s) => [s.route, s.className]));
-    const streams = catalog.map((c) => ({ key: classByRoute.get(c.route) ?? c.name, route: c.route }));
+    const classByRoute = new Map(
+        scanStreamSource(root, streamFiles).map((s) => [s.route, s.className]),
+    );
+    const streams = catalog.map((c) => ({
+        key: classByRoute.get(c.route) ?? c.name,
+        route: c.route,
+    }));
 
     const rpcModule = path.join(root, 'shared', 'server.ts');
     let existing = '';
@@ -1345,7 +1375,10 @@ function emitStreamClientSurface(
           '    const Server: {\n' +
           '        readonly Stream: {\n' +
           streams
-              .map((s) => `            readonly ${s.key}: import('toiljs/client').StreamConnectable;`)
+              .map(
+                  (s) =>
+                      `            readonly ${s.key}: import('toiljs/client').StreamConnectable;`,
+              )
               .join('\n') +
           '\n        };\n    };\n}\n\nexport {};\n'
         : '';
