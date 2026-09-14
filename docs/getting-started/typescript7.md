@@ -49,8 +49,12 @@ incomplete lint migration; it does not overwrite a custom ESLint configuration.
 
 ## Editor and compiler configuration
 
-Enable the TypeScript native language server (`js/ts.experimental.useTsgo`) and install the
-Oxlint editor extension. Remove legacy `typescript.tsdk` settings and JavaScript language-service
+Follow [editor setup](./installation.md#editor-setup) to install Oxc in VS Code or WebStorm.
+VS Code uses `"oxc.typeAware": true`; WebStorm also needs **Settings → Tools → Oxlint → Enable
+type aware rules** checked, because its editor setting overrides the project config.
+
+In VS Code, enable the TypeScript native language server (`js/ts.experimental.useTsgo`).
+Remove legacy `typescript.tsdk` settings and JavaScript language-service
 plugins. The native language server does not run toilscript's old `ts-plugin.cjs`; use the
 WebAssembly build for server dialect diagnostics.
 

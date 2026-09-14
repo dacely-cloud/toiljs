@@ -85,6 +85,57 @@ toiljs create my-app
 
 Both options end up at the same place. The rest of these docs write `toiljs <command>`; if you did not install globally, just put `npx` in front (`npx toiljs <command>`).
 
+## Editor setup
+
+After creating your project, run `npm install` inside it. The **Oxc** editor plugin uses the
+project's `oxlint` and `oxlint-tsgolint` dependencies to show lint diagnostics and fixes. Use
+Node 26 for editor tooling to match toiljs CI. Installing npm dependencies does not install
+the editor plugin.
+
+### VS Code
+
+1. Open Extensions and install [Oxc](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode),
+   with identifier `oxc.oxc-vscode`. Alternatively, run `code --install-extension oxc.oxc-vscode`.
+2. Merge this setting into your project's `.vscode/settings.json`:
+
+   ```json
+   {
+       "oxc.typeAware": true
+   }
+   ```
+
+3. If you installed dependencies while the editor was open, run **Oxc: Restart oxlint Server**
+   from the Command Palette. Check the **Oxc (Lint)** output channel if it does not start.
+
+New toiljs projects already recommend the extension and enable type-aware linting; you still
+need to install the extension. Optional lint fixes on save can be enabled with
+`"editor.codeActionsOnSave": { "source.fixAll.oxc": "explicit" }`.
+
+### WebStorm
+
+1. Open **Settings → Plugins → Marketplace**, search for [Oxc](https://plugins.jetbrains.com/plugin/27061-oxc),
+   and install it. Restart the IDE if prompted.
+2. Set the project's Node.js interpreter to Node 26.
+3. Open **Settings → Tools → Oxlint**, select **Automatic configuration**, and check
+   **Enable type aware rules**.
+4. Apply the settings, then run **Restart Oxlint Server** through Find Action.
+
+The plugin has its own type-aware checkbox, which defaults to off. Its explicit value
+[overrides `options.typeAware` in the project config](https://oxc.rs/docs/guide/usage/linter/lsp-config-reference#typeaware),
+so installing the plugin alone does not enable tsgolint checks.
+
+If automatic detection does not start the server, select **Manual configuration** and set
+**Path to Oxlint Language Server** to `<project>/node_modules/oxlint/bin/oxlint`. Check
+**Add --lsp CLI argument** and keep **Enable type aware rules** checked. Use the JavaScript
+launcher at that path so `oxlint.config.ts` and the custom JavaScript rules can load.
+
+Leave **Path to Oxlint Config** blank when opening the whole toiljs repository, and leave
+**Disable nested config lookups** unchecked, so both examples use their own configurations.
+For a standalone app whose config is not discovered, select that app's `oxlint.config.ts`.
+
+The [Oxc editor guide](https://oxc.rs/docs/guide/usage/linter/editors) covers supported editors.
+Run `npm run lint` to check the same project rules from a terminal.
+
 ## Verify it works
 
 Check the version:

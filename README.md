@@ -374,6 +374,15 @@ The `toiljs create` wizard also scaffolds assistant files (CLAUDE.md, AGENTS.md,
 
 ToilJS sets the toolchain so nobody argues about it. Strict TypeScript, Oxlint with tsgolint (strict type-aware TypeScript and React rules), and Prettier come configured and enforced from the first commit, shipped as `toiljs/tsconfig`, `toiljs/oxlint`, and `toiljs/prettier`. New apps extend them automatically and can init git in the same step. Opt in to as much as you want, nothing to copy, nothing to bikeshed.
 
+### Editor setup
+
+Run `npm install` in your project, then install **Oxc** in your editor to see lint diagnostics while editing:
+
+- **VS Code:** install [Oxc](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode) (`oxc.oxc-vscode`) from Extensions, or run `code --install-extension oxc.oxc-vscode`. Set `"oxc.typeAware": true` in workspace settings.
+- **WebStorm:** install [Oxc](https://plugins.jetbrains.com/plugin/27061-oxc) through **Settings → Plugins → Marketplace**. Under **Settings → Tools → Oxlint**, select **Automatic configuration** and check **Enable type aware rules**. Apply, then use **Restart Oxlint Server** in Find Action. The plugin's unchecked type-aware setting overrides the project's enabled setting.
+
+Use Node 26 for the editor's tooling, matching CI. See [editor setup and manual WebStorm configuration](./docs/getting-started/installation.md#editor-setup) if automatic detection does not start the linter. `oxlint-tsgolint` is a project dependency; it does not need a separate editor plugin.
+
 ## Configuration
 
 One file, `toil.config.ts`, typed with `defineConfig`. Every option has a sensible default, so most apps only set `seo`.

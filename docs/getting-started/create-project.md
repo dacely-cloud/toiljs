@@ -81,7 +81,7 @@ my-app/
 
   server/                 your backend (compiled to wasm, runs on the edge)
     main.ts               the entry: wires the handler + imports your surface modules
-    tsconfig.json         server-only TS config (loads the toilscript editor plugin)
+    tsconfig.json         server-only TS config (dialect checked by toilscript builds)
     toil-server-env.d.ts  generated editor types for server globals (Cookie, crypto, ...)
     core/                 your top-level request handler and shared logic
     models/               @data classes (the typed wire types)
@@ -114,6 +114,10 @@ npm run dev
 `npm run dev` runs `toiljs dev`, which builds your server to wasm, generates `shared/server.ts`, and starts the dev server with hot reload. Open the printed URL (by default `http://localhost:3000`) and you have a live app.
 
 If you told the wizard **not** to install dependencies, run `npm install` first.
+
+Install the **Oxc** plugin for VS Code or WebStorm using the [editor setup instructions](./installation.md#editor-setup).
+The generated README includes the steps. WebStorm requires **Enable type aware rules** to be
+checked under **Settings → Tools → Oxlint**, even though the project preset enables them.
 
 ## Gotchas and notes
 
