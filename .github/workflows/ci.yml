@@ -32,7 +32,7 @@ jobs:
       - name: Typecheck and lint with TypeScript 7
         run: |
           npm run typecheck
-          npm run lint
+          npm run lint -- --format default
 
       - name: Build and check the examples
         run: |
@@ -42,8 +42,9 @@ jobs:
           npm run build --prefix examples/streams
           npm run typecheck --prefix examples/basic
           npm run typecheck --prefix examples/streams
-          npm run lint --prefix examples/basic
-          npm run lint --prefix examples/streams
+          # Keep full plugin error messages; GitHub annotations can omit them.
+          npm run lint --prefix examples/basic -- --format default
+          npm run lint --prefix examples/streams -- --format default
 
       - name: Test including the example WebAssembly integrations
         run: npm test
