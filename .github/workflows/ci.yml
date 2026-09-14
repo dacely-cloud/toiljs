@@ -14,6 +14,9 @@ jobs:
     # Runs on PRs and pushes to main, but not on the version-tag publish runs.
     if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
+    env:
+      # Leave room for the native compiler and type-aware lint subprocesses.
+      NODE_OPTIONS: --max-old-space-size=1024
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -32,7 +35,7 @@ jobs:
       - name: Typecheck and lint with TypeScript 7
         run: |
           npm run typecheck
-          npm run lint -- --format default
+          npm run lint -- --format default --threads 1
 
       - name: Build and check the examples
         run: |
@@ -43,8 +46,8 @@ jobs:
           npm run typecheck --prefix examples/basic
           npm run typecheck --prefix examples/streams
           # Keep full plugin error messages; GitHub annotations can omit them.
-          npm run lint --prefix examples/basic -- --format default
-          npm run lint --prefix examples/streams -- --format default
+          npm run lint --prefix examples/basic -- --format default --threads 1
+          npm run lint --prefix examples/streams -- --format default --threads 1
 
       - name: Test including the example WebAssembly integrations
         run: npm test
