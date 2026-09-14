@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { exportsTrue } from '../src/compiler/prerender';
@@ -31,7 +30,10 @@ describe('staticSectionPattern', () => {
 describe('exportsTrue (edge-SSR opt-in detection)', () => {
     const files: string[] = [];
     function tmp(source: string): string {
-        const file = path.join(os.tmpdir(), `toil-ssrflag-${String(files.length)}-${process.pid}.tsx`);
+        const file = path.join(
+            os.tmpdir(),
+            `toil-ssrflag-${String(files.length)}-${process.pid}.tsx`,
+        );
         fs.writeFileSync(file, source);
         files.push(file);
         return file;
@@ -41,14 +43,14 @@ describe('exportsTrue (edge-SSR opt-in detection)', () => {
     });
 
     it('detects `export const ssr = true`', () => {
-        expect(exportsTrue(ts, tmp(`export const ssr = true;\nexport default () => null;\n`), 'ssr')).toBe(
-            true,
-        );
+        expect(
+            exportsTrue(tmp(`export const ssr = true;\nexport default () => null;\n`), 'ssr'),
+        ).toBe(true);
     });
     it('is false for ssr=false, a non-literal, or an absent export', () => {
-        expect(exportsTrue(ts, tmp(`export const ssr = false;\n`), 'ssr')).toBe(false);
-        expect(exportsTrue(ts, tmp(`const ssr = true;\n`), 'ssr')).toBe(false); // not exported
-        expect(exportsTrue(ts, tmp(`export const other = true;\n`), 'ssr')).toBe(false);
+        expect(exportsTrue(tmp(`export const ssr = false;\n`), 'ssr')).toBe(false);
+        expect(exportsTrue(tmp(`const ssr = true;\n`), 'ssr')).toBe(false); // not exported
+        expect(exportsTrue(tmp(`export const other = true;\n`), 'ssr')).toBe(false);
     });
 });
 
@@ -79,7 +81,9 @@ describe('resolveDynamicFile (self-host bracket routing, mirrors the edge)', () 
         const root = siteRoot();
         write(root, 'docs/[...slug].html', 'docs');
         expect(resolveDynamicFile(root, '/docs/a')).toBe(path.join(root, 'docs/[...slug].html'));
-        expect(resolveDynamicFile(root, '/docs/a/b/c')).toBe(path.join(root, 'docs/[...slug].html'));
+        expect(resolveDynamicFile(root, '/docs/a/b/c')).toBe(
+            path.join(root, 'docs/[...slug].html'),
+        );
         expect(resolveDynamicFile(root, '/docs')).toBeNull();
         // Parity with the client router + edge: a literal `index.html` segment is a slug (matches
         // the catch-all), while a bare `/docs/` is zero trailing segments (no required-catch-all match).
@@ -93,7 +97,9 @@ describe('resolveDynamicFile (self-host bracket routing, mirrors the edge)', () 
         const root = siteRoot();
         write(root, 'files/[[...slug]].html', 'files');
         expect(resolveDynamicFile(root, '/files')).toBe(path.join(root, 'files/[[...slug]].html'));
-        expect(resolveDynamicFile(root, '/files/a/b')).toBe(path.join(root, 'files/[[...slug]].html'));
+        expect(resolveDynamicFile(root, '/files/a/b')).toBe(
+            path.join(root, 'files/[[...slug]].html'),
+        );
     });
 
     it('prefers single over catch-all for one segment, catch-all for deeper', () => {
@@ -101,7 +107,9 @@ describe('resolveDynamicFile (self-host bracket routing, mirrors the edge)', () 
         write(root, 'shop/[id].html', 'one');
         write(root, 'shop/[...rest].html', 'many');
         expect(fs.readFileSync(resolveDynamicFile(root, '/shop/x') as string, 'utf8')).toBe('one');
-        expect(fs.readFileSync(resolveDynamicFile(root, '/shop/x/y') as string, 'utf8')).toBe('many');
+        expect(fs.readFileSync(resolveDynamicFile(root, '/shop/x/y') as string, 'utf8')).toBe(
+            'many',
+        );
     });
 
     it('prefers a real static subdirectory over a dynamic sibling', () => {

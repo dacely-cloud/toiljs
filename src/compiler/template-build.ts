@@ -45,7 +45,7 @@ import {
     extractFromHtml,
 } from './template.js';
 import { createViteConfig } from './vite.js';
-import { extractStaticMetadata, loadTypeScript } from './prerender.js';
+import { extractStaticMetadata } from './prerender.js';
 import { escapeAttr, escapeHtml, injectSeoHtml, routeSeo, type SeoConfig } from './seo.js';
 
 /** Marker element the client `mount` looks for to switch to `hydrateRoot`. */
@@ -159,7 +159,12 @@ function stripHoistedResourceTags(html: string): string {
  * (structurally `ResolvedHead` from `toiljs/client`). */
 interface SsrHead {
     title?: string;
-    meta: { name?: string; property?: string; content: string; [attr: string]: string | undefined }[];
+    meta: {
+        name?: string;
+        property?: string;
+        content: string;
+        [attr: string]: string | undefined;
+    }[];
     link: { rel: string; href: string; [attr: string]: string | undefined }[];
 }
 
@@ -247,7 +252,10 @@ export function extractRouteTemplate(input: RouteRenderInput): TemplateArtifacts
     // the FULL spliced document (injectSeoHtml's <title>/</head> regexes need the shell head, not the
     // stripped fragment) and BEFORE extractFromHtml so the coherence hash covers the baked head.
     if (input.seo) {
-        full = injectSeoHtml(full, routeSeo(input.seo, input.metadata ?? null, input.pattern ?? '/'));
+        full = injectSeoHtml(
+            full,
+            routeSeo(input.seo, input.metadata ?? null, input.pattern ?? '/'),
+        );
     }
     // Then add the component-level head (a layout's <Head>, a page's useHead/useTitle) that the static
     // metadata export + site SEO didn't already cover, so the server HTML carries the same head the
@@ -351,14 +359,13 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
 
     // Load TypeScript once (same as prerender.ts) to read each route's static `metadata` for the
     // SSR <head>. Only needed when the project configures SEO.
-    const ts = cfg.seo ? await loadTypeScript(cfg.root) : null;
 
     const warn = (msg: string): void => {
         process.stderr.write(`  toil: SSR ${msg}\n`);
     };
     const server = await createServer({
         ...(await createViteConfig(cfg)),
-        server: { middlewareMode: true, hmr: false },
+        server: { middlewareMode: true, hmr: false, ws: false },
         appType: 'custom',
         logLevel: 'silent',
     });
@@ -430,7 +437,7 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
                 // The route's static `metadata` export (same static-AST read prerender.ts uses, so
                 // the SSR head matches the static <route>/index.html exactly). generateMetadata is
                 // dynamic and skipped here, as in prerender/ssg.
-                const metadata = ts ? extractStaticMetadata(ts, r.file) : null;
+                const metadata = extractStaticMetadata(r.file);
 
                 const name = routeTemplateName(r.pattern);
                 // Tell location hooks which URL this template is for, so a NavLink's active

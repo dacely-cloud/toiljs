@@ -416,7 +416,7 @@ export class DevDatabase {
      *  module loader calls this after each dispatch so a crash never loses a write. */
     persist(): void {
         if (this.persistPath === null) return;
-        const snap: DbSnapshot = {
+        const snap: Required<DbSnapshot> = {
             store: {},
             recordIdem: {},
             uniqueIdem: {},
@@ -432,12 +432,12 @@ export class DevDatabase {
         for (const [k, v] of this.store)
             snap.store[k] = { v: v.toString('base64'), sv: this.versions.get(k) ?? 0 };
         for (const [k, row] of this.recordIdem)
-            snap.recordIdem![k] = {
+            snap.recordIdem[k] = {
                 requestHash: row.requestHash,
                 state: row.outcome === null ? 'pending' : 'done',
                 outcome: row.outcome === null ? undefined : snapshotOutcome(row.outcome),
             };
-        for (const [k, v] of this.uniqueIdem) snap.uniqueIdem![k] = v;
+        for (const [k, v] of this.uniqueIdem) snap.uniqueIdem[k] = v;
         for (const [k, v] of this.views)
             snap.views[k] = { v: v.toString('base64'), sv: this.versions.get(k) ?? 0 };
         for (const [k, m] of this.members) {
@@ -447,13 +447,13 @@ export class DevDatabase {
             snap.members[k] = o;
         }
         for (const [k, v] of this.counters) snap.counters[k] = v.toString();
-        for (const [k, v] of this.counterIdem) snap.counterIdem![k] = v.toString();
+        for (const [k, v] of this.counterIdem) snap.counterIdem[k] = v.toString();
         for (const [k, log] of this.events) {
             const ver = this.eventVersions.get(k) ?? [];
             snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0 }));
         }
         for (const [k, s] of this.eventDedup) snap.eventDedup[k] = [...s];
-        for (const [k, v] of this.deriveCheckpoints) snap.deriveCheckpoints![k] = v;
+        for (const [k, v] of this.deriveCheckpoints) snap.deriveCheckpoints[k] = v;
         for (const [k, l] of this.capacity)
             snap.capacity[k] = {
                 total: l.total.toString(),
@@ -698,7 +698,10 @@ export class DevDatabase {
      *  field layout. `[]` when there is no layout or no `@unique` field. The
      *  compiler restricts `@unique` to top-level scalar/blob records, so the walker
      *  only skips fixed scalars and length-prefixed blobs. */
-    private uniqueValuesOf(coll: DevCollectionHandle, value: Buffer): { index: number; val: Buffer }[] {
+    private uniqueValuesOf(
+        coll: DevCollectionHandle,
+        value: Buffer,
+    ): { index: number; val: Buffer }[] {
         const fields = coll.fields;
         if (!fields || !fields.some((f) => f.unique)) return [];
         const r = new DataReader(value);
@@ -1077,7 +1080,7 @@ export class DevDatabase {
         const mv = this.memberVersions.get(sk);
         const n = Math.max(0, Math.min(limit, 0xffff));
         const members =
-            set === undefined ? [] : Array.from(set.values()).sort(Buffer.compare).slice(0, n);
+            set === undefined ? [] : Array.from(set.values()).sort((a, b) => Buffer.compare(a, b)).slice(0, n);
         // u32 count, then per member its stored schema_version (u32) + bytes (u32
         // len + bytes). Same framing as the edge op_membership_list.
         const w = new DataWriter();
@@ -1220,7 +1223,9 @@ export class DevDatabase {
             this.eventVersions.set(sk, [sv]);
         } else {
             log.push(ev);
-            (this.eventVersions.get(sk) ?? this.eventVersions.set(sk, []).get(sk)!).push(sv);
+            const versions = this.eventVersions.get(sk) ?? [];
+            versions.push(sv);
+            this.eventVersions.set(sk, versions);
         }
         this.recordWrite(db, coll);
         return 0;
@@ -1258,7 +1263,9 @@ export class DevDatabase {
             this.eventVersions.set(sk, [sv]);
         } else {
             log.push(ev);
-            (this.eventVersions.get(sk) ?? this.eventVersions.set(sk, []).get(sk)!).push(sv);
+            const versions = this.eventVersions.get(sk) ?? [];
+            versions.push(sv);
+            this.eventVersions.set(sk, versions);
         }
         seen.add(evid);
         this.recordWrite(db, coll);
@@ -1773,8 +1780,12 @@ export function buildDatabaseImports(
 
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
             devDb.latest(ref, db, handle, keyPtr, keyLen, limit),
-        'data.events_since': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
-            devDb.since(ref, db, handle, keyPtr, keyLen, limit),
+        'data.events_since': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            limit: number,
+        ): number => devDb.since(ref, db, handle, keyPtr, keyLen, limit),
 
         'data.capacity_set_total': (
             handle: number,

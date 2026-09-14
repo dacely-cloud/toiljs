@@ -63,7 +63,7 @@ npx toiljs create my-app --yes --template app --style css
 
 ### What it sets up
 
-Every new project comes wired for you: the enforced TypeScript, ESLint, and Prettier presets, file-based routing, a `toil.config.ts`, a `toilconfig.json` (the server compiler settings), a `.gitignore`, and the editor settings that make the toilscript language plugin work. It also scaffolds a `server/migrations/` folder (where ToilDB schema migrations live) and, unless you opt out, a set of AI assistant helper files.
+Every new project comes wired for you: the enforced TypeScript 7, Oxlint + tsgolint, and Prettier presets, file-based routing, a `toil.config.ts`, a `toilconfig.json` (the server compiler settings), a `.gitignore`, and the native TypeScript 7 editor settings. It also scaffolds a `server/migrations/` folder (where ToilDB schema migrations live) and, unless you opt out, a set of AI assistant helper files.
 
 The scaffolded `package.json` includes these scripts:
 
@@ -72,7 +72,7 @@ The scaffolded `package.json` includes these scripts:
 | `npm run dev` | `toiljs dev` |
 | `npm run build` | `toiljs build` |
 | `npm run build:server` | `toiljs build --server` |
-| `npm run lint` | `eslint client` |
+| `npm run lint` | `oxlint --type-aware client` |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run format` | `prettier --write ...` |
 
@@ -250,7 +250,7 @@ The report is grouped:
 
 | Group | Example checks |
 | --- | --- |
-| **Environment** | Node.js version, that `toiljs` and its peer dependencies (React and so on) are installed and new enough, that your TypeScript is a supported 6.x rather than the unsupported native 7.x, that a lockfile exists, and that your scripts do not wrap `toiljs` in a stray `npx`. |
+| **Environment** | Node.js version, that `toiljs` and its peer dependencies (React and so on) are installed and new enough, that TypeScript 7 is installed and its declared range stays within 7.x, that Oxlint and tsgolint are configured for type-aware linting, that a lockfile exists, and that your scripts do not wrap `toiljs` in a stray `npx`. |
 | **Project + routing** | The `client/` and `routes/` folders exist, `index.html` has a `<div id="root">`, your app entry calls `mount(...)` with the `slots` argument, at least one route exists, no two routes collide on the same URL, and no asset paths are written in a way that 404s on nested routes. |
 | **Config + assets** | Your `toil.config` loads, the base path is well formed, `client.seo` has a `url` if SEO is configured, and your styling packages are actually installed. |
 | **Server / WASM** | The `toilconfig.json` and its entry files exist, `toilscript` is installed, a compiled `.wasm` exists, the typed-RPC wiring is in place, your `@rest` controllers are actually dispatched, the Prettier and editor plugins are wired, and a `migrations/` folder exists. |
@@ -258,14 +258,14 @@ The report is grouped:
 
 ### What `--fix` repairs
 
-`--fix` pins an unsupported TypeScript (the native 7.x, which ships no compiler API) back to `^6.0.3` in any project. The rest only touch a server project (one with a `toilconfig.json`), repairing the wiring that is easy to get wrong or that older projects predate:
+`--fix` migrates unsupported or missing TypeScript declarations to `^7.0.2` and enables the native TypeScript editor in any project. The rest only touch a server project (one with a `toilconfig.json`), repairing the wiring that is easy to get wrong or that older projects predate:
 
 - adds `--rpcModule shared/server.ts` to your server build scripts,
 - adds `shared` and the `shared/*` path alias to `tsconfig.json`,
 - adds `shared/server.ts` to `.gitignore`,
 - lifts the `toilscript` version floor if it is too old,
 - adds the `toiljs/prettier-plugin` to your Prettier config (so Prettier does not choke on server decorators),
-- adds the toilscript language-service plugin to your server `tsconfig.json` and points VS Code at the workspace TypeScript (so the editor stops false-flagging `@database` collections and `@data` members),
+- removes the legacy toilscript JavaScript language-service plugin, which cannot run in the TypeScript 7 native language server; `toiljs build --server` provides the WebAssembly dialect diagnostics,
 - refreshes the editor-only server globals declaration file.
 
 It is idempotent: it only writes files it actually needs to change, and it tells you which ones changed and which need a manual edit (for example a `tsconfig.json` that contains comments). If it changed `package.json`, run your installer afterward.
@@ -282,7 +282,11 @@ It is idempotent: it only writes files it actually needs to change, and it tells
 
 A friendly wrapper over `npm-check-updates`. It checks the registry for newer versions of your dependencies, groups them by how big the jump is (major, minor, patch), lets you pick which to apply (or `-y` to apply all), bumps `package.json`, and runs your package manager's install. It also makes sure your `server/migrations/` folder exists (older projects predate it). `npm-check-updates` runs via `npx`, so it never becomes a permanent dependency of your project.
 
-Upgrades into a major toiljs does not support are held back and listed separately, so neither the picker nor `-y` can install one. Today that means **TypeScript 7**, the native port, which ships no JavaScript compiler API (see [Installation](../getting-started/installation.md)). Bumps inside TypeScript 6 are still offered.
+TypeScript updates must stay within supported **7.x** releases. Older and future compiler majors,
+unbounded ranges, and prereleases are withheld. An older project is offered the latest 7.x migration
+even with `--target patch`. Select that migration before applying other updates. The command writes
+the exact reviewed versions before installing, so a second registry query cannot substitute a
+different compiler major.
 
 ```bash
 # Interactive picker.

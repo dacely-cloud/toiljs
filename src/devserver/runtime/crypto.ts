@@ -167,7 +167,7 @@ function stash(state: CryptoState, bytes: Buffer): number {
 export function buildCryptoImports(
     ref: MemoryRef,
     cs: CryptoState,
-): Record<string, (...args: number[]) => number | void> {
+): Record<string, ((...args: number[]) => number) | ((...args: number[]) => void)> {
     return {
         'crypto.fill_random': (outPtr: number, len: number): void => {
             if (len < 0 || len > MAX_OUTPUT) throw new Error('crypto.fill_random: bad length');

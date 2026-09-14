@@ -78,7 +78,7 @@ function extractTokens(s: string): string[] {
     const out: string[] = [];
     let m: RegExpExecArray | null;
     TOKEN_RE.lastIndex = 0;
-    while ((m = TOKEN_RE.exec(s)) !== null) out.push(m[1]!);
+    while ((m = TOKEN_RE.exec(s)) !== null) out.push(m[1]);
     return out;
 }
 
@@ -345,7 +345,7 @@ export async function renderEmails(cfg: ResolvedToilConfig, authOn = false): Pro
 
     const server = await createServer({
         ...(await createViteConfig(cfg)),
-        server: { middlewareMode: true, hmr: false },
+        server: { middlewareMode: true, hmr: false, ws: false },
         appType: 'custom',
         logLevel: 'silent',
     });
@@ -359,7 +359,9 @@ export async function renderEmails(cfg: ResolvedToilConfig, authOn = false): Pro
             // by that name still gets its normal `Emails.<Name>.send(...)`.
             if (
                 authOn &&
-                RESERVED_AUTH_EMAIL_NAMES.has(toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, '')))
+                RESERVED_AUTH_EMAIL_NAMES.has(
+                    toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, '')),
+                )
             )
                 continue;
             try {

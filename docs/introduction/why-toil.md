@@ -64,7 +64,7 @@ Honest boundary: owned means the core of a working app is toil's, not that outsi
 
 Built on today's web platform, not a decade of legacy. TypeScript end to end, one repo, one deploy, wired by types. Change a field on the server and the frontend stops compiling until you fix it. The bug surfaces at your desk as a compile error, not in production.
 
-The toolchain is set up for you: ESLint, Prettier with a plugin for toil's decorators, an editor plugin, one CLI, and a `doctor` command that fixes common problems in place. The docs are LLM-friendly too, so an AI assistant reads your current conventions instead of guessing. More in [The modern stack](./modern-stack.md).
+The toolchain is set up for you: Oxlint + tsgolint, Prettier with a plugin for toil's decorators, an editor plugin, one CLI, and a `doctor` command that fixes common problems in place. The docs are LLM-friendly too, so an AI assistant reads your current conventions instead of guessing. More in [The modern stack](./modern-stack.md).
 
 ### Hyper-scale and distributed writes
 

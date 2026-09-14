@@ -50,8 +50,10 @@ function fmt(n: number, unit: Unit): string {
             n /= 1024;
             i++;
         }
+
         return `${n.toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
     }
+
     return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n));
 }
 
@@ -123,8 +125,8 @@ export default function AnalyticsDemo() {
             <h1>Analytics</h1>
             <p>
                 <code>analytics.self()</code> reads this site's snapshot; <code>analytics.series(metric, range)</code>{' '}
-                reads the historical rings (30-day retention). Under <code>toiljs dev</code> you get sample data; at
-                the edge it is the real metering, same code.
+                reads the historical rings (30-day retention). Under <code>toiljs dev</code> you get sample data; at the
+                edge it is the real metering, same code.
             </p>
 
             <section>
@@ -160,9 +162,9 @@ export default function AnalyticsDemo() {
             <section style={{ marginTop: 24 }}>
                 <h2>Snapshot</h2>
                 <p style={{ color: '#64748b', marginTop: 0 }}>
-                    The <code>live</code> gauges are the current level right now, and the windows are the
-                    current rate-limit usage vs the plan cap (cap ∞ = unlimited). To see a metric over time,
-                    use the chart above (the time-series), not an ever-growing lifetime total.
+                    The <code>live</code> gauges are the current level right now, and the windows are the current
+                    rate-limit usage vs the plan cap (cap ∞ = unlimited). To see a metric over time, use the chart above
+                    (the time-series), not an ever-growing lifetime total.
                 </p>
                 <button onClick={loadStats}>Load my site analytics</button>
                 {err && <p style={{ color: '#f87171' }}>{err}</p>}

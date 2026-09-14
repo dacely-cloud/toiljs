@@ -12,9 +12,8 @@
  *   - a project with only the default request surface keeps the single-artifact
  *     path (no cold pass, no cold artifact).
  *
- * The build invokes the LOCAL toilscript (branch feat/streams-phase0-compiler),
- * which supports `--targetMode`; the test links it into the fixture project's
- * `node_modules` the same way the dev build resolves it (`require.resolve`).
+ * The build invokes the published toilscript installed by this project, linked into the
+ * fixture's node_modules in the same way the application build resolves it.
  */
 
 import {
@@ -43,7 +42,7 @@ import { parseDaemonCatalog } from '../src/devserver/daemon/catalog.js';
 import { parseSurface } from '../src/devserver/wasm/surface.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const LOCAL_TOILSCRIPT = join(here, '..', '..', 'toilscript');
+const TOILSCRIPT = join(here, '..', 'node_modules', 'toilscript');
 
 let tmp: string;
 
@@ -55,14 +54,14 @@ afterEach(() => {
 });
 
 /** Scaffold a minimal project at `tmp` with `server/main.ts` = `serverSrc`, the
- *  given toilconfig, and `node_modules/toilscript` symlinked to the local build. */
+ *  given toilconfig, and `node_modules/toilscript` symlinked to the installed compiler. */
 function scaffold(serverSrc: string, toilconfig: object): void {
     writeFileSync(join(tmp, 'package.json'), JSON.stringify({ name: 'fixture', type: 'module' }));
     writeFileSync(join(tmp, 'toilconfig.json'), JSON.stringify(toilconfig, null, 2));
     mkdirSync(join(tmp, 'server'), { recursive: true });
     writeFileSync(join(tmp, 'server', 'main.ts'), serverSrc);
     mkdirSync(join(tmp, 'node_modules'), { recursive: true });
-    symlinkSync(LOCAL_TOILSCRIPT, join(tmp, 'node_modules', 'toilscript'), 'dir');
+    symlinkSync(TOILSCRIPT, join(tmp, 'node_modules', 'toilscript'), 'dir');
 }
 
 const BASE_TOILCONFIG = {
@@ -232,15 +231,14 @@ describe('splitSurfaceFiles per-pass classification', () => {
             'server/chat.ts': "@stream('chat')\nclass C {}\n",
         });
         const surfacesOnly = ['server/main.ts', 'server/chat.ts']; // no plain util.ts, as in production
-        expect(() => assertNoStreamInRequestTier(tmp, splitSurfaceFiles(tmp, surfacesOnly))).toThrow(
-            /@stream class would be compiled into the REQUEST tier/,
-        );
+        expect(() =>
+            assertNoStreamInRequestTier(tmp, splitSurfaceFiles(tmp, surfacesOnly)),
+        ).toThrow(/@stream class would be compiled into the REQUEST tier/);
     });
 });
 
-// Needs the local toilscript dev build (with --targetMode) linked as a sibling
-// repo; skip where it is absent (e.g. CI, which has only the published dep).
-describe.skipIf(!existsSync(LOCAL_TOILSCRIPT))('buildServer two-pass (daemon project)', () => {
+// Exercise the published compiler installed by the project.
+describe('buildServer two-pass (daemon project)', () => {
     it('runs the cold pass and produces the cold artifact with a daemon catalog', async () => {
         scaffold(DAEMON_SRC, BASE_TOILCONFIG);
         await buildServer(tmp);

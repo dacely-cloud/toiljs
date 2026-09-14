@@ -102,7 +102,7 @@ flowchart TB
         direction LR
         VITE["Vite<br/>HMR + ahead-of-time build"]
         TSC["toilscript compiler"]
-        TOOLKIT["toolkit: TypeScript, ESLint, Prettier, git<br/>Tailwind / Sass / Less / Stylus optional<br/>dev toolbar: routes, loader cache, head/OG, errors<br/>AI tab to Claude / ChatGPT, Cmd-K palette<br/>dev host emulator: ToilDB, crypto, cache, env, email"]
+        TOOLKIT["toolkit: TypeScript 7, Oxlint + tsgolint, Prettier, git<br/>Tailwind / Sass / Less / Stylus optional<br/>dev toolbar: routes, loader cache, head/OG, errors<br/>AI tab to Claude / ChatGPT, Cmd-K palette<br/>dev host emulator: ToilDB, crypto, cache, env, email"]
     end
 
     %% ============ BUILD ARTIFACTS ============
@@ -189,7 +189,7 @@ This is the full surface area. Every row works the moment `create` finishes, no 
 | **Realtime**        | Typed channels: `connectChannel` / `useChannel`, reconnect built in, text or binary frames. WebSocket today, with first-class WebTransport over HTTP/3 coming (automatic WebSocket fallback).                                   |
 | **Server**          | A typed ToilScript server compiled to a portable, native-speed module. `Request` / `Response` REST handlers, binary IO on both sides, and a typed RPC surface generated from your server.                                       |
 | **Agentic DX**      | A dev toolbar with a live AI tab (hand off page context to Claude or ChatGPT), a Cmd+K palette, and scaffolded agent files (CLAUDE.md, AGENTS.md, Cursor, Copilot).                                                             |
-| **Toolkit**         | Strict TypeScript, ESLint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away.                                                                                            |
+| **Toolkit**         | Strict TypeScript 7, Oxlint + tsgolint, and Prettier shipped as presets, plus optional git init. Tailwind v4, Sass, Less, and Stylus a flag away.                                                                                            |
 | **CLI**             | `create`, `dev`, `build`, `start`, `configure`, `doctor` (with `--json` for CI), and `update`.                                                                                                                                  |
 
 ## Routing
@@ -372,7 +372,7 @@ The `toiljs create` wizard also scaffolds assistant files (CLAUDE.md, AGENTS.md,
 
 ## The toolkit is the standard
 
-ToilJS sets the toolchain so nobody argues about it. Strict TypeScript, ESLint (typescript-eslint, react-hooks, react-refresh, @eslint-react), and Prettier come configured and enforced from the first commit, shipped as `toiljs/tsconfig`, `toiljs/eslint`, and `toiljs/prettier`. New apps extend them automatically and can init git in the same step. Opt in to as much as you want, nothing to copy, nothing to bikeshed.
+ToilJS sets the toolchain so nobody argues about it. Strict TypeScript, Oxlint with tsgolint (strict type-aware TypeScript and React rules), and Prettier come configured and enforced from the first commit, shipped as `toiljs/tsconfig`, `toiljs/oxlint`, and `toiljs/prettier`. New apps extend them automatically and can init git in the same step. Opt in to as much as you want, nothing to copy, nothing to bikeshed.
 
 ## Configuration
 
@@ -467,7 +467,7 @@ flowchart TB
         direction TB
         TSX["client/ &nbsp; React + TSX routes"] --> VITE["Vite<br/>HMR + ahead-of-time build"] --> ART["static client<br/>prerendered HTML<br/>sitemap, robots, llms<br/>optimized images + fonts"]
         TS["server/ &nbsp; ToilScript .ts"] --> TSC["toilscript compiler"] --> WASM["one .wasm module"]
-        TOOL["toolkit: TypeScript, ESLint, Prettier, git<br/>dev toolbar: routes, loader cache, head/OG, errors<br/>AI tab to Claude / ChatGPT, Cmd-K palette<br/>typed RPC surface Server.*"]
+        TOOL["toolkit: TypeScript 7, Oxlint + tsgolint, Prettier, git<br/>dev toolbar: routes, loader cache, head/OG, errors<br/>AI tab to Claude / ChatGPT, Cmd-K palette<br/>typed RPC surface Server.*"]
     end
 
     CLIENTS["CLIENTS<br/>browsers, mobile, API clients, AI crawlers / LLMs"]
@@ -511,7 +511,7 @@ flowchart TB
 │   client/  React + TSX routes ──▶ Vite (HMR   ahead-of-time build) ──┐   │
 │   server/  ToilScript (.ts)   ──▶ toilscript compiler ──▶ one .wasm  │   │
 │                                                                      │   │
-│   toolkit  TypeScript   ESLint   Prettier   git   (opt-in presets)   │   │
+│   toolkit  TypeScript 7 Oxlint   Prettier   git   (opt-in presets)   │   │
 │   dev      toolbar: routes   loader cache   head/OG   errors         │   │
 │            AI tab → Claude / ChatGPT   ⌘K palette                     │   │
 │   emits    static client   prerendered HTML   sitemap robots llms    │   │
@@ -600,13 +600,13 @@ This is the spine the framework was shaped around. Today you write a typed, file
 <img src="https://img.shields.io/badge/WebAssembly-654ff0?style=for-the-badge&logo=webassembly&logoColor=white" alt="WebAssembly" />
 <img src="https://img.shields.io/badge/ToilScript-cb9820?style=for-the-badge&logoColor=white" alt="ToilScript" />
 <img src="https://img.shields.io/badge/sharp-99cc00?style=for-the-badge&logo=sharp&logoColor=white" alt="sharp" />
-<img src="https://img.shields.io/badge/ESLint-4b32c3?style=for-the-badge&logo=eslint&logoColor=white" alt="ESLint" />
+<img src="https://img.shields.io/badge/Oxlint-f7df1e?style=for-the-badge" alt="Oxlint" />
 <img src="https://img.shields.io/badge/Prettier-f7b93e?style=for-the-badge&logo=prettier&logoColor=black" alt="Prettier" />
 <img src="https://img.shields.io/badge/Tailwind_v4-06b6d4?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind v4" />
 
 </div>
 
-React 19, TypeScript, Vite, [ToilScript](https://www.npmjs.com/package/toilscript) (TypeScript syntax, compiles to WebAssembly), Vite imagetools + sharp, ESLint (typescript-eslint, react-hooks, react-refresh, @eslint-react), Prettier, Tailwind v4 (optional).
+React 19, TypeScript 7, Vite 8, [ToilScript](https://www.npmjs.com/package/toilscript) (TypeScript syntax, compiles to WebAssembly), Vite imagetools + sharp, Oxlint with tsgolint (strict type-aware TypeScript and React rules), Prettier, Tailwind v4 (optional).
 
 ## Start
 

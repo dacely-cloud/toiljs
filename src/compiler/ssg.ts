@@ -14,7 +14,7 @@ import path from 'node:path';
 import { createServer } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
-import { extractStaticMetadata, loadTypeScript } from './prerender.js';
+import { extractStaticMetadata } from './prerender.js';
 import { scanRoutes } from './routes.js';
 import { injectSeoHtml, joinUrl, type LlmsPage, llmsTxt, routeSeo, sitemapXml } from './seo.js';
 import { createViteConfig } from './vite.js';
@@ -74,7 +74,7 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
     const shell = fs.readFileSync(shellPath, 'utf8');
     const server = await createServer({
         ...(await createViteConfig(cfg)),
-        server: { middlewareMode: true, hmr: false },
+        server: { middlewareMode: true, hmr: false, ws: false },
         appType: 'custom',
         logLevel: 'silent',
     });
@@ -155,11 +155,10 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
     // Rewrite llms.txt with the full page index: every static route's resolved title/description plus
     // the enumerated dynamic pages, so AI crawlers get the whole site, not just the static paths.
     if (baseUrl !== undefined) {
-        const ts = await loadTypeScript(cfg.root);
         const staticPages: LlmsPage[] = allRoutes
             .filter((r) => r.slot === undefined && !r.intercept && !/[:*]/.test(r.pattern))
             .map((r): LlmsPage => {
-                const meta = ts ? extractStaticMetadata(ts, r.file) : null;
+                const meta = extractStaticMetadata(r.file);
                 return {
                     title: metaString(meta, 'title') ?? (r.pattern === '/' ? 'Home' : r.pattern),
                     url: joinUrl(baseUrl, r.pattern),

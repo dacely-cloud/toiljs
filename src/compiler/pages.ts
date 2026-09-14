@@ -1,4 +1,4 @@
-import { extractStaticExports, loadTypeScriptSync } from './prerender.js';
+import { extractStaticExports } from './prerender.js';
 import type { ScannedRoute } from './routes.js';
 
 /**
@@ -26,14 +26,13 @@ function isDynamic(pattern: string): boolean {
  * hints are merged over the static `metadata`, winning ties. Reads each route file once.
  */
 export function buildPageIndex(root: string, routes: readonly ScannedRoute[]): PageIndexEntry[] {
-    const ts = loadTypeScriptSync(root);
     const seen = new Set<string>();
     const pages: PageIndexEntry[] = [];
     for (const route of routes) {
         if (route.slot !== undefined || route.intercept) continue;
         if (seen.has(route.pattern)) continue;
         seen.add(route.pattern);
-        const exports = ts ? extractStaticExports(ts, route.file, ['metadata', 'searchHints']) : {};
+        const exports = extractStaticExports(route.file, ['metadata', 'searchHints']);
         const metadata = { ...exports.metadata, ...exports.searchHints };
         pages.push({ path: route.pattern, dynamic: isDynamic(route.pattern), metadata });
     }

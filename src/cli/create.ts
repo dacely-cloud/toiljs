@@ -1,6 +1,6 @@
 /**
  * `toiljs create`, an interactive project scaffolder (Clack-powered) that wires a new
- * app to the enforced toiljs presets (tsconfig / eslint / prettier) and file-based routing.
+ * app to the enforced toiljs presets (tsconfig / oxlint / prettier) and file-based routing.
  * Supports a non-interactive path via flags (`--yes`, `--template`, …) for scripting/CI.
  */
 import fs from 'node:fs/promises';
@@ -116,7 +116,7 @@ export interface CreateOptions {
 }
 
 /** Aborts the wizard cleanly on Ctrl-C / cancel, narrowing the prompt result to its value type. */
-function bail<T>(value: T | symbol): asserts value is T {
+function bail<T>(value: T): asserts value is Exclude<T, symbol> {
     if (isCancel(value)) {
         cancel('Scaffolding cancelled.');
         process.exit(0);
@@ -142,12 +142,13 @@ function scaffold(
 ): Record<string, string> {
     const toilVersion = version();
     const devDependencies: Record<string, string> = {
-        '@types/react': '^19.2.15',
-        '@types/react-dom': '^19.2.3',
-        eslint: '^10.2.0',
-        prettier: '^3.8.1',
-        toilscript: '^0.1.55',
-        typescript: '^6.0.3',
+        '@types/react': '^19.3.0',
+        '@types/react-dom': '^19.3.0',
+        oxlint: '^1.83.0',
+        'oxlint-tsgolint': '^7.0.2001',
+        prettier: '^3.9.6',
+        toilscript: '^0.1.60',
+        typescript: '^7.0.2',
     };
     for (const dep of requiredPackages(features).sort()) {
         devDependencies[dep] = PKG_VERSION[dep] ?? 'latest';
@@ -161,14 +162,14 @@ function scaffold(
             dev: 'toiljs dev',
             build: 'toiljs build',
             'build:server': 'toiljs build --server',
-            lint: 'eslint client',
+            lint: 'oxlint --type-aware client',
             typecheck: 'tsc --noEmit',
             format: 'prettier --write "client/**/*.{ts,tsx,css,scss,less}" "client/public/**/*.html" "server/**/*.ts"',
         },
         dependencies: {
             toiljs: `^${toilVersion}`,
-            react: '^19.2.6',
-            'react-dom': '^19.2.6',
+            react: '^19.3.0',
+            'react-dom': '^19.3.0',
         },
         devDependencies,
     };
@@ -191,7 +192,7 @@ function scaffold(
             '    },\n' +
             '    "include": ["client", "shared", "emails", "toil.config.ts", "toil-env.d.ts", "toil-routes.d.ts"]\n' +
             '}\n',
-        'eslint.config.js': "import toiljs from 'toiljs/eslint';\n\nexport default toiljs;\n",
+        'oxlint.config.ts': "import toiljs from 'toiljs/oxlint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
         // Generated files don't need formatting. (toilscript server decorators like @main /
         // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
@@ -199,14 +200,11 @@ function scaffold(
             'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/_ssr/\nserver/toil-server-env.d.ts\n',
         '.gitignore':
             'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_ssr/\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
-        // Use the project's pinned TypeScript (node_modules) instead of VS Code's bundled
-        // version, and prompt to switch, so the editor loads the toilscript LS plugin wired
-        // in server/tsconfig.json (which clears the @database / @data editor false positives).
+        // Use the native TypeScript 7 language server.
         '.vscode/settings.json':
             JSON.stringify(
                 {
-                    'typescript.tsdk': 'node_modules/typescript/lib',
-                    'typescript.enablePromptUseWorkspaceTsdk': true,
+                    'js/ts.experimental.useTsgo': true,
                 },
                 null,
                 4,
@@ -262,16 +260,11 @@ function scaffold(
                 null,
                 4,
             ) + '\n',
-        // The toilscript LS plugin teaches the editor about compiler-injected members
-        // (`@database` static collections like `Db.users`, the `@data` codec, `@user`), so
-        // stock TypeScript stops false-flagging them as TS2339. Editor-only; ignored by tsc.
+        // The WebAssembly dialect is checked by toilscript during the server build.
         'server/tsconfig.json':
             JSON.stringify(
                 {
                     extends: 'toilscript/std/assembly.json',
-                    compilerOptions: {
-                        plugins: [{ name: 'toilscript/std/ts-plugin.cjs' }],
-                    },
                     include: ['./**/*.ts'],
                 },
                 null,
@@ -472,7 +465,7 @@ function agentServer(): Record<string, string> {
             ' */\n' +
             'export class AppHandler extends ToilHandler {\n' +
             '    public handle(req: Request): Response {\n' +
-            '        // Rest.dispatch returns the first matching route\'s Response, or null when nothing\n' +
+            "        // Rest.dispatch returns the first matching route's Response, or null when nothing\n" +
             '        // matched. REST composes; it never takes over handle().\n' +
             '        const hit = Rest.dispatch(req);\n' +
             '        if (hit != null) {\n' +

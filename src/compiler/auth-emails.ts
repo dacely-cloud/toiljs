@@ -28,7 +28,12 @@ import pc from 'picocolors';
 import { createServer } from 'vite';
 
 import type { ResolvedToilConfig } from './config.js';
-import { RESERVED_AUTH_EMAIL_NAMES, renderEmailFile, toPascal, type RenderedEmail } from './emails.js';
+import {
+    RESERVED_AUTH_EMAIL_NAMES,
+    renderEmailFile,
+    toPascal,
+    type RenderedEmail,
+} from './emails.js';
 import { createViteConfig } from './vite.js';
 
 /**
@@ -226,7 +231,14 @@ function moduleSource(parts: Parts): string {
  */
 function removeLegacyModule(root: string): void {
     try {
-        const legacy = path.join(root, 'node_modules', 'toiljs', 'server', 'globals', GENERATED_BASENAME);
+        const legacy = path.join(
+            root,
+            'node_modules',
+            'toiljs',
+            'server',
+            'globals',
+            GENERATED_BASENAME,
+        );
         if (fs.existsSync(legacy)) fs.rmSync(legacy);
     } catch {
         // read-only / missing: nothing to clean, not fatal
@@ -259,14 +271,18 @@ export async function renderAuthEmails(cfg: ResolvedToilConfig, authOn: boolean)
     const parts = {} as Parts;
     for (const name of AUTH_NAMES) {
         const spec = SPECS[name];
-        parts[name] = { subject: spec.defaultSubject, text: spec.defaultText, html: spec.defaultHtml };
+        parts[name] = {
+            subject: spec.defaultSubject,
+            text: spec.defaultText,
+            html: spec.defaultHtml,
+        };
     }
 
     if (overrides.size > 0) {
         const { renderToStaticMarkup } = await import('react-dom/server');
         const server = await createServer({
             ...(await createViteConfig(cfg)),
-            server: { middlewareMode: true, hmr: false },
+            server: { middlewareMode: true, hmr: false, ws: false },
             appType: 'custom',
             logLevel: 'silent',
         });

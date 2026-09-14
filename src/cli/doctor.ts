@@ -8,7 +8,7 @@
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
     loadConfig,
@@ -50,7 +50,6 @@ import {
     checkWasmBuilt,
     findRelativeAssets,
     hasFailures,
-    rangeMajor,
     type RestFacts,
     RPC_TOILSCRIPT_MIN,
     type RpcFacts,
@@ -66,6 +65,7 @@ import {
     preprocessorForExt,
     TAILWIND_ENTRY,
 } from './features.js';
+import { isSupportedTypeScriptRange, isSupportedTypeScriptVersion } from './typescript.js';
 import { accent, bold, danger, dim, success, version, warn } from './ui.js';
 
 export interface DoctorOptions {
@@ -124,7 +124,7 @@ function isPackageInstalled(root: string, name: string): boolean {
             // try the next resolution strategy
         }
     }
-    for (let dir = root; ; ) {
+    for (let dir = root; ;) {
         if (fs.existsSync(path.join(dir, 'node_modules', name, 'package.json'))) return true;
         const parent = path.dirname(dir);
         if (parent === dir) return false;
@@ -143,7 +143,7 @@ function installedVersion(root: string, name: string): string | null {
     try {
         pkgPath = require.resolve(`${name}/package.json`);
     } catch {
-        for (let dir = root; pkgPath === null; ) {
+        for (let dir = root; pkgPath === null;) {
             const candidate = path.join(dir, 'node_modules', name, 'package.json');
             if (fs.existsSync(candidate)) pkgPath = candidate;
             const parent = path.dirname(dir);
@@ -156,45 +156,36 @@ function installedVersion(root: string, name: string): string | null {
     return pkg && typeof pkg.version === 'string' ? pkg.version : null;
 }
 
-/**
- * Pins an unsupported TypeScript (the native 7.x, which ships no JavaScript compiler API) back to a
- * range toiljs can drive. Rewrites whichever of `devDependencies`/`dependencies` declares it; a
- * project with no declaration at all is left alone (nothing to pin), and the reinstall is left to
- * the user since only they know their package manager.
- */
+/** Migrate every TypeScript declaration, preserving an already compatible range. */
 function applyTypeScriptFix(root: string): RpcFixResult {
     const changed: string[] = [];
     const skipped: string[] = [];
-
     const pkgPath = path.join(root, 'package.json');
     const pkg = readJsonObject(pkgPath);
     if (pkg === null) return { changed, skipped };
-
-    const field = (['devDependencies', 'dependencies'] as const).find((f) => {
-        const deps = asRecord(pkg[f]);
-        return deps !== null && typeof deps.typescript === 'string';
-    });
-    if (field === undefined) {
-        // Nothing declares typescript: it is either absent or hoisted from a workspace root.
-        if (installedVersion(root, 'typescript') !== null) {
-            skipped.push('typescript (installed but not declared in package.json; pin it by hand)');
-        }
-        return { changed, skipped };
+    let declared = false;
+    for (const field of [
+        'dependencies',
+        'devDependencies',
+        'peerDependencies',
+        'optionalDependencies',
+    ]) {
+        const deps = asRecord(pkg[field]);
+        if (!deps || typeof deps.typescript !== 'string') continue;
+        declared = true;
+        if (isSupportedTypeScriptRange(deps.typescript)) continue;
+        changed.push(
+            `package.json (${field}.typescript ${deps.typescript} -> ${TYPESCRIPT_FIX_RANGE})`,
+        );
+        deps.typescript = TYPESCRIPT_FIX_RANGE;
     }
-
-    const deps = asRecord(pkg[field]);
-    if (deps === null) return { changed, skipped };
-    const declared = deps.typescript as string;
-    const declaredMajor = rangeMajor(declared);
-    const installedMajor = rangeMajor(installedVersion(root, 'typescript') ?? '');
-    const unsupported =
-        (declaredMajor !== null && declaredMajor >= 7) ||
-        (installedMajor !== null && installedMajor >= 7);
-    if (!unsupported) return { changed, skipped };
-
-    deps.typescript = TYPESCRIPT_FIX_RANGE;
-    writeFile(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
-    changed.push(`package.json (typescript ${declared} -> ${TYPESCRIPT_FIX_RANGE})`);
+    if (!declared) {
+        const deps = asRecord(pkg.devDependencies) ?? {};
+        deps.typescript = TYPESCRIPT_FIX_RANGE;
+        pkg.devDependencies = deps;
+        changed.push(`package.json (add typescript ${TYPESCRIPT_FIX_RANGE})`);
+    }
+    if (changed.length) writeFile(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
     return { changed, skipped };
 }
 
@@ -231,7 +222,7 @@ function gatherRpcFacts(root: string): RpcFacts {
 
     // Either the combined `build` or `build:server` carrying --rpcModule counts (the fixer writes both).
     const buildServerWired = [scripts['build:server'], scripts['build']].some(
-        (s) => typeof s === 'string' && s.includes('--rpcModule'),
+        (s) => typeof s === 'string' && (s.includes('--rpcModule') || /\btoiljs\s+build\b/.test(s)),
     );
 
     let tsconfigWired = false;
@@ -328,14 +319,16 @@ function gatherAuthFacts(root: string, toilconfig: Record<string, unknown> | nul
 }
 
 /** The toilscript language-service plugin id wired into a server tsconfig. */
-const TS_PLUGIN_NAME = 'toilscript/std/ts-plugin.cjs';
 
 /**
  * The server's tsconfig.json (the one beside a toilconfig entry, conventionally
  * `server/tsconfig.json`), or null if none exists. That is the project the editor uses for server
  * files, so it is where the toilscript LS plugin must live.
  */
-function serverTsconfigPath(root: string, toilconfig: Record<string, unknown> | null): string | null {
+function serverTsconfigPath(
+    root: string,
+    toilconfig: Record<string, unknown> | null,
+): string | null {
     const dirs = new Set<string>();
     const entries = Array.isArray(toilconfig?.entries)
         ? (toilconfig.entries as unknown[]).filter((e): e is string => typeof e === 'string')
@@ -456,7 +449,7 @@ function applyRpcFix(root: string): RpcFixResult {
                 changedInclude = true;
             }
             // `emails` (the React email-template pipeline) + `toil.config.ts`, so the
-            // typescript-eslint project service / editor cover them — otherwise
+            // TypeScript 7 project service / editor cover them — otherwise
             // `emails/*.tsx` (and a typed `toil.config.ts`) raise "not found by the
             // project service". Harmless when absent (a non-matching glob).
             for (const entry of ['emails', 'toil.config.ts']) {
@@ -576,7 +569,7 @@ function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): Rp
         const target = full ? asRecord(full.prettier) : null;
         if (full && target) {
             target.plugins = [
-                ...(Array.isArray(target.plugins) ? target.plugins : []),
+                ...(Array.isArray(target.plugins) ? (target.plugins as unknown[]) : []),
                 PRETTIER_PLUGIN,
             ];
             writeFile(pkgPath, JSON.stringify(full, null, 4) + '\n');
@@ -595,7 +588,10 @@ function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): Rp
             skipped.push(`${name} (add "${PRETTIER_PLUGIN}" to plugins by hand)`);
             return { changed, skipped };
         }
-        obj.plugins = [...(Array.isArray(obj.plugins) ? obj.plugins : []), PRETTIER_PLUGIN];
+        obj.plugins = [
+            ...(Array.isArray(obj.plugins) ? (obj.plugins as unknown[]) : []),
+            PRETTIER_PLUGIN,
+        ];
         writeFile(filePath, JSON.stringify(obj, null, 4) + '\n');
         changed.push(name);
         return { changed, skipped };
@@ -617,62 +613,143 @@ function applyPrettierFix(root: string, pkg: Record<string, unknown> | null): Rp
     return { changed, skipped };
 }
 
-/**
- * Wires the editor side of the toilscript server: adds the LS plugin to the server tsconfig (so the
- * editor stops false-flagging `@database` static collections / `@data` members), and points VS Code
- * at the workspace TypeScript (so it actually loads that plugin). Idempotent; only writes real
- * changes, and skips (with a note) configs it can't safely edit (a tsconfig with comments).
- */
-function applyServerEditorFix(root: string, toilconfig: Record<string, unknown> | null): RpcFixResult {
+/** Remove the legacy server plugin and enable the native TypeScript editor. */
+function applyServerEditorFix(
+    root: string,
+    toilconfig: Record<string, unknown> | null,
+): RpcFixResult {
     const changed: string[] = [];
     const skipped: string[] = [];
-
-    // 1. The LS plugin in the server tsconfig.
     const tsPath = serverTsconfigPath(root, toilconfig);
-    if (tsPath === null) {
-        skipped.push('server/tsconfig.json (not found; add the toilscript ts-plugin by hand)');
-    } else {
-        const rel = path.relative(root, tsPath);
-        const raw = readFile(tsPath);
-        const parsed = raw !== null ? readJsonObject(tsPath) : null;
-        if (parsed === null) {
-            skipped.push(`${rel} (JSON with comments; add the "${TS_PLUGIN_NAME}" plugin by hand)`);
-        } else if (!tsconfigHasToilPlugin(parsed)) {
-            const co = asRecord(parsed.compilerOptions) ?? {};
-            const existingPlugins: unknown[] = Array.isArray(co.plugins)
-                ? (co.plugins as unknown[])
-                : [];
-            co.plugins = [...existingPlugins, { name: TS_PLUGIN_NAME }];
-            parsed.compilerOptions = co;
-            writeFile(tsPath, JSON.stringify(parsed, null, 4) + '\n');
-            changed.push(rel);
+    if (tsPath !== null) {
+        const parsed = readJsonObject(tsPath);
+        if (parsed === null)
+            skipped.push(
+                `${path.relative(root, tsPath)} (remove legacy ts-plugin from JSONC manually)`,
+            );
+        else if (tsconfigHasToilPlugin(parsed)) {
+            const co = asRecord(parsed.compilerOptions);
+            if (co && Array.isArray(co.plugins)) {
+                const plugins = (co.plugins as unknown[]).filter((plugin) => {
+                    const name = asRecord(plugin)?.name;
+                    return typeof name !== 'string' || !name.includes('ts-plugin');
+                });
+                if (plugins.length === 0) delete co.plugins;
+                else co.plugins = plugins;
+                writeFile(tsPath, JSON.stringify(parsed, null, 4) + '\n');
+                changed.push(path.relative(root, tsPath));
+            }
         }
     }
-
-    // 2. Make VS Code use the workspace TypeScript, so it loads the plugin above.
-    const vsPath = path.join(root, '.vscode', 'settings.json');
-    const vsRaw = readFile(vsPath);
-    const vs = vsRaw !== null ? readJsonObject(vsPath) : {};
-    if (vs === null) {
-        skipped.push('.vscode/settings.json (unparseable; set typescript.tsdk by hand)');
-    } else {
-        let touched = false;
-        if (vs['typescript.tsdk'] !== 'node_modules/typescript/lib') {
-            vs['typescript.tsdk'] = 'node_modules/typescript/lib';
-            touched = true;
-        }
-        if (vs['typescript.enablePromptUseWorkspaceTsdk'] !== true) {
-            vs['typescript.enablePromptUseWorkspaceTsdk'] = true;
-            touched = true;
-        }
-        if (touched) {
+    const vsPath = path.join(root, '.vscode/settings.json');
+    const vs = fs.existsSync(vsPath) ? readJsonObject(vsPath) : {};
+    if (vs === null)
+        skipped.push('.vscode/settings.json (enable js/ts.experimental.useTsgo manually)');
+    else {
+        const before = JSON.stringify(vs);
+        delete vs['typescript.tsdk'];
+        delete vs['typescript.enablePromptUseWorkspaceTsdk'];
+        vs['js/ts.experimental.useTsgo'] = true;
+        if (JSON.stringify(vs) !== before) {
             fs.mkdirSync(path.dirname(vsPath), { recursive: true });
             writeFile(vsPath, JSON.stringify(vs, null, 4) + '\n');
             changed.push('.vscode/settings.json');
         }
     }
-
     return { changed, skipped };
+}
+
+/** Validate inherited compiler options using the installed native compiler without emitting files. */
+export async function checkNativeTypeScriptConfig(root: string): Promise<Check> {
+    const check = { id: 'typescript:config', label: 'TypeScript 7 configuration' };
+    const installed = installedVersion(root, 'typescript');
+    if (!installed || !isSupportedTypeScriptVersion(installed))
+        return {
+            ...check,
+            status: 'fail',
+            detail: 'Install TypeScript 7 before validating compiler configuration.',
+        };
+    const configPath = path.join(root, 'tsconfig.json');
+    if (!fs.existsSync(configPath))
+        return {
+            ...check,
+            status: 'fail',
+            detail: 'tsconfig.json is missing.',
+            fix: 'Create a tsconfig.json extending toiljs/tsconfig.',
+        };
+    try {
+        const apiPath = createRequire(path.join(root, 'package.json')).resolve(
+            'typescript/unstable/sync',
+        );
+        const native = (await import(
+            pathToFileURL(apiPath).href
+        )) as typeof import('typescript/unstable/sync');
+        const api = new native.API({ cwd: root });
+        let snapshot: ReturnType<typeof api.updateSnapshot> | undefined;
+        try {
+            snapshot = api.updateSnapshot({ openProjects: [configPath] });
+            const project = snapshot.getProject(configPath);
+            if (!project) throw new Error('The native compiler could not load tsconfig.json.');
+            const diagnostics = [
+                ...project.program.getConfigFileParsingDiagnostics(),
+                ...project.program.getProgramDiagnostics(),
+            ].filter((diagnostic) => diagnostic.category === native.DiagnosticCategory.Error);
+            return {
+                ...check,
+                status: diagnostics.length ? 'fail' : 'pass',
+                detail: diagnostics.length
+                    ? diagnostics
+                          .map((diagnostic) => `TS${diagnostic.code}: ${diagnostic.text}`)
+                          .join('\n')
+                    : 'Compiler options are compatible with TypeScript 7.',
+                fix: diagnostics.length
+                    ? 'Migrate the reported tsconfig options, preserving path mappings. See docs/getting-started/typescript7.md.'
+                    : undefined,
+            };
+        } finally {
+            snapshot?.dispose();
+            api.close();
+        }
+    } catch (error) {
+        return {
+            ...check,
+            status: 'fail',
+            detail: `Cannot validate native compiler configuration: ${String(error)}`,
+        };
+    }
+}
+
+/** Check the linter migration without loading user configuration as executable code. */
+function checkLintMigration(root: string): Check {
+    const pkg = readJsonObject(path.join(root, 'package.json'));
+    const script = asRecord(pkg?.scripts)?.lint;
+    const config =
+        readFile(path.join(root, 'oxlint.config.ts')) ??
+        readFile(path.join(root, '.oxlintrc.json')) ??
+        '';
+    const configured =
+        config.includes('toiljs/oxlint') || /["']?typeAware["']?\s*:\s*true/.test(config);
+    const scriptOk =
+        typeof script === 'string' &&
+        /\boxlint\b/.test(script) &&
+        !/\beslint\b/.test(script) &&
+        (script.includes('--type-aware') || configured);
+    const installed =
+        installedVersion(root, 'oxlint') !== null &&
+        installedVersion(root, 'oxlint-tsgolint') !== null;
+    return {
+        id: 'lint:typescript7',
+        label: 'Oxlint + tsgolint',
+        status: installed && scriptOk && configured ? 'pass' : 'fail',
+        detail:
+            installed && scriptOk && configured
+                ? 'Type-aware Oxlint configured'
+                : 'Migrate the ESLint toolchain to type-aware Oxlint.',
+        fix:
+            installed && scriptOk && configured
+                ? undefined
+                : 'Install oxlint and oxlint-tsgolint, import toiljs/oxlint in oxlint.config.ts, and set lint to "oxlint --type-aware client". Port project-specific rules into that config.',
+    };
 }
 
 /** Reads the framework's own package.json (engines + peerDependencies) for the requirements. */
@@ -833,8 +910,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     }
 
     const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
-    // typescript gets its own check: its peer range is the only one whose upper bound matters (7.x
-    // clears the `>=6.0.0` floor but ships no compiler API), and it is fixable in place.
+    // Validate the compiler major as well as its minimum version.
     const peerChecks = Object.keys(meta.peers)
         .filter((n) => n !== 'typescript')
         .map(peerName);
@@ -843,11 +919,15 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const declaredTypeScript = (() => {
         const pkg = readJsonObject(path.join(root, 'package.json'));
         if (pkg === null) return deps.typescript ?? null;
-        for (const field of ['devDependencies', 'dependencies'] as const) {
-            const range = asRecord(pkg[field])?.typescript;
-            if (typeof range === 'string') return range;
-        }
-        return null;
+        const ranges = [
+            'dependencies',
+            'devDependencies',
+            'peerDependencies',
+            'optionalDependencies',
+        ]
+            .map((field) => asRecord(pkg[field])?.typescript)
+            .filter((range): range is string => typeof range === 'string');
+        return ranges.find((range) => !isSupportedTypeScriptRange(range)) ?? ranges[0] ?? null;
     })();
     const typeScriptCheck = checkTypeScript(
         installedVersion(root, 'typescript'),
@@ -858,7 +938,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     // place, then re-read.
     const rpcFix = serverPresent && opts.fix ? applyRpcFix(root) : null;
     const prettierFix = serverPresent && opts.fix ? applyPrettierFix(root, projectPkg) : null;
-    const editorFix = serverPresent && opts.fix ? applyServerEditorFix(root, toilconfig) : null;
+    const editorFix = opts.fix ? applyServerEditorFix(root, toilconfig) : null;
     const rpcFacts = gatherRpcFacts(root);
     const restFacts = gatherRestFacts(root, toilconfig);
     const authFacts = gatherAuthFacts(root, toilconfig);
@@ -871,7 +951,9 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const serverTsPath = serverPresent ? serverTsconfigPath(root, toilconfig) : null;
     const serverTsParsed = serverTsPath ? readJsonObject(serverTsPath) : null;
     const serverTsPluginPresent =
-        serverTsPath === null || serverTsParsed === null ? true : tsconfigHasToilPlugin(serverTsParsed);
+        serverTsPath === null || serverTsParsed === null
+            ? false
+            : tsconfigHasToilPlugin(serverTsParsed);
     // The typescript pin is fixable without a server; the rest only apply to one.
     const applied = [typeScriptFix, rpcFix, prettierFix, editorFix].filter(
         (fix): fix is RpcFixResult => fix !== null,
@@ -892,6 +974,8 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                 checkToiljsInstalled('toiljs' in deps ? version() : null),
                 ...peerChecks,
                 typeScriptCheck,
+                checkLintMigration(root),
+                await checkNativeTypeScriptConfig(root),
                 checkPackageManager(LOCKFILES.filter((f) => fs.existsSync(path.join(root, f)))),
             ],
         },
@@ -972,7 +1056,9 @@ function renderFix(result: RpcFixResult): void {
     if (result.changed.length > 0) {
         out.push('  ' + success('fixed') + dim(`  ${result.changed.join(', ')}`));
         if (result.changed.some((entry) => entry.startsWith('package.json'))) {
-            out.push('  ' + dim('run your installer (npm/pnpm/yarn) to apply the version changes.'));
+            out.push(
+                '  ' + dim('run your installer (npm/pnpm/yarn) to apply the version changes.'),
+            );
         }
     } else {
         out.push('  ' + dim('nothing to fix.'));

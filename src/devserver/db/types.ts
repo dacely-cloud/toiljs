@@ -25,7 +25,9 @@ export enum DbFunctionKind {
 }
 
 export function isCollectionFamily(value: number): value is CollectionFamily {
-    return value >= CollectionFamily.Record && value <= CollectionFamily.Capacity;
+    return (
+        Number.isInteger(value) && (Object.values(CollectionFamily) as unknown[]).includes(value)
+    );
 }
 
 export interface DevField {

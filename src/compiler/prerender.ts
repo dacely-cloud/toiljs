@@ -1,207 +1,134 @@
-import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
-import type * as TS from 'typescript';
+import { parseSync, type Expression, type ObjectExpression } from 'oxc-parser';
 import type { Plugin } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
 import { patternToBracketFile, scanRoutes, staticSectionPattern } from './routes.js';
 import { injectSeoHtml, routeSeo } from './seo.js';
 
-type Ts = typeof TS;
-
-/**
- * True when `mod` exposes the classic TypeScript compiler API the static extractor drives.
- *
- * Resolving `typescript` is not enough to know it can parse: TypeScript 7 (the native port) moved
- * the compiler API off the package's main entry, which now exports only `version`. That module is a
- * perfectly good object, so a truthy check passes and the first `ts.ScriptTarget.Latest` then dies
- * with `Cannot read properties of undefined (reading 'Latest')`. Probe the members we actually use.
- */
-function isCompilerApi(mod: unknown): mod is Ts {
-    const ts = mod as Partial<Ts> | null | undefined;
-    return (
-        typeof ts?.createSourceFile === 'function' &&
-        typeof ts.isVariableStatement === 'function' &&
-        typeof ts.ScriptTarget === 'object' &&
-        typeof ts.ScriptKind === 'object' &&
-        typeof ts.SyntaxKind === 'object'
-    );
-}
-
-/** Warn once per process: an unusable TypeScript silently costs baked metadata, so say so. */
-let warnedUnusable = false;
-function warnUnusableTypeScript(mod: unknown): void {
-    if (warnedUnusable) return;
-    warnedUnusable = true;
-    const version = (mod as { version?: string } | null)?.version;
-    process.stderr.write(
-        `  toil: typescript${version ? `@${version}` : ''} does not expose the compiler API ` +
-            `(TypeScript 7 moved it to 'typescript/unstable/*').\n` +
-            `  toil: route metadata will NOT be baked into the built HTML. Install typescript ^6 to restore it.\n`,
-    );
-}
-
-/**
- * Resolves the project's TypeScript, used to read each route's static `metadata`. Returns `null`
- * when it isn't installed (callers then index pages by path only) *or* when the resolved version
- * doesn't expose the compiler API, which is warned about rather than crashing the build.
- */
-export async function loadTypeScript(root: string): Promise<Ts | null> {
-    let mod: unknown;
-    try {
-        const resolved = createRequire(path.join(root, 'package.json')).resolve('typescript');
-        const ns = (await import(pathToFileURL(resolved).href)) as { default?: Ts } & Ts;
-        mod = ns.default ?? ns;
-    } catch {
-        return null;
-    }
-    if (isCompilerApi(mod)) return mod;
-    warnUnusableTypeScript(mod);
-    return null;
-}
-
-/** The sync twin of {@link loadTypeScript}, for callers that can't await (e.g. `buildPageIndex`). */
-export function loadTypeScriptSync(root: string): Ts | null {
-    let mod: unknown;
-    try {
-        mod = createRequire(path.join(root, 'package.json'))('typescript');
-    } catch {
-        return null;
-    }
-    const ts = (mod as { default?: Ts })?.default ?? mod;
-    if (isCompilerApi(ts)) return ts;
-    warnUnusableTypeScript(ts);
-    return null;
-}
-
-/** Marks an AST node that isn't a static literal (so its value can't be baked at build). */
 const UNRESOLVED = Symbol('unresolved');
 
-/** Statically evaluates a literal expression node to a JS value, or `UNRESOLVED` if it isn't one. */
-function evalNode(ts: Ts, node: TS.Expression): unknown {
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-    if (ts.isNumericLiteral(node)) return Number(node.text);
-    if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
-    if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
-    if (node.kind === ts.SyntaxKind.NullKeyword) return null;
-    if (ts.isArrayLiteralExpression(node)) {
-        const out: unknown[] = [];
-        for (const el of node.elements) {
-            const value = evalNode(ts, el);
-            if (value === UNRESOLVED) return UNRESOLVED;
-            out.push(value);
+/** Read literals without executing route code or loading a compiler API. */
+function evalNode(node: Expression): unknown {
+    switch (node.type) {
+        case 'Literal':
+            return 'regex' in node || 'bigint' in node ? UNRESOLVED : node.value;
+        case 'TemplateLiteral':
+            return node.expressions.length === 0 ? node.quasis[0].value.cooked : UNRESOLVED;
+        case 'TSAsExpression':
+        case 'TSSatisfiesExpression':
+        case 'TSNonNullExpression':
+        case 'TSTypeAssertion':
+        case 'ParenthesizedExpression':
+            return evalNode(node.expression);
+        case 'UnaryExpression': {
+            const value = evalNode(node.argument);
+            if (typeof value !== 'number') return UNRESOLVED;
+            return node.operator === '-' ? -value : node.operator === '+' ? value : UNRESOLVED;
         }
-        return out;
+        case 'ArrayExpression': {
+            const values: unknown[] = [];
+            for (const element of node.elements) {
+                if (!element || element.type === 'SpreadElement') return UNRESOLVED;
+                const value = evalNode(element);
+                if (value === UNRESOLVED) return UNRESOLVED;
+                values.push(value);
+            }
+            return values;
+        }
+        case 'ObjectExpression':
+            return evalObject(node);
+        default:
+            return UNRESOLVED;
     }
-    if (ts.isObjectLiteralExpression(node)) return evalObject(ts, node);
-    return UNRESOLVED;
 }
 
-/** Evaluates an object literal to a plain object, skipping any property that isn't a static literal. */
-function evalObject(ts: Ts, node: TS.ObjectLiteralExpression): Record<string, unknown> {
-    const obj: Record<string, unknown> = {};
-    for (const prop of node.properties) {
-        if (!ts.isPropertyAssignment(prop)) continue;
-        const key = ts.isIdentifier(prop.name)
-            ? prop.name.text
-            : ts.isStringLiteral(prop.name)
-              ? prop.name.text
-              : null;
+function evalObject(node: ObjectExpression): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const property of node.properties) {
+        if (
+            property.type !== 'Property' ||
+            property.computed ||
+            property.method ||
+            property.kind !== 'init'
+        )
+            continue;
+        const key =
+            property.key.type === 'Identifier'
+                ? property.key.name
+                : property.key.type === 'Literal' && typeof property.key.value === 'string'
+                  ? property.key.value
+                  : null;
         if (key === null) continue;
-        const value = evalNode(ts, prop.initializer);
-        if (value !== UNRESOLVED) obj[key] = value;
+        const value = evalNode(property.value);
+        if (value !== UNRESOLVED) {
+            Object.defineProperty(result, key, {
+                value,
+                enumerable: true,
+                configurable: true,
+                writable: true,
+            });
+        }
     }
-    return obj;
+    return result;
 }
 
-/**
- * Extracts the named `export const <name> = { … }` object-literal exports from a route file in a
- * single parse, returning the statically-evaluable subset of each (dynamic and computed values are
- * skipped). Names that are absent or not object literals are omitted from the result.
- */
-export function extractStaticExports(
-    ts: Ts,
-    filePath: string,
-    names: readonly string[],
-): Record<string, Record<string, unknown>> {
+function staticExports(filePath: string, names: readonly string[]): Record<string, unknown> {
     let source: string;
     try {
         source = fs.readFileSync(filePath, 'utf8');
     } catch {
         return {};
     }
-    const wanted = new Set(names);
-    const out: Record<string, Record<string, unknown>> = {};
-    const sf = ts.createSourceFile(
-        filePath,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TSX,
-    );
-    for (const stmt of sf.statements) {
-        if (!ts.isVariableStatement(stmt)) continue;
-        if (!stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
-        for (const decl of stmt.declarationList.declarations) {
+    const parsed = parseSync(filePath, source);
+    if (parsed.errors.length)
+        throw new Error(
+            `Cannot parse route ${filePath}: ${parsed.errors.map((e) => e.message).join('; ')}`,
+        );
+    const result: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const statement of parsed.program.body) {
+        if (
+            statement.type !== 'ExportNamedDeclaration' ||
+            statement.declaration?.type !== 'VariableDeclaration'
+        )
+            continue;
+        for (const declaration of statement.declaration.declarations) {
             if (
-                ts.isIdentifier(decl.name) &&
-                wanted.has(decl.name.text) &&
-                !(decl.name.text in out) &&
-                decl.initializer &&
-                ts.isObjectLiteralExpression(decl.initializer)
-            ) {
-                out[decl.name.text] = evalObject(ts, decl.initializer);
-            }
+                declaration.id.type !== 'Identifier' ||
+                !names.includes(declaration.id.name) ||
+                !declaration.init
+            )
+                continue;
+            if (Object.hasOwn(result, declaration.id.name)) continue;
+            const value = evalNode(declaration.init);
+            if (value !== UNRESOLVED) result[declaration.id.name] = value;
         }
     }
-    return out;
+    return result;
 }
 
-/**
- * Extracts a route's `export const metadata = { … }` if it's a static object literal, returning the
- * statically-evaluable subset (dynamic `generateMetadata` and computed values are skipped). `null`
- * when the file has no static metadata.
- */
-export function extractStaticMetadata(ts: Ts, filePath: string): Record<string, unknown> | null {
-    return extractStaticExports(ts, filePath, ['metadata']).metadata ?? null;
-}
-
-/**
- * True when the route file has a literal `export const <name> = true`. Used to detect the edge-SSR
- * opt-in (`export const ssr = true`) without spinning up a Vite SSR server, so the static prerender
- * can leave SSR routes to the SSR path.
- */
-export function exportsTrue(ts: Ts, filePath: string, name: string): boolean {
-    let source: string;
-    try {
-        source = fs.readFileSync(filePath, 'utf8');
-    } catch {
-        return false;
-    }
-    const sf = ts.createSourceFile(
-        filePath,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TSX,
-    );
-    for (const stmt of sf.statements) {
-        if (!ts.isVariableStatement(stmt)) continue;
-        if (!stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
-        for (const decl of stmt.declarationList.declarations) {
-            if (
-                ts.isIdentifier(decl.name) &&
-                decl.name.text === name &&
-                decl.initializer?.kind === ts.SyntaxKind.TrueKeyword
-            ) {
-                return true;
-            }
+/** Extract statically evaluable exported objects, ignoring dynamic expressions. */
+export function extractStaticExports(
+    filePath: string,
+    names: readonly string[],
+): Record<string, Record<string, unknown>> {
+    const result: Record<string, Record<string, unknown>> = {};
+    for (const [name, value] of Object.entries(staticExports(filePath, names))) {
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+            Object.defineProperty(result, name, { value, enumerable: true });
         }
     }
-    return false;
+    return result;
+}
+
+export function extractStaticMetadata(filePath: string): Record<string, unknown> | null {
+    return extractStaticExports(filePath, ['metadata']).metadata ?? null;
+}
+
+export function exportsTrue(filePath: string, name: string): boolean {
+    return staticExports(filePath, [name])[name] === true;
 }
 
 /**
@@ -219,7 +146,7 @@ export function prerenderPlugin(cfg: ResolvedToilConfig): Plugin {
     return {
         name: 'toil:prerender-seo',
         apply: 'build',
-        async closeBundle() {
+        closeBundle() {
             if (!cfg.seo) return;
             const outDir = path.resolve(cfg.root, cfg.outDir);
             const shellPath = path.join(outDir, 'index.html');
@@ -229,21 +156,15 @@ export function prerenderPlugin(cfg: ResolvedToilConfig): Plugin {
             // pass bakes dynamic routes from it rather than from this file once it's been overwritten
             // with the `/` route's head (which would duplicate canonical/og tags).
             fs.writeFileSync(path.join(cfg.toilDir, 'shell.html'), shell);
-            const ts = await loadTypeScript(cfg.root);
 
             const routes = scanRoutes(cfg.routesAbsDir).filter(
                 (r) => r.slot === undefined && !r.intercept,
             );
             for (const route of routes) {
                 const isDynamic = /[:*]/.test(route.pattern);
-                // A dynamic route that opts into edge SSR (`export const ssr = true`) is rendered by
-                // the SSR template path. Baking a static bracket template would let the edge's
-                // static-first serving shadow it, so leave SSR routes to SSR. (When `ts` is null the
-                // check is skipped and we bake anyway: fail-OPEN deliberately favors the common
-                // non-SSR dynamic route, which would 404 without a template; typescript is always
-                // present in a real toiljs project, so this branch is effectively unreachable.)
-                if (isDynamic && ts && exportsTrue(ts, route.file, 'ssr')) continue;
-                const metadata = ts ? extractStaticMetadata(ts, route.file) : null;
+                // Edge SSR routes must not be shadowed by static bracket templates.
+                if (isDynamic && exportsTrue(route.file, 'ssr')) continue;
+                const metadata = extractStaticMetadata(route.file);
                 // A dynamic route's concrete URL is unknown at build, so its canonical/OG URL points
                 // at the static section (`/blog/:id` -> `/blog`); the client refines it on hydration.
                 const seoPattern = isDynamic ? staticSectionPattern(route.pattern) : route.pattern;

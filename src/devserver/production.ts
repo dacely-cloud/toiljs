@@ -312,10 +312,7 @@ function startBuiltDaemon(
     });
 }
 
-async function handleBuiltRuntimeRequest(
-    runtime: BuiltRuntime,
-    request: ThreadedRequest,
-): Promise<ThreadedReply> {
+function handleBuiltRuntimeRequest(runtime: BuiltRuntime, request: ThreadedRequest): ThreadedReply {
     const envelopeReq = {
         method: request.method,
         path: request.url,
@@ -504,10 +501,7 @@ async function startBuiltServerSingle(options: BuiltServerOptions): Promise<Runn
     const daemon = startBuiltDaemon(options, paths);
     try {
         const server = await startBuiltHttpServer(options, paths, async (request, response) => {
-            const reply = await handleBuiltRuntimeRequest(
-                runtime,
-                await toThreadedRequest(request, 0),
-            );
+            const reply = handleBuiltRuntimeRequest(runtime, await toThreadedRequest(request, 0));
             return sendThreadedReply(response, reply);
         });
         return {
@@ -596,7 +590,8 @@ async function startThreadedBuiltServer(
                 clientCounts.set(message.workerId, message.count);
                 return;
             case 'request':
-                void handleBuiltRuntimeRequest(runtime, message.request)
+                void Promise.resolve()
+                    .then(() => handleBuiltRuntimeRequest(runtime, message.request))
                     .then((reply) =>
                         sendToWorker(worker, {
                             toil: 'reply',
