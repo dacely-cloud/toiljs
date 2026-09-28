@@ -103,3 +103,21 @@ knob lands you can raise them server-side with **no client change**.
 - [ ] (Recommended) Argon2id params reviewed for your threat model.
 
 The CLI doctor warns when `server.auth` is on and the secrets are missing, run it before you ship.
+
+## Upgrading to 0.0.118
+
+Login now requires `AuthOptions.serverKemPublicKey`, the 1184-byte public key matching
+`AUTH_KEM_SK`. There is no implicit fallback to the published development key. Keep
+existing OPRF and KEM secrets when upgrading; replacing the OPRF seed invalidates
+existing password credentials. Project-root `VITE_*` variables are loaded by default.
+
+Sessions use a versioned signed payload with a random session identifier and a user
+revocation generation. Pre-upgrade session cookies and pending login challenges are
+rejected, so users must sign in again. Single-session logout revokes the signed session;
+`POST /auth/logout-all`, password reset, and confirmed two-factor changes revoke all
+sessions. Two-factor changes require a fresh login after success. Existing account IDs
+remain stable after password reset. The compiler includes the new revocation and factor
+settings database declarations automatically.
+
+Authenticated factor operations accept `headers` and `onRequestFailed(status)` options
+for application account guards. HTTP failures include their status in the client error.

@@ -1,3 +1,5 @@
+import { useLoaderData } from '../../src/client/routing/loader';
+import type { ReactNode } from 'react';
 // @vitest-environment jsdom
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,4 +43,22 @@ describe('Router loading fallback', () => {
         // The keyed boundary remounts for the new route, so the previous page is gone (not frozen).
         expect(queryByText('HOME')).toBeNull();
     });
+});
+
+
+it('provides independent loader data to nested layouts and their page', async () => {
+    window.history.replaceState({}, '', '/layout-data');
+    const layoutLoader = () => 'layout data';
+    const pageLoader = () => 'page data';
+    function Layout({ children }: { children?: ReactNode }) {
+        return <section><h1>{useLoaderData<typeof layoutLoader>()}</h1>{children}</section>;
+    }
+    function Page() { return <p>{useLoaderData<typeof pageLoader>()}</p>; }
+    const { findByText } = render(<Router routes={[{
+        pattern: '/layout-data',
+        load: () => Promise.resolve({ default: Page, loader: pageLoader }),
+        layouts: [() => Promise.resolve({ default: Layout, loader: layoutLoader })],
+    }]} />);
+    await findByText('layout data');
+    await findByText('page data');
 });

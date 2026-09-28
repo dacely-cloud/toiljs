@@ -294,3 +294,12 @@ function logoutThenGo(router: RouterInstance) {
 - [Routing](./routing.md): how files become URLs, dynamic params, layouts, and templates.
 - [Fetching data](./data-fetching.md): loaders, the typed backend clients, forms, and revalidation.
 - [Rendering and SSR](./rendering.md): what renders on the server versus the browser, and how hydration fits with client navigation.
+
+### Guarding unsaved changes
+
+Listen for the cancelable `window` event `toil-before-navigation` and call
+`event.preventDefault()` to keep the current route mounted. Its detail contains
+`href` and `kind` (`navigate` or `history`). Guards run before application navigation;
+a cancelled Back/Forward navigation restores the current indexed history entry.
+Only router-managed history entries can be restored this way. Use a separate
+`beforeunload` listener for document reloads, tab closure, and external navigation.

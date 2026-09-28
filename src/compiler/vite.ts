@@ -171,6 +171,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
 
     const base: InlineConfig = {
         root: cfg.toilDir,
+        envDir: cfg.root,
         base: cfg.base,
         configFile: false,
         customLogger: brandedLogger(),

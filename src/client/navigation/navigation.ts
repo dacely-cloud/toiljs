@@ -52,9 +52,18 @@ function shouldViewTransition(): boolean {
 
 interface ToilHistoryState {
     __toilKey?: string;
+    __toilIndex?: number;
 }
 let keyCounter = 0;
 let currentKey = 'initial';
+let currentIndex = 0;
+let restoringHistory = false;
+/** Cancel this event to keep the current route and its unsaved state mounted. */
+function permitsNavigation(href: string, kind: 'navigate' | 'history'): boolean {
+    return window.dispatchEvent(new CustomEvent('toil-before-navigation', {
+        cancelable: true, detail: { href, kind },
+    }));
+}
 function nextKey(): string {
     keyCounter += 1;
     return `t${String(keyCounter)}`;
@@ -159,16 +168,19 @@ export interface NavigateOptions {
 export function initNavigation(): void {
     enableManualScrollRestoration();
     const state = window.history.state as ToilHistoryState | null;
+    const savedIndex = state?.__toilIndex;
+    currentIndex = typeof savedIndex === 'number' && Number.isSafeInteger(savedIndex) ? savedIndex : 0;
     if (state?.__toilKey) {
         currentKey = state.__toilKey;
     } else {
         currentKey = nextKey();
-        window.history.replaceState({ ...state, __toilKey: currentKey }, '');
     }
+    window.history.replaceState({ ...state, __toilKey: currentKey, __toilIndex: currentIndex }, '');
 }
 
 /** Navigates to `href` without a full page reload (history push/replace + subscriber re-render). */
 export function navigate(href: Href, options?: NavigateOptions): void {
+    if (!permitsNavigation(href, 'navigate')) return;
     beginNavigation();
     rememberScroll(currentKey);
     let hash = '';
@@ -178,10 +190,11 @@ export function navigate(href: Href, options?: NavigateOptions): void {
         hash = '';
     }
     if (options?.replace) {
-        window.history.replaceState({ __toilKey: currentKey }, '', href);
+        window.history.replaceState({ __toilKey: currentKey, __toilIndex: currentIndex }, '', href);
     } else {
         currentKey = nextKey();
-        window.history.pushState({ __toilKey: currentKey }, '', href);
+        currentIndex += 1;
+        window.history.pushState({ __toilKey: currentKey, __toilIndex: currentIndex }, '', href);
     }
     recordTransition(true);
     planScroll({ hash, toTop: options?.scroll !== false });
@@ -210,6 +223,18 @@ export function refresh(): void {
 
 /** Handles browser back/forward: restores the saved scroll for the target entry, then re-renders. */
 function handlePopState(event: PopStateEvent): void {
+    const destinationIndex = (event.state as ToilHistoryState | null)?.__toilIndex;
+    if (restoringHistory && destinationIndex === currentIndex) {
+        restoringHistory = false;
+        return;
+    }
+    if (typeof destinationIndex === 'number' && Number.isSafeInteger(destinationIndex) && destinationIndex !== currentIndex &&
+        !permitsNavigation(window.location.href, 'history')) {
+        restoringHistory = true;
+        window.history.go(currentIndex - destinationIndex);
+        return;
+    }
+    if (typeof destinationIndex === 'number' && Number.isSafeInteger(destinationIndex)) currentIndex = destinationIndex;
     beginNavigation();
     rememberScroll(currentKey);
     const state = event.state as ToilHistoryState | null;

@@ -1,3 +1,4 @@
+import { SERVER_KEM_PUBLIC_KEY } from 'toiljs/client';
 // Post-quantum auth demo, the full toil PQ-Auth chain (the password never leaves the
 // tab). REGISTER: the browser blinds the password through the server-keyed OPRF,
 // stretches the OPRF output with Argon2id into an ML-DSA-44 keypair, and submits
@@ -89,7 +90,7 @@ export default function Pq(): React.JSX.Element {
         setVerified(null);
         try {
             // Resolves only if the server's mutual-auth confirmation tag verified.
-            await Auth.login(username, password);
+            await Auth.login(username, password, { serverKemPublicKey: SERVER_KEM_PUBLIC_KEY });
             setNote({
                 kind: 'ok',
                 text: 'logged in: ML-KEM-768 mutual auth verified (the server proved it holds the KEM secret key).'

@@ -1,3 +1,4 @@
+import { SERVER_KEM_PUBLIC_KEY } from '../src/client/auth.js';
 /**
  * End-to-end post-quantum auth: drives the REAL browser client (`src/client/auth.ts`
  * — OPRF blind/finalize, Argon2id, ML-DSA keygen/sign, ML-KEM encapsulate,
@@ -100,7 +101,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
             await Auth.register('ada', 'correct horse battery stapleA1', 'ada@example.com');
             // login resolves ONLY if the server's mutual-auth confirmation tag
             // verified against the client's own shared secret.
-            const session = await Auth.login('ada', 'correct horse battery stapleA1');
+            const session = await login('ada', 'correct horse battery stapleA1');
             expect(session.length).toBeGreaterThan(0);
 
             // Regression guard: the freshly minted session cookie (captured by the
@@ -130,7 +131,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
         'rejects a wrong password at login',
         async () => {
             await Auth.register('bob', 'hunter2-correctA1', 'bob@example.com');
-            await expect(Auth.login('bob', 'hunter2-WRONG')).rejects.toThrow(/login failed|request failed/);
+            await expect(login('bob', 'hunter2-WRONG')).rejects.toThrow(/login failed|request failed/);
         },
         60_000,
     );
@@ -138,7 +139,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
     it(
         'rejects login for a never-registered user',
         async () => {
-            await expect(Auth.login('ghost', 'whatever')).rejects.toThrow(/login failed|request failed/);
+            await expect(login('ghost', 'whatever')).rejects.toThrow(/login failed|request failed/);
         },
         60_000,
     );
@@ -214,3 +215,6 @@ describe.skipIf(!haveWasm)('post-quantum auth wire-level (anti-enumeration, repl
         expect(hex(a.salt)).not.toBe(hex(b.salt));
     });
 });
+
+// These isolated fixtures deliberately use the framework demo server key.
+const login = (username: string, password: string) => Auth.login(username, password, { serverKemPublicKey: SERVER_KEM_PUBLIC_KEY });

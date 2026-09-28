@@ -189,20 +189,29 @@ function decodeKdf(r: DataReader): KdfParams {
     };
 }
 
-async function postBinary(baseUrl: string, path: string, body: Uint8Array): Promise<DataReader> {
+async function postBinary(baseUrl: string, path: string, body: Uint8Array, options: AuthOptions = {}): Promise<DataReader> {
     const res = await fetch(baseUrl + path, {
         method: 'POST',
-        headers: { 'content-type': 'application/octet-stream' },
+        headers: { 'content-type': 'application/octet-stream', ...options.headers },
         body: body as BodyInit,
         credentials: 'same-origin',
     });
-    if (!res.ok) throw new AuthError(AuthErrorCode.RequestFailed, 'The auth request failed.');
+    if (!res.ok) {
+        options.onRequestFailed?.(res.status);
+        throw new AuthError(AuthErrorCode.RequestFailed, `The auth request failed (HTTP ${String(res.status)}).`);
+    }
     return new DataReader(new Uint8Array(await res.arrayBuffer()));
 }
 
 export interface AuthOptions {
     /** Endpoint prefix the server mounts the auth controller under. */
     readonly baseUrl?: string;
+    /** Deployment ML-KEM-768 public key. Required for login; never use the published demo key in production. */
+    readonly serverKemPublicKey?: Uint8Array;
+    /** Additional headers for authenticated account operations. */
+    readonly headers?: Record<string, string>;
+    /** Called before a failed HTTP request is reported. */
+    readonly onRequestFailed?: (status: number) => void;
 }
 
 /**
@@ -300,6 +309,10 @@ export async function login(
     password: string,
     opts: AuthOptions = {},
 ): Promise<Uint8Array> {
+    const serverKemPublicKey = opts.serverKemPublicKey;
+    if (!(serverKemPublicKey instanceof Uint8Array) || serverKemPublicKey.length !== KEM_PUBLIC_KEY_LEN) {
+        throw new Error('A deployment ML-KEM public key is required');
+    }
     const baseUrl = opts.baseUrl ?? '/auth';
     const oprf = ristretto255_oprf.oprf;
     const pw = utf8(password.normalize('NFKC'));
@@ -328,8 +341,8 @@ export async function login(
 
     // 3. Encapsulate to the pinned server KEM key; build + sign the message,
     //    which binds the ciphertext, the KDF params, and the server key id.
-    const { cipherText, sharedSecret } = ml_kem768.encapsulate(SERVER_KEM_PUBLIC_KEY);
-    const serverKemKeyId = await sha256Bytes(SERVER_KEM_PUBLIC_KEY);
+    const { cipherText, sharedSecret } = ml_kem768.encapsulate(serverKemPublicKey);
+    const serverKemKeyId = await sha256Bytes(serverKemPublicKey);
     const message = buildLoginMessage(
         username,
         aud,
@@ -699,6 +712,7 @@ export async function setupTwoFactor(method: number, opts: AuthOptions = {}): Pr
         baseUrl,
         '/2fa/setup',
         new DataWriter().writeU8(method).toBytes(),
+        opts,
     );
     if (res.readU8() !== 0)
         throw new AuthError(AuthErrorCode.TwoFactorSetupFailed, 'Enabling or disabling two-factor failed.');
@@ -715,6 +729,7 @@ export async function confirmTwoFactorSetup(code: string, opts: AuthOptions = {}
         baseUrl,
         '/2fa/setup/verify',
         new DataWriter().writeString(code).toBytes(),
+        opts,
     );
     if (res.readU8() !== 0)
         throw new AuthError(AuthErrorCode.TwoFactorSetupFailed, 'Confirming the two-factor setup failed.');
@@ -728,9 +743,13 @@ export async function twoFactorStatus(opts: AuthOptions = {}): Promise<number> {
     const baseUrl = opts.baseUrl ?? '/auth';
     const res = await fetch(baseUrl + '/2fa/status', {
         method: 'GET',
+        headers: opts.headers,
         credentials: 'same-origin',
     });
-    if (!res.ok) throw new AuthError(AuthErrorCode.RequestFailed, 'The auth request failed.');
+    if (!res.ok) {
+        opts.onRequestFailed?.(res.status);
+        throw new AuthError(AuthErrorCode.RequestFailed, `The auth request failed (HTTP ${String(res.status)}).`);
+    }
     return new DataReader(new Uint8Array(await res.arrayBuffer())).readU8();
 }
 

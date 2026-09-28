@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
     back,
+    initNavigation,
     isNavigationPending,
     navigate,
     navigationEpoch,
@@ -55,5 +56,58 @@ describe('navigate', () => {
         // jsdom fires popstate synchronously for history.back within the same task.
         expect(popped).toBeGreaterThanOrEqual(0);
         off();
+    });
+});
+
+
+describe('navigation guards', () => {
+    it('cancels navigation before changing history, pending state, or subscribers', () => {
+        initNavigation();
+        settleNavigation();
+        const epoch = navigationEpoch();
+        const state = window.history.state;
+        const block = (event: Event) => event.preventDefault();
+        window.addEventListener('toil-before-navigation', block);
+        let calls = 0;
+        const off = subscribeLocation(() => { calls += 1; });
+        try {
+            navigate('/unsaved');
+            expect(window.location.pathname).toBe('/');
+            expect(window.history.state).toEqual(state);
+            expect(navigationEpoch()).toBe(epoch);
+            expect(isNavigationPending()).toBe(false);
+            expect(calls).toBe(0);
+        } finally {
+            window.removeEventListener('toil-before-navigation', block);
+            off();
+        }
+    });
+
+    it('restores a cancelled Back navigation without notifying route subscribers', async () => {
+        initNavigation();
+        navigate('/guard-first');
+        navigate('/guard-second');
+        const block = (event: Event) => event.preventDefault();
+        window.addEventListener('toil-before-navigation', block);
+        let calls = 0;
+        const off = subscribeLocation(() => { calls += 1; });
+        try {
+            const restored = new Promise<void>((resolve) => {
+                const onPop = () => {
+                    if (window.location.pathname === '/guard-second') {
+                        window.removeEventListener('popstate', onPop);
+                        resolve();
+                    }
+                };
+                window.addEventListener('popstate', onPop);
+            });
+            back();
+            await restored;
+            expect(window.location.pathname).toBe('/guard-second');
+            expect(calls).toBe(0);
+        } finally {
+            window.removeEventListener('toil-before-navigation', block);
+            off();
+        }
     });
 });

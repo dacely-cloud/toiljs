@@ -37,6 +37,7 @@ export {
     isValidUsername,
     DEFAULT_PASSWORD_POLICY,
     PASSWORD_RULE_LABELS,
+    SERVER_KEM_PUBLIC_KEY,
 } from './auth.js';
 export type { KdfParams, AuthOptions, PasswordPolicy, PasswordRule } from './auth.js';
 export { Link } from './navigation/Link.js';

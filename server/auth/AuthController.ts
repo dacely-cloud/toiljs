@@ -1,3 +1,5 @@
+import { FactorRepository } from './FactorSettings';
+import { SessionEpochs } from './SessionEpochs';
 import { Response, RouteContext } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
 
@@ -500,6 +502,8 @@ class Challenge {
     nonce: Uint8Array = new Uint8Array(0);
     iat: u64 = 0;
     exp: u64 = 0;
+    sessionEpoch: u64 = 0;
+    sessionVersion: u8 = 0;
 }
 
 /** The lookup key for a login 2FA challenge: 16 random bytes minted per login.
@@ -531,6 +535,9 @@ class TwoFaChallenge {
     exp: u64 = 0;
     attempts: u32 = 0;
     targetMethod: u8 = 0;
+    sessionEpoch: u64 = 0;
+    sessionVersion: u8 = 0;
+    settingsRevision: u64 = 0;
 }
 
 @database
@@ -729,6 +736,9 @@ class Auth {
             c.nonce = nonce;
             c.iat = iat;
             c.exp = exp;
+            const account = AuthDb.accounts.get(new Username(h, username))!;
+            c.sessionEpoch = SessionEpochs.current(__toilEncodeAuthUser(this.stableUserId(ctx, h, username, account), username));
+            c.sessionVersion = 2;
             AuthDb.challenges.create(new ChallengeId(h, cid), c);
         }
 
@@ -763,6 +773,7 @@ class Auth {
         //    The challenge is realm-keyed, so one minted on another domain misses.
         const ch = AuthDb.challenges.getDelete(new ChallengeId(h, cid));
         if (ch == null) return fail();
+        if (ch.sessionVersion != 2) return fail();
         if (nowSecs() >= ch.exp) return fail();
 
         // 2. Rebuild the message from OUR stored values + the client's ct (and
@@ -810,11 +821,12 @@ class Auth {
         //     never resetTokens/confirmTokens). This runs AFTER the signature
         //     verify above, so it is not an oracle, and the login `Challenge` was
         //     already consumed (getDelete) at the top of this handler.
-        if (acct.twoFactorMethod != TWOFA_NONE) {
+        const factorMethod = FactorRepository.read(h, ch.username, acct.twoFactorMethod).method;
+        if (factorMethod != TWOFA_NONE) {
             const raw = randomBytes(16); // the twoFaId the client echoes to /2fa/verify
             const codeHash = this.twoFaDeliver(
                 h,
-                acct.twoFactorMethod,
+                factorMethod,
                 ch.username,
                 acct.email,
                 'Your login code',
@@ -823,10 +835,12 @@ class Auth {
             if (codeHash.length == 0) return fail(); // unsupported/misconfigured method
             const c2 = new TwoFaChallenge();
             c2.username = ch.username;
-            c2.method = acct.twoFactorMethod;
+            c2.method = factorMethod;
             c2.codeHash = codeHash;
             c2.exp = nowSecs() + TWOFA_TTL_SECS;
             c2.attempts = 0;
+            c2.sessionEpoch = ch.sessionEpoch;
+            c2.sessionVersion = 2;
             c2.targetMethod = TWOFA_NONE; // a LOGIN challenge changes no method on success
             AuthDb.twoFaLogins.create(new TwoFaId(h, raw), c2);
 
@@ -848,7 +862,7 @@ class Auth {
         w.writeBytes(userData); // opaque session token (the readable user payload)
         w.writeBytes(confirm);
         const resp = Response.bytes(w.toBytes());
-        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS));
+        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS, ch.sessionEpoch));
         resp.setCookie(AuthService.userCookie(userData, SESSION_TTL_SECS));
         return resp;
     }
@@ -951,9 +965,11 @@ class Auth {
         // Overwrite ONLY the login verifier. Salt/params are deterministic
         // constants (unchanged); a successful reset also implies email ownership,
         // so confirm the account while we are here.
+        const stableId = this.stableUserId(ctx, h, rec.username, acct);
         acct.publicKey = pk;
         acct.emailConfirmed = true;
         AuthDb.accounts.patch(new Username(h, rec.username), acct);
+        AuthService.revokeUserSessions(__toilEncodeAuthUser(stableId, rec.username));
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
 
@@ -986,6 +1002,18 @@ class Auth {
     @auth
     @post('/logout')
     public logout(_ctx: RouteContext): Response {
+        AuthService.revokeSession();
+        const resp = Response.text('bye\n', 200);
+        resp.setCookie(AuthService.clearSession());
+        resp.setCookie(AuthService.clearUserCookie());
+        return resp;
+    }
+
+    /** Revoke all sessions, including a copied cookie and pending pre-revocation logins. */
+    @auth
+    @post('/logout-all')
+    public logoutAll(_ctx: RouteContext): Response {
+        AuthService.revokeUserSessions(AuthService.getSessionBytes()!);
         const resp = Response.text('bye\n', 200);
         resp.setCookie(AuthService.clearSession());
         resp.setCookie(AuthService.clearUserCookie());
@@ -1029,6 +1057,7 @@ class Auth {
         // would otherwise lock the user out) until the attempt cap is reached.
         const ch = AuthDb.twoFaLogins.get(key);
         if (ch == null) return fail();
+        if (ch.sessionVersion != 2) return fail(); // reject pre-upgrade pending logins
         if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
             AuthDb.twoFaLogins.delete(key); // burn an expired / exhausted challenge
             return fail();
@@ -1043,7 +1072,8 @@ class Auth {
         }
 
         // SUCCESS: consume-once, then mint the session EXACTLY like login/finish.
-        AuthDb.twoFaLogins.getDelete(key);
+        const consumed = AuthDb.twoFaLogins.getDelete(key);
+        if (consumed == null) return fail();
         const acct = AuthDb.accounts.get(new Username(h, ch.username));
         if (acct == null) return fail();
         const toilUserId = this.stableUserId(ctx, h, ch.username, acct);
@@ -1052,7 +1082,7 @@ class Auth {
         w.writeU8(ST_OK);
         w.writeBytes(userData);
         const resp = Response.bytes(w.toBytes());
-        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS));
+        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS, ch.sessionEpoch));
         resp.setCookie(AuthService.userCookie(userData, SESSION_TTL_SECS));
         return resp;
     }
@@ -1078,8 +1108,9 @@ class Auth {
         const acct = AuthDb.accounts.get(new Username(h, u.username));
         if (acct == null) return fail();
 
+        const settings = FactorRepository.read(h, u.username, acct.twoFactorMethod);
         // Disabling when 2FA is already off: nothing to prove; generic ST_OK.
-        if (targetMethod == TWOFA_NONE && acct.twoFactorMethod == TWOFA_NONE) {
+        if (targetMethod == TWOFA_NONE && settings.method == TWOFA_NONE) {
             return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
         }
 
@@ -1087,7 +1118,7 @@ class Auth {
         //   ENABLE  (targetMethod != NONE): the NEW method (prove you control it).
         //   DISABLE (targetMethod == NONE): the CURRENT method (prove you still
         //     hold the existing factor before it is removed).
-        const deliverMethod: u8 = targetMethod != TWOFA_NONE ? targetMethod : acct.twoFactorMethod;
+        const deliverMethod: u8 = targetMethod != TWOFA_NONE ? targetMethod : settings.method;
         // Action phrase for the 2FA email body (the `{action}` token): enabling proves the
         // new factor, disabling proves the current one before it is removed.
         const twoFaAction: string =
@@ -1106,6 +1137,9 @@ class Auth {
 
         const c = new TwoFaChallenge();
         c.username = u.username;
+        c.settingsRevision = settings.revision;
+        c.sessionVersion = 2;
+        c.sessionEpoch = SessionEpochs.current(AuthService.getSessionBytes()!);
         c.method = deliverMethod;
         c.codeHash = codeHash;
         c.exp = nowSecs() + TWOFA_TTL_SECS;
@@ -1148,7 +1182,7 @@ class Auth {
 
         const key = new Username(h, u.username);
         const ch = AuthDb.twoFaSetup.get(key);
-        if (ch == null) return fail();
+        if (ch == null || ch.sessionVersion != 2 || !SessionEpochs.allowed(AuthService.getSessionBytes()!, ch.sessionEpoch)) return fail();
         if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
             AuthDb.twoFaSetup.delete(key);
             return fail();
@@ -1161,12 +1195,17 @@ class Auth {
         }
 
         // SUCCESS: consume-once + apply the method change.
-        AuthDb.twoFaSetup.getDelete(key);
+        const consumed = AuthDb.twoFaSetup.getDelete(key);
+        if (consumed == null || nowSecs() >= consumed.exp || !this.twoFaVerifyCode(h, consumed.username, code, consumed)) return fail();
         const acct = AuthDb.accounts.get(key);
         if (acct == null) return fail();
-        acct.twoFactorMethod = ch.targetMethod;
-        AuthDb.accounts.patch(key, acct);
-        return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+        if (!FactorRepository.save(h, u.username, consumed.targetMethod, consumed.settingsRevision)) return fail();
+        const userData = __toilEncodeAuthUser(this.stableUserId(_ctx, h, u.username, acct), u.username);
+        AuthService.revokeUserSessions(userData);
+        const response = Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+        response.setCookie(AuthService.clearSession());
+        response.setCookie(AuthService.clearUserCookie());
+        return response;
     }
 
     /** GET /auth/2fa/status  (@auth)  resp: u8(method)  (0 = off, 1 = email, ...)
@@ -1179,7 +1218,7 @@ class Auth {
         const h = realm(_ctx);
         const acct = AuthDb.accounts.get(new Username(h, u.username));
         if (acct == null) return fail();
-        return Response.bytes(new DataWriter().writeU8(acct.twoFactorMethod).toBytes());
+        return Response.bytes(new DataWriter().writeU8(FactorRepository.read(h, u.username, acct.twoFactorMethod).method).toBytes());
     }
 
     /**

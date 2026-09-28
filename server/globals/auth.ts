@@ -10,6 +10,8 @@
 // and the toiljs dev-server mock).
 
 import { DataWriter, DataReader } from 'data';
+import { SessionEpochs } from 'toiljs/server/auth/SessionEpochs';
+import { SessionRevocations, SessionDigest, RevokedSession } from 'toiljs/server/auth/SessionRevocations';
 import { HmacImportParams, HmacParams, ALG_SHA_256, FMT_RAW, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
 
 import {
@@ -260,7 +262,7 @@ export namespace AuthService {
     }
 
     /** Session payload format version (first byte of the sealed payload). */
-    const SESSION_VERSION: u8 = 1;
+    const SESSION_VERSION: u8 = 2;
 
     /** Default session lifetime if `mintSession` is called without a ttl. */
     export const DEFAULT_SESSION_TTL_SECS: u64 = 86400; // 24h
@@ -290,6 +292,7 @@ export namespace AuthService {
             sessionCookieName(__reqIsSecure()),
         );
         if (sealed == null) return null;
+        if (SessionRevocations.sessions.lookup(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed)))) != null) return null;
 
         const payload = base64UrlDecode(sealed);
         if (payload == null) return null;
@@ -299,9 +302,13 @@ export namespace AuthService {
         r.readU64();                                     // iat (unused on read)
         const exp = r.readU64();
         const userBytes = r.readBytes();
+        const nonce = r.readBytes();
+        const generation = r.readU64();
+        if (nonce.length != 32) return null;
         if (!r.ok) return null;                          // truncated/malformed
 
         if (Time.nowSeconds() >= exp) return null;       // expired
+        if (!SessionEpochs.allowed(userBytes, generation)) return null;
 
         return userBytes;
     }
@@ -367,13 +374,17 @@ export namespace AuthService {
      * `Response.setCookie(...)`. HMAC-signed, HttpOnly, Secure, SameSite=Lax,
      * `__Host-` scoped. The value stays readable but cannot be forged or moved.
      */
-    export function mintSession(userData: Uint8Array, ttlSecs: u64 = DEFAULT_SESSION_TTL_SECS): Cookie {
+    export function mintSession(userData: Uint8Array, ttlSecs: u64 = DEFAULT_SESSION_TTL_SECS, generation: u64 = u64.MAX_VALUE): Cookie {
         const now = Time.nowSeconds();
         const w = new DataWriter();
         w.writeU8(SESSION_VERSION);
         w.writeU64(now);
         w.writeU64(now + ttlSecs);
         w.writeBytes(userData);
+        const nonce = new Uint8Array(32);
+        crypto.getRandomValues(nonce);
+        w.writeBytes(nonce);
+        w.writeU64(generation != u64.MAX_VALUE ? generation : SessionEpochs.current(userData));
 
         const secure = __reqIsSecure();
         let cookie = Cookie.create(SESSION_BASE, base64UrlEncode(w.toBytes()))
@@ -382,6 +393,20 @@ export namespace AuthService {
             .maxAge(<i64>ttlSecs);
         cookie = secure ? cookie.asHostPrefixed() : cookie.path('/');
         return SecureCookies.signed(__resolveSessionSecret()).seal(cookie);
+    }
+
+    /** Invalidate all browser sessions authorized under the prior session generation. */
+    export function revokeUserSessions(userData: Uint8Array): void {
+        SessionEpochs.revoke(userData);
+    }
+
+    /** Revoke the verified signed payload, including its unpredictable per-login nonce. */
+    export function revokeSession(): void {
+        if (!hasSession()) return;
+        const req = Server.currentRequest!;
+        const sealed = SecureCookies.signed(__resolveSessionSecret()).open(req.cookies(), sessionCookieName(__reqIsSecure()));
+        if (sealed == null) return;
+        SessionRevocations.sessions.claim(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed))), new RevokedSession());
     }
 
     /** A `Set-Cookie` that immediately clears the session (logout). */

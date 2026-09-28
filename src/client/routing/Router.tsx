@@ -1,4 +1,4 @@
-import { createElement, type ReactNode, Suspense, useLayoutEffect } from 'react';
+import { createElement, type ReactNode, type ComponentType, Suspense, useLayoutEffect } from 'react';
 
 import { ErrorBoundary } from './error-boundary.js';
 import { useLocation } from './hooks.js';
@@ -21,7 +21,7 @@ import {
     settleNavigation,
 } from '../navigation/navigation.js';
 import { applyScroll } from '../navigation/scroll.js';
-import type { ErrorComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
+import type { ErrorComponentLoader, LayoutComponentLoader, LayoutLoader, NotFoundLoader, RouteDef } from '../types.js';
 
 /** Loads a matched route's module + loader data (suspending), then renders it with the data in context. */
 function RoutePage(props: {
@@ -42,6 +42,12 @@ function RoutePage(props: {
             {createElement(Component)}
         </LoaderDataContext.Provider>
     );
+}
+
+/** Gives each nested layout its own loader data instead of the leaf page's data. */
+function DataLayout(props: { load: LayoutComponentLoader; params: RouteParams; dataKey: string; epoch: number; children: ReactNode }): ReactNode {
+    const { Component, data } = readRouteData({ pattern: props.dataKey, load: props.load }, props.params, props.dataKey, props.epoch);
+    return <LoaderDataContext.Provider value={data}>{createElement(Component as ComponentType<{ children?: ReactNode }>, { children: props.children })}</LoaderDataContext.Provider>;
 }
 
 /**
@@ -103,10 +109,9 @@ function renderMatched(
     // Nested layouts, deepest first so the shallowest ends up outermost.
     const chain = matched.layouts ?? [];
     for (let i = chain.length - 1; i >= 0; i--) {
-        const NestedLayout = nestedLayout(chain[i]);
         content = (
             <Suspense fallback={null}>
-                <NestedLayout>{content}</NestedLayout>
+                <DataLayout load={chain[i]} params={params} dataKey={`layout:${String(i)}:${dataKey}`} epoch={epoch}>{content}</DataLayout>
             </Suspense>
         );
     }
