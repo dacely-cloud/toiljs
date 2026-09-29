@@ -117,6 +117,8 @@ export interface DbSnapshot {
     counterIdem?: Record<string, string>;
     events: Record<string, { v: string; sv: number }[]>;
     eventDedup: Record<string, string[]>;
+    /** Event ID -> append-order index, for bounded point reads. */
+    eventPositions?: Record<string, [string, number][]>;
     /** Durable `events.since` cursors, `"<deriveId>\0<storeKey>"` -> events-folded count, so a restart
      *  resumes an incremental `@derive` instead of re-folding the whole log onto the persisted view. */
     deriveCheckpoints?: Record<string, number>;

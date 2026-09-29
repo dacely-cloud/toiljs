@@ -158,6 +158,8 @@ const PROVIDED_IMPORTS = new Set([
     'data.enqueue',
     'data.latest',
     'data.events_since',
+    'data.events_get',
+    'data.events_last',
     'data.capacity_set_total',
     'data.capacity_available',
     'data.capacity_reserve',

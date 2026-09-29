@@ -106,7 +106,7 @@ What each kind may do:
 
 | Kind | Set by | May do | May **not** do |
 | --- | --- | --- | --- |
-| **Query** | `@get`, plain `@remote`, or `@query` | Point reads: `get`, `getMany`, `exists`, `lookup`, `contains`, counter `get`, view `get`, capacity `available`. | Any write. Any scan. |
+| **Query** | `@get`, plain `@remote`, or `@query` | Point reads: `get`, `getMany`, `exists`, `lookup`, `contains`, counter `get`, view `get`, Events `get`/`last`, capacity `available`. | Any write. Any scan. |
 | **Action** | `@post` or `@action` | Everything a Query can, plus bounded writes: `create`, `patch`, `delete`, `getDelete`, `enqueue`, `append`, `appendOnce`, counter `add`, membership `add`/`remove`, unique `claim`/`release`, capacity `reserve`/`confirm`/`cancel`. | Scans. Publishing a View. |
 | **Derive / Job** | `@derive` / `@job` (background work) | Reads including **scans** (`latest`, membership `list`), plus `publish` a View. | (Run off the request path; see below.) |
 

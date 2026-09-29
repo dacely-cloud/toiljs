@@ -76,13 +76,14 @@ the database. You reach the log through `FeedDb.activity`.
 
 ## Operations
 
-There are three operations, exactly matching the [toilscript](../concepts/decorators.md)
-API. Their exact signatures:
+The [toilscript](../concepts/decorators.md) API exposes these operations:
 
 | Operation | Signature | What it does |
 | --- | --- | --- |
 | `append` | `append(key: K, event: V): void` | Add one event to the end of the log. |
 | `appendOnce` | `appendOnce(key: K, eventId: string, event: V): bool` | Add one event, but only if that `eventId` was never seen before. |
+| `get` | `get(key: K, eventId: string): V \| null` | Read the event stored by `appendOnce` under this ID. Bounded request-path read. |
+| `last` | `last(key: K): V \| null` | Read the newest appended event. Bounded request-path read. |
 | `latest` | `latest(key: K, limit: i32): V[]` | Read up to `limit` events, newest first. |
 | `since` | `since(key: K, limit: i32): V[]` | Read the NEXT batch of events past a `@derive`'s checkpoint, oldest first. For folding a growing log incrementally. |
 
@@ -133,6 +134,38 @@ The return value tells you which happened:
 Pick an `eventId` that is truly unique per event: an order id, a payment id, a
 message uuid. Do not reuse one id for two different events, or the second will be
 silently dropped as a "duplicate".
+
+### `get` and `last`
+
+Read one event directly from a route, query, action, derive, or job:
+
+```ts
+const event = FeedDb.activity.get(new UserKey('ada'), 'order-refunded:123');
+const newest = FeedDb.activity.last(new UserKey('ada'));
+```
+
+`get` uses the exact string ID supplied to `appendOnce`, scoped to that collection
+and stream key. Ordinary `append` does not expose an ID for `get`. `last` reads the
+newest appended event from either write method; it does not interpret application
+revision numbers or sort event IDs. A duplicate `appendOnce` neither replaces the
+original event nor moves it to the end of the stream.
+
+Both operations return `null` when absent. As with Documents reads, inspect
+`Db.lastError()` immediately after a null result to distinguish absence from a
+retryable storage failure. Values decode using their stored schema version, so
+`@migrate` applies without rewriting the immutable event.
+
+These are bounded point reads, permitted on the request path. `latest` and `since`
+remain background-only scans. Point reads do not add compare-and-swap semantics,
+or validate revision sequences. Production async reads fetch from the stream’s home
+cell; synchronous execution reports unavailable when the home is remote. Event IDs
+and stream keys are limited to 4096 encoded bytes. Deploy the updated backend and
+mesh peers before deploying modules that call these methods.
+
+Dev snapshots created before event ID positions were recorded cannot reliably
+associate old deduplication IDs with events. For such IDs, `get` reports
+`DbError.Unavailable`; `last`, `latest`, and `since` can still read the stored events.
+New `appendOnce` entries retain their ID positions across dev-server restarts.
 
 ### `latest`
 
@@ -284,9 +317,9 @@ few honest details about what that means for events:
 
 ## Gotchas
 
-- **You cannot read the log from a route.** `latest` is a scan and is only legal
-  in a `@derive` or a `@job`. If you try to call it from a `@get`/`@post`, the
-  compiler rejects it. Read a [View](./views.md) from your route instead.
+- **Routes can read individual events, but cannot scan the log.** Use `get` or
+  `last` for a single event. `latest` and `since` require a `@derive` or `@job`;
+  use a [View](./views.md) when a route needs a precomputed list.
 - **Events are immutable.** There is no "edit" or "delete an event". If a fact
   changes, append a new event that records the change (for example, an
   `order.refund` event, not an edit to the original `order.create`).

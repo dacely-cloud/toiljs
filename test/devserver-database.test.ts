@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -762,6 +762,119 @@ describe('toildb dev emulator (record family)', () => {
         imports['data.create'](users, kPtr, kLen, vPtr, vLen, 0);
         // the same logical key in another collection is absent.
         expect(imports['data.get'](posts, kPtr, kLen)).toBe(-2);
+    });
+
+    it('reads events by ID and tail on the request path, preserving schema versions and isolation', () => {
+        __setDbCatalogForTests({
+            ...DEFAULT_CATALOG,
+            'App/feed': { family: CollectionFamily.Events, schemaVersion: 123 },
+            'App/otherFeed': { family: CollectionFamily.Events },
+        });
+        const { imports, buf, db } = setupRaw();
+        const feed = resolve(imports, buf, 'App/feed');
+        const other = resolve(imports, buf, 'App/otherFeed');
+        const docs = resolve(imports, buf, 'App/docs');
+        const [kp, kl] = put(buf, 32, 'stream');
+        const [ip, il] = put(buf, 64, 'revision:6');
+        const [vp, vl] = put(buf, 96, 'first');
+        const get = (h = feed) => imports['data.events_get'](h, kp, kl, ip, il);
+        const last = (h = feed) => imports['data.events_last'](h, kp, kl);
+        const take = (n: number) => {
+            expect(imports['data.take_result'](512, n)).toBe(n);
+            return buf.toString('utf8', 512, 512 + n);
+        };
+        expect(get()).toBe(-2);
+        expect(last()).toBe(-2);
+        expect(imports['data.append_once'](feed, kp, kl, ip, il, vp, vl)).toBe(1);
+        const [v2p, v2l] = put(buf, 128, 'second');
+        expect(imports['data.append_once'](feed, kp, kl, ip, il, v2p, v2l)).toBe(0);
+        expect(take(get())).toBe('first');
+        expect(take(last())).toBe('first');
+        expect(imports['data.append'](feed, kp, kl, v2p, v2l, 0)).toBe(0);
+        for (const kind of [
+            DbFunctionKind.Query,
+            DbFunctionKind.Action,
+            DbFunctionKind.Derive,
+            DbFunctionKind.Job,
+        ]) {
+            db.functionKind = kind;
+            expect(take(get())).toBe('first');
+            expect(db.lastResultVersion).toBe(123);
+            expect(take(last())).toBe('second');
+            expect(db.lastResultVersion).toBe(123);
+        }
+        db.functionKind = DbFunctionKind.Query;
+        expect(imports['data.latest'](feed, kp, kl, 1)).toBe(-1011);
+        expect(get(other)).toBe(-2);
+        expect(last(other)).toBe(-2);
+        expect(db.lastResultVersion).toBe(-1);
+        expect(get(docs)).toBe(-1010);
+        expect(last(docs)).toBe(-1010);
+        expect(get(999)).toBe(-1001);
+        expect(last(999)).toBe(-1001);
+        const [otherKp, otherKl] = put(buf, 160, 'another-stream');
+        expect(imports['data.events_get'](feed, otherKp, otherKl, ip, il)).toBe(-2);
+        expect(imports['data.events_last'](feed, otherKp, otherKl)).toBe(-2);
+        expect(() => imports['data.events_get'](feed, kp, kl, -1, il)).toThrow();
+        expect(() => imports['data.events_get'](feed, kp, kl, ip, 4097)).toThrow();
+        expect(() => imports['data.events_last'](feed, -1, kl)).toThrow();
+    });
+
+    it('persists event ID lookups across restarts alongside mixed append and appendOnce writes', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'events-point-'));
+        try {
+            configureDbPersistence(join(dir, 'db.json'));
+            const a = setup();
+            const h = resolve(a.imports, a.buf, 'App/feed');
+            const [kp, kl] = put(a.buf, 32, 'stream');
+            const [ip, il] = put(a.buf, 64, 'id');
+            const [vp, vl] = put(a.buf, 96, 'ordinary');
+            a.imports['data.append'](h, kp, kl, vp, vl, 0);
+            const [ep, el] = put(a.buf, 128, 'identified');
+            a.imports['data.append_once'](h, kp, kl, ip, il, ep, el);
+            a.imports['data.append'](h, kp, kl, vp, vl, 0);
+            persistDb();
+            __resetDbForTests();
+            configureDbPersistence(join(dir, 'db.json'));
+            const b = setup();
+            const h2 = resolve(b.imports, b.buf, 'App/feed');
+            put(b.buf, kp, 'stream');
+            put(b.buf, ip, 'id');
+            expect(b.imports['data.events_get'](h2, kp, kl, ip, il)).toBe(10);
+            b.imports['data.take_result'](512, 10);
+            expect(b.buf.toString('utf8', 512, 522)).toBe('identified');
+            expect(b.imports['data.events_last'](h2, kp, kl)).toBe(8);
+            b.imports['data.take_result'](512, 8);
+            expect(b.buf.toString('utf8', 512, 520)).toBe('ordinary');
+        } finally {
+            __resetDbForTests();
+            rmSync(dir, { recursive: true, force: true });
+        }
+    });
+
+    it('does not guess event positions in old dev snapshots', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'events-legacy-'));
+        try {
+            const file = join(dir, 'db.json');
+            const sk = 'App/feed\0stream';
+            writeFileSync(
+                file,
+                JSON.stringify({
+                    events: { [sk]: [{ v: Buffer.from('old').toString('base64'), sv: 7 }] },
+                    eventDedup: { [sk]: ['id'] },
+                }),
+            );
+            configureDbPersistence(file);
+            const { imports, buf } = setup();
+            const h = resolve(imports, buf, 'App/feed');
+            const [kp, kl] = put(buf, 32, 'stream');
+            const [ip, il] = put(buf, 64, 'id');
+            expect(imports['data.events_get'](h, kp, kl, ip, il)).toBe(-1031);
+            expect(imports['data.events_last'](h, kp, kl)).toBe(3);
+        } finally {
+            __resetDbForTests();
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 
     it('append_once dedups on eventId; enqueue replaces an existing record', () => {

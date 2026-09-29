@@ -210,6 +210,8 @@ enum DbOp {
     ViewPublish,
     CapacitySetTotal,
     EventsSince,
+    EventsGet,
+    EventsLast,
 }
 
 /** `data.upsert` return tags (ABI.md), mirroring the guest `UpsertResult` enum. */
@@ -231,6 +233,8 @@ function isReadOp(op: DbOp): boolean {
         op === DbOp.UniqueLookup ||
         op === DbOp.Latest ||
         op === DbOp.EventsSince ||
+        op === DbOp.EventsGet ||
+        op === DbOp.EventsLast ||
         op === DbOp.CapacityAvailable
     );
 }
@@ -321,6 +325,7 @@ export class DevDatabase {
     private readonly deriveCheckpoints = new Map<string, number>();
     /** append_once dedup: `"collection\0key"` -> set of eventIds already appended. */
     private readonly eventDedup = new Map<string, Set<string>>();
+    private readonly eventPositions = new Map<string, Map<string, number>>();
     /** Capacity family: `"collection\0key"` -> an escrow ledger (ceiling + reservations). */
     private readonly capacity = new Map<string, CapLedger>();
     /** `"collection\0key"` -> the schema_version the record/view/unique-owner was last
@@ -426,6 +431,7 @@ export class DevDatabase {
             counterIdem: {},
             events: {},
             eventDedup: {},
+            eventPositions: {},
             deriveCheckpoints: {},
             capacity: {},
         };
@@ -452,6 +458,7 @@ export class DevDatabase {
             const ver = this.eventVersions.get(k) ?? [];
             snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0 }));
         }
+        for (const [k, positions] of this.eventPositions) snap.eventPositions[k] = [...positions];
         for (const [k, s] of this.eventDedup) snap.eventDedup[k] = [...s];
         for (const [k, v] of this.deriveCheckpoints) snap.deriveCheckpoints[k] = v;
         for (const [k, l] of this.capacity)
@@ -526,6 +533,8 @@ export class DevDatabase {
                 log.map((e) => e.sv),
             );
         }
+        for (const [k, positions] of Object.entries(snap.eventPositions ?? {}))
+            this.eventPositions.set(k, new Map(positions));
         for (const [k, ids] of Object.entries(snap.eventDedup ?? {}))
             this.eventDedup.set(k, new Set(ids));
         for (const [k, v] of Object.entries(snap.deriveCheckpoints ?? {}))
@@ -559,6 +568,7 @@ export class DevDatabase {
         this.eventVersions.clear();
         this.events.clear();
         this.eventDedup.clear();
+        this.eventPositions.clear();
         this.deriveCheckpoints.clear();
         this.capacity.clear();
     }
@@ -1267,9 +1277,59 @@ export class DevDatabase {
             versions.push(sv);
             this.eventVersions.set(sk, versions);
         }
+        let positions = this.eventPositions.get(sk);
+        if (positions === undefined) {
+            positions = new Map();
+            this.eventPositions.set(sk, positions);
+        }
+        positions.set(evid, this.events.get(sk)!.length - 1);
         seen.add(evid);
         this.recordWrite(db, coll);
         return 1;
+    }
+
+    /** Bounded lookup by the ID supplied to appendOnce; no log scan. */
+    eventsGet(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        keyPtr: number,
+        keyLen: number,
+        evidPtr: number,
+        evidLen: number,
+    ): number {
+        const coll = collForOp(db, handle, DbOp.EventsGet, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        if (evidLen > MAX_KEY) throw new Error('data: event ID too large');
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
+        const id = readCopy(ref, evidPtr, evidLen).toString('latin1');
+        const position = this.eventPositions.get(sk)?.get(id);
+        // Old dev snapshots retained dedup IDs but not their positions. Never
+        // guess an association or misreport an existing event as absent.
+        if (position === undefined && this.eventDedup.get(sk)?.has(id)) return UNAVAILABLE;
+        return this.eventResult(db, sk, position);
+    }
+
+    /** Bounded tail lookup, including events written with ordinary append. */
+    eventsLast(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        keyPtr: number,
+        keyLen: number,
+    ): number {
+        const coll = collForOp(db, handle, DbOp.EventsLast, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
+        return this.eventResult(db, sk, (this.events.get(sk)?.length ?? 0) - 1);
+    }
+
+    private eventResult(db: DbDevState, sk: string, position: number | undefined): number {
+        const value = position === undefined ? undefined : this.events.get(sk)?.[position];
+        db.lastResult = value === undefined ? null : Buffer.from(value);
+        db.lastResultVersion =
+            value === undefined ? -1 : (this.eventVersions.get(sk)?.[position!] ?? 0);
+        return value === undefined ? ABSENT : value.length;
     }
 
     // Version-checked replace of an EXISTING record's value. Returns 0 on apply,
@@ -1780,6 +1840,15 @@ export function buildDatabaseImports(
 
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
             devDb.latest(ref, db, handle, keyPtr, keyLen, limit),
+        'data.events_get': (
+            handle: number,
+            keyPtr: number,
+            keyLen: number,
+            evidPtr: number,
+            evidLen: number,
+        ): number => devDb.eventsGet(ref, db, handle, keyPtr, keyLen, evidPtr, evidLen),
+        'data.events_last': (handle: number, keyPtr: number, keyLen: number): number =>
+            devDb.eventsLast(ref, db, handle, keyPtr, keyLen),
         'data.events_since': (
             handle: number,
             keyPtr: number,
