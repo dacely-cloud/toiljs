@@ -63,7 +63,6 @@ const ITERS: u32 = 2;
 const PAR: u32 = 1;
 
 const CHALLENGE_TTL_SECS: u64 = 120;
-const SESSION_TTL_SECS: u64 = 3600;
 const CONFIRM_TTL_SECS: u64 = 86400; // email confirm link valid 24h
 const RESET_TTL_SECS: u64 = 3600; // password reset link valid 1h
 
@@ -862,8 +861,8 @@ class Auth {
         w.writeBytes(userData); // opaque session token (the readable user payload)
         w.writeBytes(confirm);
         const resp = Response.bytes(w.toBytes());
-        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS, ch.sessionEpoch));
-        resp.setCookie(AuthService.userCookie(userData, SESSION_TTL_SECS));
+        resp.setCookie(AuthService.mintSession(userData, AuthService.DEFAULT_SESSION_TTL_SECS, ch.sessionEpoch));
+        resp.setCookie(AuthService.userCookie(userData, AuthService.DEFAULT_SESSION_TTL_SECS));
         return resp;
     }
 
@@ -1082,8 +1081,8 @@ class Auth {
         w.writeU8(ST_OK);
         w.writeBytes(userData);
         const resp = Response.bytes(w.toBytes());
-        resp.setCookie(AuthService.mintSession(userData, SESSION_TTL_SECS, ch.sessionEpoch));
-        resp.setCookie(AuthService.userCookie(userData, SESSION_TTL_SECS));
+        resp.setCookie(AuthService.mintSession(userData, AuthService.DEFAULT_SESSION_TTL_SECS, ch.sessionEpoch));
+        resp.setCookie(AuthService.userCookie(userData, AuthService.DEFAULT_SESSION_TTL_SECS));
         return resp;
     }
 

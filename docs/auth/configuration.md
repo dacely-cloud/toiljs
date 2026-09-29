@@ -121,3 +121,11 @@ settings database declarations automatically.
 
 Authenticated factor operations accept `headers` and `onRequestFailed(status)` options
 for application account guards. HTTP failures include their status in the client error.
+
+## Session lifetime
+
+Successful password and two-factor sign-ins issue sessions valid for seven days
+(604800 seconds). The signed expiry and both session/display cookie lifetimes
+match. This is a fixed lifetime from sign-in, not an idle timeout. Logout, password
+reset, and account revocation can end a session earlier. Existing cookies retain
+the expiry they were issued with; sign in again to receive the longer lifetime.

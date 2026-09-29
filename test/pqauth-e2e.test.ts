@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 import { ristretto255_oprf } from '@noble/curves/ed25519.js';
 
@@ -64,6 +64,7 @@ function installFetchShim(m: WasmServerModule): () => void {
         // request replays it, exactly like a browser.
         for (const [name, value] of r.headers) {
             if (name.toLowerCase() !== 'set-cookie') continue;
+            if (pathname === '/auth/login/finish') expect(value).toMatch(/Max-Age=604800(?:;|$)/i);
             const pair = value.split(';', 1)[0];
             const eq = pair.indexOf('=');
             if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
@@ -93,7 +94,7 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
         mod = loadModule();
         restoreFetch = installFetchShim(mod);
     });
-    afterEach(() => restoreFetch());
+    afterEach(() => { restoreFetch(); vi.restoreAllMocks(); });
 
     it(
         'registers then logs in (full OPRF + ML-DSA + ML-KEM mutual-auth chain)',
@@ -117,6 +118,17 @@ describe.skipIf(!haveWasm)('post-quantum auth end-to-end (client <-> example was
         },
         60_000,
     );
+
+    it('keeps a session valid for seven days and rejects it after expiry', async () => {
+        await Auth.register('weeklong', 'seven-day-passwordA1', 'weeklong@example.com');
+        await login('weeklong', 'seven-day-passwordA1');
+        const signedInAt = Date.now();
+        const clock = vi.spyOn(Date, 'now');
+        clock.mockReturnValue(signedInAt + (7 * 86400 - 60) * 1000);
+        expect((await fetch('/session/me')).status).toBe(200);
+        clock.mockReturnValue(signedInAt + (7 * 86400 + 60) * 1000);
+        expect((await fetch('/session/me')).status).toBe(401);
+    }, 60_000);
 
     it(
         'rejects /session/me with no session cookie (the @auth gate holds)',

@@ -265,7 +265,7 @@ export namespace AuthService {
     const SESSION_VERSION: u8 = 2;
 
     /** Default session lifetime if `mintSession` is called without a ttl. */
-    export const DEFAULT_SESSION_TTL_SECS: u64 = 86400; // 24h
+    export const DEFAULT_SESSION_TTL_SECS: u64 = 604800; // 7 days
 
     /**
      * Override the session-signing secret programmatically. OPTIONAL: by default

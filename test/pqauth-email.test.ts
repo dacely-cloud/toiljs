@@ -78,6 +78,9 @@ function installFetchShim(m: WasmServerModule): () => void {
         });
         for (const [name, value] of r.headers) {
             if (name.toLowerCase() !== 'set-cookie') continue;
+            if (pathname === '/auth/login/finish' || pathname === '/auth/2fa/verify') {
+                expect(value).toMatch(/Max-Age=604800(?:;|$)/i);
+            }
             const pair = value.split(';', 1)[0];
             const eq = pair.indexOf('=');
             if (eq > 0) jar.set(pair.slice(0, eq).trim(), pair.slice(eq + 1).trim());
