@@ -11,11 +11,12 @@
 
 import { DataWriter, DataReader } from 'data';
 import { SessionEpochs } from 'toiljs/server/auth/SessionEpochs';
-import { SessionRevocations, SessionDigest, RevokedSession } from 'toiljs/server/auth/SessionRevocations';
+import { AuthStateDb, SessionDigest, RevokedSession } from 'toiljs/server/auth/AuthStateDb';
 import { HmacImportParams, HmacParams, ALG_SHA_256, FMT_RAW, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
 
 import {
     Server,
+    Request,
     SecureCookies,
     Cookie,
     SameSite,
@@ -274,6 +275,7 @@ export namespace AuthService {
      * the env value for the current request; keep it out of any client bundle.
      */
     export function setSecret(secret: Uint8Array): void {
+        invalidateSession();
         __sessionSecret = secret;
     }
 
@@ -286,13 +288,33 @@ export namespace AuthService {
     export function getSessionBytes(): Uint8Array | null {
         const req = Server.currentRequest;
         if (req == null) return null;
+        if (!req.__authChecked) {
+            // Publish only after verification completes. A host fault must never
+            // turn into a cached anonymous result if the application handles it.
+            req.__authBytes = verifySession(req);
+            req.__authChecked = true;
+        }
+        if (Time.nowSeconds() >= req.__authExpires) return null;
+        const bytes = req.__authBytes;
+        // Callers may decode/mutate their copy without changing later auth checks.
+        return bytes == null ? null : bytes.slice();
+    }
 
+    function invalidateSession(): void {
+        const req = Server.currentRequest;
+        if (req == null) return;
+        req.__authChecked = false;
+        req.__authBytes = null;
+        req.__authExpires = 0;
+    }
+
+    function verifySession(req: Request): Uint8Array | null {
         const sealed = SecureCookies.signed(__resolveSessionSecret()).open(
             req.cookies(),
             sessionCookieName(__reqIsSecure()),
         );
         if (sealed == null) return null;
-        if (SessionRevocations.sessions.lookup(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed)))) != null) return null;
+        if (AuthStateDb.revokedSessions.lookup(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed)))) != null) return null;
 
         const payload = base64UrlDecode(sealed);
         if (payload == null) return null;
@@ -310,6 +332,7 @@ export namespace AuthService {
         if (Time.nowSeconds() >= exp) return null;       // expired
         if (!SessionEpochs.allowed(userBytes, generation)) return null;
 
+        req.__authExpires = exp;
         return userBytes;
     }
 
@@ -397,6 +420,7 @@ export namespace AuthService {
 
     /** Invalidate all browser sessions authorized under the prior session generation. */
     export function revokeUserSessions(userData: Uint8Array): void {
+        invalidateSession();
         SessionEpochs.revoke(userData);
     }
 
@@ -406,7 +430,8 @@ export namespace AuthService {
         const req = Server.currentRequest!;
         const sealed = SecureCookies.signed(__resolveSessionSecret()).open(req.cookies(), sessionCookieName(__reqIsSecure()));
         if (sealed == null) return;
-        SessionRevocations.sessions.claim(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed))), new RevokedSession());
+        invalidateSession();
+        AuthStateDb.revokedSessions.claim(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed))), new RevokedSession());
     }
 
     /** A `Set-Cookie` that immediately clears the session (logout). */

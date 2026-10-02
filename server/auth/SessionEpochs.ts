@@ -1,24 +1,5 @@
 import { DataReader } from 'data';
-@data
-class SessionUserKey {
-    id: string = '';
-    constructor(id: string = '') { this.id = id; }
-}
-@data
-class SessionEpochKey {
-    id: string = '';
-    revision: u64 = 0;
-    constructor(id: string = '', revision: u64 = 0) { this.id = id; this.revision = revision; }
-}
-@data
-class SessionEpoch {
-    revision: u64 = 0;
-}
-@database
-class SessionEpochDb {
-    @collection static heads: Documents<SessionUserKey, SessionEpoch>;
-    @collection static revisions: Unique<SessionEpochKey, SessionEpoch>;
-}
+import { AuthStateDb, SessionUserKey, SessionEpochKey, SessionEpoch } from './AuthStateDb';
 /** Immutable per-user generations fence sessions and in-flight login challenges without clock assumptions. */
 export class SessionEpochs {
     private static key(userData: Uint8Array): string {
@@ -29,10 +10,10 @@ export class SessionEpochs {
         return crypto.toHex(id);
     }
     private static read(id: string): SessionEpoch {
-        let epoch = SessionEpochDb.heads.get(new SessionUserKey(id));
+        let epoch = AuthStateDb.epochHeads.get(new SessionUserKey(id));
         if (epoch == null) epoch = new SessionEpoch();
         for (let i: i32 = 0; i < 64; i++) {
-            const next = SessionEpochDb.revisions.lookup(new SessionEpochKey(id, epoch.revision + 1));
+            const next = AuthStateDb.epochRevisions.lookup(new SessionEpochKey(id, epoch.revision + 1));
             if (next == null) return epoch;
             epoch = next;
         }
@@ -49,8 +30,8 @@ export class SessionEpochs {
         for (let i: i32 = 0; i < 3; i++) {
             const epoch = SessionEpochs.read(id);
             epoch.revision += 1;
-            if (!SessionEpochDb.revisions.claim(new SessionEpochKey(id, epoch.revision), epoch).claimed) continue;
-            SessionEpochDb.heads.upsert(new SessionUserKey(id), epoch);
+            if (!AuthStateDb.epochRevisions.claim(new SessionEpochKey(id, epoch.revision), epoch).claimed) continue;
+            AuthStateDb.epochHeads.upsert(new SessionUserKey(id), epoch);
             return;
         }
         throw new Error('Session revocation conflicted; retry');

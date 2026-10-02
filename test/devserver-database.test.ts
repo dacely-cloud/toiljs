@@ -468,15 +468,15 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.unique_lookup'](h, kPtr, kLen)).toBe(-2); // gone
     });
 
-    it('get_many: framed multi-get preserves order with present/absent', () => {
+    it.each([['App/users', 'data.create'], ['App/usernames', 'data.unique_claim']])('get_many: %s preserves order with present/absent', (collection, write) => {
         const { imports, buf } = setup();
-        const h = resolve(imports, buf, 'App/users');
+        const h = resolve(imports, buf, collection);
         const [k1, l1] = put(buf, 32, 'u1');
         const [vA, lA] = put(buf, 48, 'AA');
-        imports['data.create'](h, k1, l1, vA, lA, 0);
+        imports[write](h, k1, l1, vA, lA, 0);
         const [k2, l2] = put(buf, 64, 'u2');
         const [vB, lB] = put(buf, 80, 'BB');
-        imports['data.create'](h, k2, l2, vB, lB, 0);
+        imports[write](h, k2, l2, vB, lB, 0);
 
         // keys blob at 128: count=3, then "u1","u3","u2" (u3 absent).
         let o = 128;
@@ -510,6 +510,25 @@ describe('toildb dev emulator (record family)', () => {
         expect(got).toEqual(['AA', null, 'BB']);
 
         expect(imports['data.get_many'](999, 128, o - 128)).toBe(-1001); // invalid handle
+    });
+
+    it.each([['App/users'], ['App/usernames']])('get_many: %s enforces request-kind batch limits', (collection) => {
+        const { imports, buf, db } = setup();
+        const h = resolve(imports, buf, collection);
+        const frame = (count: number): number => {
+            let offset = buf.writeUInt32LE(count, 128);
+            for (let i = 0; i < count; i++) {
+                offset = buf.writeUInt32LE(1, offset);
+                buf[offset++] = 65;
+            }
+            return offset - 128;
+        };
+        db.functionKind = DbFunctionKind.Query;
+        expect(imports['data.get_many'](h, 128, frame(32))).toBeGreaterThan(0);
+        expect(imports['data.get_many'](h, 128, frame(33))).toBe(-1020);
+        db.functionKind = DbFunctionKind.Action;
+        expect(imports['data.get_many'](h, 128, frame(64))).toBeGreaterThan(0);
+        expect(imports['data.get_many'](h, 128, frame(65))).toBe(-1020);
     });
 
     it('membership: add/contains/remove + sorted framed list', () => {

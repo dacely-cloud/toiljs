@@ -4,7 +4,7 @@ The **Unique** family enforces that a value is claimed by only one owner across 
 
 ## What and why
 
-A **Unique collection** maps a `@data` **claim key** (the thing that must be unique, like a username) to a `@data` **owner value** (who or what claimed it, like a user id). At any moment a claim key is either **unclaimed** or **owned by exactly one owner**. The family gives you three operations: look up who owns a key, claim a key, and release it.
+A **Unique collection** maps a `@data` **claim key** (the thing that must be unique, like a username) to a `@data` **owner value** (who or what claimed it, like a user id). At any moment a claim key is either **unclaimed** or **owned by exactly one owner**. The family lets you look up one or several owners, claim a key, and release it.
 
 Reach for Unique whenever a value must be globally singular:
 
@@ -76,6 +76,18 @@ if (owner == null) {
 ```
 
 Note that `lookup` is subject to [eventual consistency](./README.md#eventual-consistency-in-plain-words): a claim made moments ago in another region may not show up in a far-away `lookup` yet. Do not use `lookup` as your uniqueness guard. `lookup` is for display ("this name is taken by ..."); the real guarantee comes from `claim`, which is decided at the home and cannot race.
+
+### `lookupMany`
+
+`lookupMany(keys)` returns owners in input order, with `null` for unclaimed keys.
+It uses one database operation for the batch and the same tenant isolation and
+consistency rules as `lookup`. The host enforces its batch-size limit (32 keys for queries, 64 for actions); split larger lists into bounded pages. The batch is not a transaction
+or a consistent snapshot across keys. It never replaces `claim` as a uniqueness
+check.
+
+```ts
+const owners = AppDb.usernames.lookupMany([new Username('alice'), new Username('bob')]);
+```
 
 ### `claim`
 

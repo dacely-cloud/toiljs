@@ -666,6 +666,7 @@ export class DevDatabase {
             DbOp.GetMany,
             CollectionFamily.Record,
             CollectionFamily.View,
+            CollectionFamily.Unique,
         );
         if (typeof coll === 'number') return coll;
         if (keysLen > MAX_VALUE) throw new Error('data: keys blob too large');
@@ -675,7 +676,9 @@ export class DevDatabase {
         // can't over-read; cap each key at MAX_KEY like the edge's prepare_key.
         const r = new DataReader(readCopy(ref, keysPtr, keysLen));
         const count = r.readU32();
-        if (count > 1024) return TOO_MANY_KEYS; // anti-OOM cap, mirrors the edge
+        const maxKeys = db.functionKind === DbFunctionKind.Query ? 32
+            : db.functionKind === DbFunctionKind.Action ? 64 : 1024;
+        if (count > maxKeys) return TOO_MANY_KEYS; // mirror production request-kind limits
         // Result: u32 count, then per item present(u8) + (when present) the row's
         // stored schema_version (u32, per-item @migrate dispatch) + value (u32 len +
         // bytes). Byte-identical to the edge op_get_many framing.

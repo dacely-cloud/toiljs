@@ -125,7 +125,7 @@ function authEntryFiles(root: string, appHasUser: boolean): string[] {
     // `username` identity fields into it (via `--authUser`) and does NOT append the shipped empty `@user`,
     // only the controller. BUILTIN mode (no app `@user`): append both (the shipped empty `SessionUser`
     // gets the same injected identity fields).
-    const names = [...(appHasUser ? ['AuthController.ts'] : ['AuthUser.ts', 'AuthController.ts']), 'SessionRevocations.ts', 'SessionEpochs.ts', 'FactorSettings.ts'];
+    const names = [...(appHasUser ? ['AuthController.ts'] : ['AuthUser.ts', 'AuthController.ts']), 'AuthStateDb.ts', 'SessionEpochs.ts', 'FactorSettings.ts'];
     const primary = names.map((n) => path.posix.join('node_modules/toiljs/server/auth', n));
     if (primary.every((rel) => fs.existsSync(path.join(root, rel)))) return primary;
     // Fallback: locate this running toiljs package dir and make the paths root-relative.

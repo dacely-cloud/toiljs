@@ -8,6 +8,11 @@ A **database declaration** tells toiljs three things at compile time: which coll
 
 Reach for this on day one: before you can read or write any data, you need a `@database` with at least one `@collection`.
 
+Group related data into collections within a small number of databases. A new
+feature usually needs a new collection, not another `@database` class. Database
+namespaces do not replace application authorization: enforce account and
+organization access in server routes and scope collection keys appropriately.
+
 ## How: the three pieces
 
 A working database is always these three pieces together.

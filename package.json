@@ -101,6 +101,7 @@
         "tag": "latest"
     },
     "scripts": {
+        "prepare": "npm run build",
         "watch": "tsc -p tsconfig.json --watch",
         "prepublishOnly": "npm run build",
         "gen:docs": "node scripts/gen-toil-docs.mjs",

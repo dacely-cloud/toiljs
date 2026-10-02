@@ -33,6 +33,12 @@ export class Request {
     headers: Array<Header>;
     body: Uint8Array;
 
+    // Auth verification belongs to this request object, never a process/tenant cache.
+    // Internal AuthService state; cleared before local revocations or secret changes.
+    __authChecked: bool = false;
+    __authBytes: Uint8Array | null = null;
+    __authExpires: u64 = 0;
+
     // Lazily parsed `Cookie` header, cached for the life of the request.
     private _cookies: CookieMap | null = null;
 

@@ -16,6 +16,19 @@ export default defineConfig({
 That is the whole setup. The build appends the framework's auth controller to your server, so `/auth/*`
 is live and `@auth` works everywhere.
 
+## Storage and request lifetime
+
+Authentication uses collections in two databases: `AuthDb` for accounts and
+challenges, and `AuthStateDb` for revoked sessions, user generations, and two-factor
+settings. Verification is cached only on the current request object. Later requests
+check revocation state again; local revocation and signing-secret changes invalidate
+the cached result.
+
+The `AuthStateDb` layout replaces the separate session and factor database
+namespaces. It requires a fresh store or an explicit migration of existing security
+state; it does not read the previous namespaces. The Nerva rollout uses a database
+reset alongside the application schema change.
+
 ## What you get
 
 | Endpoint | Purpose |
