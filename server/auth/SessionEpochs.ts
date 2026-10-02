@@ -1,3 +1,4 @@
+import { AuthReads } from 'toiljs/server/auth/AuthReads';
 import { DataReader } from 'data';
 import { AuthStateDb, SessionUserKey, SessionEpochKey, SessionEpoch } from './AuthStateDb';
 /** Immutable per-user generations fence sessions and in-flight login challenges without clock assumptions. */
@@ -10,10 +11,10 @@ export class SessionEpochs {
         return crypto.toHex(id);
     }
     private static read(id: string): SessionEpoch {
-        let epoch = AuthStateDb.epochHeads.get(new SessionUserKey(id));
+        let epoch = AuthReads.document(AuthStateDb.epochHeads, new SessionUserKey(id));
         if (epoch == null) epoch = new SessionEpoch();
         for (let i: i32 = 0; i < 64; i++) {
-            const next = AuthStateDb.epochRevisions.lookup(new SessionEpochKey(id, epoch.revision + 1));
+            const next = AuthReads.owner(AuthStateDb.epochRevisions, new SessionEpochKey(id, epoch.revision + 1));
             if (next == null) return epoch;
             epoch = next;
         }

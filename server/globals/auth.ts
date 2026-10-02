@@ -1,3 +1,4 @@
+import { AuthReads } from 'toiljs/server/auth/AuthReads';
 // AuthService: the server half of the post-quantum auth primitive, available
 // as a no-import global (registered via the toilscript `--lib` mechanism, the
 // same way `crypto` is a global). The client derives an ML-DSA-44 keypair from
@@ -314,7 +315,7 @@ export namespace AuthService {
             sessionCookieName(__reqIsSecure()),
         );
         if (sealed == null) return null;
-        if (AuthStateDb.revokedSessions.lookup(new SessionDigest(crypto.toHex(crypto.sha256Text(sealed)))) != null) return null;
+        if (AuthReads.owner(AuthStateDb.revokedSessions, new SessionDigest(crypto.toHex(crypto.sha256Text(sealed)))) != null) return null;
 
         const payload = base64UrlDecode(sealed);
         if (payload == null) return null;

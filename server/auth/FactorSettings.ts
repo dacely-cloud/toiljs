@@ -1,10 +1,11 @@
+import { AuthReads } from 'toiljs/server/auth/AuthReads';
 import { AuthStateDb, FactorKey, FactorRevision, FactorSettings } from './AuthStateDb';
 export class FactorRepository {
     public static read(host: string, username: string, legacy: u8): FactorSettings {
-        let settings = AuthStateDb.factorHeads.get(new FactorKey(host, username));
+        let settings = AuthReads.document(AuthStateDb.factorHeads, new FactorKey(host, username));
         if (settings == null) { settings = new FactorSettings(); settings.method = legacy; }
         for (let i: i32 = 0; i < 64; i++) {
-            const next = AuthStateDb.factorRevisions.lookup(new FactorRevision(host, username, settings.revision + 1));
+            const next = AuthReads.owner(AuthStateDb.factorRevisions, new FactorRevision(host, username, settings.revision + 1));
             if (next == null) return settings;
             settings = next;
         }

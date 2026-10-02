@@ -22,7 +22,8 @@ Authentication uses collections in two databases: `AuthDb` for accounts and
 challenges, and `AuthStateDb` for revoked sessions, user generations, and two-factor
 settings. Verification is cached only on the current request object. Later requests
 check revocation state again; local revocation and signing-secret changes invalidate
-the cached result.
+the cached result. Temporary failures reading revocations, generations, or
+two-factor state abort the request; they never mean that a restriction is absent.
 
 The `AuthStateDb` layout replaces the separate session and factor database
 namespaces. It requires a fresh store or an explicit migration of existing security
