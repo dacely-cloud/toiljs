@@ -24,6 +24,29 @@ AUTH_KEM_SK=…hex of an ML-KEM-768 secret key…
 
 ### Generating them
 
+Run this from your project root (or pass `--root <dir>`):
+
+```bash
+toiljs generate auth
+```
+
+The command saves `AUTH_SESSION_SECRET`, `AUTH_OPRF_SEED`, and `AUTH_KEM_SK` in
+`.env.secrets` with mode `0600`, and the matching `VITE_AUTH_KEM_PUBLIC_KEY` in `.env`.
+It adds both files to `.gitignore`, preserves unrelated settings, and does not print credentials.
+Rerunning preserves existing keys and restores a missing public key from `AUTH_KEM_SK`.
+Invalid, empty, or mismatched existing credentials cause an error without changing the env files.
+There is no automatic rotation: changing the OPRF seed invalidates passwords, and changing the
+session secret invalidates sessions. Back up the private file securely.
+
+For toil-backend, merge the private settings into `/run/toil/env/<host>.env.secrets`
+(or the directory selected by `TOIL_ENV_DIR`). If using database-backed env settings, run
+`toil env sync <host>` with the production configuration after editing the files.
+The **public** key must also be present in the project `.env` on the machine running the frontend
+build. Backend runtime env files do not supply Vite's build-time variables. Rebuild and deploy
+the client with its matching key; the command does not edit your client code or deploy anything.
+
+To generate keys manually instead:
+
 `AUTH_SESSION_SECRET` and `AUTH_OPRF_SEED` are just 32 random bytes each:
 
 ```bash
@@ -49,7 +72,10 @@ MUST pass its own:
 ```ts
 import { Auth } from 'toiljs/client';
 
-const SERVER_KEM_PUBLIC_KEY = /* the publicKey bytes from AUTH_KEM_SK */;
+// Set by `toiljs generate auth` in the project .env, embedded during the client build.
+const hex = import.meta.env.VITE_AUTH_KEM_PUBLIC_KEY;
+if (!hex || !/^[0-9a-f]{2368}$/.test(hex)) throw new Error('Missing auth public key');
+const SERVER_KEM_PUBLIC_KEY = Uint8Array.from(hex.match(/../g)!, byte => parseInt(byte, 16));
 
 await Auth.login(username, password, { serverKemPublicKey: SERVER_KEM_PUBLIC_KEY });
 await Auth.register(username, password, { serverKemPublicKey: SERVER_KEM_PUBLIC_KEY });

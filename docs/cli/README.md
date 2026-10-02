@@ -26,6 +26,7 @@ npx toiljs doctor
 | `toiljs doctor` | Diagnose your project setup and (with `--fix`) repair common wiring. |
 | `toiljs update` | Check npm for newer dependency versions and apply the ones you pick. |
 | `toiljs db <action>` | Inspect, reset, snapshot, or restore the local dev database. |
+| `toiljs generate auth` | Generate private auth keys and the matching client public key, preserving existing credentials. |
 | `toiljs help` | Print the built-in help. Also `--help` or `-h`. |
 | `toiljs --version` | Print the installed toiljs version. Also `-v`. |
 
@@ -45,6 +46,23 @@ toiljs build --root ./apps/marketing
 # Silence the "newer version available" notice.
 TOILJS_NO_UPDATE_CHECK=1 toiljs dev
 ```
+
+## `toiljs generate auth`
+
+```bash
+toiljs generate auth
+toiljs generate auth --root ./apps/marketing
+```
+
+Saves private authentication keys in `.env.secrets` (mode `0600`) and
+`VITE_AUTH_KEM_PUBLIC_KEY` in `.env`, and adds both files to `.gitignore`. It preserves
+unrelated settings and existing credentials, and can recover a missing public key from the
+existing private key. It refuses invalid or mismatched keys rather than rotating them.
+No secret values are printed. Use this for initial setup or completing an existing key set.
+
+Pin the public key in your client's auth options, build with that `.env` on the build machine,
+and install the private settings in your backend's secure env store. See
+[auth configuration](../auth/configuration.md) for the client snippet and toil-backend deployment steps.
 
 ## `toiljs create`
 

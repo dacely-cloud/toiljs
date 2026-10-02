@@ -10,6 +10,7 @@ import { runConfigure } from './configure.js';
 import { runCreate, type Template } from './create.js';
 import { runDb } from './db.js';
 import { runDoctor } from './doctor.js';
+import { runGenerate } from './generate.js';
 import { notifyIfOutdated } from './notify.js';
 import { runUpdate } from './update.js';
 import { type Preprocessor, PREPROCESSORS } from './features.js';
@@ -148,6 +149,7 @@ function printHelp(): void {
             bold('Commands'),
             cmd('create [name]', 'scaffold a new toiljs app'),
             cmd('configure', 'toggle styling features (Sass/Less/Stylus, Tailwind)'),
+            cmd('generate auth', 'generate private auth keys and the matching client public key'),
             cmd('dev', 'start the dev server with HMR'),
             cmd('build', 'build the optimized production bundle'),
             cmd('start', 'self-host the built app (hyper-express / uWS)'),
@@ -222,6 +224,10 @@ async function main(): Promise<void> {
                 install: flags.install,
                 cwd: process.cwd(),
             });
+            break;
+
+        case 'generate':
+            runGenerate(flags.name, { root: flags.root });
             break;
 
         case 'dev':

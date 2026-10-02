@@ -422,6 +422,7 @@ toiljs build           ahead-of-time production build
 toiljs start           self-host the built client + realtime channel
 toiljs configure       toggle styling and asset features on an existing app
 toiljs doctor          diagnose project setup and dependencies
+toiljs generate auth   generate auth keys without rotating existing credentials
 toiljs update          check for and apply dependency updates
 ```
 
