@@ -145,7 +145,7 @@ export function prefetchRouteData(
 ): void {
     const key = loaderKey(pathname, search);
     const existing = cache.get(key);
-    if (existing && existing.status !== 'error') return;
+    if (existing && (existing.status !== 'error' || existing.epoch === navigationEpoch())) return;
     startFetch(route, params, key, navigationEpoch(), search, true);
 }
 
@@ -173,7 +173,9 @@ async function loadRoute(
 
 /** Whether a settled entry must be refetched for the current navigation. */
 function isStale(entry: Entry, epoch: number): boolean {
-    if (entry.status === 'error') return true; // always retry a failed load
+    // React re-reads after a suspending promise settles. Keep the failure for this
+    // navigation so it reaches the error boundary instead of starting a hot loop.
+    if (entry.status === 'error') return entry.epoch !== epoch;
     // A route with no loader has no data that can change, keep it cached so repeat navigations
     // render synchronously (instant) instead of re-suspending and remounting on every switch.
     if (!entry.hasLoader) return false;

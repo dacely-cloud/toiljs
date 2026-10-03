@@ -1,6 +1,7 @@
 import { Component, type ComponentType, type ReactNode, Suspense } from 'react';
 
 import type { RouteErrorProps } from '../types.js';
+import { invalidateLoaderData } from './loader.js';
 
 interface ErrorBoundaryProps {
     readonly fallback: ComponentType<RouteErrorProps>;
@@ -22,6 +23,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     }
 
     reset = (): void => {
+        invalidateLoaderData();
         this.setState({ error: null });
     };
 

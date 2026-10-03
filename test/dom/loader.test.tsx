@@ -7,6 +7,7 @@ import {
     invalidateLoaderData,
     type LoaderData,
     loaderKey,
+    prefetchRouteData,
     readRouteData,
 } from '../../src/client/routing/loader';
 import type { RouteDef } from '../../src/client/types';
@@ -49,6 +50,31 @@ afterEach(() => {
 });
 
 describe('loader caching', () => {
+    it('surfaces a failed load without retrying during React re-renders', async () => {
+        const failure = new Error('Account unavailable');
+        const load = vi.fn().mockRejectedValue(failure);
+        const route: RouteDef = { pattern: '/account', load };
+        await expect(read(route, '/account', 1)).rejects.toBe(failure);
+        for (let i = 0; i < 100; i++) {
+            expect(() => readRouteData(route, {}, '/account', 1)).toThrow(failure);
+        }
+        expect(load).toHaveBeenCalledTimes(1);
+        await expect(read(route, '/account', 2)).rejects.toBe(failure);
+        expect(load).toHaveBeenCalledTimes(2);
+        invalidateLoaderData('/account');
+        load.mockResolvedValue({ default: () => null, loader: () => 'recovered' });
+        await expect(read(route, '/account', 2)).resolves.toBe('recovered');
+    });
+
+    it('does not retry a failed prefetch on repeated hover in the same navigation', async () => {
+        const load = vi.fn().mockRejectedValue(new Error('Offline'));
+        const route: RouteDef = { pattern: '/prefetched', load };
+        prefetchRouteData(route, {}, '/prefetched', '');
+        await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
+        for (let i = 0; i < 100; i++) prefetchRouteData(route, {}, '/prefetched', '');
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
     it('reuses cached data on re-read within the same navigation (loader runs once)', async () => {
         const { route, loads } = makeRoute();
         const key = loaderKey('/x', '');
