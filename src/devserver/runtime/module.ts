@@ -156,6 +156,8 @@ const PROVIDED_IMPORTS = new Set([
     'data.append',
     'data.append_once',
     'data.enqueue',
+    'data.compare_exchange',
+    'data.get_current',
     'data.latest',
     'data.events_since',
     'data.events_get',
@@ -250,7 +252,10 @@ export class WasmServerModule {
         const rpcPath = req.path.split('?')[0] ?? req.path;
         const rpcMethod = req.method.toUpperCase();
         const rpcMutating =
-            rpcMethod === 'POST' || rpcMethod === 'PUT' || rpcMethod === 'PATCH' || rpcMethod === 'DELETE';
+            rpcMethod === 'POST' ||
+            rpcMethod === 'PUT' ||
+            rpcMethod === 'PATCH' ||
+            rpcMethod === 'DELETE';
         if (rpcPath === '/__toil_rpc' && rpcMutating) {
             const idHeader = req.headers.find(([n]) => n.toLowerCase() === 'dacely-rpc')?.[1];
             // Strict u32 parse, mirroring the host's `v.parse::<u32>()`: reject trailing garbage/whitespace

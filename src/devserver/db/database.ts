@@ -676,8 +676,12 @@ export class DevDatabase {
         // can't over-read; cap each key at MAX_KEY like the edge's prepare_key.
         const r = new DataReader(readCopy(ref, keysPtr, keysLen));
         const count = r.readU32();
-        const maxKeys = db.functionKind === DbFunctionKind.Query ? 32
-            : db.functionKind === DbFunctionKind.Action ? 64 : 1024;
+        const maxKeys =
+            db.functionKind === DbFunctionKind.Query
+                ? 32
+                : db.functionKind === DbFunctionKind.Action
+                  ? 64
+                  : 1024;
         if (count > maxKeys) return TOO_MANY_KEYS; // mirror production request-kind limits
         // Result: u32 count, then per item present(u8) + (when present) the row's
         // stored schema_version (u32, per-item @migrate dispatch) + value (u32 len +
@@ -1093,7 +1097,11 @@ export class DevDatabase {
         const mv = this.memberVersions.get(sk);
         const n = Math.max(0, Math.min(limit, 0xffff));
         const members =
-            set === undefined ? [] : Array.from(set.values()).sort((a, b) => Buffer.compare(a, b)).slice(0, n);
+            set === undefined
+                ? []
+                : Array.from(set.values())
+                      .sort((a, b) => Buffer.compare(a, b))
+                      .slice(0, n);
         // u32 count, then per member its stored schema_version (u32) + bytes (u32
         // len + bytes). Same framing as the edge op_membership_list.
         const w = new DataWriter();
@@ -1335,9 +1343,46 @@ export class DevDatabase {
         return value === undefined ? ABSENT : value.length;
     }
 
-    // Version-checked replace of an EXISTING record's value. Returns 0 on apply,
-    // ABSENT (-2) if the record is absent. A single dev process has no concurrent
-    // writer, so the optimistic-concurrency check always succeeds here.
+    /** Byte-exact CAS: the expectation comes from the caller, not a fresh host read. */
+    public compareExchange(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        keyPtr: number,
+        keyLen: number,
+        expectedPtr: number,
+        expectedLen: number,
+        valuePtr: number,
+        valueLen: number,
+    ): number {
+        const coll: DevCollectionHandle | number = collForOp(
+            db,
+            handle,
+            DbOp.Patch,
+            CollectionFamily.Record,
+        );
+        if (typeof coll === 'number') return coll;
+        if (keyLen > MAX_KEY || valueLen > MAX_VALUE || expectedLen > MAX_VALUE || expectedLen < -1)
+            throw new Error('data: CAS key/value too large');
+        const key: Buffer = readKey(ref, keyPtr, keyLen);
+        const value: Buffer = readCopy(ref, valuePtr, valueLen);
+        if (this.uniqueValuesOf(coll, value).length > 0)
+            throw new Error('CAS does not support @unique fields');
+        const sk: string = storeKey(coll.name, key);
+        const prior: Buffer | undefined = this.store.get(sk);
+        if (
+            expectedLen === -1
+                ? prior !== undefined
+                : prior === undefined || !prior.equals(readCopy(ref, expectedPtr, expectedLen))
+        )
+            return 0;
+        this.store.set(sk, value);
+        this.stampVersion(coll, sk);
+        this.recordWrite(db, coll);
+        return 1;
+    }
+
+    // Existing-row replacement: there is no expectation from an earlier caller read.
     enqueue(
         ref: MemoryRef,
         db: DbDevState,
@@ -1832,6 +1877,17 @@ export function buildDatabaseImports(
         ): number =>
             devDb.appendOnce(ref, db, handle, keyPtr, keyLen, evidPtr, evidLen, evPtr, evLen),
 
+        'data.get_current': (handle: number, kp: number, kl: number): number =>
+            devDb.get(ref, db, handle, kp, kl),
+        'data.compare_exchange': (
+            handle: number,
+            kp: number,
+            kl: number,
+            ep: number,
+            el: number,
+            vp: number,
+            vl: number,
+        ): number => devDb.compareExchange(ref, db, handle, kp, kl, ep, el, vp, vl),
         'data.enqueue': (
             handle: number,
             keyPtr: number,

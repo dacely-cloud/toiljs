@@ -42,7 +42,7 @@ Here is every operation, its shape, and what it gives back. `K` is your key type
 | `create` | `create(key: K, value: V): bool` | `true` if inserted, `false` if the key was already taken | add a **new** record without overwriting |
 | `patch` | `patch(key: K, value: V): V` | the newly stored value; **traps** if the record is absent | replace an **existing** record's value |
 | `upsert` | `upsert(key: K, value: V): UpsertResult` | `UpsertResult.Created` or `.Updated`; `.Conflict` on a `@unique` collision (nothing written) | create **or** overwrite in one op (last-writer-wins) |
-| `enqueue` | `enqueue(key: K, value: V): bool` | `true` if applied, `false` if a concurrent write won first or the record is absent | a version-checked (compare-and-swap) overwrite of an existing record |
+| `enqueue` | `enqueue(key: K, value: V): bool` | acceptance status | submit a replacement of an existing record; not caller-observed CAS |
 | `delete` | `delete(key: K): void` | nothing (idempotent) | remove a record |
 | `getDelete` | `getDelete(key: K): V \| null` | the value that was there, or `null`; removes it atomically | consume a record exactly once |
 
@@ -87,7 +87,7 @@ These four all put a value under a key, but they differ in one important way eac
 ```mermaid
 flowchart TD
     START["I want to write a record"] --> Q1{"Must this write fail if another<br/>request changed the record<br/>since I read it?"}
-    Q1 -->|"Yes, guard against a lost update"| ENQUEUE["enqueue<br/>(version-checked CAS;<br/>false = retry)"]
+    Q1 -->|"Yes, guard against a lost update"| ENQUEUE["Counter or explicit<br/>conditional-write protocol"]
     Q1 -->|"No, last write wins"| Q2{"Does the record<br/>already exist?"}
     Q2 -->|"Must be new (never clobber)"| CREATE["create<br/>(false if the key is taken)"]
     Q2 -->|"May or may not exist"| UPSERT["upsert<br/>(create-or-overwrite in one op)"]
@@ -113,26 +113,20 @@ const saved: User = AppDb.users.patch(new UserId('u_123'), current);
 // saved is what is now stored
 ```
 
-**`enqueue` is a version-checked overwrite (a compare-and-swap).** Like `patch`, it replaces the whole value of an **existing** record, but it does so *only if the record has not changed since you read it*. A **compare-and-swap** (CAS) is exactly that: "write my new value, but only if the current value is still the one I saw." It returns a `bool`: `true` means your write was applied; `false` means either a concurrent write changed the record first (someone else beat you to it) or the record is absent. A `false` is **not an error**; it is the signal to **re-read and try again**. This approach is called **optimistic concurrency**: rather than locking the record, you assume nobody else will touch it, and you simply re-run the update on the rare occasion someone did.
+**`enqueue` submits a replacement of an existing record.** Its current ABI carries
+only the new value. It does not carry the version or bytes observed by your earlier
+`get`, so it cannot protect an application read-modify-write from lost updates.
+The production host may compare a version read *inside* the write operation; that
+is not a comparison against the application's earlier read. A retry loop around
+`get` and `enqueue` does not fix this gap. Acceptance also must not be treated as a
+portable durable-commit acknowledgement.
 
-Reach for `enqueue` when several requests may update the *same* record at once and you must not silently lose any of their changes. A plain `patch` cannot promise that: two overlapping patches clobber each other (the last writer wins and the earlier update just vanishes). The intended pattern for `enqueue` is always a read-modify-CAS **retry loop**:
-
-```ts
-const key = new UserId('u_123');
-for (let attempt = 0; attempt < 5; attempt++) {
-  const current = AppDb.users.get(key);      // 1. read the current value
-  if (current == null) return Response.notFound();
-  current.score = current.score + 10;        // 2. modify your copy
-  if (AppDb.users.enqueue(key, current)) {   // 3. try to commit it
-    return Response.text('ok');              //    true: applied, we are done
-  }
-  // false: someone wrote between our get and our enqueue.
-  // Loop: re-read the now-newer value and reapply the change on top of it.
-}
-return Response.text('too much contention, try again later', 409);
-```
-
-Because every retry re-reads the latest value, the two updates **compose** (both `+10`s land) instead of one silently overwriting the other. If you do not need this guard (only one writer touches the key, or last-write-wins is genuinely fine), a plain `patch` is simpler and also hands you the stored value back directly.
+Use a Counter for independent additive totals. Financial state spanning several
+records requires a tested conditional-write/recovery protocol. The native host
+now exposes `data.compare_exchange` (explicit expected bytes) and
+`data.get_current` (owner read), mirrored by the development emulator. These are
+low-level host imports; the typed Documents API does not yet wrap them. They
+currently require local key ownership and reject remote-owner execution.
 
 **`upsert` creates the record or overwrites it, in one operation.** It is the "just store this value, I do not care whether a row was already there" call, and it is the right tool for a save that runs repeatedly (a profile edit, a settings blob) where the first save inserts and every later save replaces. It returns an `UpsertResult` telling you which happened:
 
@@ -153,7 +147,7 @@ if (!AppDb.users.create(key, user)) {
 
 `upsert` collapses both into a single write, so the common "already exists" path costs one round trip instead of two.
 
-Like `patch`, it is a **last-writer-wins** overwrite, not a compare-and-swap: concurrent upserts never fail or retry, the later one simply wins. That makes it correct for writing a **whole value**, and wrong for a read-modify-write of accumulating state (a running total, a like count) where a concurrent write would be silently lost, use `enqueue`'s retry loop or a [Counter](./counters.md) there. On a collection with a `@unique` field, `upsert` returns `UpsertResult.Conflict` (and writes nothing) when the value's unique field is already held by a **different** record, the one case it cannot resolve by overwriting:
+Like `patch`, it is a **last-writer-wins** overwrite, not a compare-and-swap: concurrent upserts never fail or retry, the later one simply wins. That makes it correct for writing a **whole value**, and wrong for a read-modify-write of accumulating state (a running total, a like count) where a concurrent write would be silently lost, use a [Counter](./counters.md) for additive state or an explicit conditional-write protocol there. On a collection with a `@unique` field, `upsert` returns `UpsertResult.Conflict` (and writes nothing) when the value's unique field is already held by a **different** record, the one case it cannot resolve by overwriting:
 
 ```ts
 const outcome = AppDb.handles.upsert(key, profile);
@@ -255,16 +249,16 @@ That is a complete persistent CRUD entity. Run it under `toiljs dev` and the not
 
 Documents follows ToilDB's general model (see [the overview](./README.md#eventual-consistency-in-plain-words)):
 
-- **Writes to one key are serialized at that key's home**, so `create` is race-safe and `patch`/`upsert`/`enqueue`/`getDelete` never corrupt a record under concurrency. `upsert` is last-writer-wins like `patch`: serialization means the writes do not tear, but the later one still overwrites the earlier, so it does not by itself prevent a lost update (use `enqueue` for that).
+- **Writes to one key are serialized at that key's home**, so `create` is race-safe and `patch`/`upsert`/`enqueue`/`getDelete` never corrupt a record under concurrency. `upsert` is last-writer-wins like `patch`: serialization means the writes do not tear, but the later one still overwrites the earlier, so it does not by itself prevent a lost update (use an explicit caller-observed conditional write for that).
 - **Reads are eventually consistent across regions.** Right after a write, a read from a far-away region may briefly still see the old value (or, for a just-created record, not see it yet). The copies converge within moments.
-- Because `patch` replaces the whole value, two updates to *different* fields of the same record can clobber each other if they overlap (read-modify-write races). `enqueue`'s version check is exactly the guard against that: use the read-modify-CAS retry loop shown above so a lost update turns into a retry instead of silent data loss. If you find yourself contending on one hot record a lot, a counter or a set is often a better fit than a Documents value. See [Counters](./counters.md) and [Membership](./membership.md).
+- Because `patch` replaces the whole value, two updates to *different* fields of the same record can clobber each other if they overlap (read-modify-write races). Neither `patch` nor `enqueue` accepts an expectation from the earlier application read. If you find yourself contending on one hot record a lot, a counter or a set is often a better fit than a Documents value. See [Counters](./counters.md) and [Membership](./membership.md).
 
 ## Gotchas
 
 - **`patch` requires an existing record.** Calling it on a missing key traps the request. Use `create` for new records, or `upsert` when the record may or may not exist yet.
 - **`patch` replaces the whole value.** There is no field-level merge; read, modify, and write back the full value.
-- **`enqueue` returning `false` is not a failure.** It means a concurrent write beat you to the record (or the record is absent), so re-read and retry in a loop; never ignore the return value or treat `false` as a hard error. `enqueue` also does not hand back the stored value; use `patch` when you want the value returned and last-write-wins is acceptable.
-- **`upsert` is last-writer-wins, not a merge.** It writes the whole value you pass, so it is for storing a complete value, not a read-modify-write of one field of a shared record. Two overlapping upserts do not error, but the earlier one is overwritten (lost). When several writers contend on one record and must not lose each other's changes, use `enqueue`'s retry loop or a [Counter](./counters.md).
+- **`enqueue` is not caller-observed CAS.** Do not use its boolean result as proof that a prior application read was still current.
+- **`upsert` is last-writer-wins, not a merge.** It writes the whole value you pass, so it is for storing a complete value, not a read-modify-write of one field of a shared record. Two overlapping upserts do not error, but the earlier one is overwritten (lost). When several writers contend on one record and must not lose each other's changes, use an explicit conditional-write protocol or a [Counter](./counters.md).
 - **No "get all."** There is no scan on the request path. Use `getMany` for known keys, and [Events](./events.md) or a [View](./views.md) for "the latest N."
 - **`getDelete`, not `get` + `delete`, for consume-once.** Only `getDelete` guarantees exactly one caller receives the value.
 

@@ -468,7 +468,10 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.unique_lookup'](h, kPtr, kLen)).toBe(-2); // gone
     });
 
-    it.each([['App/users', 'data.create'], ['App/usernames', 'data.unique_claim']])('get_many: %s preserves order with present/absent', (collection, write) => {
+    it.each([
+        ['App/users', 'data.create'],
+        ['App/usernames', 'data.unique_claim'],
+    ])('get_many: %s preserves order with present/absent', (collection, write) => {
         const { imports, buf } = setup();
         const h = resolve(imports, buf, collection);
         const [k1, l1] = put(buf, 32, 'u1');
@@ -512,24 +515,27 @@ describe('toildb dev emulator (record family)', () => {
         expect(imports['data.get_many'](999, 128, o - 128)).toBe(-1001); // invalid handle
     });
 
-    it.each([['App/users'], ['App/usernames']])('get_many: %s enforces request-kind batch limits', (collection) => {
-        const { imports, buf, db } = setup();
-        const h = resolve(imports, buf, collection);
-        const frame = (count: number): number => {
-            let offset = buf.writeUInt32LE(count, 128);
-            for (let i = 0; i < count; i++) {
-                offset = buf.writeUInt32LE(1, offset);
-                buf[offset++] = 65;
-            }
-            return offset - 128;
-        };
-        db.functionKind = DbFunctionKind.Query;
-        expect(imports['data.get_many'](h, 128, frame(32))).toBeGreaterThan(0);
-        expect(imports['data.get_many'](h, 128, frame(33))).toBe(-1020);
-        db.functionKind = DbFunctionKind.Action;
-        expect(imports['data.get_many'](h, 128, frame(64))).toBeGreaterThan(0);
-        expect(imports['data.get_many'](h, 128, frame(65))).toBe(-1020);
-    });
+    it.each([['App/users'], ['App/usernames']])(
+        'get_many: %s enforces request-kind batch limits',
+        (collection) => {
+            const { imports, buf, db } = setup();
+            const h = resolve(imports, buf, collection);
+            const frame = (count: number): number => {
+                let offset = buf.writeUInt32LE(count, 128);
+                for (let i = 0; i < count; i++) {
+                    offset = buf.writeUInt32LE(1, offset);
+                    buf[offset++] = 65;
+                }
+                return offset - 128;
+            };
+            db.functionKind = DbFunctionKind.Query;
+            expect(imports['data.get_many'](h, 128, frame(32))).toBeGreaterThan(0);
+            expect(imports['data.get_many'](h, 128, frame(33))).toBe(-1020);
+            db.functionKind = DbFunctionKind.Action;
+            expect(imports['data.get_many'](h, 128, frame(64))).toBeGreaterThan(0);
+            expect(imports['data.get_many'](h, 128, frame(65))).toBe(-1020);
+        },
+    );
 
     it('membership: add/contains/remove + sorted framed list', () => {
         const { imports, buf } = setup();
@@ -690,7 +696,10 @@ describe('toildb dev emulator (record family)', () => {
         // A derive run drains the log in bounded batches, resuming from the STAGED cursor within the run.
         db.functionKind = DbFunctionKind.Derive;
         db.deriveId = 0;
-        expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 512)).toEqual(['e0', 'e1']);
+        expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 512)).toEqual([
+            'e0',
+            'e1',
+        ]);
         expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 768)).toEqual(['e2']);
         expect(drain(imports, imports['data.events_since'](h, kPtr, kLen, 2), 1024)).toEqual([]); // caught up
 
@@ -704,12 +713,17 @@ describe('toildb dev emulator (record family)', () => {
         const db2 = freshDbState();
         db2.functionKind = DbFunctionKind.Derive;
         db2.deriveId = 0;
-        const imports2 = buildDatabaseImports(ref, db2) as Record<string, (...a: number[]) => number>;
+        const imports2 = buildDatabaseImports(ref, db2) as Record<
+            string,
+            (...a: number[]) => number
+        >;
         const h2 = resolve(imports2, buf, 'App/feed');
         expect(drain(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toEqual([]);
         const [e3P, e3L] = put(buf, 48, 'e3');
         expect(imports2['data.append'](h2, kPtr, kLen, e3P, e3L, 0)).toBe(0);
-        expect(drain(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toEqual(['e3']);
+        expect(drain(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toEqual([
+            'e3',
+        ]);
     });
 
     it('events.since: a derive run that does not commit leaves the durable cursor unmoved (trap-safety)', () => {
@@ -720,7 +734,11 @@ describe('toildb dev emulator (record family)', () => {
             const [eP, eL] = put(buf, 48, `e${String(i)}`);
             expect(imports['data.append'](h, kPtr, kLen, eP, eL, 0)).toBe(0);
         }
-        const count = (imps: Record<string, (...a: number[]) => number>, total: number, at: number): number => {
+        const count = (
+            imps: Record<string, (...a: number[]) => number>,
+            total: number,
+            at: number,
+        ): number => {
             expect(imps['data.take_result'](at, 256)).toBe(total);
             return buf.readUInt32LE(at);
         };
@@ -735,7 +753,10 @@ describe('toildb dev emulator (record family)', () => {
         const db2 = freshDbState();
         db2.functionKind = DbFunctionKind.Derive;
         db2.deriveId = 0;
-        const imports2 = buildDatabaseImports(ref, db2) as Record<string, (...a: number[]) => number>;
+        const imports2 = buildDatabaseImports(ref, db2) as Record<
+            string,
+            (...a: number[]) => number
+        >;
         const h2 = resolve(imports2, buf, 'App/feed');
         expect(count(imports2, imports2['data.events_since'](h2, kPtr, kLen, 10), 512)).toBe(2);
     });
@@ -894,6 +915,23 @@ describe('toildb dev emulator (record family)', () => {
             __resetDbForTests();
             rmSync(dir, { recursive: true, force: true });
         }
+    });
+
+    it('CAS checks caller-observed bytes, including absence versus empty', () => {
+        const { imports, buf } = setup();
+        const handle: number = resolve(imports, buf, 'App/docs');
+        const [kp, kl] = put(buf, 32, 'wallet');
+        const [ap, al] = put(buf, 64, '100');
+        const [bp, bl] = put(buf, 96, '80');
+        const cas: (...args: number[]) => number = imports['data.compare_exchange'];
+        expect(cas(handle, kp, kl, 0, -1, ap, al)).toBe(1);
+        expect(cas(handle, kp, kl, 0, -1, bp, bl)).toBe(0);
+        expect(cas(handle, kp, kl, ap, al, bp, bl)).toBe(1);
+        expect(cas(handle, kp, kl, ap, al, ap, al)).toBe(0);
+        expect(imports['data.get_current'](handle, kp, kl)).toBe(bl);
+        expect(cas(handle, kp, kl, bp, bl, ap, 0)).toBe(1);
+        expect(cas(handle, kp, kl, 0, -1, ap, al)).toBe(0);
+        expect(cas(handle, kp, kl, ap, 0, ap, al)).toBe(1);
     });
 
     it('append_once dedups on eventId; enqueue replaces an existing record', () => {
