@@ -1294,6 +1294,7 @@ export class DevDatabase {
         const ev = readCopy(ref, evPtr, evLen);
         const sv = this.currentSchemaVersion(coll);
         const log = this.events.get(sk);
+        const position = log?.length ?? 0;
         if (log === undefined) {
             this.events.set(sk, [ev]);
             this.eventVersions.set(sk, [sv]);
@@ -1308,7 +1309,7 @@ export class DevDatabase {
             positions = new Map();
             this.eventPositions.set(sk, positions);
         }
-        positions.set(evid, this.events.get(sk)!.length - 1);
+        positions.set(evid, position);
         seen.add(evid);
         this.recordWrite(db, coll);
         return 1;
@@ -1354,7 +1355,9 @@ export class DevDatabase {
         const value = position === undefined ? undefined : this.events.get(sk)?.[position];
         db.lastResult = value === undefined ? null : Buffer.from(value);
         db.lastResultVersion =
-            value === undefined ? -1 : (this.eventVersions.get(sk)?.[position!] ?? 0);
+            value === undefined || position === undefined
+                ? -1
+                : (this.eventVersions.get(sk)?.[position] ?? 0);
         return value === undefined ? ABSENT : value.length;
     }
 

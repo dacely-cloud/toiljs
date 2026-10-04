@@ -457,8 +457,8 @@ export function checkWasmBuilt(exists: boolean): Check {
 
 // --- Typed RPC (@data / @remote / @service) -------------------------------------------------------
 
-/** Minimum toilscript: @rest/@route + RPC codegen + hardened decoders + @data editor decls (TS2395 fix) + RateLimit-enum @ratelimit typing. */
-export const RPC_TOILSCRIPT_MIN = '0.1.27';
+/** Minimum supported toilscript, including database point reads and complete Documents typings. */
+export const RPC_TOILSCRIPT_MIN = '0.1.63';
 
 /** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
 export interface RpcFacts {
