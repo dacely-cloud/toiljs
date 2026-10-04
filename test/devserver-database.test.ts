@@ -21,6 +21,7 @@ import {
 import { parseRouteKinds, routeKindForRequest } from '../src/devserver/db/routeKinds.js';
 import { dbFunctionKindForRequest } from '../src/devserver/runtime/module.js';
 import type { MemoryRef } from '../src/devserver/runtime/host.js';
+import { MAX_VALUE } from '../src/devserver/db/types.js';
 
 const DEFAULT_CATALOG = {
     'App/users': { family: CollectionFamily.Record },
@@ -36,8 +37,8 @@ const DEFAULT_CATALOG = {
     'App/tickets': { family: CollectionFamily.Capacity },
 };
 
-function setupRaw() {
-    const memory = new WebAssembly.Memory({ initial: 1 });
+function setupRaw(initialPages = 1) {
+    const memory = new WebAssembly.Memory({ initial: initialPages });
     const ref: MemoryRef = { memory };
     const db = freshDbState();
     const imports = buildDatabaseImports(ref, db);
@@ -45,9 +46,9 @@ function setupRaw() {
     return { ref, db, imports, buf };
 }
 
-function setup() {
+function setup(initialPages = 1) {
     __setDbCatalogForTests(DEFAULT_CATALOG);
-    return setupRaw();
+    return setupRaw(initialPages);
 }
 
 /** Write bytes at `offset`, returning the `[ptr, len]` pair the imports expect. */
@@ -536,6 +537,91 @@ describe('toildb dev emulator (record family)', () => {
             expect(imports['data.get_many'](h, 128, frame(65))).toBe(-1020);
         },
     );
+
+    it.each(['data.create', 'data.patch', 'data.upsert', 'data.enqueue'])(
+        '%s accepts the encoded value limit and rejects an oversized replacement without writing',
+        (operation) => {
+            const { imports, buf } = setup(65);
+            const h = resolve(imports, buf, 'App/users');
+            const [keyPtr, keyLen] = put(buf, 32, 'photo');
+            const valuePtr = 256;
+            buf.fill(2, valuePtr, valuePtr + MAX_VALUE);
+            if (operation === 'data.patch' || operation === 'data.enqueue')
+                expect(imports['data.create'](h, keyPtr, keyLen, valuePtr, 1, 0)).toBe(0);
+            expect(
+                imports[operation](h, keyPtr, keyLen, valuePtr, MAX_VALUE, 0),
+            ).toBeGreaterThanOrEqual(0);
+
+            buf.fill(3, valuePtr, valuePtr + MAX_VALUE + 1);
+            expect(() => imports[operation](h, keyPtr, keyLen, valuePtr, MAX_VALUE + 1, 0)).toThrow(
+                /2097153 bytes; maximum is 2097152 bytes \(2 MiB\).*Split large files/,
+            );
+            expect(imports['data.get'](h, keyPtr, keyLen)).toBe(MAX_VALUE);
+            const outputPtr = MAX_VALUE + 512;
+            expect(imports['data.take_result'](outputPtr, MAX_VALUE)).toBe(MAX_VALUE);
+            expect(buf.subarray(outputPtr, outputPtr + MAX_VALUE).every((byte) => byte === 2)).toBe(
+                true,
+            );
+        },
+    );
+
+    it.each([
+        ['App/feed', 'data.append', DbFunctionKind.Action],
+        ['App/feed', 'data.append_once', DbFunctionKind.Action],
+        ['App/pages', 'data.view_publish', DbFunctionKind.Derive],
+        ['App/usernames', 'data.unique_claim', DbFunctionKind.Action],
+        ['App/rooms', 'data.membership_add', DbFunctionKind.Action],
+    ] as const)(
+        '%s %s accepts 2 MiB and reports the encoded value cap',
+        (collection, operation, kind) => {
+            const { imports, buf, db } = setup(33);
+            const h = resolve(imports, buf, collection);
+            const [keyPtr, keyLen] = put(buf, 32, 'photo');
+            const args = (length: number) =>
+                operation === 'data.append_once'
+                    ? [h, keyPtr, keyLen, 64, 16, 256, length]
+                    : [h, keyPtr, keyLen, 256, length, 0];
+            db.functionKind = kind;
+            expect(imports[operation](...args(MAX_VALUE))).toBeGreaterThanOrEqual(0);
+            expect(() => imports[operation](...args(MAX_VALUE + 1))).toThrow(
+                /2097153 bytes; maximum is 2097152 bytes \(2 MiB\)/,
+            );
+        },
+    );
+
+    it('compare_exchange bounds both the proposed and expected encoded values', () => {
+        const { imports, buf } = setup(33);
+        const h = resolve(imports, buf, 'App/users');
+        const [keyPtr, keyLen] = put(buf, 32, 'photo');
+        const cas = imports['data.compare_exchange'];
+        expect(cas(h, keyPtr, keyLen, 256, -1, 256, MAX_VALUE)).toBe(1);
+        expect(cas(h, keyPtr, keyLen, 256, MAX_VALUE, 256, MAX_VALUE)).toBe(1);
+        expect(() => cas(h, keyPtr, keyLen, 256, -1, 256, MAX_VALUE + 1)).toThrow(
+            /encoded value is 2097153 bytes/,
+        );
+        expect(() => cas(h, keyPtr, keyLen, 256, MAX_VALUE + 1, 256, 1)).toThrow(
+            /encoded expected value is 2097153 bytes/,
+        );
+        expect(imports['data.get'](h, keyPtr, keyLen)).toBe(MAX_VALUE);
+    });
+
+    it('get_many accepts the encoded keys-frame limit and explains larger batches', () => {
+        const { imports, buf, db } = setup(33);
+        const h = resolve(imports, buf, 'App/users');
+        db.functionKind = DbFunctionKind.Job;
+        let offset = buf.writeUInt32LE(512, 128);
+        for (let i = 0; i < 512; i++) {
+            const length = i === 511 ? 4088 : 4092;
+            offset = buf.writeUInt32LE(length, offset);
+            buf.fill(65, offset, offset + length);
+            offset += length;
+        }
+        expect(offset - 128).toBe(MAX_VALUE);
+        expect(imports['data.get_many'](h, 128, MAX_VALUE)).toBe(516);
+        expect(() => imports['data.get_many'](h, 128, MAX_VALUE + 1)).toThrow(
+            /2097153 bytes; maximum is 2097152 bytes.*Use smaller getMany batches/,
+        );
+    });
 
     it('membership: add/contains/remove + sorted framed list', () => {
         const { imports, buf } = setup();

@@ -49,7 +49,7 @@ ToilScript's `Date.now()` lowers to the exact same host import, so you *can* cal
 - It makes the host boundary (and the single millisecond unit) explicit and easy to find in a codebase.
 - It gives you `nowSeconds()` without writing an open-coded `/ 1000` at every call site.
 
-Both are the same clock, so timing you do in a handler lines up with timing the framework does. For example, the auth system uses `Time.nowSeconds()` for session issue and expiry times.
+Both return the same wall-clock timestamps. For example, the auth system uses `Time.nowSeconds()` for session issue and expiry times.
 
 ## Correct usage: timestamps and TTLs
 
@@ -71,6 +71,25 @@ const expired = Time.nowSeconds() >= expiresAt;
 Do not:
 
 - **Measure elapsed time with it.** Do not use it as a stopwatch to time how long an operation took. Because the wall clock can step backward, `end - start` could come out zero or negative. `Time` answers "what instant is it now?", not "how much time has passed?".
+
+## Upload expiry versus elapsed deadlines
+
+An upload that spans several requests can have a stored **absolute expiry**:
+
+```ts
+// When the upload is created, allow ten minutes to finish it.
+const expiresAtMillis: u64 = Time.nowMillis() + 600000;
+// Persist expiresAtMillis with the upload metadata.
+
+// On a later request, compare instants directly.
+const expired = Time.nowMillis() >= expiresAtMillis;
+```
+
+This is a wall-clock TTL, so a clock correction can make it expire sooner or later. It is suitable for expiring abandoned uploads when that behavior is acceptable. Compare the timestamps directly: subtracting two `u64` timestamps after the clock moves backward can underflow into a very large duration.
+
+An **elapsed execution deadline** answers a different question: how long has this request or operation been running? `Time` cannot reliably enforce it. `Time.nowMillis() + budget` and a loop that checks the wall clock can both be defeated by a backward clock correction, and cannot interrupt work between checks. The current guest host surface does not provide a monotonic clock; the standard-library `process.hrtime()` requires `env.performance.now`, which the toiljs/Dacely hosts do not currently supply.
+
+Measure client upload duration with the browser's monotonic `performance.now()` and apply a client timeout if needed. That timeout controls the client's wait; it does not roll back server writes. Bound server work by bytes, chunk count, and database operations, give chunk requests stable identifiers, and check upload completion after a timed-out request. See [Documents file uploads](../database/documents.md#size-limits-and-file-uploads) and [route execution and transport limits](../concepts/config.md#route-execution-and-transport-limits).
 
 ## Gotchas
 

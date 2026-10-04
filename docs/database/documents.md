@@ -80,6 +80,23 @@ const found: Array<User | null> = AppDb.users.getMany(ids);
 
 `getMany` is a **bounded batch of point reads**, not a scan: the number of keys you may pass is capped by the request budget, and it never walks the whole collection. There is no "get all records" operation on a request path, by design (an unbounded scan could fan out across a huge collection). If you need "the latest N of something," model it as [Events](./events.md) or precompute a [View](./views.md).
 
+In `toiljs dev` and the current production host, one `getMany` call accepts up to **32 keys in a Query**, **64 in an Action**, or **1024 in background function kinds**. Each encoded key may be at most **4096 bytes**, and the complete encoded keys frame (the count, length prefixes, and key bytes) may be at most **2097152 bytes (2 MiB)**. Split a larger list into smaller calls; production also applies cumulative request budgets, so separate requests may be needed for a large job.
+
+### Size limits and file uploads
+
+A stored value may be at most **2097152 encoded bytes (2 MiB)**, including the `@data` message id, field lengths, and other codec overhead. The limit applies in both `toiljs dev` and production. A photo can be stored whole when its encoded record fits this limit; a photo with 2 MiB of raw content will exceed it once wrapped in a record. `create`, `patch`, `upsert`, and `enqueue` all enforce the same limit; changing the write method does not bypass it. Events, View values, Unique owners, and Membership members have the same encoded value cap.
+
+Production also applies host-configured limits to individual database results and the total result bytes in a request. A `getMany` result includes all returned rows and their framing, so its key-count limit does not guarantee that the result fits. The local emulator enforces value, key, and batch-size caps, but does not emulate these result-byte budgets or production DB wait deadlines. Size reads for the deployed host's request budgets as well as the 2 MiB per-value cap.
+
+For files larger than the encoded value or request budgets allow, store the content in external file storage and keep its reference and metadata in Documents, or store chunks under separate keys:
+
+1. Give each upload an id and store each chunk under `(uploadId, chunkIndex)`. Reserve room below 2 MiB for the record's codec overhead, and choose smaller chunks if the deployed request result budget requires them. Check your complete encoded record and result sizes before writing it.
+2. Store upload metadata separately: content type, total byte count, expected chunk count, and an expiry. Bound those counts and the number of chunks processed by any one request.
+3. Validate that every expected chunk arrived before publishing a completed upload. Readers use the completion marker so an interrupted upload is not mistaken for a complete file. Retry chunk writes with `upsert` when replacing that chunk is acceptable.
+4. Read known chunk keys with bounded `getMany` calls or individual `get` calls, keeping every result and the request's total under the deployed budgets. Remove abandoned chunks using background work. Allow for replication delay when verifying newly written chunks from a different cell.
+
+The local HTTP request body limit is a separate **8 MiB** default: accepting an upload body does not make that body a valid database value. See [route execution and transport limits](../concepts/config.md#route-execution-and-transport-limits) and [upload expiry versus elapsed deadlines](../services/time.md#upload-expiry-versus-elapsed-deadlines).
+
 ### Writing: `create` vs `upsert` vs `patch` vs `enqueue`
 
 These four all put a value under a key, but they differ in one important way each. Choosing correctly is the heart of using this family.

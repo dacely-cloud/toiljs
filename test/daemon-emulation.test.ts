@@ -20,6 +20,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { performance } from 'node:perf_hooks';
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -180,6 +181,32 @@ describe('dev daemon emulation', () => {
             // (tick:fast also advanced on its own 1s timer; assert cron fired once.)
             expect(counter(host, 'tickCron')).toBe(1);
         } finally {
+            host.close();
+        }
+    });
+
+    it('measures tick overruns with a monotonic clock when the wall clock moves backward', () => {
+        vi.useFakeTimers();
+        const log = vi.fn();
+        const host = new DaemonHost(coldWasm, { ...DAEMON_CFG, tickBudgetMs: 50 }, 'all', log);
+        host.refresh();
+        const now = vi
+            .spyOn(performance, 'now')
+            .mockImplementationOnce(() => {
+                vi.setSystemTime(new Date(Date.now() - 60_000));
+                return 100;
+            })
+            .mockReturnValueOnce(160);
+        try {
+            vi.advanceTimersByTime(1000);
+            expect(counter(host, 'tickFast')).toBe(1);
+            expect(
+                log.mock.calls.some(([message]) =>
+                    String(message).includes('took 60ms (> tickBudgetMs 50)'),
+                ),
+            ).toBe(true);
+        } finally {
+            now.mockRestore();
             host.close();
         }
     });

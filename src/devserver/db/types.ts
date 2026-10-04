@@ -146,7 +146,8 @@ export const MAX_RESERVATION_TTL_MS = 86_400_000; // 24h
 
 export const MAX_NAME = 512;
 export const MAX_KEY = 4096;
-export const MAX_VALUE = 256 * 1024;
+/** Maximum encoded value bytes, including codec framing; mirrors the production DB ABI. */
+export const MAX_VALUE = 2 * 1024 * 1024;
 export const DEFAULT_FILL_WAIT_MS = 50;
 export const MAX_FILL_WAIT_MS = 60_000;
 

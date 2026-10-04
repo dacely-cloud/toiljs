@@ -246,6 +246,27 @@ export default defineConfig({
 });
 ```
 
+## Route execution and transport limits
+
+`server.daemon.tickBudgetMs` applies only to scheduled daemon ticks. It is an overrun warning emitted after a tick returns; it does not cancel the tick or set a REST/RPC route deadline. There is no route execution timeout setting in `toil.config.ts`.
+
+For `toiljs dev` and the Node self-host (`toiljs start`):
+
+| Limit | Default | What it bounds |
+| --- | --- | --- |
+| HTTP request body | 8 MiB | The body accepted by the front server, before handler dispatch. |
+| HTTP idle timeout | 60 seconds | An idle connection. |
+| HTTP response timeout | 120 seconds | A response stalled while sending under backpressure. |
+| WASM handler execution | No elapsed-time cutoff or gas metering | Synchronous `handle`/`render` execution on its worker. |
+
+The HTTP timeouts do not interrupt a WASM handler that is still running. A busy loop can occupy its worker indefinitely, so a browser abort or reverse-proxy timeout must not be treated as proof that a write was cancelled. The low-level `startDevServer` / `startBuiltServer` APIs accept `maxBodyLength`; the CLI uses the default above.
+
+The Dacely production edge meters execution with a per-request **gas budget** (a charge for WASM instructions and host operations), determined by the host's plan and operator configuration. Gas exhaustion traps the request. Gas is a work budget, not a guaranteed number of milliseconds, and the local Node hosts do not emulate it.
+
+Production asynchronous database waits have their own deadlines: the current defaults are **50 ms for a Query**, **250 ms for an Action**, and **5 seconds for a Job or Derive**. The edge operator configures these through `db_quota`, separately from `toil.config.ts`. They bound DB waits rather than the whole route's execution time, and the local emulator does not enforce them. Deployed transport and database budgets are controlled by the host; there is no universal route time limit in seconds to infer from the daemon setting.
+
+Keep each upload request bounded by bytes, chunk count, and database operations. Continue large jobs across requests or background tasks rather than looping until a wall-clock deadline. See [Documents size limits and file uploads](../database/documents.md#size-limits-and-file-uploads) and [Time](../services/time.md#upload-expiry-versus-elapsed-deadlines).
+
 ## Defaults at a glance
 
 If you write nothing, this is what you get.

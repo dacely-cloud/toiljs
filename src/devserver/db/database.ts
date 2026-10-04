@@ -82,6 +82,19 @@ function readKey(ref: MemoryRef, ptr: number, len: number): Buffer {
     return readCopy(ref, ptr, len);
 }
 
+function checkValueSize(length: number, name = 'value'): void {
+    if (length > MAX_VALUE)
+        throw new Error(
+            `data: encoded ${name} is ${String(length)} bytes; maximum is ${String(MAX_VALUE)} bytes (2 MiB). ` +
+                'Split large files across records or store their content outside ToilDB.',
+        );
+}
+
+function checkKeyValueSize(keyLength: number, valueLength: number, name = 'value'): void {
+    if (keyLength > MAX_KEY) throw new Error('data: key too long');
+    checkValueSize(valueLength, name);
+}
+
 function storeKey(collection: string, key: Buffer): string {
     return collection + '\0' + key.toString('latin1');
 }
@@ -669,7 +682,10 @@ export class DevDatabase {
             CollectionFamily.Unique,
         );
         if (typeof coll === 'number') return coll;
-        if (keysLen > MAX_VALUE) throw new Error('data: keys blob too large');
+        if (keysLen > MAX_VALUE)
+            throw new Error(
+                `data: encoded keys blob is ${String(keysLen)} bytes; maximum is ${String(MAX_VALUE)} bytes (2 MiB). Use smaller getMany batches.`,
+            );
         const table = coll.family === CollectionFamily.View ? this.views : this.store;
         // Keys blob: u32 count, then per key a u32-length-prefixed blob. The shared
         // DataReader is bounds-safe (empty past end), so a malformed/truncated blob
@@ -791,7 +807,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.Create, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+        checkKeyValueSize(keyLen, valLen);
         const key = readKey(ref, keyPtr, keyLen);
         const value = readCopy(ref, valPtr, valLen);
         const idem = readIdem(ref, idemPtr);
@@ -827,7 +843,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.Patch, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || patchLen > MAX_VALUE) throw new Error('data: key/patch too large');
+        checkKeyValueSize(keyLen, patchLen, 'patch');
         const key = readKey(ref, keyPtr, keyLen);
         const v = readCopy(ref, patchPtr, patchLen);
         const idem = readIdem(ref, idemPtr);
@@ -869,7 +885,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.Upsert, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+        checkKeyValueSize(keyLen, valLen);
         const key = readKey(ref, keyPtr, keyLen);
         const value = readCopy(ref, valPtr, valLen);
         const sk = storeKey(coll.name, key);
@@ -974,7 +990,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.UniqueClaim, CollectionFamily.Unique);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+        checkKeyValueSize(keyLen, valLen);
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const owner = readCopy(ref, valPtr, valLen);
         const idem = readIdem(ref, idemPtr)?.toString('hex') ?? '';
@@ -1042,8 +1058,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.MembershipAdd, CollectionFamily.Membership);
         if (typeof coll === 'number') return coll;
-        if (setLen > MAX_KEY || memberLen > MAX_VALUE)
-            throw new Error('data: set/member too large');
+        checkKeyValueSize(setLen, memberLen, 'member');
         const sk = storeKey(coll.name, readKey(ref, setPtr, setLen));
         const member = readCopy(ref, memberPtr, memberLen);
         let set = this.members.get(sk);
@@ -1144,7 +1159,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.ViewPublish, CollectionFamily.View);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/view too large');
+        checkKeyValueSize(keyLen, valLen, 'view');
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         this.views.set(sk, readCopy(ref, valPtr, valLen));
         this.stampVersion(coll, sk);
@@ -1222,7 +1237,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.Append, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
+        checkKeyValueSize(keyLen, evLen, 'event');
         const key = readKey(ref, keyPtr, keyLen);
         const sk = storeKey(coll.name, key);
         const idem = readIdem(ref, idemPtr);
@@ -1267,7 +1282,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.AppendOnce, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || evLen > MAX_VALUE) throw new Error('data: key/event too large');
+        checkKeyValueSize(keyLen, evLen, 'event');
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         const evid = readCopy(ref, evidPtr, evidLen).toString('latin1');
         let seen = this.eventDedup.get(sk);
@@ -1362,8 +1377,9 @@ export class DevDatabase {
             CollectionFamily.Record,
         );
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || valueLen > MAX_VALUE || expectedLen > MAX_VALUE || expectedLen < -1)
-            throw new Error('data: CAS key/value too large');
+        checkKeyValueSize(keyLen, valueLen);
+        checkValueSize(expectedLen, 'expected value');
+        if (expectedLen < -1) throw new Error('data: invalid CAS expected length');
         const key: Buffer = readKey(ref, keyPtr, keyLen);
         const value: Buffer = readCopy(ref, valuePtr, valueLen);
         if (this.uniqueValuesOf(coll, value).length > 0)
@@ -1395,7 +1411,7 @@ export class DevDatabase {
     ): number {
         const coll = collForOp(db, handle, DbOp.Enqueue, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
-        if (keyLen > MAX_KEY || valLen > MAX_VALUE) throw new Error('data: key/value too large');
+        checkKeyValueSize(keyLen, valLen);
         const key = readKey(ref, keyPtr, keyLen);
         const value = readCopy(ref, valPtr, valLen);
         const idem = readIdem(ref, idemPtr);
@@ -1462,7 +1478,7 @@ export class DevDatabase {
         const coll = collForOp(db, handle, DbOp.EventsSince, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        const ckKey = `${db.deriveId} ${sk}`;
+        const ckKey = `${db.deriveId}\0${sk}`;
         const log = this.events.get(sk) ?? [];
         const vers = this.eventVersions.get(sk) ?? [];
         // Resume from this run's staged cursor if `since` was already called for this key, else the durable

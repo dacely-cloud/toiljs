@@ -18,6 +18,7 @@
  */
 
 import fs from 'node:fs';
+import { performance } from 'node:perf_hooks';
 
 import pc from 'picocolors';
 
@@ -334,7 +335,7 @@ export class DaemonHost implements DaemonRuntime {
         }
         if (!this.isLeader()) return; // always true in dev; kept for parity
         this.ticking.add(task.taskIndex);
-        const startedAt = Date.now();
+        const startedAt = performance.now();
         try {
             const ret = this.exports.scheduled_tick(task.taskIndex); // packed-i64
             if (ret < 0n)
@@ -347,7 +348,7 @@ export class DaemonHost implements DaemonRuntime {
             // stream box); the next tick runs normally on the same memory.
             this.log(pc.red(`  ✗ @scheduled ${task.name} trapped: ${String(e)}`) + '\n');
         } finally {
-            const took = Date.now() - startedAt;
+            const took = performance.now() - startedAt;
             if (took > this.cfg.tickBudgetMs)
                 this.log(
                     pc.yellow(

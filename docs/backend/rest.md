@@ -397,6 +397,7 @@ See [RPC and the generated client](./rpc.md#the-rest-fetch-client) for that clie
 - [Data types (`@data`)](./data.md): the request and response body structs, and the JSON vs binary codecs.
 - [Typed RPC](./rpc.md): call your backend from your frontend with end-to-end types (and the generated REST fetch client).
 - [Backend overview](./README.md): the request lifecycle and handler model.
+- [Route execution and transport limits](../concepts/config.md#route-execution-and-transport-limits): handler budgets, HTTP timeouts, and upload size limits.
 - [Cookies](../services/cookies.md), [Caching](../services/caching.md), [Rate limiting](../services/ratelimit.md): response helpers and guards.
 - [Auth](../auth/README.md): protecting routes with `@auth`.
 - [The database](../database/README.md): persisting data between requests.
