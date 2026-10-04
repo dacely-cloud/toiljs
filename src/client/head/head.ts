@@ -6,7 +6,7 @@
  */
 import { useEffect, useLayoutEffect } from 'react';
 
-import { __isSsrBuild } from '../ssr/markers';
+import { __isSsrBuild } from '../ssr/markers.js';
 
 /** A `<meta>` tag. Use `name` or `property` (OpenGraph) as the dedup key; extra attrs pass through. */
 export interface MetaTag {
