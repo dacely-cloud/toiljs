@@ -898,10 +898,11 @@ async function collectDevCss(server: ViteDevServer): Promise<string> {
     return css;
 }
 
-/** The host to show in a clickable URL: a wildcard bind (`0.0.0.0`/`::`/empty) is
- *  not universally openable, so present `localhost` for those; otherwise the host. */
+/** Show `localhost` for the default loopback address and wildcard binds in clickable URLs. */
 function displayHost(host: string): string {
-    return host === '0.0.0.0' || host === '::' || host === '' ? 'localhost' : host;
+    return host === '127.0.0.1' || host === '0.0.0.0' || host === '::' || host === ''
+        ? 'localhost'
+        : host;
 }
 
 /** Whether the bind host exposes the server beyond loopback (worth flagging to the user). */

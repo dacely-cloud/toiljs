@@ -260,11 +260,11 @@ async function main(): Promise<void> {
                 host: flags.host,
                 threads: flags.threads,
             });
-            // A wildcard bind (0.0.0.0/::) is not universally openable, so present a
-            // clickable loopback URL and separately flag that it is exposed.
+            // Show localhost for the default loopback address and wildcard binds,
+            // and separately flag any host that is exposed beyond loopback.
             const wildcard =
                 server.host === '0.0.0.0' || server.host === '::' || server.host === '';
-            const shownHost = wildcard ? 'localhost' : server.host;
+            const shownHost = wildcard || server.host === '127.0.0.1' ? 'localhost' : server.host;
             const exposed =
                 server.host !== '127.0.0.1' && server.host !== 'localhost' && server.host !== '::1';
             process.stdout.write(
