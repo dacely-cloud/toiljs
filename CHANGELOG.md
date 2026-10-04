@@ -2,7 +2,15 @@
 
 ## [v0.0.121] - 2026-10-04
 
-- No changes
+- Require ToilScript 0.1.63 and update the project scaffolder, dependency diagnostics, examples, and lockfiles to the new compiler.
+- Raise development database values and getMany key frames to 2 MiB, with clearer size errors and documentation matching production limits.
+- Support explicit conditional document writes and Events.get / Events.last in the development database host.
+- Display localhost in local server URLs.
+- Add `toiljs generate auth`, consolidate authentication state, and fail closed when authentication reads are unavailable.
+- Prevent failed route loaders from retrying on every render and fix the client runtime import for Node ESM.
+- Use monotonic timing for daemon execution and document route deadlines and time semantics.
+
+Validation: all 563 tests passed, along with framework and example builds, type checks, lint, API documentation generation, and installed-package smoke checks.
 
 
 ## [v0.0.120] - 2026-09-29
