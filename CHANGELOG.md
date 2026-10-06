@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.122] - 2026-10-06
+
+- No changes
+
+
 ## [v0.0.121] - 2026-10-04
 
 - Require ToilScript 0.1.63 and update the project scaffolder, dependency diagnostics, examples, and lockfiles to the new compiler.
