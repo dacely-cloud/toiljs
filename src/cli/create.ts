@@ -179,6 +179,8 @@ function scaffold(
         'toil.config.ts':
             "import { defineConfig } from 'toiljs/compiler';\n\n" +
             'export default defineConfig({\n' +
+            // The app starter's session routes use the identity fields injected by built-in auth.
+            (template === 'app' ? '    server: { auth: true },\n' : '') +
             '    client: {\n' +
             '        // Optimize images at build time (resize/compress imported images).\n' +
             `        images: ${String(images)},\n` +
@@ -868,6 +870,8 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
         // server/ (local experiments, scratch entries) stays out of scaffolded apps.
         const serverAllow = new Set([
             'main.ts',
+            'main.stream.ts',
+            'SsrHelloRender.ts',
             'README.md',
             'tsconfig.json',
             'toil-server-env.d.ts',
@@ -875,6 +879,7 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
             'models',
             'routes',
             'services',
+            'streams',
             'scheduled',
         ]);
         const serverSrc = appServerDir();

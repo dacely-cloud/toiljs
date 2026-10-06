@@ -32,6 +32,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check create after upgrading a cached CLI
+        run: node scripts/test-create-install.mjs
+
       - name: Typecheck and lint with TypeScript 7
         run: |
           npm run typecheck

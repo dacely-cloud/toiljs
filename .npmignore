@@ -1,5 +1,5 @@
 .vs
-docs
+/docs
 src
 !/build
 tests
@@ -29,4 +29,5 @@ test
 coverage
 oxlint.config.ts
 scripts/gen-api-docs.mjs
+scripts/test-create-install.mjs
 build/docs
