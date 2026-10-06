@@ -2,7 +2,11 @@
 
 ## [v0.0.122] - 2026-10-06
 
-- No changes
+- Fix `npx toiljs create` failing with a peer-dependency ERESOLVE when upgrading an existing CLI cache from TypeScript 6 to TypeScript 7. Generated projects still install TypeScript 7, and `toiljs doctor` still checks compiler support.
+- Include the app starter's SSR renderer and stream files, enable its required auth configuration, and preserve its catch-all docs route in the npm package.
+- Add a packaged-install CI check covering cached CLI upgrades, Sass/Tailwind scaffolding, installation, build, typecheck, and lint.
+
+Validation: all 563 tests passed, along with framework and example builds, type checks, lint, API documentation generation, and packaged project checks with npm 11 and npm 12.
 
 
 ## [v0.0.121] - 2026-10-04
