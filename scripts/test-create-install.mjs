@@ -140,6 +140,7 @@ try {
         { cwd: app, encoding: 'utf8' },
     );
     assert.equal(failed.status, 1, failed.stdout + failed.stderr);
+    assert.ok(!failed.stdout.includes('installing Vitest'), failed.stdout + failed.stderr);
     console.log(
         'Cached CLI upgrade, project installation, build, types, lint, unit/browser tests, coverage, and failure exit status passed.',
     );

@@ -31,6 +31,21 @@ describe('native Vitest setup', (): void => {
         expect(JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))).toEqual(pkg);
     });
 
+    it('does not reinstall installed dependencies with private package metadata', async (): Promise<void> => {
+        const root: string = await project();
+        await ensureTesting(root);
+        for (const name of Object.keys(TEST_DEPENDENCIES)) {
+            const installed: string = path.join(root, 'node_modules', name);
+            await fs.mkdir(installed, { recursive: true });
+            await fs.writeFile(
+                path.join(installed, 'package.json'),
+                JSON.stringify({ name, type: 'module', exports: './index.js' }),
+            );
+            await fs.writeFile(path.join(installed, 'index.js'), 'export const installed = true;');
+        }
+        expect(await ensureTesting(root)).toEqual({ install: false, native: true });
+    });
+
     it('preserves custom Vitest configuration, scripts, dependencies and unrelated metadata', async (): Promise<void> => {
         const root: string = await project(
             JSON.stringify({

@@ -77,7 +77,7 @@ export async function ensureTesting(root: string): Promise<TestSetup> {
             install = true;
         }
         try {
-            require.resolve(`${name}/package.json`);
+            require.resolve(name);
         } catch {
             install = true;
         }
