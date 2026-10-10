@@ -7,6 +7,8 @@
 - Export the `toiljs/vitest` preset and `toiljs/vitest/setup` globals, and document testing, browser configuration, coverage reports, and existing-project setup.
 - Upgrade all framework and example dependencies and scaffolded tool versions to their latest stable releases.
 
+Validation: framework and example builds, typechecking, lint, framework tests, API documentation generation, and packaged-project checks passed, including automatic test installation, all three templates, Chrome interaction, V8 reports, repeated runs without reinstalling, and failing-test exit status.
+
 ## [v0.0.122] - 2026-10-06
 
 - Fix `npx toiljs create` failing with a peer-dependency ERESOLVE when upgrading an existing CLI cache from TypeScript 6 to TypeScript 7. Generated projects still install TypeScript 7, and `toiljs doctor` still checks compiler support.
