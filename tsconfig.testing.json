@@ -1,0 +1,13 @@
+{
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "module": "ESNext",
+        "target": "ESNext",
+        "moduleResolution": "bundler",
+        "rootDir": "src/testing",
+        "outDir": "build/testing",
+        "types": ["node"],
+        "tsBuildInfoFile": "build/testing/.tsbuildinfo"
+    },
+    "include": ["src/testing/**/*"]
+}

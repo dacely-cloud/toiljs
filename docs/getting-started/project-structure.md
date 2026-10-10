@@ -29,10 +29,12 @@ These files sit in your project root.
 
 | File | What it is | Runs where |
 | --- | --- | --- |
-| `package.json` | Scripts (`dev`, `build`, `lint`, `typecheck`, `format`) and dependencies (`toiljs`, `react`, `toilscript`, ...) | tooling only |
+| `package.json` | Scripts (`dev`, `build`, `lint`, `typecheck`, `format`, `test`, `test:browser`, `test:coverage`) and dependencies (`toiljs`, `react`, `toilscript`, ...) | tooling only |
 | `toil.config.ts` | **Client and build config.** Uses `defineConfig` to set SEO, images, page transitions, and dev options. | tooling only |
 | `toilconfig.json` | **Server (wasm) build config** for toilscript: the entry file, the output `.wasm` path, and low-level compile options. You rarely edit this. | tooling only |
 | `tsconfig.json` | TypeScript config for the client (`client/`, `shared/`, `emails/`). Extends `toiljs/tsconfig`. | tooling only |
+| `vitest.config.ts` | Unit and real-browser testing preset (`toiljs/vitest`). See [Testing](../frontend/testing.md). | tooling only |
+| `tests/` | Runnable unit and browser test examples. | Node or Chrome |
 | `oxlint.config.ts` | Linting preset (`toiljs/oxlint`). | tooling only |
 | `.prettierrc` | Formatting preset (`toiljs/prettier`). | tooling only |
 | `.prettierignore` | Files Prettier should skip (generated files). | tooling only |

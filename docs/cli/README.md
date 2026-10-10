@@ -20,6 +20,7 @@ npx toiljs doctor
 | --- | --- |
 | `toiljs create [name]` | Scaffold a brand new toiljs app in a new folder. |
 | `toiljs dev` | Start the local development server with hot reload. |
+| `toiljs test` | Run Vitest unit or real-browser tests, installing missing tooling automatically. |
 | `toiljs build` | Produce the optimized production build (client bundle + server WebAssembly). |
 | `toiljs start` | Self-host the built app on a fast production HTTP server. |
 | `toiljs configure` | Turn styling features (Sass/Less/Stylus, Tailwind) on or off in an existing project. |
@@ -81,7 +82,7 @@ npx toiljs create my-app --yes --template app --style css
 
 ### What it sets up
 
-Every new project comes wired for you: the enforced TypeScript 7, Oxlint + tsgolint, and Prettier presets, file-based routing, a `toil.config.ts`, a `toilconfig.json` (the server compiler settings), a `.gitignore`, and the native TypeScript 7 editor settings. It also scaffolds a `server/migrations/` folder (where ToilDB schema migrations live) and, unless you opt out, a set of AI assistant helper files.
+Every new project comes wired for you: the enforced TypeScript 7, Oxlint + tsgolint, Prettier, and Vitest unit/browser/coverage presets, file-based routing, a `toil.config.ts`, a `toilconfig.json` (the server compiler settings), a `.gitignore`, and the native TypeScript 7 editor settings. It also scaffolds a `server/migrations/` folder (where ToilDB schema migrations live) and, unless you opt out, a set of AI assistant helper files.
 
 The scaffolded `package.json` includes these scripts:
 
@@ -92,6 +93,11 @@ The scaffolded `package.json` includes these scripts:
 | `npm run build:server` | `toiljs build --server` |
 | `npm run lint` | `oxlint --type-aware client` |
 | `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | `toiljs test` |
+| `npm run test:watch` | `toiljs test --watch` |
+| `npm run test:browser` | `toiljs test --browser` |
+| `npm run test:all` | `toiljs test --all` |
+| `npm run test:coverage` | `toiljs test --all --coverage` |
 | `npm run format` | `prettier --write ...` |
 
 ### Generated docs and AI-assistant pointers
@@ -116,6 +122,34 @@ Unless you opt out, `toiljs create` also writes small **pointer files** at the p
 | `-y, --yes` | Accept all defaults and skip every prompt. |
 
 For a walkthrough, see [Create a project](../getting-started/create-project.md).
+
+## `toiljs test`
+
+Runs unit tests by default. All templates include the dependencies, configuration,
+and runnable unit and React browser examples. Existing projects get missing tooling
+installed automatically; custom configs, scripts, and existing files are preserved.
+
+```bash
+npx toiljs test
+npx toiljs test --browser
+npx toiljs test --all --coverage
+npx toiljs test --watch
+npx toiljs test Greeting --reporter=verbose
+```
+
+| Flag | Meaning |
+| --- | --- |
+| `--browser` | Run the native browser project with Chrome and WebdriverIO. |
+| `--all` | Run both native projects. Cannot be combined with `--browser`. |
+| `--watch`, `-w` | Watch for changes instead of running once. |
+| `--coverage` | Collect V8 coverage; reports go to `coverage/`. |
+| `--root <dir>` | Run against a project in another directory. |
+
+Other options and file filters pass through to Vitest. An explicit `--project`
+overrides native selection. Custom configs keep their own project selection, with
+`--browser` forwarded to Vitest. Test failures preserve a nonzero shell exit status.
+See [Testing and coverage](../frontend/testing.md) for setup, browser binaries,
+framework globals, coverage reports, and configuration.
 
 ## `toiljs dev`
 

@@ -13,6 +13,7 @@ import { runDoctor } from './doctor.js';
 import { runGenerate } from './generate.js';
 import { notifyIfOutdated } from './notify.js';
 import { runUpdate } from './update.js';
+import { parseTestArgs, runTest } from './test.js';
 import { type Preprocessor, PREPROCESSORS } from './features.js';
 import { accent, banner, bold, danger, dim, success, version } from './ui.js';
 
@@ -150,6 +151,7 @@ function printHelp(): void {
             cmd('create [name]', 'scaffold a new toiljs app'),
             cmd('configure', 'toggle styling features (Sass/Less/Stylus, Tailwind)'),
             cmd('generate auth', 'generate private auth keys and the matching client public key'),
+            cmd('test', 'run Vitest (auto-installs missing test tooling)'),
             cmd('dev', 'start the dev server with HMR'),
             cmd('build', 'build the optimized production bundle'),
             cmd('start', 'self-host the built app (hyper-express / uWS)'),
@@ -160,7 +162,10 @@ function printHelp(): void {
             bold('Options'),
             cmd('--root <dir>', 'project root (default: current directory)'),
             cmd('--port <n>', 'dev/start: listen port (or PORT env / client.port; default 3000)'),
-            cmd('--host <h>', 'dev/start: bind host, e.g. 0.0.0.0 (or HOST env / client.host; default 127.0.0.1)'),
+            cmd(
+                '--host <h>',
+                'dev/start: bind host, e.g. 0.0.0.0 (or HOST env / client.host; default 127.0.0.1)',
+            ),
             cmd('--threads <n>', 'start: production HTTP worker count'),
             cmd('-t, --template', 'create: app | minimal | agent'),
             cmd('--style <name>', 'create/configure: css | sass | less | stylus'),
@@ -168,6 +173,10 @@ function printHelp(): void {
             cmd('--no-ai', 'create: skip AI assistant files (CLAUDE.md, etc.)'),
             cmd('-y, --yes', 'create: accept defaults (non-interactive)'),
             cmd('--no-install', "create: don't install dependencies"),
+            cmd('--browser', 'test: run real Chrome browser tests'),
+            cmd('--all', 'test: run unit and browser projects'),
+            cmd('--coverage', 'test: collect V8 coverage reports'),
+            cmd('--watch', 'test: watch for changes'),
             cmd('--server', 'build: build only the server (regenerate shared/server.ts + wasm)'),
             cmd('--json', 'doctor: machine-readable output'),
             cmd('--fix', 'doctor: auto-fix what it can (typed-RPC wiring)'),
@@ -197,6 +206,10 @@ async function main(): Promise<void> {
     await notifyIfOutdated(flags.root);
 
     switch (command) {
+        case 'test':
+            await runTest(parseTestArgs(rest));
+            break;
+
         case 'create':
             banner();
             await runCreate({
@@ -273,7 +286,9 @@ async function main(): Promise<void> {
                     dim(`   ws channel: ${server.wsPath}`) +
                     (exposed
                         ? '\n' +
-                          dim(`     bound to ${server.host}:${String(server.port)} (exposed beyond loopback)`)
+                          dim(
+                              `     bound to ${server.host}:${String(server.port)} (exposed beyond loopback)`,
+                          )
                         : '') +
                     '\n\n',
             );

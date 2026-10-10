@@ -418,6 +418,7 @@ Set any feature to `false` to turn it off. `client.vite` is merged into the gene
 ```
 toiljs create [name]   scaffold a new app
 toiljs dev             dev server with HMR
+toiljs test            unit/browser tests with automatic tooling installation
 toiljs build           ahead-of-time production build
 toiljs start           self-host the built client + realtime channel
 toiljs configure       toggle styling and asset features on an existing app
@@ -428,6 +429,7 @@ toiljs update          check for and apply dependency updates
 
 - **`create [name]`** runs an interactive wizard: template (`app` or `minimal`), CSS flavor (`css` / `sass` / `less` / `stylus`), Tailwind, which AI assistant files to scaffold, image optimization, git init, and package manager (`npm` / `pnpm` / `yarn` / `bun`). Every prompt has a flag (`--template`, `--style`, `--tailwind`, `--ai`, `--images`, `--git`, `--install`, `--pm`), and `--yes` runs it non-interactively.
 - **`dev`** starts the Vite dev server with HMR and regenerates the route table as you add or remove files. `--port` to override.
+- **`test`** runs Vitest unit tests; `--browser` runs real Chrome tests through WebdriverIO, `--all` runs both, and `--coverage` generates V8 terminal, HTML, JSON, and LCOV reports. All templates include configuration and runnable examples. Missing tooling installs automatically in existing projects. See [Testing and coverage](docs/frontend/testing.md).
 - **`build`** produces the optimized static client: prerendered HTML, `sitemap.xml`, `robots.txt`, `llms.txt`, and compressed images and fonts.
 - **`start`** self-hosts the build and a realtime channel at `/_toil` on hyper-express/uWS. `--port` (default 3000), `--host` (pass `0.0.0.0` to expose on the network), `--threads` (default auto, `1` disables the worker pool).
 - **`configure`** edits an existing app: switch CSS preprocessor, toggle Tailwind or image optimization, and sync dependencies.

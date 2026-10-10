@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -54,6 +54,40 @@ try {
         { cwd: cached, stdio: 'inherit' },
     );
 
+    for (const template of ['minimal', 'agent']) {
+        execFileSync(
+            process.execPath,
+            [
+                path.join(cached, 'node_modules/toiljs/build/cli/index.js'),
+                'create',
+                template,
+                '--template',
+                template,
+                '--yes',
+                '--no-install',
+                '--no-git',
+                '--no-ai',
+            ],
+            { cwd: cached, stdio: 'inherit' },
+        );
+        const created = path.join(cached, template);
+        const manifest = JSON.parse(fs.readFileSync(path.join(created, 'package.json'), 'utf8'));
+        for (const name of [
+            'vitest',
+            '@vitest/browser-webdriverio',
+            '@vitest/coverage-v8',
+            'webdriverio',
+        ])
+            assert.ok(manifest.devDependencies[name], `${template} must include ${name}`);
+        assert.equal(manifest.scripts['test:coverage'], 'toiljs test --all --coverage');
+        for (const file of [
+            'vitest.config.ts',
+            'tests/Greeting.test.ts',
+            'tests/TestCounter.browser.test.tsx',
+        ])
+            assert.ok(fs.existsSync(path.join(created, file)), `${template} must include ${file}`);
+    }
+
     const app = path.join(cached, 'app');
     const appPackage = path.join(app, 'package.json');
     const generated = JSON.parse(fs.readFileSync(appPackage, 'utf8'));
@@ -61,7 +95,14 @@ try {
     // The new version is not on npm yet; install the same artifact in the generated app.
     generated.dependencies.toiljs = artifact;
     fs.writeFileSync(appPackage, JSON.stringify(generated, null, 4) + '\n');
-    npm(['install', '--no-audit', '--no-fund'], app);
+    console.log(
+        'Running native unit tests before the first build, automatically installing missing tooling.',
+    );
+    execFileSync(
+        process.execPath,
+        [path.join(cached, 'node_modules/toiljs/build/cli/index.js'), 'test', '--root', app],
+        { cwd: app, stdio: 'inherit' },
+    );
     const compiler = JSON.parse(
         fs.readFileSync(path.join(app, 'node_modules/typescript/package.json'), 'utf8'),
     );
@@ -69,7 +110,39 @@ try {
     npm(['run', 'build'], app);
     npm(['run', 'typecheck'], app);
     npm(['run', 'lint', '--', '--format', 'default', '--threads', '1'], app);
-    console.log('Cached CLI upgrade, project installation, build, typecheck, and lint passed.');
+    // Linux root CI needs explicit sandbox flags; workstation runs add its hardware GPU flags.
+    const chromeArgs = process.env.TOIL_TEST_CHROME_ARGS
+        ? JSON.parse(process.env.TOIL_TEST_CHROME_ARGS)
+        : process.platform === 'linux' && process.getuid?.() === 0
+          ? ['--no-sandbox']
+          : [];
+    fs.writeFileSync(
+        path.join(app, 'vitest.config.ts'),
+        `import { defineTestConfig } from 'toiljs/vitest';\nexport default defineTestConfig({ chromeArgs: ${JSON.stringify(chromeArgs)} });\n`,
+    );
+    npm(['run', 'test:coverage'], app);
+    const report = JSON.parse(
+        fs.readFileSync(path.join(app, 'coverage/coverage-final.json'), 'utf8'),
+    );
+    const covered = Object.keys(report);
+    assert.ok(covered.some((file) => file.endsWith('/client/lib/Greeting.ts')));
+    assert.ok(covered.some((file) => file.endsWith('/client/components/TestCounter.tsx')));
+    assert.ok(fs.existsSync(path.join(app, 'coverage/index.html')));
+    assert.ok(fs.existsSync(path.join(app, 'coverage/lcov.info')));
+    // Failed assertions must fail the native CLI so CI cannot report a false success.
+    fs.writeFileSync(
+        path.join(app, 'tests/Failure.test.ts'),
+        `import { expect, test } from 'vitest';\ntest('failure reaches the shell', () => { expect(1).toBe(2); });\n`,
+    );
+    const failed = spawnSync(
+        process.execPath,
+        [path.join(app, 'node_modules/toiljs/build/cli/index.js'), 'test', 'Failure'],
+        { cwd: app, encoding: 'utf8' },
+    );
+    assert.equal(failed.status, 1, failed.stdout + failed.stderr);
+    console.log(
+        'Cached CLI upgrade, project installation, build, types, lint, unit/browser tests, coverage, and failure exit status passed.',
+    );
 } finally {
     fs.rmSync(temp, { recursive: true, force: true });
 }

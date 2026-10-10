@@ -35,6 +35,7 @@ import {
     TAILWIND_ENTRY,
 } from './features.js';
 import { run } from './proc.js';
+import { TEST_DEPENDENCIES, TEST_SCRIPTS, testingFiles } from './testing.js';
 import { accent, dim, version } from './ui.js';
 import { isPackageManager, isValidName, resolveProjectDir } from './validate.js';
 
@@ -142,12 +143,13 @@ function scaffold(
 ): Record<string, string> {
     const toilVersion = version();
     const devDependencies: Record<string, string> = {
+        ...TEST_DEPENDENCIES,
         '@types/react': '^19.3.0',
         '@types/react-dom': '^19.3.0',
-        oxlint: '^1.83.0',
-        'oxlint-tsgolint': '^7.0.2001',
-        prettier: '^3.9.6',
-        toilscript: '^0.1.63',
+        oxlint: '^1.87.0',
+        'oxlint-tsgolint': '^7.0.2003',
+        prettier: '^3.9.9',
+        toilscript: '>=0.1.63',
         typescript: '^7.0.2',
     };
     for (const dep of requiredPackages(features).sort()) {
@@ -158,6 +160,7 @@ function scaffold(
         private: true,
         type: 'module',
         scripts: {
+            ...TEST_SCRIPTS,
             start: 'toiljs start',
             dev: 'toiljs dev',
             build: 'toiljs build',
@@ -175,6 +178,7 @@ function scaffold(
     };
 
     const files: Record<string, string> = {
+        ...testingFiles(),
         'package.json': JSON.stringify(pkg, null, 4) + '\n',
         'toil.config.ts':
             "import { defineConfig } from 'toiljs/compiler';\n\n" +
@@ -192,16 +196,16 @@ function scaffold(
             '    "compilerOptions": {\n' +
             '        "paths": { "shared/*": ["./shared/*"] }\n' +
             '    },\n' +
-            '    "include": ["client", "shared", "emails", "toil.config.ts", "toil-env.d.ts", "toil-routes.d.ts"]\n' +
+            '    "include": ["client", "shared", "emails", "tests", "vitest.config.ts", "toil.config.ts", "toil-env.d.ts", "toil-routes.d.ts"]\n' +
             '}\n',
         'oxlint.config.ts': "import toiljs from 'toiljs/oxlint';\n\nexport default toiljs;\n",
         '.prettierrc': '"toiljs/prettier"\n',
         // Generated files don't need formatting. (toilscript server decorators like @main /
         // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
         '.prettierignore':
-            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/_ssr/\nserver/toil-server-env.d.ts\n',
+            'node_modules\nbuild\n.toil\ncoverage\n.vitest\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/_ssr/\nserver/toil-server-env.d.ts\n',
         '.gitignore':
-            'node_modules\nbuild\n.toil\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_ssr/\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
+            'node_modules\nbuild\n.toil\ncoverage\n.vitest\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_ssr/\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
         // Use the native TypeScript 7 language server.
         '.vscode/settings.json':
             JSON.stringify(
@@ -288,6 +292,21 @@ function scaffold(
             '## Build',
             '',
             '    npm run build',
+            '',
+            '## Test',
+            '',
+            'Vitest, real-browser testing, and V8 coverage are installed with the project.',
+            'Start with `tests/Greeting.test.ts` and `tests/TestCounter.browser.test.tsx`.',
+            '',
+            '    npm test                 # unit tests',
+            '    npm run test:watch       # unit tests in watch mode',
+            '    npm run test:browser     # real Chrome tests',
+            '    npm run test:all         # unit and browser tests',
+            '    npm run test:coverage    # both suites with V8 coverage',
+            '',
+            'Coverage reports are in `coverage/` (HTML, JSON, and LCOV).',
+            'Chrome and its driver are managed by WebdriverIO on the first browser run.',
+            'See `.toil/docs/frontend/testing.md` for configuration, mocks, and CI.',
             '',
             '## Editor setup',
             '',
@@ -930,6 +949,8 @@ export async function runCreate(opts: CreateOptions): Promise<void> {
     if (!install) steps.push('npm install');
     steps.push(`${accent('npm run dev')}   ${dim('start the dev server')}`);
     steps.push(`${accent('npm run build')} ${dim('build for production')}`);
+    steps.push(`${accent('npm test')} ${dim('run the starter unit tests')}`);
+    steps.push(`${accent('npm run test:browser')} ${dim('run the starter browser test')}`);
     steps.push('Install the Oxc plugin for VS Code or WebStorm (README.md → Editor setup)');
     steps.push('WebStorm: Settings → Tools → Oxlint → Enable type aware rules');
     note(steps.map((l) => dim('  ') + l).join('\n'), 'Next steps');

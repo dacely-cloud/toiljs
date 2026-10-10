@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.123] - 2026-10-10
+
+- Add native Vitest unit tests, real Chrome component tests through WebdriverIO, and V8 coverage to every project template, including runnable examples and test scripts.
+- Add `toiljs test` with automatic installation of missing testing dependencies, project selection, watch mode, argument forwarding, and CI failure exit codes. Preserve existing configurations and files.
+- Export the `toiljs/vitest` preset and `toiljs/vitest/setup` globals, and document testing, browser configuration, coverage reports, and existing-project setup.
+- Upgrade all framework and example dependencies and scaffolded tool versions to their latest stable releases.
+
 ## [v0.0.122] - 2026-10-06
 
 - Fix `npx toiljs create` failing with a peer-dependency ERESOLVE when upgrading an existing CLI cache from TypeScript 6 to TypeScript 7. Generated projects still install TypeScript 7, and `toiljs doctor` still checks compiler support.

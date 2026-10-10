@@ -75,7 +75,7 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
   [Rendering and SSR](./frontend/rendering.md), [Styling](./frontend/styling.md),
   [Images](./frontend/images.md), [Metadata and SEO](./frontend/metadata.md),
   [Fetching data](./frontend/data-fetching.md), [Scripts](./frontend/scripts.md),
-  [Search](./frontend/search.md), [The Toil global (reference)](./frontend/toil-global.md).
+  [Testing and coverage](./frontend/testing.md), [Search](./frontend/search.md), [The Toil global (reference)](./frontend/toil-global.md).
 
 **Build the backend**
 - [Backend overview](./backend/README.md), [HTTP routes (`@rest`)](./backend/rest.md),

@@ -94,6 +94,7 @@ Read them in roughly this order:
 - **[Fetching data](./data-fetching.md)**: call your backend with the generated typed clients, submit forms, and read who is logged in.
 - **[Scripts](./scripts.md)**: load external or inline `<script>` tags with a loading strategy, using `Toil.Script`.
 - **[Search](./search.md)**: the built-in, statically-baked page search and command palette (`usePageSearch`).
+- **[Testing and coverage](./testing.md)**: unit tests, real browser tests, framework globals, and V8 reports.
 - **[The Toil global (reference)](./toil-global.md)**: a complete, grouped list of everything on the `Toil` object.
 
 ## Related

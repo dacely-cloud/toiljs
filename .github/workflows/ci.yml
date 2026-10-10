@@ -195,6 +195,10 @@ jobs:
           TAG="${{ github.ref_name }}"
           DATE=$(date +%Y-%m-%d)
           NEW_HEADER="## [$TAG] - $DATE"
+          # Releases with reviewed notes already in the package must not duplicate the entry.
+          if [ -f CHANGELOG.md ] && grep -Fq "## [$TAG] - " CHANGELOG.md; then
+            exit 0
+          fi
 
           # Write changelog content to temp file using env var (avoids shell escaping)
           printf '%s\n' "$CHANGELOG_CONTENT" > /tmp/new_entry.md
