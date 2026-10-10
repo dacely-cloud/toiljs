@@ -59,7 +59,8 @@ Pass `root`, `headless`, `chromeArgs`, `unitInclude`, or `browserInclude` to
 for other settings, such as coverage thresholds or additional aliases. A custom
 configuration can import `toiljs/vitest/setup` as a setup file to register globals.
 
-WebdriverIO discovers Chrome and manages ChromeDriver automatically. To use specific
+The preset uses WebDriver Classic for compatibility with Vitest iframe control on
+WebdriverIO 10. WebdriverIO discovers Chrome and manages ChromeDriver automatically. To use specific
 binaries, set `TOIL_TEST_BROWSER_BINARY` and `TOIL_TEST_CHROMEDRIVER` independently.
 Browser tests need Chrome and its OS libraries installed; downloads need network
 access on the first run. A Linux container running as root may need explicit

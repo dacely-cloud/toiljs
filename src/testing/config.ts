@@ -74,6 +74,8 @@ export function defineTestConfig(options: TestConfigOptions = {}): UserConfig {
                             provider: webdriverio({
                                 logLevel: 'error',
                                 capabilities: {
+                                    // Vitest's provider switches its test iframe with the Classic API.
+                                    'wdio:enforceWebDriverClassic': true,
                                     ...(driverBinary
                                         ? { 'wdio:chromedriverOptions': { binary: driverBinary } }
                                         : {}),

@@ -136,4 +136,5 @@ it('ships separated projects, toil globals, React and comprehensive coverage def
     expect(serialized).toContain('browser');
     expect(serialized).toContain('setup.js');
     expect(serialized).toContain('webdriverio');
+    expect(serialized).toContain('\"wdio:enforceWebDriverClassic\":true');
 });
