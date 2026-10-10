@@ -7,6 +7,8 @@
 - Include tests in plain JSON TypeScript configs, ignore test reports, recognize Bun text lockfiles in doctor, and keep native test updates on supported majors with matching Vitest/coverage releases.
 - Extend packaged-install validation to verify the Testing report and read-only doctor behavior.
 
+Validation: all 587 framework tests passed, along with build, typecheck, lint, and packaged checks for doctor diagnostics, automatic unit/browser testing, V8 reports, repeated runs, and failure exit status.
+
 ## [v0.0.123] - 2026-10-10
 
 - Add native Vitest unit tests, real Chrome component tests through WebdriverIO, and V8 coverage to every project template, including runnable examples and test scripts.
