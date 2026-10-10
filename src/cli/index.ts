@@ -179,7 +179,7 @@ function printHelp(): void {
             cmd('--watch', 'test: watch for changes'),
             cmd('--server', 'build: build only the server (regenerate shared/server.ts + wasm)'),
             cmd('--json', 'doctor: machine-readable output'),
-            cmd('--fix', 'doctor: auto-fix what it can (typed-RPC wiring)'),
+            cmd('--fix', 'doctor: repair testing, compiler, and server wiring'),
             cmd('--target <t>', 'update: latest | minor | patch | newest | greatest'),
             cmd('-v, --version', 'print the toiljs version'),
             '',

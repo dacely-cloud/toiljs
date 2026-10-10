@@ -16,6 +16,7 @@ vi.mock('@clack/prompts', () => ({
     spinner: () => ({ start: vi.fn(), stop: vi.fn() }),
 }));
 import { runUpdate } from '../src/cli/update';
+import { TEST_DEPENDENCIES } from '../src/cli/testing';
 
 const dirs: string[] = [];
 function project(deps: Record<string, string>) {
@@ -34,6 +35,7 @@ beforeEach(() => {
     mocks.run.mockResolvedValue(undefined);
 });
 afterEach(() => {
+    process.exitCode = 0;
     for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
 });
 
@@ -46,7 +48,11 @@ describe('update compiler policy', () => {
             stderr: '',
         });
         await runUpdate({ cwd: root, yes: true });
-        expect(read(root).devDependencies).toEqual({ typescript: '^7.0.2', react: '^19.3.0' });
+        expect(read(root).devDependencies).toEqual({
+            typescript: '^7.0.2',
+            react: '^19.3.0',
+            ...TEST_DEPENDENCIES,
+        });
         expect(mocks.capture).toHaveBeenCalledTimes(1);
         expect(mocks.run).toHaveBeenCalledExactlyOnceWith('npm', ['install'], root, {
             stdio: 'inherit',
@@ -78,5 +84,65 @@ describe('update compiler policy', () => {
         await expect(runUpdate({ cwd: root })).rejects.toThrow('Select the TypeScript 7 migration');
         expect(read(root).devDependencies.react).toBe('^19.2.0');
         expect(mocks.run).not.toHaveBeenCalled();
+    });
+});
+
+describe('update testing setup', () => {
+    it('sets up and installs testing even when dependency ranges are already current', async () => {
+        const root = project({ typescript: '^7.0.2' });
+        mocks.capture.mockResolvedValue({ code: 0, stdout: '{}', stderr: '' });
+        await runUpdate({ cwd: root, yes: true });
+        expect(read(root).devDependencies).toMatchObject(TEST_DEPENDENCIES);
+        expect(fs.existsSync(path.join(root, 'vitest.config.ts'))).toBe(true);
+        expect(mocks.run).toHaveBeenCalledExactlyOnceWith('npm', ['install'], root, {
+            stdio: 'inherit',
+        });
+    });
+    it('leaves testing untouched when updates are declined', async () => {
+        const root = project({ typescript: '^7.0.2', react: '^19.2.0' });
+        mocks.capture.mockResolvedValue({ code: 0, stdout: '{"react":"^19.3.0"}', stderr: '' });
+        mocks.multiselect.mockResolvedValue([]);
+        await runUpdate({ cwd: root });
+        expect(read(root).devDependencies.vitest).toBeUndefined();
+        expect(fs.existsSync(path.join(root, 'vitest.config.ts'))).toBe(false);
+        expect(mocks.run).not.toHaveBeenCalled();
+    });
+    it('withholds unsupported test runner majors and couples Vitest to coverage updates', async () => {
+        const root = project({
+            typescript: '^7.0.2',
+            vitest: '^5.0.3',
+            '@vitest/coverage-v8': '^5.0.3',
+        });
+        mocks.capture.mockResolvedValue({
+            code: 0,
+            stdout: '{"vitest":"^5.1.0","@vitest/coverage-v8":"^5.1.0","webdriverio":"^11.0.0"}',
+            stderr: '',
+        });
+        mocks.multiselect.mockResolvedValue(['vitest']);
+        await runUpdate({ cwd: root });
+        expect(read(root).devDependencies.vitest).toBe('^5.1.0');
+        expect(read(root).devDependencies['@vitest/coverage-v8']).toBe('^5.1.0');
+        expect(read(root).devDependencies.webdriverio).toBe('^10.0.2');
+    });
+    it('holds back a future Vitest major instead of breaking the native preset', async () => {
+        const root = project({ typescript: '^7.0.2', ...TEST_DEPENDENCIES });
+        mocks.capture.mockResolvedValue({
+            code: 0,
+            stdout: '{"vitest":"^6.0.0","@vitest/coverage-v8":"^6.0.0"}',
+            stderr: '',
+        });
+        await runUpdate({ cwd: root, yes: true });
+        expect(read(root).devDependencies.vitest).toBe(TEST_DEPENDENCIES.vitest);
+        expect(read(root).devDependencies['@vitest/coverage-v8']).toBe(
+            TEST_DEPENDENCIES['@vitest/coverage-v8'],
+        );
+    });
+
+    it('reports failed testing installation through the shell exit code', async () => {
+        const root = project({ typescript: '^7.0.2' });
+        mocks.capture.mockResolvedValue({ code: 0, stdout: '{}', stderr: '' });
+        mocks.run.mockRejectedValue(new Error('installer failed'));
+        await runUpdate({ cwd: root, yes: true });
+        expect(process.exitCode).toBe(1);
     });
 });

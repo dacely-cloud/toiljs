@@ -9,6 +9,8 @@ import path from 'node:path';
 
 import { cancel, intro, isCancel, multiselect, note, outro, spinner } from '@clack/prompts';
 
+import { ensureTesting, findTestConfiguration, type TestSetup } from './test-setup.js';
+import { isSupportedTestingRange } from './testing-versions.js';
 import { isSupportedTypeScriptRange } from './typescript.js';
 import { MIGRATIONS_README } from './create.js';
 import { capture, run } from './proc.js';
@@ -131,7 +133,7 @@ function noteWithheld(names: readonly string[]): void {
         names.map((n) => `${dim('-')} ${n}`).join('\n') +
             '\n\n' +
             dim(
-                'Held back: toiljs supports TypeScript 7 only. Compiler updates must stay within 7.x.',
+                'Held back: compiler updates must stay within TypeScript 7; native testing updates must stay within the supported Vitest and WebdriverIO versions.',
             ),
         warn('Not upgraded'),
     );
@@ -181,7 +183,13 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
         return;
     }
     const upgraded = parseNcuJson(res.stdout);
-    const withheld = withheldUpgrades(upgraded);
+    const testConfig = await findTestConfiguration(root);
+    const withheld = [
+        ...withheldUpgrades(upgraded),
+        ...Object.keys(upgraded).filter(
+            (name) => testConfig.native && !isSupportedTestingRange(name, upgraded[name]),
+        ),
+    ];
     for (const name of withheld) delete upgraded[name];
     // Even --target patch must offer a migration if the current compiler is unsupported.
     if (!isSupportedTypeScriptRange(currentDeps.typescript ?? '') && !upgraded.typescript) {
@@ -201,7 +209,20 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
     if (rows.length === 0) {
         s.stop('Everything is up to date');
         if (withheld.length > 0) noteWithheld(withheld);
-        outro(success('Nothing to update.'));
+        if (opts.yes) {
+            const testing: TestSetup = await ensureTesting(root, true);
+            if (testing.changed.length) note(testing.changed.join('\n'), 'Testing setup');
+            if (testing.skipped.length) note(testing.skipped.join('\n'), 'Manual changes');
+            if (testing.install && !(await installUpdates(pm.name, root))) return;
+            outro(
+                success(testing.changed.length ? 'Testing setup updated.' : 'Nothing to update.'),
+            );
+        } else
+            outro(
+                success(
+                    'Nothing to update. Use `toiljs doctor --fix` or `toiljs update --yes` to add missing testing setup.',
+                ),
+            );
         return;
     }
     s.stop(`${String(rows.length)} update${rows.length === 1 ? '' : 's'} available`);
@@ -240,6 +261,18 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
         return;
     }
 
+    // Vitest and V8 coverage require matching releases even when the picker selects only one.
+    if (testConfig.native) {
+        const paired: string | undefined = selected.find(
+            (name) => name === 'vitest' || name === '@vitest/coverage-v8',
+        );
+        if (paired) {
+            const counterpart: string = paired === 'vitest' ? '@vitest/coverage-v8' : 'vitest';
+            upgraded[counterpart] = upgraded[paired];
+            if (!selected.includes(counterpart)) selected.push(counterpart);
+        }
+    }
+
     // Apply the exact reviewed versions; a second ncu query could select a different major.
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as Record<string, unknown>;
     const targetTypeScript = selected.includes('typescript')
@@ -272,24 +305,34 @@ export async function runUpdate(opts: UpdateOptions): Promise<void> {
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
     s.stop('package.json updated');
 
+    const testing: TestSetup = await ensureTesting(root, true);
+    if (testing.changed.length) note(testing.changed.join('\n'), 'Testing setup');
+    if (testing.skipped.length) note(testing.skipped.join('\n'), 'Manual changes');
+
     // Run the install with VISIBLE output (so a failure is diagnosable — npm
     // prints the real error) and handle a non-zero exit gracefully, instead of
     // leaving the spinner spinning forever on a failed install.
-    note(dim(`Running ${pm.name} install…`), 'Install');
-    try {
-        await run(pm.name, ['install'], root, { stdio: 'inherit' });
-    } catch {
-        outro(
-            danger(
-                `${pm.name} install failed — package.json was updated to the new versions, but the ` +
-                    `install did not finish. Fix the error printed above, then run \`${pm.name} install\`.`,
-            ),
-        );
-        process.exitCode = 1;
-        return;
-    }
+    if (!(await installUpdates(pm.name, root))) return;
 
     outro(
         success(`Updated ${String(selected.length)} package${selected.length === 1 ? '' : 's'}.`),
     );
+}
+
+/** Install once, with visible output and a failing exit status when the package manager fails. */
+async function installUpdates(pm: string, root: string): Promise<boolean> {
+    note(dim(`Running ${pm} install…`), 'Install');
+    try {
+        await run(pm, ['install'], root, { stdio: 'inherit' });
+    } catch {
+        outro(
+            danger(
+                `${pm} install failed — package.json was updated to the new versions, but the ` +
+                    `install did not finish. Fix the error printed above, then run \`${pm} install\`.`,
+            ),
+        );
+        process.exitCode = 1;
+        return false;
+    }
+    return true;
 }

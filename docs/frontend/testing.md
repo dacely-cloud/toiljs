@@ -101,3 +101,21 @@ With the native preset, `toiljs test` selects `unit`, `--browser` selects `brows
 and `--all` runs both. An explicit `--project` selects your requested project.
 A custom configuration keeps its own project selection; `--browser` is forwarded
 to Vitest. Failed tests return a nonzero exit status for CI.
+
+## Diagnose and repair setup
+
+`npx toiljs doctor` has a Testing report covering actual installed versions, declared
+ranges, matching Vitest and coverage releases, config presence, and scripts.
+Unconfigured legacy projects get warnings; broken configured packages fail the check.
+`--json` includes the same Testing group for CI.
+
+`npx toiljs doctor --fix` repairs missing tooling, scripts, config, and examples;
+adds tests to plain JSON TypeScript includes; and ignores test reports. It preserves
+custom configs, existing files, nonempty scripts, and explicit dependency sources.
+Install afterward, or run `npx toiljs test` to install missing packages. Doctor never
+launches a browser or installs packages itself.
+
+`npx toiljs update --yes` includes testing setup and installation even when no package
+updates are available. Native updates retain supported runner/browser majors and
+keep Vitest and V8 coverage on matching releases. Interactive updates add setup only
+when updates are accepted.

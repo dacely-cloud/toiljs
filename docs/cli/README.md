@@ -305,12 +305,13 @@ The report is grouped:
 | **Environment** | Node.js version, that `toiljs` and its peer dependencies (React and so on) are installed and new enough, that TypeScript 7 is installed and its declared range stays within 7.x, that Oxlint and tsgolint are configured for type-aware linting, that a lockfile exists, and that your scripts do not wrap `toiljs` in a stray `npx`. |
 | **Project + routing** | The `client/` and `routes/` folders exist, `index.html` has a `<div id="root">`, your app entry calls `mount(...)` with the `slots` argument, at least one route exists, no two routes collide on the same URL, and no asset paths are written in a way that 404s on nested routes. |
 | **Config + assets** | Your `toil.config` loads, the base path is well formed, `client.seo` has a `url` if SEO is configured, and your styling packages are actually installed. |
+| **Testing** | Actual installed Vitest, browser provider, WebdriverIO, and V8 coverage versions; compatible declared ranges; matching Vitest/coverage releases; config presence and unit/browser/watch/coverage scripts. Missing testing is a warning for legacy apps, while broken configured tooling fails. |
 | **Server / WASM** | The `toilconfig.json` and its entry files exist, `toilscript` is installed, a compiled `.wasm` exists, the typed-RPC wiring is in place, your `@rest` controllers are actually dispatched, the Prettier and editor plugins are wired, and a `migrations/` folder exists. |
 | **Security** | If your server uses auth, whether `AUTH_SESSION_SECRET` is set (an unset secret means sessions fall back to a published dev key, which is forgeable). |
 
 ### What `--fix` repairs
 
-`--fix` migrates unsupported or missing TypeScript declarations to `^7.0.2` and enables the native TypeScript editor in any project. The rest only touch a server project (one with a `toilconfig.json`), repairing the wiring that is easy to get wrong or that older projects predate:
+`--fix` migrates unsupported or missing TypeScript declarations to `^7.0.2`, enables the native TypeScript editor, and repairs testing setup in any project. Testing repairs add missing packages and scripts, migrate unsupported registry versions, align Vitest and coverage, add the preset and examples when there is no custom config, include tests in plain JSON TypeScript configs, and ignore test reports. Existing custom configs, nonempty scripts, explicit package sources, and existing files are preserved; commented TypeScript configs get a manual repair note. It does not install packages or launch a browser. The rest only touch a server project (one with a `toilconfig.json`), repairing the wiring that is easy to get wrong or that older projects predate:
 
 - adds `--rpcModule shared/server.ts` to your server build scripts,
 - adds `shared` and the `shared/*` path alias to `tsconfig.json`,
@@ -327,12 +328,12 @@ It is idempotent: it only writes files it actually needs to change, and it tells
 | Flag | Meaning |
 | --- | --- |
 | `--json` | Emit machine-readable JSON instead of the human report (the banner is suppressed so stdout stays valid JSON). |
-| `--fix` | Repair the server wiring in place, as above. |
+| `--fix` | Repair testing, TypeScript, editor, and server wiring in place, as above. |
 | `--root <dir>` | Run against a project in another directory. |
 
 ## `toiljs update`
 
-A friendly wrapper over `npm-check-updates`. It checks the registry for newer versions of your dependencies, groups them by how big the jump is (major, minor, patch), lets you pick which to apply (or `-y` to apply all), bumps `package.json`, and runs your package manager's install. It also makes sure your `server/migrations/` folder exists (older projects predate it). `npm-check-updates` runs via `npx`, so it never becomes a permanent dependency of your project.
+A friendly wrapper over `npm-check-updates`. It checks the registry for newer versions of your dependencies, groups them by how big the jump is (major, minor, patch), lets you pick which to apply (or `-y` to apply all), bumps `package.json`, and runs your package manager's install. It also makes sure your `server/migrations/` folder exists and adds missing testing setup when updates are applied. `--yes` repairs and installs missing testing even when no dependency upgrades are available. Custom configs and scripts are preserved; declining updates leaves testing untouched. Native test updates stay within supported versions, and selecting either Vitest or V8 coverage updates both to a matching release. `npm-check-updates` runs via `npx`, so it never becomes a permanent dependency of your project.
 
 TypeScript updates must stay within supported **7.x** releases. Older and future compiler majors,
 unbounded ranges, and prereleases are withheld. An older project is offered the latest 7.x migration

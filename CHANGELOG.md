@@ -1,5 +1,12 @@
 # Changelog
 
+## [v0.0.124] - 2026-10-10
+
+- Add a dedicated Testing group to `toiljs doctor`, checking actual installed runner, browser, driver, and coverage versions, compatible ranges, matching Vitest/coverage releases, configuration, and scripts. Unconfigured legacy apps get warnings; broken configured tooling fails.
+- Add testing repairs to `doctor --fix` and accepted `toiljs update` runs, including setup when `update --yes` has no package upgrades. Preserve custom configs, existing files, nonempty scripts, and explicit package sources.
+- Include tests in plain JSON TypeScript configs, ignore test reports, recognize Bun text lockfiles in doctor, and keep native test updates on supported majors with matching Vitest/coverage releases.
+- Extend packaged-install validation to verify the Testing report and read-only doctor behavior.
+
 ## [v0.0.123] - 2026-10-10
 
 - Add native Vitest unit tests, real Chrome component tests through WebdriverIO, and V8 coverage to every project template, including runnable examples and test scripts.

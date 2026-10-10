@@ -1,23 +1,10 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { run } from './proc.js';
 import { detectPackageManager } from './update.js';
-import { TEST_DEPENDENCIES, TEST_SCRIPTS, testingFiles } from './testing.js';
-
-/** Existing package metadata is retained when adding missing test tooling. */
-interface TestPackage {
-    scripts?: Record<string, string>;
-    dependencies?: Record<string, string>;
-    devDependencies?: Record<string, string>;
-}
-
-/** Result used to decide whether installation and the native project filter are needed. */
-export interface TestSetup {
-    readonly install: boolean;
-    readonly native: boolean;
-}
+import { ensureTesting, type TestSetup } from './test-setup.js';
+export { ensureTesting } from './test-setup.js';
 
 /** Options parsed separately so test file filters and Vitest flags pass through unchanged. */
 export interface TestCommandOptions {
@@ -26,74 +13,6 @@ export interface TestCommandOptions {
     readonly all: boolean;
     readonly watch: boolean;
     readonly arguments: readonly string[];
-}
-
-/** Files are created exclusively; existing user configuration, tests, and helpers are preserved. */
-async function writeMissing(root: string, file: string, content: string): Promise<void> {
-    const target: string = path.join(root, file);
-    await fs.mkdir(path.dirname(target), { recursive: true });
-    try {
-        await fs.writeFile(target, content, { flag: 'wx' });
-    } catch (error: unknown) {
-        if (!(error instanceof Error) || !('code' in error) || error.code !== 'EEXIST') throw error;
-    }
-}
-
-/** Adds dependencies and native starter files to a legacy project without replacing existing files. */
-export async function ensureTesting(root: string): Promise<TestSetup> {
-    const pkgPath: string = path.join(root, 'package.json');
-    const raw: unknown = JSON.parse(await fs.readFile(pkgPath, 'utf8'));
-    if (raw === null || typeof raw !== 'object' || Array.isArray(raw))
-        throw new Error('toiljs test: package.json must contain an object.');
-    const pkg: TestPackage = raw;
-    for (const field of [pkg.scripts, pkg.dependencies, pkg.devDependencies]) {
-        if (
-            field !== undefined &&
-            (field === null ||
-                typeof field !== 'object' ||
-                Array.isArray(field) ||
-                Object.values(field).some((value): boolean => typeof value !== 'string'))
-        )
-            throw new Error('toiljs test: package scripts and dependencies must be string maps.');
-    }
-    const files: readonly string[] = await fs.readdir(root);
-    const custom: string | undefined =
-        files.find((file: string): boolean => /^vitest\.config\.[cm]?[jt]s$/.test(file)) ??
-        files.find((file: string): boolean => /^vite\.config\.[cm]?[jt]s$/.test(file));
-    const source: string =
-        custom === undefined ? '' : await fs.readFile(path.join(root, custom), 'utf8');
-    const native: boolean =
-        custom === undefined ||
-        source.includes("from 'toiljs/vitest'") ||
-        source.includes('from "toiljs/vitest"');
-    let changed: boolean = false;
-    let install: boolean = false;
-    const require: NodeJS.Require = createRequire(pkgPath);
-    for (const [name, range] of Object.entries(TEST_DEPENDENCIES)) {
-        if (pkg.dependencies?.[name] === undefined && pkg.devDependencies?.[name] === undefined) {
-            pkg.devDependencies ??= {};
-            pkg.devDependencies[name] = range;
-            changed = true;
-            install = true;
-        }
-        try {
-            require.resolve(name);
-        } catch {
-            install = true;
-        }
-    }
-    pkg.scripts ??= {};
-    for (const [name, script] of Object.entries(TEST_SCRIPTS)) {
-        if (pkg.scripts[name] !== undefined) continue;
-        pkg.scripts[name] = script;
-        changed = true;
-    }
-    if (changed) await fs.writeFile(pkgPath, JSON.stringify(raw, null, 4) + '\n');
-    if (custom === undefined) {
-        for (const [file, content] of Object.entries(testingFiles()))
-            await writeMissing(root, file, content);
-    }
-    return { install, native };
 }
 
 /** Parses framework switches while preserving arguments for Vitest, including file filters. */

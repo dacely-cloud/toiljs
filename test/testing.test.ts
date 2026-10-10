@@ -22,13 +22,13 @@ async function project(pkg: string = '{"name":"fixture","private":true}'): Promi
 describe('native Vitest setup', (): void => {
     it('installs all test tooling and writes examples without a server build', async (): Promise<void> => {
         const root: string = await project();
-        expect(await ensureTesting(root)).toEqual({ install: true, native: true });
+        expect(await ensureTesting(root)).toMatchObject({ install: true, native: true });
         const pkg = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'));
         expect(pkg.devDependencies).toEqual(TEST_DEPENDENCIES);
         expect(pkg.scripts).toEqual(TEST_SCRIPTS);
         for (const [file, contents] of Object.entries(testingFiles()))
             expect(await fs.readFile(path.join(root, file), 'utf8')).toBe(contents);
-        expect(await ensureTesting(root)).toEqual({ install: true, native: true });
+        expect(await ensureTesting(root)).toMatchObject({ install: true, native: true });
         expect(JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8'))).toEqual(pkg);
     });
 
@@ -44,7 +44,7 @@ describe('native Vitest setup', (): void => {
             );
             await fs.writeFile(path.join(installed, 'index.js'), 'export const installed = true;');
         }
-        expect(await ensureTesting(root)).toEqual({ install: false, native: true });
+        expect(await ensureTesting(root)).toMatchObject({ install: false, native: true });
     });
 
     it('preserves custom Vitest configuration, scripts, dependencies and unrelated metadata', async (): Promise<void> => {

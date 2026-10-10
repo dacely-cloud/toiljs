@@ -110,6 +110,19 @@ try {
     npm(['run', 'build'], app);
     npm(['run', 'typecheck'], app);
     npm(['run', 'lint', '--', '--format', 'default', '--threads', '1'], app);
+    const beforeDoctor = fs.readFileSync(appPackage, 'utf8');
+    const doctor = spawnSync(
+        process.execPath,
+        [path.join(app, 'node_modules/toiljs/build/cli/index.js'), 'doctor', '--json'],
+        { cwd: app, encoding: 'utf8' },
+    );
+    const diagnostics = JSON.parse(doctor.stdout);
+    const testing = diagnostics.groups.find((group) => group.title === 'Testing');
+    assert.ok(
+        testing && testing.checks.every((check) => check.status === 'pass'),
+        doctor.stdout + doctor.stderr,
+    );
+    assert.equal(fs.readFileSync(appPackage, 'utf8'), beforeDoctor);
     // Linux root CI needs explicit sandbox flags; workstation runs add its hardware GPU flags.
     const chromeArgs = process.env.TOIL_TEST_CHROME_ARGS
         ? JSON.parse(process.env.TOIL_TEST_CHROME_ARGS)

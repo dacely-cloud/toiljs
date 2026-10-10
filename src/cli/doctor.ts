@@ -65,6 +65,9 @@ import {
     preprocessorForExt,
     TAILWIND_ENTRY,
 } from './features.js';
+import { ensureTesting, findTestConfiguration, type TestSetup } from './test-setup.js';
+import { checkTesting } from './testing-checks.js';
+import { TEST_DEPENDENCIES } from './testing.js';
 import { isSupportedTypeScriptRange, isSupportedTypeScriptVersion } from './typescript.js';
 import { accent, bold, danger, dim, success, version, warn } from './ui.js';
 
@@ -73,7 +76,7 @@ export interface DoctorOptions {
     readonly cwd: string;
     /** Emit machine-readable JSON instead of the human report. */
     readonly json?: boolean;
-    /** Auto-fix what can be fixed in place (the typed-RPC wiring, and an unsupported typescript). */
+    /** Auto-fix what can be fixed in place (testing, typed-RPC wiring, and an unsupported typescript). */
     readonly fix?: boolean;
 }
 
@@ -766,7 +769,7 @@ function frameworkMeta(): { node: string; peers: Record<string, string> } {
     return { node: engines.node ?? '>=24.0.0', peers };
 }
 
-const LOCKFILES = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lockb'];
+const LOCKFILES = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'];
 
 /** Reads the app entry source (the file that mounts the app), or null if none is found. */
 function readEntry(clientAbsDir: string): string | null {
@@ -912,7 +915,7 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
     const peerName = (n: string): Check => checkPeer(n, deps[n] ?? null, meta.peers[n] ?? '*');
     // Validate the compiler major as well as its minimum version.
     const peerChecks = Object.keys(meta.peers)
-        .filter((n) => n !== 'typescript')
+        .filter((n) => n !== 'typescript' && !Object.hasOwn(TEST_DEPENDENCIES, n))
         .map(peerName);
     const typeScriptFix = opts.fix ? applyTypeScriptFix(root) : null;
     // Re-read the declared range: `--fix` may have just rewritten it.
@@ -954,8 +957,36 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
         serverTsPath === null || serverTsParsed === null
             ? false
             : tsconfigHasToilPlugin(serverTsParsed);
+    let testingFix: TestSetup | null = null;
+    let testingChecks: Check[];
+    try {
+        if (opts.fix && projectPkg !== null) testingFix = await ensureTesting(root, true);
+        const testingPkg = readJsonObject(path.join(root, 'package.json'));
+        testingChecks = checkTesting({
+            dependencies: {
+                ...stringRecord(testingPkg?.dependencies),
+                ...stringRecord(testingPkg?.devDependencies),
+            },
+            scripts: stringRecord(testingPkg?.scripts),
+            installed: Object.fromEntries(
+                Object.keys(TEST_DEPENDENCIES).map((name) => [name, installedVersion(root, name)]),
+            ),
+            configuration: await findTestConfiguration(root),
+        });
+    } catch (error: unknown) {
+        testingChecks = [
+            {
+                id: 'testing:setup',
+                label: 'Testing setup',
+                status: 'fail',
+                detail: error instanceof Error ? error.message : String(error),
+                fix: 'Repair package.json or unreadable test configuration, then run `toiljs doctor --fix`.',
+            },
+        ];
+    }
+
     // The typescript pin is fixable without a server; the rest only apply to one.
-    const applied = [typeScriptFix, rpcFix, prettierFix, editorFix].filter(
+    const applied = [typeScriptFix, rpcFix, prettierFix, editorFix, testingFix].filter(
         (fix): fix is RpcFixResult => fix !== null,
     );
     const serverFix =
@@ -1001,6 +1032,10 @@ export async function runDoctor(opts: DoctorOptions): Promise<void> {
                 checkRelativeAssets(assetIssues),
                 checkDevScripts(projectPkg ? stringRecord(projectPkg.scripts) : {}),
             ],
+        },
+        {
+            title: 'Testing',
+            checks: testingChecks,
         },
         {
             title: 'Config + assets',
