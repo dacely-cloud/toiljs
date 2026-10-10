@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ensureTesting, parseTestArgs } from '../src/cli/test';
+import { detectPackageManager } from '../src/cli/update';
 import { TEST_DEPENDENCIES, TEST_SCRIPTS, testingFiles } from '../src/cli/testing';
 import { defineTestConfig } from '../src/testing/config';
 
@@ -102,6 +103,13 @@ describe('native Vitest setup', (): void => {
             '{"scripts": "bad"}',
         );
     });
+});
+
+it('uses Bun for automatic installation in projects with its current text lockfile', async (): Promise<void> => {
+    const root: string = await project();
+    await fs.writeFile(path.join(root, 'bun.lock'), '{}');
+    await ensureTesting(root);
+    expect(detectPackageManager(root).name).toBe('bun');
 });
 
 describe('test command flags', (): void => {

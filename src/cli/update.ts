@@ -33,7 +33,8 @@ export interface PackageManager {
 export function detectPackageManager(root: string): PackageManager {
     if (fs.existsSync(path.join(root, 'pnpm-lock.yaml'))) return { name: 'pnpm', ncuName: 'pnpm' };
     if (fs.existsSync(path.join(root, 'yarn.lock'))) return { name: 'yarn', ncuName: 'yarn' };
-    if (fs.existsSync(path.join(root, 'bun.lockb'))) return { name: 'bun', ncuName: 'bun' };
+    if (fs.existsSync(path.join(root, 'bun.lock')) || fs.existsSync(path.join(root, 'bun.lockb')))
+        return { name: 'bun', ncuName: 'bun' };
     return { name: 'npm', ncuName: 'npm' };
 }
 
