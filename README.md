@@ -144,9 +144,9 @@ flowchart TB
     CLOUD -. orchestrates .-> EDGE
     CLOUD -. orchestrates .-> DB
 
-    class CROUTES,CPARTS,SREST,SRPC,SDATA,SHARED,VITE,TSC,TOOLKIT,STATIC,WASM,CDN today;
+    class CROUTES,CPARTS,SREST,SRPC,SDATA,SHARED,VITE,TSC,TOOLKIT,STATIC,WASM,CDN,RT today;
     class GENCLI gen;
-    class RT,DB,CLOUD soon;
+    class DB,CLOUD soon;
 ```
 
 The client is fully static (host it anywhere). The server is a portable compiled module. The two are separated by design and joined by a typed contract, so the frontend ships to any CDN while the backend runs wherever it is deployed. That split is what makes the delivery network global: static files replicate everywhere for free, and one small module is trivial to run in many places at once.
@@ -344,7 +344,11 @@ export class HelloHandler extends ToilHandler {
 - **Typed RPC (preview)**: tag a server function and the compiler generates a typed `Server.*` surface on the client, end to end, no hand-written glue. The typed pipeline is in place today; the network transport is landing next.
 - **Cookies**: a complete RFC 6265bis layer as a global (no import). Read with `req.cookie('sid')`, write with `resp.setCookie(Cookie.create('sid', token).httpOnly().secure().sameSite(SameSite.Lax))`, and reach for `SecureCookies` when you need HMAC-signed or AES-256-GCM-encrypted values.
 
-`toiljs start` self-hosts the built client and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js) for local and small deployments. It runs production static/SSR output only, never Vite, and starts a production HTTP worker pool by default (`--threads 1` disables it). At scale, that same `.wasm` is exactly what the Toil edge runtime serves: one hot instance per tenant, called directly with your request and wiped clean between requests, so there is no cold start and isolation is enforced below your code rather than by trust. See [The road to hyperscale](#the-road-to-hyperscale).
+`toiljs build` followed by `toiljs start` self-hosts the built client, WebAssembly backend, and a WebSocket channel on [hyper-express](https://github.com/kartikk221/hyper-express) (backed by uWebSockets.js). It runs production static/SSR output and starts a production HTTP worker pool by default (`--threads 1` disables it). You can deploy on your own server today; managed Dacely Cloud hosting is optional. At scale, that same `.wasm` is exactly what the Toil edge runtime serves: one hot instance per tenant, called directly with your request and wiped clean between requests, so there is no cold start and isolation is enforced below your code rather than by trust. See [Deployment](./docs/getting-started/deploy.md) and [The road to hyperscale](#the-road-to-hyperscale).
+
+**Other services can communicate with your backend over HTTP.** Have your integration server send requests to private ToilJS REST endpoints, protected with authentication, shared secrets, and an IP allowlist enforced by your firewall or reverse proxy. Use that server to call external APIs and send results back to ToilJS.
+
+**The hot request path keeps outbound network I/O out by design.** ToilJS is built to stay responsive under heavy load. Every server has finite I/O capacity: waiting on external services ties up connections and in-flight work, and a slow or stalled dependency can exhaust that capacity even with async code. Keeping external calls in a separate integration server or background work lets the hot path handle requests without waiting on those services.
 
 ## Agentic tooling
 
@@ -468,7 +472,7 @@ No imports. `Toil` is a fully-typed global, tree-shaken at build. The page rende
 
 ## Architecture
 
-One pipeline, from your editor to planetary scale. The build pipeline and the React client ship today; the edge runtime is built and measured (purple = not yet GA), and the ToilDB data layer and Dacely Cloud are the roadmap.
+One pipeline, from your editor to planetary scale. The framework supports self-hosting today, and the edge runtime is built and measured. Purple marks the ToilDB data layer and managed Dacely Cloud hosting on the roadmap.
 
 ```mermaid
 flowchart TB
@@ -484,7 +488,7 @@ flowchart TB
 
     CLIENTS["CLIENTS<br/>browsers, mobile, API clients, AI crawlers / LLMs"]
 
-    subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, built + measured, pre-GA"]
+    subgraph EDGE["EDGE, anycast, multi-region POPs, scale-out, built + measured"]
         direction LR
         SC["STATIC CLIENT<br/>React SPA + baked HTML<br/>images, fonts, css<br/>served from CDN / edge"]
         RT["WASM EDGE RUNTIME<br/>your ToilScript server as one .wasm<br/>isolated per-tenant instance at line rate<br/>8M req/s measured, sub-ms p50<br/>Request to handler to Response<br/>realtime channels, binary IO<br/>x many tenants x many POPs"]
@@ -509,8 +513,8 @@ flowchart TB
     CTRL -. orchestrates .-> EDGE
     CTRL -. orchestrates .-> DATA
 
-    class TSX,VITE,ART,TS,TSC,WASM,TOOL,CLIENTS today;
-    class SC,RT,MODES,DUR,BLOB,CTRL soon;
+    class TSX,VITE,ART,TS,TSC,WASM,TOOL,CLIENTS,SC,RT today;
+    class MODES,DUR,BLOB,CTRL soon;
 ```
 
 <details>
@@ -570,7 +574,7 @@ flowchart TB
 ║  push your app ─▶ client to the edge, .wasm to the runtime, data replicated ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 
-  [today] shipping now    [built] running + measured, not yet GA    [soon] roadmap
+  [today] shipping now    [built] running + measured    [soon] roadmap
 ```
 
 </details>
@@ -579,7 +583,7 @@ flowchart TB
 
 ## The road to hyperscale
 
-> **Architecture and status.** The framework above is what ships in the box today. The edge runtime below is built and measured, not yet generally available. ToilDB and Dacely Cloud are the roadmap.
+> **Architecture and status.** You can self-host ToilJS today. The edge runtime below is built and measured; ToilDB and managed Dacely Cloud hosting are on the roadmap.
 
 The reason the client is static and the server is WebAssembly is that the WebAssembly runs on a runtime engineered from scratch for the edge. Toil's backend treats your compiled server as an isolated tenant and serves it at line rate, so the same app that runs on your laptop scales out across the edge without a rewrite.
 
@@ -600,7 +604,7 @@ The reason the client is static and the server is WebAssembly is that the WebAss
 - **Post-quantum-ready transport** _(coming)_. Forward-looking encryption on the QUIC layer that already terminates TLS 1.3.
 - **Dacely Cloud** _(coming)_. Managed hosting for the whole stack: push your app, the static client goes to the edge and your WebAssembly server runs on the runtime above.
 
-This is the spine the framework was shaped around. Today you write a typed, file-based React app with a WebAssembly server; the platform that runs it at planetary scale is already standing in the lab.
+This is the spine the framework was shaped around. Today you write a typed, file-based React app with a WebAssembly server and self-host it; the same compiled artifacts are designed to scale out across the edge.
 
 ## Tech
 

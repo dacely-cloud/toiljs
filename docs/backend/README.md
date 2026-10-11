@@ -1,17 +1,21 @@
 # Backend overview
 
-Your backend is TypeScript that toilscript compiles into a small, sandboxed WebAssembly program, which runs on the Dacely edge and answers every request.
+Your backend is TypeScript that toilscript compiles into a small, sandboxed WebAssembly program. You can self-host it with `toiljs build` and `toiljs start`, or run the compiled program on the Dacely edge.
 
 ## What the backend is
 
 In a toiljs project, everything under `server/` is your backend. You write it in TypeScript, the same language as your frontend. But it does not run in a browser and it does not run in Node. Instead, a compiler called **toilscript** turns it into **WebAssembly** (often shortened to **WASM**): a compact, fast, portable binary format that many kinds of servers can run safely.
 
-That compiled program is then deployed to the **Dacely edge**. Two pieces of jargon to unpack there:
+That compiled program can be self-hosted or deployed to the **Dacely edge**. Two pieces of jargon to unpack there:
 
 - **The edge** means a fleet of servers spread across many cities around the world. When a user makes a request, it is served by the edge node physically closest to them. Close means fast: less distance for the data to travel, so lower latency. You do not pick a region or manage servers; your one compiled backend runs everywhere at once.
 - **Sandboxed** means your WASM program runs inside a locked box. It cannot open files, reach the operating system, or make raw network connections on its own. The only way it can touch the outside world is through a small, fixed set of **host functions** that toiljs provides (read the request, build a response, query the database, send an email, and so on). Every one of those calls is metered and bounded, so a buggy or hostile backend cannot crash the node or read another app's data. This is what makes it safe to run thousands of different apps on the same shared edge.
 
 You never call the WASM boundary by hand. You write normal TypeScript classes and functions, tag them with decorators (like `@rest` or `@service`), and the compiler wires everything up.
+
+Other servers can communicate with your backend by sending HTTP requests to private REST endpoints. Protect those endpoints with authentication and shared secrets, and enforce an IP allowlist at your firewall or reverse proxy. An integration server can call external services and send the results to ToilJS through those endpoints.
+
+The hot request path keeps outbound network I/O out by design so it stays responsive under load. Servers have finite I/O capacity; slow external calls can tie up connections and in-flight work until that capacity is exhausted, even with async code. Put external calls in a separate integration server or [background daemon](../background/daemons.md#outbound-http) so the hot path does not wait on external services.
 
 > New to decorators? A **decorator** is the `@name` you write just above a class or method. It attaches meaning to that code without changing what the code does line by line. toiljs uses decorators to say "this class is an HTTP controller" or "this method is callable from the browser." See [Decorators](../concepts/decorators.md).
 

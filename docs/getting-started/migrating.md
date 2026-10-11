@@ -103,7 +103,7 @@ Environment variables move from a `.env` you read with `process.env` to `.env` /
 Be honest with yourself about the backend rewrite. Migration is a poor fit if:
 
 - Your server depends heavily on npm libraries or Node-only APIs that have no toiljs equivalent, and rewriting them is not worth it.
-- You must keep talking to an existing external database or service that toiljs cannot reach. (Daemons can make outbound HTTP calls in some cases, but general server-side networking is limited by design.)
+- Your hot request path requires synchronous calls to an external database or service, and you cannot move that work into an integration server or background daemon. Other servers can send results to private ToilJS HTTP endpoints protected with authentication, shared secrets, and an IP allowlist at the firewall or reverse proxy; outbound network I/O stays off the hot path to keep it responsive under load.
 - You need long-lived in-process server state that does not fit the per-request, database-backed model.
 
 In those cases, you can still adopt toiljs for the frontend and keep your existing backend, calling it with plain `fetch`. You just give up the single-repo, end-to-end-typed benefits for that part.
