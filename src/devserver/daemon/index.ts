@@ -382,8 +382,8 @@ export class DaemonHost implements DaemonRuntime {
         }
         if (!this.isLeader()) return; // always true in dev; kept for parity
         this.ticking.add(task.taskIndex);
-        // The edge enters a fresh Action budget for every cold call.
-        this.state.db.functionKind = DbFunctionKind.Action;
+        // The edge selects permissions and a fresh budget from the validated task catalog.
+        this.state.db.functionKind = task.functionKind;
         this.state.db.logMessages = 0;
         resetDbLimits(this.state.db);
         this.state.db.writtenCollections.clear();

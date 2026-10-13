@@ -8,7 +8,7 @@
  * Byte layout (RECONCILIATION Part 5, all little-endian; mirrors the toilscript
  * `CatWriter` emitter byte-for-byte):
  *
- *   u16 format_version = 1
+ *   u16 format_version = 1 or 2
  *   u8  has_daemon
  *   u16 n_scheduled
  *   per task:
@@ -24,15 +24,16 @@
  *     u8  overlap_policy        (0 = skip-if-running)
  *     u8  catchup_policy        (0 = no-backfill)
  *     u64 gas_hint
+ *     u8 function_kind          (v2 only: 1 Action, 2 Job; v1 is Action)
  *
- * Fails closed via `DataReader.ok`: a short read mid-record stops the loop and
- * yields only the cleanly-decoded prefix, never over-reading. An absent or wholly
- * unparseable section returns `null`, so the daemon emulator simply does not start
+ * Fails closed via `DataReader.ok`: a short read rejects the whole catalog.
+ * An absent or unparseable section returns `null`, so the daemon emulator does not start
  * (fail-closed = never run an unknown daemon).
  */
 
 import { DataReader } from 'toiljs/io';
 
+import { DbFunctionKind } from '../db/types.js';
 import { customSection } from '../wasm/sections.js';
 
 /** The five precomputed cron field bitmasks (RECONCILIATION Part 5 / F6). */
@@ -62,6 +63,8 @@ export interface ScheduledTask {
     /** 0 = no-backfill (the at-most-once default). */
     readonly catchupPolicy: number;
     readonly gasHint: bigint;
+    /** The host execution kind, validated before any task starts. */
+    readonly functionKind: DbFunctionKind.Action | DbFunctionKind.Job;
 }
 
 export interface DaemonCatalog {
@@ -76,16 +79,17 @@ export function parseDaemonCatalog(wasm: Buffer): DaemonCatalog | null {
     } catch {
         return null; // garbage section table (mid-rebuild) -> no daemon
     }
-    if (sec === null) return null;
+    if (sec === null || sec.length > 64 * 1024) return null;
 
     const r = new DataReader(sec);
-    r.readU16(); // format_version
+    const version = r.readU16();
+    if (version !== 1 && version !== 2) return null;
     const hasDaemon = r.readU8() === 1;
     const n = r.readU16(); // n_scheduled
     // The 5-byte header must read cleanly; a short read here is a garbage section
     // (fail closed -> no daemon). A `hasDaemon` byte salvaged from a too-short
     // version field is not trustworthy.
-    if (!r.ok) return null;
+    if (!r.ok || n > 4096) return null;
     const tasks: ScheduledTask[] = [];
     for (let i = 0; i < n && r.ok; i++) {
         const name = r.readString();
@@ -100,6 +104,10 @@ export function parseDaemonCatalog(wasm: Buffer): DaemonCatalog | null {
         const overlapPolicy = r.readU8();
         const catchupPolicy = r.readU8();
         const gasHint = r.readU64();
+        const functionKindByte = version === 2 ? r.readU8() : 1;
+        if (!r.ok || taskIndex !== i || Buffer.byteLength(name) > 1024 ||
+            (functionKindByte !== 1 && functionKindByte !== 2)) return null;
+        const functionKind = functionKindByte === 2 ? DbFunctionKind.Job : DbFunctionKind.Action;
         if (r.ok)
             tasks.push({
                 name,
@@ -111,10 +119,9 @@ export function parseDaemonCatalog(wasm: Buffer): DaemonCatalog | null {
                 overlapPolicy,
                 catchupPolicy,
                 gasHint,
+                functionKind,
             });
     }
-    // A section that decoded nothing AND claims no daemon is indistinguishable
-    // from garbage -> fail closed (no daemon).
-    if (!r.ok && tasks.length === 0 && !hasDaemon) return null;
+    if (!r.ok || r.remaining() !== 0) return null;
     return { hasDaemon, tasks };
 }

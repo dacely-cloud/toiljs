@@ -47,10 +47,10 @@ const DAEMON_CFG: ResolvedDaemonConfig = {
 };
 
 /** Compile `src` to `outWasm` with the installed toilscript under `--targetMode cold`. */
-function compileCold(src: string, outWasm: string): { ok: boolean; output: string } {
+function compileCold(src: string, outWasm: string, runtime = 'stub'): { ok: boolean; output: string } {
     const r = spawnSync(
         'node',
-        [TOILSCRIPT_BIN, src, '-o', outWasm, '--runtime', 'stub', '--targetMode', 'cold'],
+        [TOILSCRIPT_BIN, src, '-o', outWasm, '--runtime', runtime, '--targetMode', 'cold'],
         { encoding: 'utf8' },
     );
     return {
@@ -83,6 +83,52 @@ const counter = (host: DaemonHost, name: string): number => host.callI32Export(`
 
 // The compiler is a required dependency; a missing binary fails these tests.
 describe('dev daemon emulation', () => {
+    it('grants scheduled jobs scans, publishing and Job limits while plain ticks stay Action', async () => {
+        __resetDbForTests();
+        vi.useFakeTimers();
+        vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '1');
+        const artifact = join(tmp, 'jobs.wasm');
+        const snapshot = join(tmp, 'jobs.json');
+        const compiled = compileCold(join(here, 'fixtures', 'daemon-job-app.ts'), artifact, 'incremental');
+        expect(compiled.ok, compiled.output).toBe(true);
+        configureDbPersistence(snapshot);
+        const messages: string[] = [];
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', s => messages.push(s));
+        const savedPage = (): number => {
+            const state = JSON.parse(readFileSync(snapshot, 'utf8')) as {
+                views: Record<string, { v: string }>;
+            };
+            const page = Object.values(state.views)[0];
+            return page ? Buffer.from(page.v, 'base64').readInt32LE(4) : -1;
+        };
+        try {
+            expect(host.refresh()).toBe(true);
+            expect(host.tasks.map(t => t.functionKind)).toEqual(['job', 'action', 'action', 'action']);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(savedPage()).toBe(67);
+            expect(counter(host, 'tick')).toBe(1);
+            host.callI32Export('failJob');
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(messages.join('')).toContain('temporary job failure');
+            expect(counter(host, 'tick')).toBe(1);
+            expect(messages.join('')).toContain('@scheduled plainScan trapped:');
+            expect(messages.join('')).toContain('@scheduled plainPublish trapped:');
+            expect(savedPage()).toBe(67);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(counter(host, 'tick')).toBe(2);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(savedPage()).toBe(67);
+            expect(counter(host, 'tick')).toBe(3);
+            expect(host.active).toBe(true);
+            host.close();
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            host.close();
+            vi.unstubAllEnvs();
+            __resetDbForTests();
+        }
+    });
+
     it('retries a failed derive in an idle daemon without requests or scheduled tasks', async () => {
         __resetDbForTests();
         vi.useFakeTimers();

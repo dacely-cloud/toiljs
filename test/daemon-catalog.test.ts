@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DataWriter } from '../src/io/codec.js';
 import { parseDaemonCatalog } from '../src/devserver/daemon/catalog.js';
+import { DbFunctionKind } from '../src/devserver/db/types.js';
 import { cronMatches, cronNeverFires, nextCronFireMs } from '../src/devserver/daemon/cron.js';
 import { customSection } from '../src/devserver/wasm/sections.js';
 import { parseSurface } from '../src/devserver/wasm/surface.js';
@@ -37,12 +38,13 @@ interface BuildTask {
     kind: 0 | 1;
     intervalMs?: bigint;
     cron?: { minute: bigint; hour: number; dom: number; month: number; dow: number };
+    functionKind?: number;
 }
 
 /** Emit a Part 5 `toildaemon.catalog` body (the bytes AFTER the section name). */
-function buildDaemonCatalogBytes(hasDaemon: boolean, tasks: BuildTask[]): Uint8Array {
+function buildDaemonCatalogBytes(hasDaemon: boolean, tasks: BuildTask[], version = 1): Uint8Array {
     const w = new DataWriter();
-    w.writeU16(1); // format_version
+    w.writeU16(version);
     w.writeU8(hasDaemon ? 1 : 0);
     w.writeU16(tasks.length); // n_scheduled
     for (const t of tasks) {
@@ -58,6 +60,7 @@ function buildDaemonCatalogBytes(hasDaemon: boolean, tasks: BuildTask[]): Uint8A
         w.writeU8(0); // overlap_policy
         w.writeU8(0); // catchup_policy
         w.writeU64(0n); // gas_hint
+        if (version === 2) w.writeU8(t.functionKind ?? 1);
     }
     return w.toBytes();
 }
@@ -93,6 +96,7 @@ describe('parseDaemonCatalog (Part 5)', () => {
         expect(interval.overlapPolicy).toBe(0);
         expect(interval.catchupPolicy).toBe(0);
         expect(interval.gasHint).toBe(0n);
+        expect(interval.functionKind).toBe(DbFunctionKind.Action);
 
         expect(cron.name).toBe('sixHourly');
         expect(cron.taskIndex).toBe(1);
@@ -136,7 +140,7 @@ describe('parseDaemonCatalog (Part 5)', () => {
         expect(parseDaemonCatalog(wasm)).toBeNull();
     });
 
-    it('fails closed: a truncated record yields only the cleanly-decoded prefix', () => {
+    it('fails closed: a truncated record rejects the entire catalog', () => {
         // Claim 2 tasks but truncate inside the second record's interval_ms.
         const full = buildDaemonCatalogBytes(true, [
             { name: 'a', taskIndex: 0, kind: 0, intervalMs: 5000n },
@@ -144,9 +148,24 @@ describe('parseDaemonCatalog (Part 5)', () => {
         ]);
         const truncated = full.subarray(0, full.length - 20); // chop the 2nd record's tail
         const cat = parseDaemonCatalog(wasmWithSection('toildaemon.catalog', truncated));
-        expect(cat).not.toBeNull();
-        // Only the first task survived; the loop stopped on the short read.
-        expect(cat!.tasks.map((t) => t.name)).toEqual(['a']);
+        expect(cat).toBeNull();
+    });
+
+    it('selects Job only from validated v2 task records', () => {
+        const tasks: BuildTask[] = [
+            { name: 'job', taskIndex: 0, kind: 0, intervalMs: 1000n, functionKind: 2 },
+            { name: 'action', taskIndex: 1, kind: 0, intervalMs: 1000n, functionKind: 1 },
+        ];
+        const parse = (bytes: Uint8Array) => parseDaemonCatalog(wasmWithSection('toildaemon.catalog', bytes));
+        const payload = buildDaemonCatalogBytes(true, tasks, 2);
+        expect(parse(payload)?.tasks.map(t => t.functionKind)).toEqual([DbFunctionKind.Job, DbFunctionKind.Action]);
+        expect(parse(payload.subarray(0, payload.length - 1))).toBeNull();
+        expect(parse(Buffer.concat([payload, Buffer.from([0])]))).toBeNull();
+        for (const functionKind of [0, 3, 4, 255]) {
+            expect(parse(buildDaemonCatalogBytes(true, [{ ...tasks[0], functionKind }], 2))).toBeNull();
+        }
+        expect(parse(buildDaemonCatalogBytes(true, [{ ...tasks[0], taskIndex: 7 }], 2))).toBeNull();
+        expect(parse(buildDaemonCatalogBytes(true, [], 3))).toBeNull();
     });
 
     it('returns null for a wholly garbage section (header short-read, no daemon)', () => {

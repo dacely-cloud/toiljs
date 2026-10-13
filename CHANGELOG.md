@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.126] - 2026-10-13
+
+- Run daemon methods tagged `@scheduled` and `@job` with Job database permissions and budgets in dev and on an updated edge host. Startup and untagged ticks retain Action permissions.
+- Require toilscript 0.1.65 and daemon catalog v2 for scheduled Job metadata; retain v1 for Action-only daemons and reject unsupported or malformed catalogs.
+
 ## [v0.0.125] - 2026-10-13
 
 - No changes

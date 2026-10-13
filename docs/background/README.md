@@ -76,7 +76,7 @@ Use `@job` when a piece of background work needs **more** database power than th
 - it must **scan** (fold `events.latest`, walk `membership.list`), and/or
 - it must **publish a View** *while also* doing arbitrary writes (`create`, `patch`, `delete`). A `@derive` can publish a View but cannot `patch` or `delete` a record; a `@job` can do everything.
 
-The compiler accepts `@job` on a method, including a `@daemon`'s `@scheduled` method. Tag a scheduled task `@job` when it needs that full surface (say, a nightly repair that scans a log, fixes rows, and republishes a summary View). A plain, **untagged** `@scheduled` method runs with the **`@action`** surface instead: point reads plus bounded writes, which is all most rollups and cleanups need.
+With **toilscript 0.1.65**, **toiljs 0.0.126**, and an edge host that supports daemon catalog v2, the compiler records `@job` on a `@daemon`'s `@scheduled` method and the host executes that tick with Job permissions and budgets. Tag a scheduled task `@job` when it needs that full surface (say, a nightly repair that scans a log, fixes rows, and republishes a summary View). A plain, **untagged** `@scheduled` method runs with the **`@action`** surface instead: point reads plus bounded writes, which is all most rollups and cleanups need.
 
 ```ts
 @daemon
@@ -94,6 +94,8 @@ class Jobs {
     }
 }
 ```
+
+`onStart` always runs as Action. A helper tagged `@job` inherits its caller's runtime permissions; calling it from startup or an untagged scheduled method does not elevate the call. Job ticks carry a v2 daemon catalog, which older edge hosts reject at load time. Action-only daemons retain the v1 catalog and remain compatible.
 
 ### `@job` versus `@derive`
 

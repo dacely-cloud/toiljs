@@ -113,12 +113,14 @@ What each kind may do:
 | --- | --- | --- | --- |
 | **Query** | `@get`, plain `@remote`, or `@query` | Point reads: `get`, `getMany`, `exists`, `lookup`, `contains`, counter `get`, view `get`, Events `get`/`last`, capacity `available`. | Any write. Any scan. |
 | **Action** | `@post` or `@action` | Everything a Query can, plus bounded writes: `create`, `patch`, `delete`, `getDelete`, `enqueue`, `append`, `appendOnce`, counter `add`, membership `add`/`remove`, unique `claim`/`release`, capacity `reserve`/`confirm`/`cancel`. | Scans. Publishing a View. |
-| **Derive / Job** | `@derive` / `@job` (background work) | Reads including **scans** (`latest`, membership `list`), plus `publish` a View. | (Run off the request path; see below.) |
+| **Derive / Job** | Host dispatches Derive / Job; compiler checks `@derive` / `@job` | Reads including **scans** (`latest`, membership `list`), plus `publish` a View. | (Run off the request path; see below.) |
+
+**The host determines the execution kind.** With toilscript 0.1.65, toiljs 0.0.126, and a v2-capable edge host, a `@scheduled` method tagged `@job` runs as **Job**, including scans and `View.publish`. Daemon `onStart` and untagged ticks run as **Action**. Tagging a helper `@job` does not change its caller's runtime permissions. Job catalogs use v2; older edge hosts reject them rather than silently downgrade to Action. See [daemon permissions](../background/daemons.md#onstart-run-once-at-boot).
 
 Two rules trip people up, so they are worth stating plainly:
 
 - **Scans are barred from request handlers.** Reading "the newest N events" (`events.latest`) or "the members of this set" (`membership.list`) can fan out across many rows, so a `@get` or `@post` cannot call them. Do the scan in a `@derive` (a small function that recomputes a snapshot off the request path) and have the request read the snapshot. See [Views](./views.md) and [@derive](../background/derive.md).
-- **Only a `@derive` or `@job` may `publish` a View.** Requests read views; background work writes them.
+- **Only a call executing as Derive or Job may `publish` a View.** A `@job` annotation on code called from an Action does not change the caller's execution kind.
 
 Both gates are enforced twice: the compiler rejects an illegal call at build time, and the edge rejects it again at runtime, so a hand-edited module cannot sneak past. For the decorator catalog, see [Decorators](../concepts/decorators.md).
 
