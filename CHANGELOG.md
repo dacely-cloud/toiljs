@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.125] - 2026-10-13
+
+- No changes
+
+
 ## [v0.0.124] - 2026-10-10
 
 - Add a dedicated Testing group to `toiljs doctor`, checking actual installed runner, browser, driver, and coverage versions, compatible ranges, matching Vitest/coverage releases, configuration, and scripts. Unconfigured legacy apps get warnings; broken configured tooling fails.
