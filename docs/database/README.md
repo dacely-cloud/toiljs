@@ -4,6 +4,11 @@ ToilDB is the database built into toiljs. It is **global**, it needs **no setup 
 
 If you have used Postgres, MySQL, or MongoDB before, ToilDB will feel a little different, and this page explains why. If you have never used a database, that is fine too: read on and every term is defined as it appears.
 
+The conditional-write, event-redaction, Membership cursor, and View-delete APIs
+require **toiljs 0.0.125 or later**, **toilscript 0.1.64 or later**, and a backend
+built with their corresponding `data.*` imports. Rebuild the hot and cold
+artifacts together to include background materializers and the updated schema.
+
 ## What "a globally distributed edge database" means
 
 Let us take that phrase one word at a time.

@@ -258,11 +258,34 @@ function devEmailSend(ref: MemoryRef, reqPtr: number, reqLen: number): number {
  * the per-dispatch response state, so they need only `ref`. The crypto and DB
  * namespaces are spread on top by each box's loader (they carry their own state).
  */
+function buildLogImports(
+    ref: MemoryRef,
+    db: DbDevState,
+): Record<string, (...a: never[]) => unknown> {
+    return {
+        server_log: (level: number, ptr: number, len: number): number => {
+            if (!Number.isInteger(level) || level < 0 || level > 2 || len < 0 || len > 4096)
+                throw new Error(
+                    'server_log: level must be 0..2 and message at most 4096 UTF-8 bytes',
+                );
+            const message = new TextDecoder('utf-8', { fatal: true }).decode(
+                readBytes(ref, ptr, len),
+            );
+            if (db.logMessages >= 32) return 0;
+            db.logMessages++;
+            const write = level === 0 ? console.info : level === 1 ? console.warn : console.error;
+            write('[toil guest]', message);
+            return 1;
+        },
+    };
+}
+
 export function buildEnvImports(
     ref: MemoryRef,
     _state: { crypto: CryptoState; db: DbDevState },
 ): Record<string, (...a: never[]) => unknown> {
     return {
+        ...buildLogImports(ref, _state.db),
         abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
             throw new WasmAbortError(
                 readGuestString(ref, msgPtr),
@@ -288,8 +311,7 @@ export function buildEnvImports(
         // `env::email_send` / `email_send_detached`: the FULL email pipeline in
         // dev. A daemon may send mail, so this stays in the shared subset (00 B2 /
         // doc 08 AN-8). Both map to the same fire-and-forget dev path.
-        email_send: (reqPtr: number, reqLen: number): number =>
-            devEmailSend(ref, reqPtr, reqLen),
+        email_send: (reqPtr: number, reqLen: number): number => devEmailSend(ref, reqPtr, reqLen),
         email_send_detached: (reqPtr: number, reqLen: number): number =>
             devEmailSend(ref, reqPtr, reqLen),
     };
@@ -302,6 +324,7 @@ export function buildEnvImports(
 export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssembly.Imports {
     return {
         env: {
+            ...buildLogImports(ref, state.db),
             abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
                 throw new WasmAbortError(
                     readGuestString(ref, msgPtr),

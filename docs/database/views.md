@@ -76,6 +76,16 @@ convenience wrapper). Exact signatures:
 | `get` | `get(key: K): V \| null` | Read the published view, or `null` if nothing has been published yet. |
 | `require` | `require(key: K): V` | Like `get`, but traps (aborts the request) if nothing is published. |
 | `publish` | `publish(key: K, value: V): void` | Overwrite the view for `key` with a fresh result. |
+| `delete` | `delete(key: K): void` | Remove a projection key, idempotently; allowed in Action, Derive, or Job. |
+
+### `delete`: remove a projection key
+
+`AppDb.pages.delete(key)` removes the current projection and invalidates the
+local read cache. The delete is tenant-scoped, owner-routed, and replicated with
+its own authenticated operation. It does not retrigger the view's materializer.
+Remove or redact the corresponding source data as part of the same cleanup;
+a later source write can otherwise rebuild and republish the key. A failed
+delete aborts with the host status rather than reporting successful erasure.
 
 ### `get`
 

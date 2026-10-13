@@ -849,8 +849,18 @@ export async function resetPassword(
     if (finish.readU8() !== 0) throw new PasswordResetInvalidError();
 }
 
+/** Delete the signed-in account and release its username and email.
+ * Clean application-owned data before invoking this endpoint. */
+export async function deleteAccount(opts: AuthOptions = {}): Promise<void> {
+    const reader = await postBinary(opts.baseUrl ?? '/auth', '/delete', new Uint8Array(0), opts);
+    const status = reader.readU8();
+    if (!reader.ok || status !== 0)
+        throw new AuthError(AuthErrorCode.RequestFailed, 'Account deletion failed; retry the request.');
+}
+
 /** The client auth surface, grouped for `Auth.register` / `Auth.login` use. */
 export const Auth = {
+    deleteAccount,
     register,
     login,
     confirmEmail,

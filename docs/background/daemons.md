@@ -72,6 +72,10 @@ Cron times are evaluated in **UTC** and are **minute-granular** (the smallest cr
 
 A daemon may also declare a plain `onStart(): void` method (not decorated). It runs **once**, when the daemon box first starts on the elected worker. Use it to set up state or kick off a long-running loop.
 
+Both `onStart` and scheduled ticks execute database calls with **Action** permissions on the edge and in dev. Point reads and record writes, event appends, counters, membership mutations, and unique claims are allowed. Scans (`Events.latest`, `Events.since`, `Membership.list`) and `View.publish` are rejected. The `@job` permissions of a separately executed job do not transfer to a helper called by a daemon. Each cold call gets a fresh Action budget: 64 database operations, 32 writes, 64 keys per `getMany`, 128 KiB per database result, and 2 MiB of result bytes in total. Operators may change operation counts and deadlines. Startup has a separate 512,000,000 gas allowance; scheduled ticks use the host's tick gas setting. A startup trap or nonzero `init`/`daemon_start` result is reported as a failed start and tasks are not registered.
+
+Use `Log.info('cleanup started')`, `Log.warn(...)`, or `Log.error(...)` for server logging. These work in request handlers, streams, and daemons. Messages pass UTF-8 bytes to the host and include the tenant identity in edge logs. A message may contain at most 4096 UTF-8 bytes; at most 32 messages are emitted per call. Each method returns `false` when the message allowance is spent. Invalid arguments abort the call. Avoid secrets and personal data in log messages. `console` imports are rejected when compiling a cold daemon artifact.
+
 ```ts
 @daemon
 class Jobs {

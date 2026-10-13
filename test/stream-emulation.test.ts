@@ -384,8 +384,8 @@ describe('dev stream LIVE round-trip (wireStreams over a real WebSocket)', () =>
         // A dummy Vite target: a @stream-route upgrade never touches it (it goes to the StreamRouter).
         wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
 
-        const PORT = 49317;
-        await app.listen(PORT);
+        await app.listen(0, '127.0.0.1');
+        const PORT = app.port;
         try {
             const echoed = await new Promise<Buffer>((resolve, reject) => {
                 const ws = new WebSocket(`ws://127.0.0.1:${String(PORT)}${route}`);
@@ -420,8 +420,8 @@ describe('Server.Stream client (doc 08 8.2 makeStreamClient)', () => {
         const app = new Server();
         wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
 
-        const PORT = 49318;
-        await app.listen(PORT);
+        await app.listen(0, '127.0.0.1');
+        const PORT = app.port;
         try {
             // The generated client would call makeStreamClient({ Echo: route }) -> globalThis.__toilStream.
             const stream = makeStreamClient({ Echo: route }, `ws://127.0.0.1:${String(PORT)}`);
@@ -449,8 +449,8 @@ describe('Server.Stream client (doc 08 8.2 makeStreamClient)', () => {
         const app = new Server();
         wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
 
-        const PORT = 49319;
-        await app.listen(PORT);
+        await app.listen(0, '127.0.0.1');
+        const PORT = app.port;
         try {
             // A typed class: the encoder serializes { text } -> bytes (stands in for ChatMsg.encode()).
             const encode = (m: { text: string }): Uint8Array => new TextEncoder().encode(m.text);

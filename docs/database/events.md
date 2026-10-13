@@ -1,8 +1,8 @@
 # Events (append-only logs)
 
 An `Events` collection is an **append-only log**: a growing list of immutable
-facts under a key. You add events to the end and read the newest ones back. You
-never edit or delete an event once it is written.
+facts under a key. Normal writes append events rather than editing history.
+Use explicit [redaction](#redacting-personal-data) when a stored payload must be erased.
 
 ## What and why
 
@@ -11,8 +11,7 @@ An "append-only log" means exactly two things happen to it:
 1. You **append** a new event (it goes on the end).
 2. You **read** events back (newest first).
 
-That is it. There is no "update event 5" and no "delete event 3". Each event is a
-permanent record of something that happened: "Ada signed the guestbook", "order
+Each event records something that happened: "Ada signed the guestbook", "order
 1234 was refunded", "user logged in from a new device".
 
 Use an `Events` log when you care about the **history**, not just the latest
@@ -320,9 +319,9 @@ few honest details about what that means for events:
 - **Routes can read individual events, but cannot scan the log.** Use `get` or
   `last` for a single event. `latest` and `since` require a `@derive` or `@job`;
   use a [View](./views.md) when a route needs a precomputed list.
-- **Events are immutable.** There is no "edit" or "delete an event". If a fact
-  changes, append a new event that records the change (for example, an
-  `order.refund` event, not an edit to the original `order.create`).
+- **Normal changes append new facts.** Record an `order.refund` event rather
+  than editing `order.create`. Explicit redaction is available for erasing
+  personal payloads; it preserves event references and deduplication.
 - **Choose `eventId` carefully for `appendOnce`.** It must be unique per logical
   event. Reusing an id drops the new event as a duplicate.
 - **Do not treat a counter as a log.** A [Counter](./counters.md) gives you a
@@ -338,3 +337,51 @@ few honest details about what that means for events:
   request path.
 - [Data types (`@data`)](../concepts/types.md): how keys and events are stored.
 - [Decorators](../concepts/decorators.md): which handler kinds may append vs scan.
+
+## Redacting personal data
+
+`Events.redact(key, reference)` erases one event payload and returns `true` when
+its current recovery copies are scrubbed. Each native call cleans a bounded
+page of append-once markers. A `false` result means cleanup is still pending:
+retain the reference and call again in a later action or job. The entry is hidden
+from `get`, `last`, `latest`, `since`, and `entries` after the first successful
+call. Queries and derives cannot redact.
+
+For an `appendOnce` entry, obtain the reference with `reference(key, eventId)`.
+This is a bounded read allowed in request handlers and still returns a reference
+while cleanup is pending. It returns `null` when the ID is absent; consult
+`Db.lastError()` if the read failed.
+
+```ts
+const reference = Logs.changes.reference(key, 'change:42');
+if (reference != null) {
+  const complete = Logs.changes.redact(key, reference);
+  // Persist the reference in the cleanup job when complete is false.
+}
+```
+
+For ordinary appends, a background function can enumerate references with
+`entries(key, limit = 128, after = 0)`. It returns an `EventPage<V>` containing
+`entries` (`EventEntry<V>.value` and `.reference`), `.cursor`, and `.hasMore`.
+Pages are oldest first, limits are 1..1024, and the cursor is exclusive. Resume
+with the returned cursor while `hasMore` is true, including after an empty page.
+A full final page can require one additional empty read. This scan is allowed
+only in jobs and derives, independently of the host-managed `since` checkpoint.
+
+References include both the sequence and original HLC, so erasing an old
+reference does not erase a newer event at a reused position. Erasure progress
+is stored durably and replicated; retrying an append-once delivery, replaying an
+old envelope, or installing a late snapshot must not restore the erased entry.
+The dev database retains references and erasure state across restarts. Its
+append-once index stores positions rather than payload copies, so cleanup can
+finish in one call there.
+
+Redaction marks the source as changed and forces affected derives to reread
+from the start. Rebuild projections without the erased facts and use
+[View.delete](./views.md) for projection keys that no longer exist. Application
+folds that reuse previous view state must clear that state before a full rebuild.
+
+This operation scrubs current event and append-once recovery payloads. Historical
+replication envelopes, retained backups, and obsolete storage files follow their
+own retention and compaction policies; redaction does not rewrite those archives.
+Keep the erasure ledger when restoring or rebuilding a database.

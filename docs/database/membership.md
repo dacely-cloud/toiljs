@@ -85,6 +85,7 @@ Four operations, matching the toilscript API exactly. Exact signatures:
 | `add` | `add(key: K, member: M): void` | Put `member` in the set (idempotent). |
 | `remove` | `remove(key: K, member: M): void` | Take `member` out of the set (idempotent). |
 | `list` | `list(key: K, limit: i32): M[]` | Up to `limit` members of the set. |
+| `listPage` | `listPage(key: K, limit: i32, cursor?: Uint8Array \| null): MembershipPage<M>` | An ordered page and an opaque cursor for the next page. |
 
 ### `contains`
 
@@ -114,6 +115,30 @@ GroupsDb.members.remove(new GroupKey('eng'), new Member('linus')); // linus leav
 
 Because they are idempotent, you do not need to check `contains` before calling
 them. Just `add` to join and `remove` to leave.
+
+### `listPage`: walk a large set
+
+Use `listPage` in a job or derive to resume strictly after the last encoded member.
+Pass `null` for the first page, then pass the returned `cursor` unchanged. Keep
+that raw cursor: re-encoding a migrated member could produce different bytes.
+A page contains `members: M[]` and `cursor: Uint8Array | null`. A short page ends
+the walk; a full final page may require one empty call to establish the end.
+
+```ts
+let cursor: Uint8Array | null = null;
+do {
+    const page = GroupsDb.members.listPage(key, 100, cursor);
+    // Process this bounded page; persist cursor when checkpointing a job.
+    cursor = page.cursor;
+} while (cursor != null);
+```
+
+Limits must be positive and at most 1024, within the background scan budget.
+The ordering is lexicographic over encoded member bytes, not alphabetical over
+display names. Removing the cursor member does not prevent continuation. This is
+not a snapshot: additions behind the cursor appear on a subsequent walk, and
+concurrent removals can omit members. Reads remain scoped to one collection
+and set key. `listPage`, like `list`, is barred on Query and Action paths.
 
 ### `list`
 
@@ -231,7 +256,7 @@ feeds a view.
   derive and `get` that view in the route.
 - **`list` returns a bounded page.** A large set may have more members than your
   `limit`. Do not assume the returned array is the entire set.
-- **Sets are unordered.** Do not rely on the order `list` returns members in.
+- **Sets have no application-level order.** `listPage` uses encoded-byte order for continuation. Do not treat it as an order by display name or creation time.
 - **Use `Membership` for growth or concurrency.** A small, stable set is fine as
   an array in a Document. Reach for `Membership` when the set grows, is edited
   concurrently, or you frequently ask "is X a member?".

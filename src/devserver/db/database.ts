@@ -23,6 +23,8 @@ import path from 'node:path';
 import { DataReader, DataWriter } from 'toiljs/io';
 import type { MemoryRef } from '../runtime/host.js';
 import { parseCatalog } from './catalog.js';
+import { queueMaterialization } from './materialization.js';
+import { checkDbResultSize, withDbLimits } from './limits.js';
 import {
     ABSENT,
     ALREADY_EXISTS,
@@ -49,7 +51,6 @@ import {
     type Reservation,
     satI64,
     SCHEMA_UNAVAILABLE,
-    TOO_MANY_KEYS,
     TOO_SMALL,
     UNAVAILABLE,
     isCollectionFamily,
@@ -221,10 +222,14 @@ enum DbOp {
     CapacityCancel,
     ViewGet,
     ViewPublish,
+    ViewDelete,
     CapacitySetTotal,
     EventsSince,
     EventsGet,
     EventsLast,
+    EventsEntries,
+    EventsReference,
+    EventsRedact,
 }
 
 /** `data.upsert` return tags (ABI.md), mirroring the guest `UpsertResult` enum. */
@@ -248,12 +253,14 @@ function isReadOp(op: DbOp): boolean {
         op === DbOp.EventsSince ||
         op === DbOp.EventsGet ||
         op === DbOp.EventsLast ||
+        op === DbOp.EventsEntries ||
+        op === DbOp.EventsReference ||
         op === DbOp.CapacityAvailable
     );
 }
 
 function isScanOp(op: DbOp): boolean {
-    return op === DbOp.Latest || op === DbOp.MembershipList || op === DbOp.EventsSince;
+    return op === DbOp.Latest || op === DbOp.MembershipList || op === DbOp.EventsSince || op === DbOp.EventsEntries;
 }
 
 function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
@@ -265,10 +272,12 @@ function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
             op === DbOp.Patch ||
             op === DbOp.Upsert ||
             op === DbOp.Delete ||
+            op === DbOp.ViewDelete ||
             op === DbOp.GetDelete ||
             op === DbOp.Enqueue ||
             op === DbOp.Append ||
             op === DbOp.AppendOnce ||
+            op === DbOp.EventsRedact ||
             op === DbOp.CounterAdd ||
             op === DbOp.MembershipAdd ||
             op === DbOp.MembershipRemove ||
@@ -281,7 +290,11 @@ function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
     }
     if (kind === DbFunctionKind.Derive)
         return (
-            isReadOp(op) || op === DbOp.ViewPublish || op === DbOp.Append || op === DbOp.CounterAdd
+            isReadOp(op) ||
+            op === DbOp.ViewPublish ||
+            op === DbOp.ViewDelete ||
+            op === DbOp.Append ||
+            op === DbOp.CounterAdd
         );
     if (kind === DbFunctionKind.Job) return true;
     return false;
@@ -346,6 +359,9 @@ export class DevDatabase {
     private readonly versions = new Map<string, number>();
     /** Per-event schema_version, parallel to `events[sk]` (append order). */
     private readonly eventVersions = new Map<string, number[]>();
+    private readonly eventHlcs = new Map<string, bigint[]>();
+    private readonly erasedEvents = new Map<string, Set<string>>();
+    private eventClock = 0n;
     /** Per-member schema_version: `sk` -> (memberLatin1 -> version), parallel to `members`. */
     private readonly memberVersions = new Map<string, Map<string, number>>();
     /** The decoded catalog from the loaded wasm, including family + current schema_version. */
@@ -358,8 +374,12 @@ export class DevDatabase {
 
     /** (Re)load the catalog capability metadata from a server wasm. The module
      *  loader calls this on every (re)compile so writes stamp the live version. */
-    setCatalog(wasm: Buffer): void {
-        this.catalog = parseCatalog(wasm);
+    setCatalog(wasm: Buffer, merge = false): void {
+        const incoming = parseCatalog(wasm);
+        if (merge && this.catalog.kind === 'present' && incoming.kind === 'present') {
+            for (const [name, collection] of incoming.collections)
+                this.catalog.collections.set(name, collection);
+        } else if (!merge || incoming.kind !== 'no-section') this.catalog = incoming;
     }
 
     private currentSchemaVersion(coll: DevCollectionHandle): number {
@@ -445,6 +465,7 @@ export class DevDatabase {
             events: {},
             eventDedup: {},
             eventPositions: {},
+            erasedEvents: {},
             deriveCheckpoints: {},
             capacity: {},
         };
@@ -469,9 +490,10 @@ export class DevDatabase {
         for (const [k, v] of this.counterIdem) snap.counterIdem[k] = v.toString();
         for (const [k, log] of this.events) {
             const ver = this.eventVersions.get(k) ?? [];
-            snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0 }));
+            snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0, hlc: (this.eventHlcs.get(k)?.[i] ?? BigInt(i + 1)).toString() }));
         }
         for (const [k, positions] of this.eventPositions) snap.eventPositions[k] = [...positions];
+        for (const [k, erased] of this.erasedEvents) snap.erasedEvents[k] = [...erased];
         for (const [k, s] of this.eventDedup) snap.eventDedup[k] = [...s];
         for (const [k, v] of this.deriveCheckpoints) snap.deriveCheckpoints[k] = v;
         for (const [k, l] of this.capacity)
@@ -541,10 +563,20 @@ export class DevDatabase {
                 k,
                 log.map((e) => Buffer.from(e.v, 'base64')),
             );
-            this.eventVersions.set(
-                k,
-                log.map((e) => e.sv),
-            );
+            this.eventVersions.set(k, log.map((e) => e.sv));
+            const hlcs = log.map((e, i) => BigInt(e.hlc ?? String(i + 1)));
+            this.eventHlcs.set(k, hlcs);
+            for (const hlc of hlcs) if (hlc > this.eventClock) this.eventClock = hlc;
+        }
+        for (const [k, values] of Object.entries(snap.erasedEvents ?? {})) {
+            const erased = new Set(values);
+            this.erasedEvents.set(k, erased);
+            const log = this.events.get(k) ?? [];
+            const hlcs = this.eventHlcs.get(k) ?? [];
+            for (let i = 0; i < log.length; i++) {
+                if (erased.has(String(i + 1) + ':' + String(hlcs[i] ?? BigInt(i + 1))))
+                    log[i] = Buffer.alloc(0);
+            }
         }
         for (const [k, positions] of Object.entries(snap.eventPositions ?? {}))
             this.eventPositions.set(k, new Map(positions));
@@ -579,6 +611,9 @@ export class DevDatabase {
         this.counters.clear();
         this.counterIdem.clear();
         this.eventVersions.clear();
+        this.eventHlcs.clear();
+        this.erasedEvents.clear();
+        this.eventClock = 0n;
         this.events.clear();
         this.eventDedup.clear();
         this.eventPositions.clear();
@@ -698,17 +733,23 @@ export class DevDatabase {
                 : db.functionKind === DbFunctionKind.Action
                   ? 64
                   : 1024;
-        if (count > maxKeys) return TOO_MANY_KEYS; // mirror production request-kind limits
+        if (count > maxKeys)
+            throw new Error(
+                `data.get_many failed: TDL020 batch-key budget exceeded; collection=${coll.name} kind=${db.functionKind} batch_keys=${String(count)} max_batch_keys=${String(maxKeys)}. Split the keys into smaller batches.`,
+            );
         // Result: u32 count, then per item present(u8) + (when present) the row's
         // stored schema_version (u32, per-item @migrate dispatch) + value (u32 len +
         // bytes). Byte-identical to the edge op_get_many framing.
         const w = new DataWriter();
         w.writeU32(count);
+        let resultBytes = 4;
         for (let i = 0; i < count; i++) {
             const key = r.readBytes();
             if (key.length > MAX_KEY) throw new Error('data: key too long');
             const sk = storeKey(coll.name, Buffer.from(key));
             const v = table.get(sk);
+            resultBytes += v === undefined ? 1 : 9 + v.length;
+            checkDbResultSize(db, resultBytes);
             if (v === undefined) {
                 w.writeU8(0);
             } else {
@@ -1128,6 +1169,39 @@ export class DevDatabase {
         return db.lastResult.length;
     }
 
+    membershipPage(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        setPtr: number,
+        setLen: number,
+        cursorPtr: number,
+        cursorLen: number,
+        limit: number,
+    ): number {
+        if (cursorLen < -1 || limit < 1 || limit > 0xffff)
+            throw new Error('data.membership_page: invalid cursor length or limit');
+        checkValueSize(cursorLen, 'cursor');
+        const coll = collForOp(db, handle, DbOp.MembershipList, CollectionFamily.Membership);
+        if (typeof coll === 'number') return coll;
+        if (limit > 1024) throw new Error('data.membership_page: TDL020 scan limit exceeds 1024');
+        const cursor = cursorLen === -1 ? null : readCopy(ref, cursorPtr, cursorLen);
+        const sk = storeKey(coll.name, readKey(ref, setPtr, setLen));
+        const members = Array.from(this.members.get(sk)?.values() ?? [])
+            .sort(Buffer.compare)
+            .filter((m) => cursor === null || Buffer.compare(m, cursor) > 0)
+            .slice(0, limit);
+        const versions = this.memberVersions.get(sk);
+        const w = new DataWriter().writeU32(members.length);
+        for (const member of members)
+            w.writeU32(versions?.get(member.toString('latin1')) ?? 0).writeBytes(member);
+        const next = members.length === limit ? members[members.length - 1] : null;
+        w.writeU8(next === null ? 0 : 1);
+        if (next !== null) w.writeBytes(next);
+        db.lastResult = Buffer.from(w.toBytes());
+        return db.lastResult.length;
+    }
+
     // --- view family (get / publish) ---
 
     viewGet(
@@ -1166,6 +1240,15 @@ export class DevDatabase {
         return 0;
     }
 
+    viewDelete(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number): number {
+        const coll = collForOp(db, handle, DbOp.ViewDelete, CollectionFamily.View);
+        if (typeof coll === 'number') return coll;
+        const key = storeKey(coll.name, readKey(ref, kp, kl));
+        this.views.delete(key);
+        this.versions.delete(key);
+        return 0;
+    }
+
     // --- counter family (get / add) ---
 
     // Stash the i64 sum as 8 LE bytes; the guest pulls + loads it. A counter
@@ -1195,6 +1278,7 @@ export class DevDatabase {
     private recordWrite(db: DbDevState, coll: DevCollectionHandle): void {
         if (db.functionKind === DbFunctionKind.Derive) return;
         db.writtenCollections.add(coll.name);
+        if (db.functionKind === DbFunctionKind.Job) queueMaterialization(coll.name);
     }
 
     counterAdd(
@@ -1263,6 +1347,10 @@ export class DevDatabase {
             versions.push(sv);
             this.eventVersions.set(sk, versions);
         }
+        const hlcs = this.eventHlcs.get(sk) ?? [];
+        const now = BigInt(Date.now()) << 16n;
+        this.eventClock = now > this.eventClock ? now : this.eventClock + 1n;
+        hlcs.push(this.eventClock); this.eventHlcs.set(sk, hlcs);
         this.recordWrite(db, coll);
         return 0;
     }
@@ -1311,6 +1399,10 @@ export class DevDatabase {
         }
         positions.set(evid, position);
         seen.add(evid);
+        const hlcs = this.eventHlcs.get(sk) ?? [];
+        const now = BigInt(Date.now()) << 16n;
+        this.eventClock = now > this.eventClock ? now : this.eventClock + 1n;
+        hlcs.push(this.eventClock); this.eventHlcs.set(sk, hlcs);
         this.recordWrite(db, coll);
         return 1;
     }
@@ -1348,17 +1440,75 @@ export class DevDatabase {
         const coll = collForOp(db, handle, DbOp.EventsLast, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        return this.eventResult(db, sk, (this.events.get(sk)?.length ?? 0) - 1);
+        const log = this.events.get(sk) ?? [];
+        let position = log.length - 1;
+        while (position >= 0 && log[position].length === 0) position--;
+        return this.eventResult(db, sk, position);
     }
 
     private eventResult(db: DbDevState, sk: string, position: number | undefined): number {
-        const value = position === undefined ? undefined : this.events.get(sk)?.[position];
+        const stored = position === undefined ? undefined : this.events.get(sk)?.[position];
+        const value = stored?.length === 0 ? undefined : stored;
         db.lastResult = value === undefined ? null : Buffer.from(value);
         db.lastResultVersion =
             value === undefined || position === undefined
                 ? -1
                 : (this.eventVersions.get(sk)?.[position] ?? 0);
         return value === undefined ? ABSENT : value.length;
+    }
+
+    public eventsReference(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number, ip: number, il: number): number {
+        const coll = collForOp(db, handle, DbOp.EventsReference, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        if (il < 0 || il > MAX_KEY) throw new Error('Invalid event ID length');
+        const sk = storeKey(coll.name, readKey(ref,kp,kl));
+        const id = readCopy(ref,ip,il).toString('latin1');
+        const position = this.eventPositions.get(sk)?.get(id);
+        if (position === undefined) return this.eventDedup.get(sk)?.has(id) ? UNAVAILABLE : ABSENT;
+        const bytes = Buffer.alloc(16);
+        bytes.writeBigUInt64LE(BigInt(position + 1));
+        bytes.writeBigUInt64LE(this.eventHlcs.get(sk)?.[position] ?? BigInt(position + 1), 8);
+        db.lastResult = bytes; db.lastResultVersion = -1;
+        return bytes.length;
+    }
+
+    public eventsRedact(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number, seq: bigint, hlc: bigint): number {
+        const coll = collForOp(db, handle, DbOp.EventsRedact, CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        if (seq <= 0n || hlc < 0n) throw new Error('Invalid event reference');
+        const sk = storeKey(coll.name,readKey(ref,kp,kl));
+        let erased = this.erasedEvents.get(sk);
+        if (erased === undefined) { erased = new Set(); this.erasedEvents.set(sk,erased); }
+        erased.add(seq.toString() + ':' + hlc.toString());
+        const position = Number(seq - 1n);
+        const log = this.events.get(sk);
+        if (Number.isSafeInteger(position) && position >= 0 && log !== undefined && position < log.length &&
+            (this.eventHlcs.get(sk)?.[position] ?? seq) === hlc) log[position] = Buffer.alloc(0);
+        for (const key of this.deriveCheckpoints.keys()) if (key.endsWith('\0' + sk)) this.deriveCheckpoints.delete(key);
+        for (const key of db.pendingCheckpoints.keys()) if (key.endsWith('\0' + sk)) db.pendingCheckpoints.delete(key);
+        this.recordWrite(db,coll);
+        // Dev dedup holds positions only, so there are no additional payload copies to scrub.
+        return 1;
+    }
+
+    public eventsEntries(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number, limit: number, after: bigint): number {
+        const coll = collForOp(db,handle,DbOp.EventsEntries,CollectionFamily.Events);
+        if (typeof coll === 'number') return coll;
+        if (!Number.isInteger(limit) || limit < 1 || limit > 1024 || after < 0n || after > BigInt(Number.MAX_SAFE_INTEGER))
+            throw new Error('Invalid event page cursor or limit');
+        const sk = storeKey(coll.name,readKey(ref,kp,kl));
+        const log = this.events.get(sk) ?? [];
+        const positions: number[] = [];
+        let cursor = Number(after);
+        while (cursor < log.length && positions.length < limit) { if (log[cursor].length > 0) positions.push(cursor); cursor++; }
+        const writer = new DataWriter().writeU32(positions.length);
+        for (const position of positions) writer.writeU64(BigInt(position+1))
+            .writeU64(this.eventHlcs.get(sk)?.[position] ?? BigInt(position+1))
+            .writeU32(this.eventVersions.get(sk)?.[position] ?? 0).writeBytes(log[position]);
+        const hasMore = positions.length === limit;
+        writer.writeU8(hasMore ? 1 : 0); if (hasMore) writer.writeU64(BigInt(cursor));
+        db.lastResult = Buffer.from(writer.toBytes()); db.lastResultVersion = -1;
+        return db.lastResult.length;
     }
 
     /** Byte-exact CAS: the expectation comes from the caller, not a fresh host read. */
@@ -1397,6 +1547,25 @@ export class DevDatabase {
             return 0;
         this.store.set(sk, value);
         this.stampVersion(coll, sk);
+        this.recordWrite(db, coll);
+        return 1;
+    }
+
+    public compareDelete(ref: MemoryRef, db: DbDevState, handle: number,
+        kp: number, kl: number, ep: number, el: number): number {
+        const coll = collForOp(db, handle, DbOp.Delete, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
+        checkKeyValueSize(kl, el, 'expected value');
+        checkValueSize(el, 'expected value');
+        if (el < 0) throw new Error('data: conditional delete requires an expected value');
+        const expected = readCopy(ref, ep, el);
+        if (this.uniqueValuesOf(coll, expected).length > 0)
+            throw new Error('Conditional delete does not support @unique fields');
+        const sk = storeKey(coll.name, readKey(ref, kp, kl));
+        const prior = this.store.get(sk);
+        if (prior === undefined || !prior.equals(expected)) return 0;
+        this.store.delete(sk);
+        this.versions.delete(sk);
         this.recordWrite(db, coll);
         return 1;
     }
@@ -1451,9 +1620,9 @@ export class DevDatabase {
         const log = this.events.get(sk) ?? [];
         const vers = this.eventVersions.get(sk) ?? [];
         const n = Math.max(0, Math.min(limit, 0xffff));
-        const start = Math.max(0, log.length - n);
-        const newest = log.slice(start).reverse();
-        const newestVers = vers.slice(start).reverse();
+        const positions = n === 0 ? [] : log.map((_,i) => i).filter(i => log[i].length > 0).slice(-n).reverse();
+        const newest = positions.map(i => log[i]);
+        const newestVers = positions.map(i => vers[i]);
         // u32 count, then per event its stored schema_version (u32) + bytes (u32 len
         // + bytes), newest first. Same framing as the edge op_latest.
         const w = new DataWriter();
@@ -1488,9 +1657,11 @@ export class DevDatabase {
         // checkpoint, else the start.
         const cursor = db.pendingCheckpoints.get(ckKey) ?? this.deriveCheckpoints.get(ckKey) ?? 0;
         const n = Math.max(0, Math.min(limit, 0xffff));
-        const end = Math.min(log.length, cursor + n);
-        const batch = log.slice(cursor, end); // oldest-first
-        const batchVers = vers.slice(cursor, end);
+        const positions: number[] = [];
+        let end = cursor;
+        while (end < log.length && positions.length < n) { if (log[end].length > 0) positions.push(end); end++; }
+        const batch = positions.map(i => log[i]);
+        const batchVers = positions.map(i => vers[i]);
         db.pendingCheckpoints.set(ckKey, end); // staged; committed only on derive success
         const w = new DataWriter();
         w.writeU32(batch.length);
@@ -1716,8 +1887,8 @@ export class DevDatabase {
 export const devDb = new DevDatabase();
 
 /** (Re)load the collection -> current schema_version map from a server wasm. */
-export function setDbCatalog(wasm: Buffer): void {
-    devDb.setCatalog(wasm);
+export function setDbCatalog(wasm: Buffer, merge = false): void {
+    devDb.setCatalog(wasm, merge);
 }
 
 /** Point the dev DB at an on-disk file and load any existing snapshot. */
@@ -1745,7 +1916,7 @@ export function buildDatabaseImports(
     ref: MemoryRef,
     db: DbDevState,
 ): Record<string, (...args: number[]) => number | bigint> {
-    return {
+    const imports: Record<string, (...args: number[]) => number | bigint> = {
         'data.resolve_collection': (
             namePtr: number,
             nameLen: number,
@@ -1846,6 +2017,15 @@ export function buildDatabaseImports(
             _idemPtr: number,
         ): number => devDb.membershipRemove(ref, db, handle, setPtr, setLen, memberPtr, memberLen),
 
+        'data.membership_page': (
+            h: number,
+            sp: number,
+            sl: number,
+            cp: number,
+            cl: number,
+            limit: number,
+        ): number => devDb.membershipPage(ref, db, h, sp, sl, cp, cl, limit),
+
         'data.membership_list': (
             handle: number,
             setPtr: number,
@@ -1853,6 +2033,8 @@ export function buildDatabaseImports(
             limit: number,
         ): number => devDb.membershipList(ref, db, handle, setPtr, setLen, limit),
 
+        'data.view_delete': (h: number, kp: number, kl: number, _idem: number): number =>
+            devDb.viewDelete(ref, db, h, kp, kl),
         'data.view_get': (handle: number, keyPtr: number, keyLen: number): number =>
             devDb.viewGet(ref, db, handle, keyPtr, keyLen),
 
@@ -1898,6 +2080,8 @@ export function buildDatabaseImports(
 
         'data.get_current': (handle: number, kp: number, kl: number): number =>
             devDb.get(ref, db, handle, kp, kl),
+        'data.compare_delete': (h: number, kp: number, kl: number, ep: number, el: number): number =>
+            devDb.compareDelete(ref, db, h, kp, kl, ep, el),
         'data.compare_exchange': (
             handle: number,
             kp: number,
@@ -1918,6 +2102,9 @@ export function buildDatabaseImports(
 
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
             devDb.latest(ref, db, handle, keyPtr, keyLen, limit),
+        'data.events_reference': (h: number,kp: number,kl: number,ip: number,il: number): number => devDb.eventsReference(ref,db,h,kp,kl,ip,il),
+        'data.events_redact': (h: number,kp: number,kl: number,seq: number | bigint,hlc: number | bigint): number => devDb.eventsRedact(ref,db,h,kp,kl,BigInt(seq),BigInt(hlc)),
+        'data.events_entries': (h: number,kp: number,kl: number,limit: number,after: number | bigint): number => devDb.eventsEntries(ref,db,h,kp,kl,limit,BigInt(after)),
         'data.events_get': (
             handle: number,
             keyPtr: number,
@@ -1979,6 +2166,7 @@ export function buildDatabaseImports(
         // record patch used by rewrite-on-read migration convergence.
         'data.write_allowed': (): number => (kindAllows(db.functionKind, DbOp.Patch) ? 1 : 0),
     };
+    return withDbLimits(imports, db);
 }
 
 /** Test-only: clear the stores + catalog + persistence between unit tests. */

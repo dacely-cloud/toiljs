@@ -86,7 +86,17 @@ In `toiljs dev` and the current production host, one `getMany` call accepts up t
 
 A stored value may be at most **2097152 encoded bytes (2 MiB)**, including the `@data` message id, field lengths, and other codec overhead. The limit applies in both `toiljs dev` and production. A photo can be stored whole when its encoded record fits this limit; a photo with 2 MiB of raw content will exceed it once wrapped in a record. `create`, `patch`, `upsert`, and `enqueue` all enforce the same limit; changing the write method does not bypass it. Events, View values, Unique owners, and Membership members have the same encoded value cap.
 
-Production also applies host-configured limits to individual database results and the total result bytes in a request. A `getMany` result includes all returned rows and their framing, so its key-count limit does not guarantee that the result fits. The local emulator enforces value, key, and batch-size caps, but does not emulate these result-byte budgets or production DB wait deadlines. Size reads for the deployed host's request budgets as well as the 2 MiB per-value cap.
+The native host's current default database budgets are:
+
+| Function kind | Operations | Writes | Bytes per operation/result | Total database bytes per call | DB wait deadline |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Query | 64 | 0 | 64 KiB | 128 KiB | 50 ms |
+| Action | 64 | 32 | 128 KiB | 2 MiB | 250 ms |
+| Job / Derive | 65,535 | 65,535 | 1 MiB | 16 MiB | 5 seconds |
+
+Write payloads also consume these byte budgets; they are not reserved solely for reads. Batch framing counts toward a result's size. A 390 KiB `getMany` result exceeds the default Query and Action per-result caps even if its key count fits. Splitting reads into several calls does not bypass the cumulative byte budget. Operators can override operation counts and DB wait deadlines; use the deployed host's settings for validation.
+
+Set `TOIL_DEV_CHECK_DB_LIMITS=1` when starting `toiljs dev` or `toiljs start` to check default database operation counts, write counts, write-payload bytes, complete result framing, and cumulative database bytes locally. The checks are optional so existing local fixtures can still use larger data sets. Gas, storage latency, DB wait deadlines, and additional internal operations for unique-field enforcement require validation on the native host; the synchronous Node emulator does not reproduce them.
 
 For files larger than the encoded value or request budgets allow, store the content in external file storage and keep its reference and metadata in Documents, or store chunks under separate keys:
 
@@ -95,7 +105,7 @@ For files larger than the encoded value or request budgets allow, store the cont
 3. Validate that every expected chunk arrived before publishing a completed upload. Readers use the completion marker so an interrupted upload is not mistaken for a complete file. Retry chunk writes with `upsert` when replacing that chunk is acceptable.
 4. Read known chunk keys with bounded `getMany` calls or individual `get` calls, keeping every result and the request's total under the deployed budgets. Remove abandoned chunks using background work. Allow for replication delay when verifying newly written chunks from a different cell.
 
-The local HTTP request body limit is a separate **8 MiB** default: accepting an upload body does not make that body a valid database value. See [route execution and transport limits](../concepts/config.md#route-execution-and-transport-limits) and [upload expiry versus elapsed deadlines](../services/time.md#upload-expiry-versus-elapsed-deadlines).
+The local HTTP transport body limit defaults to **8 MiB**. Dev also bounds the full encoded request at 8 MiB and uses the compiled request-envelope window like the current native edge: requests that fit below `memoryBase` use the reserved prefix, while larger requests are delivered above the heap. The toiljs entrypoint reserves that tail before decoding. `memoryBase` controls this fast-path window rather than a hard upload-body cap; accepting an upload does not make its body a valid database value. See [route execution and transport limits](../concepts/config.md#route-execution-and-transport-limits) and [upload expiry versus elapsed deadlines](../services/time.md#upload-expiry-versus-elapsed-deadlines).
 
 ### Writing: `create` vs `upsert` vs `patch` vs `enqueue`
 
@@ -140,10 +150,33 @@ portable durable-commit acknowledgement.
 
 Use a Counter for independent additive totals. Financial state spanning several
 records requires a tested conditional-write/recovery protocol. The native host
-now exposes `data.compare_exchange` (explicit expected bytes) and
-`data.get_current` (owner read), mirrored by the development emulator. These are
-low-level host imports; the typed Documents API does not yet wrap them. They
-currently require local key ownership and reject remote-owner execution.
+exposes `Documents.compareExchange(key, expected, replacement)`, backed by
+`data.compare_exchange` and mirrored by the development emulator. It compares
+the stored encoded bytes against the caller's `expected` value and returns
+`true` only if it stores the replacement. `expected = null` requires an absent
+record. A mismatch returns `false`; other failures abort with the host status.
+Both conditional operations route to the key's owner on the asynchronous host.
+`Documents.compareDelete(key, expected)` removes only the expected value and
+returns `false` if another writer changed or removed it. Neither operation
+supports values with `@unique` fields. The synchronous host fails closed when
+a key belongs to another cell.
+
+On ScyllaDB, the conditional state change and its replication-oplog insert are
+separate statements. If the state commits but the oplog insert still fails after
+retries, the owner can return success while peers retain the earlier value.
+Owner RPCs retain failed envelopes in memory for retry; a restart before repair
+can leave peers stale until a snapshot or another write repairs them. Use the
+authoritative owner read when a conditional protocol needs the current state.
+
+For values that may migrate while decoding, use `getSnapshot(key)`. It returns
+`DocumentSnapshot<V> | null`, retaining `value` and the original `encoded` bytes
+without rewriting the row during the read. Pass that snapshot to
+`compareExchangeSnapshot(key, snapshot, replacement)` or
+`compareDeleteSnapshot(key, snapshot)` so the comparison uses the original
+storage bytes. These methods protect a replacement even if you modify
+`snapshot.value` while constructing it. `getCurrentSnapshot(key)` reads at the
+owner and bypasses replica/request caches. The asynchronous host routes it to a
+remote owner; the synchronous host fails closed on remote ownership.
 
 **`upsert` creates the record or overwrites it, in one operation.** It is the "just store this value, I do not care whether a row was already there" call, and it is the right tool for a save that runs repeatedly (a profile edit, a settings blob) where the first save inserts and every later save replaces. It returns an `UpsertResult` telling you which happened:
 

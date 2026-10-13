@@ -58,6 +58,7 @@ export type DbCatalogState =
 /** Per-request data state: resolved handles + the last variable-length result +
  *  the schema_version of that result's row (surfaced via result_schema_version). */
 export interface DbDevState {
+    logMessages: number;
     handles: DevCollectionHandle[];
     lastResult: Buffer | null;
     lastResultVersion: number;
@@ -79,6 +80,7 @@ export interface DbDevState {
 
 export function freshDbState(): DbDevState {
     return {
+        logMessages: 0,
         handles: [],
         lastResult: null,
         lastResultVersion: -1,
@@ -115,7 +117,8 @@ export interface DbSnapshot {
     members: Record<string, Record<string, { v: string; sv: number }>>;
     counters: Record<string, string>;
     counterIdem?: Record<string, string>;
-    events: Record<string, { v: string; sv: number }[]>;
+    events: Record<string, { v: string; sv: number; hlc?: string }[]>;
+    erasedEvents?: Record<string, string[]>;
     eventDedup: Record<string, string[]>;
     /** Event ID -> append-order index, for bounded point reads. */
     eventPositions?: Record<string, [string, number][]>;

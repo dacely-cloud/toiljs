@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { __resetDbForTests, configureDbPersistence } from '../src/devserver/db/index.js';
 
 import { DaemonHost } from '../src/devserver/daemon/index.js';
 import {
@@ -82,6 +83,134 @@ const counter = (host: DaemonHost, name: string): number => host.callI32Export(`
 
 // The compiler is a required dependency; a missing binary fails these tests.
 describe('dev daemon emulation', () => {
+    it('retries a failed derive in an idle daemon without requests or scheduled tasks', async () => {
+        __resetDbForTests();
+        vi.useFakeTimers();
+        const source = join(tmp, 'idle-derive.ts');
+        const artifact = join(tmp, 'idle-derive.wasm');
+        const snapshot = join(tmp, 'idle-derive.json');
+        writeFileSync(source, `
+let failNext: bool = true;
+@data class Key { id: i32 = 0; }
+@data class Row { value: i32 = 0; constructor(value: i32 = 0) { this.value = value; } }
+@database class App {
+  @collection static rows: Documents<Key, Row>;
+  @collection static pages: View<Key, Row>;
+  @derive rebuild(): void {
+    if (failNext) { failNext = false; assert(false, 'temporary materializer failure'); }
+    App.pages.publish(new Key(), App.rows.require(new Key()));
+  }
+}
+@daemon class Jobs { onStart(): void { App.rows.upsert(new Key(), new Row(7)); } }
+`);
+        const compiled = compileCold(source, artifact);
+        expect(compiled.ok, compiled.output).toBe(true);
+        configureDbPersistence(snapshot);
+        const messages: string[] = [];
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', s => messages.push(s));
+        try {
+            host.refresh();
+            expect(host.active).toBe(true);
+            expect(messages.join('')).toContain('temporary materializer failure');
+            const saved = (): { views: Record<string, { v: string }> } => JSON.parse(readFileSync(snapshot, 'utf8'));
+            expect(Object.values(saved().views)).toHaveLength(0);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(Object.values(saved().views)).toHaveLength(1);
+            expect(Buffer.from(Object.values(saved().views)[0].v, 'base64').readInt32LE(4)).toBe(7);
+            host.close();
+            expect(vi.getTimerCount()).toBe(0);
+        } finally {
+            host.close();
+            __resetDbForTests();
+        }
+    });
+
+    it('persists materialized pages after startup and scheduled writes without HTTP traffic', async () => {
+        __resetDbForTests();
+        vi.useFakeTimers();
+        const source = join(tmp, 'materializing.ts');
+        const artifact = join(tmp, 'materializing.wasm');
+        const snapshot = join(tmp, 'materializing.json');
+        writeFileSync(
+            source,
+            `
+@data class Key { id: i32 = 0; }
+@data class Row { value: i32 = 0; constructor(value: i32 = 0) { this.value = value; } }
+@database class App {
+  @collection static rows: Documents<Key, Row>;
+  @collection static pages: View<Key, Row>;
+}
+@daemon class Jobs {
+  onStart(): void { App.rows.upsert(new Key(), new Row(7)); }
+  @scheduled("1s") tick(): void {
+    const row = App.rows.require(new Key()); row.value++;
+    App.rows.patch(new Key(), row);
+  }
+}
+export function derive_run(id: i32): i64 {
+  App.pages.publish(new Key(), App.rows.require(new Key())); return 0;
+}
+`,
+        );
+        const compiled = compileCold(source, artifact);
+        expect(compiled.ok, compiled.output).toBe(true);
+        // Pin the new catalog ABI while retaining compatibility with the installed compiler.
+        const name = Buffer.from('toildb.derives');
+        const fields = [Buffer.from([1, 0, 1, 0, 0, 0])];
+        for (const value of ['App', 'rebuild']) {
+            const bytes = Buffer.from(value);
+            const length = Buffer.alloc(4);
+            length.writeUInt32LE(bytes.length);
+            fields.push(length, bytes);
+        }
+        const section = Buffer.concat([Buffer.from([name.length]), name, ...fields]);
+        writeFileSync(
+            artifact,
+            Buffer.concat([readFileSync(artifact), Buffer.from([0, section.length]), section]),
+        );
+        configureDbPersistence(snapshot);
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', () => {});
+        const pageValue = (): number => {
+            const db = JSON.parse(readFileSync(snapshot, 'utf8')) as {
+                views: Record<string, { v: string }>;
+            };
+            const view = Object.values(db.views)[0];
+            expect(view).toBeDefined();
+            return Buffer.from(view.v, 'base64').readInt32LE(4);
+        };
+        try {
+            host.refresh();
+            expect(host.active).toBe(true);
+            expect(pageValue()).toBe(7);
+            await vi.advanceTimersByTimeAsync(1000);
+            expect(pageValue()).toBe(8);
+        } finally {
+            host.close();
+            __resetDbForTests();
+        }
+    });
+
+    it('reports a failed init and never starts its scheduled tasks', () => {
+        const source = join(tmp, 'init-failure.ts');
+        const artifact = join(tmp, 'init-failure.wasm');
+        writeFileSync(
+            source,
+            '@daemon class Jobs { @scheduled("1s") tick(): void {} } export function init(): i32 { return 7; }',
+        );
+        const compiled = compileCold(source, artifact);
+        expect(compiled.ok, compiled.output).toBe(true);
+        const messages: string[] = [];
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', (s) => messages.push(s));
+        try {
+            host.refresh();
+            expect(host.active).toBe(false);
+            expect(messages.join('')).toContain('init() returned 7; daemon not running');
+            expect(host.nextFireMs(0)).toBeNull();
+        } finally {
+            host.close();
+        }
+    });
+
     it('compiles the @daemon fixture to a cold artifact', () => {
         // Guard: every assertion below depends on the installed toilscript link. A hard
         // failure here (rather than a silent skip) surfaces the compiler regression.

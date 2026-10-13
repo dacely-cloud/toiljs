@@ -119,11 +119,16 @@ Rules:
 
 You never call a derive yourself. The runtime runs it for you at two moments:
 
-1. **After a write to a source.** When a request writes one of the database's source collections (an `events.append`, a `counter.add`, a document `create` or `patch`), that database's derives run **right after the response is produced**, so the view reflects the new data on the next read. Many writes to one database in a single request are **coalesced** into one recompute (it does not run once per write).
+1. **After a write to a source.** When a request, job, or daemon writes one of the database's source collections (an `events.append`, a `counter.add`, a document `create` or `patch`), that database's derives run **right after the response is produced**, so the view reflects the new data on the next read. Cold artifacts include the shared databases' materializers and run them after startup and scheduled writes without needing an HTTP request. Rebuild cold artifacts with the updated compiler to get this behavior. Older cold artifacts without materializers retain their deferred hot-request fallback. Many writes to one database in a single request are **coalesced** into one recompute (it does not run once per write).
 
 2. **On box load.** When a server box starts, hot-reloads, or notices the underlying data changed out of band, the views are rebuilt from their sources **before the first read is served**. This is also where a value type's [`@migrate`](../backend/data.md) runs against old stored events, as the derive re-reads and republishes them.
 
 A derive's own `view.publish` never re-triggers it, so there is no infinite loop.
+
+A failed cold fold retains its pending work and leaves its checkpoint unchanged.
+The daemon scheduler retries pending folds on its next iteration, including idle
+iterations when no scheduled task is due, while it holds the leadership lease.
+Dev retries once per second. No HTTP request is needed to trigger a retry.
 
 The same code runs under `toiljs dev` (the in-process emulator) and on the production edge, with no flags or wiring to change.
 

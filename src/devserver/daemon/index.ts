@@ -21,6 +21,17 @@ import fs from 'node:fs';
 import { performance } from 'node:perf_hooks';
 
 import pc from 'picocolors';
+import {
+    DbFunctionKind,
+    persistDb,
+    parseDerives,
+    derivesForWrites,
+    type DeriveEntry,
+    commitDeriveCheckpoints,
+    setDbCatalog,
+} from '../db/index.js';
+import { flushMaterializations, queueMaterialization } from '../db/materialization.js';
+import { resetDbLimits } from '../db/limits.js';
 
 import { type MemoryRef } from '../runtime/host.js';
 import { parseSurface } from '../wasm/surface.js';
@@ -45,6 +56,7 @@ interface ColdExports {
     readonly scheduled_tick: (taskId: number) => bigint;
     /** OPTIONAL: the host calls it before `daemon_start` if exported (Part 2). */
     readonly init?: () => number;
+    readonly derive_run?: (id: number) => bigint;
 }
 
 /** RECONCILIATION Part 3 decode of a negative packed-i64 return, for logging. */
@@ -79,10 +91,13 @@ export class DaemonHost implements DaemonRuntime {
     private epochValue = 0n;
     /** task_index -> active interval/timeout handle. */
     private timers = new Map<number, NodeJS.Timeout>();
+    private deriveRetryTimer: NodeJS.Timeout | null = null;
     /** task_index -> next computed fire time (epoch ms), for daemon.next_fire_ms. */
     private nextFire = new Map<number, number>();
     /** task_index of ticks currently executing (overlap guard). */
     private ticking = new Set<number>();
+    private derives: readonly DeriveEntry[] = [];
+    private readonly pendingDerives = new Set<number>();
 
     constructor(
         private readonly coldWasmPath: string,
@@ -181,6 +196,10 @@ export class DaemonHost implements DaemonRuntime {
         }
 
         this.module = new WebAssembly.Module(bytes);
+        setDbCatalog(bytes, true);
+        this.derives = parseDerives(bytes);
+        this.pendingDerives.clear();
+        for (const derive of this.derives) this.pendingDerives.add(derive.deriveId);
         this.catalog = catalog;
         this.loadedMtimeMs = mtimeMs;
         this.epochValue += 1n; // fencing token bumps on each (re)start
@@ -193,6 +212,7 @@ export class DaemonHost implements DaemonRuntime {
         if (this.module === null || this.catalog === null) return;
         const ref: MemoryRef = { memory: null };
         this.state = freshDaemonState();
+        this.state.db.functionKind = DbFunctionKind.Action;
         const imports = buildDaemonImports(ref, this.state, this);
 
         // Fail-closed up front, with names, when the cold box imports anything outside its allowed
@@ -222,9 +242,27 @@ export class DaemonHost implements DaemonRuntime {
         this.instance = new WebAssembly.Instance(this.module, imports);
         this.exports = this.instance.exports as unknown as ColdExports;
         ref.memory = this.exports.memory;
+        if (this.derives.length > 0 && typeof this.exports.derive_run !== 'function') {
+            this.log(pc.red('  ✗ cold materializers require derive_run(i32) -> i64') + '\n');
+            this.instance = null;
+            this.exports = null;
+            return;
+        }
 
         try {
-            if (typeof this.exports.init === 'function') this.exports.init();
+            if (typeof this.exports.init === 'function') {
+                const initRc = this.exports.init();
+                if (initRc !== 0) {
+                    this.log(
+                        pc.red(`  ✗ init() returned ${String(initRc)}; daemon not running`) + '\n',
+                    );
+                    this.instance = null;
+                    this.exports = null;
+                    return;
+                }
+                this.state.db.logMessages = 0;
+                resetDbLimits(this.state.db);
+            }
             const rc = this.exports.daemon_start();
             if (rc !== 0) {
                 this.log(
@@ -241,9 +279,16 @@ export class DaemonHost implements DaemonRuntime {
             this.instance = null;
             this.exports = null;
             return;
+        } finally {
+            this.materializeWrites();
         }
 
         this.running = true;
+        this.deriveRetryTimer = setInterval(() => {
+            if (this.running && this.pendingDerives.size > 0 && this.isLeader())
+                this.materializeWrites();
+        }, 1000);
+        this.deriveRetryTimer.unref?.();
         const limited = this.catalog.tasks.slice(0, this.cfg.maxTasks);
         for (const task of limited) this.registerTask(task);
         this.log(
@@ -260,6 +305,8 @@ export class DaemonHost implements DaemonRuntime {
     /** Clear timers, drop the resident instance. In-flight ticks finish on their own
      *  (the overlap guard prevents a NEW tick; a running one completes). */
     private stop(): void {
+        if (this.deriveRetryTimer !== null) clearInterval(this.deriveRetryTimer);
+        this.deriveRetryTimer = null;
         for (const t of this.timers.values()) clearTimeout(t);
         this.timers.clear();
         this.nextFire.clear();
@@ -335,6 +382,11 @@ export class DaemonHost implements DaemonRuntime {
         }
         if (!this.isLeader()) return; // always true in dev; kept for parity
         this.ticking.add(task.taskIndex);
+        // The edge enters a fresh Action budget for every cold call.
+        this.state.db.functionKind = DbFunctionKind.Action;
+        this.state.db.logMessages = 0;
+        resetDbLimits(this.state.db);
+        this.state.db.writtenCollections.clear();
         const startedAt = performance.now();
         try {
             const ret = this.exports.scheduled_tick(task.taskIndex); // packed-i64
@@ -348,6 +400,7 @@ export class DaemonHost implements DaemonRuntime {
             // stream box); the next tick runs normally on the same memory.
             this.log(pc.red(`  ✗ @scheduled ${task.name} trapped: ${String(e)}`) + '\n');
         } finally {
+            this.materializeWrites();
             const took = performance.now() - startedAt;
             if (took > this.cfg.tickBudgetMs)
                 this.log(
@@ -359,6 +412,49 @@ export class DaemonHost implements DaemonRuntime {
                 );
             this.ticking.delete(task.taskIndex);
         }
+    }
+
+    /** Tear the daemon down for good (dev-server shutdown). */
+    private materializeWrites(): void {
+        if (this.derives.length > 0 && this.exports?.derive_run !== undefined) {
+            for (const derive of derivesForWrites(this.derives, this.state.db.writtenCollections))
+                this.pendingDerives.add(derive.deriveId);
+            const db = this.state.db;
+            const kind = db.functionKind;
+            try {
+                db.functionKind = DbFunctionKind.Derive;
+                for (const derive of this.derives.filter((d) =>
+                    this.pendingDerives.has(d.deriveId),
+                )) {
+                    db.deriveId = derive.deriveId;
+                    db.logMessages = 0;
+                    resetDbLimits(db);
+                    db.pendingCheckpoints.clear();
+                    try {
+                        const rc = this.exports.derive_run(derive.deriveId);
+                        if (rc !== 0n) throw new Error(`derive_run returned ${String(rc)}`);
+                        commitDeriveCheckpoints(db);
+                        this.pendingDerives.delete(derive.deriveId);
+                    } catch (error) {
+                        this.log(
+                            pc.red(
+                                `  ✗ daemon derive ${derive.dbName}.${derive.methodName} failed; retry in one second: ${String(error)}`,
+                            ) + '\n',
+                        );
+                        break;
+                    }
+                }
+            } finally {
+                db.functionKind = kind;
+                db.pendingCheckpoints.clear();
+            }
+        } else {
+            for (const collection of this.state.db.writtenCollections)
+                queueMaterialization(collection);
+            flushMaterializations();
+        }
+        persistDb();
+        this.state.db.writtenCollections.clear();
     }
 
     /** Tear the daemon down for good (dev-server shutdown). */

@@ -439,8 +439,10 @@ class EmailKey {
 @data
 class EmailOwner {
     username: string = '';
-    constructor(username: string = '') {
+    accountId: Uint8Array = new Uint8Array(0);
+    constructor(username: string = '', accountId: Uint8Array = new Uint8Array(0)) {
         this.username = username;
+        this.accountId = accountId;
     }
 }
 
@@ -458,6 +460,7 @@ class TokenId {
 class TokenRec {
     username: string = '';
     exp: u64 = 0;
+    accountId: Uint8Array = new Uint8Array(0);
 }
 
 @data
@@ -492,6 +495,11 @@ class AuthAccount {
     // Append-only: the STABLE ToilUserId, derived once at registration. Reset rotates
     // publicKey but leaves this, so the id is stable across a reset.
     toilUserId: Uint8Array = new Uint8Array(0);
+    // Account incarnation: never reused, even when username/password are reused.
+    accountId: Uint8Array = new Uint8Array(0);
+    deleting: bool = false;
+    registering: bool = false;
+    legacyFactors: bool = false;
 }
 
 @data
@@ -503,6 +511,7 @@ class Challenge {
     exp: u64 = 0;
     sessionEpoch: u64 = 0;
     sessionVersion: u8 = 0;
+    accountId: Uint8Array = new Uint8Array(0);
 }
 
 /** The lookup key for a login 2FA challenge: 16 random bytes minted per login.
@@ -537,11 +546,30 @@ class TwoFaChallenge {
     sessionEpoch: u64 = 0;
     sessionVersion: u8 = 0;
     settingsRevision: u64 = 0;
+    accountId: Uint8Array = new Uint8Array(0);
+}
+
+@data
+class DeletedAccountKey {
+    host: string = '';
+    incarnation: string = '';
+    constructor(host: string = '', incarnation: string = '') {
+        this.host = host;
+        this.incarnation = incarnation;
+    }
+}
+
+@data
+class DeletedAccountMarker {
+    deleted: bool = true;
 }
 
 @database
 class AuthDb {
     @collection static accounts: Documents<Username, AuthAccount>;
+    // Permanent opaque incarnation guards prevent a late replica/snapshot replay
+    // of an old account row from enabling that deleted account again.
+    @collection static deletedAccounts: Documents<DeletedAccountKey, DeletedAccountMarker>;
     @collection static emails: Documents<EmailKey, EmailOwner>; // email -> username (uniqueness index)
     @collection static challenges: Documents<ChallengeId, Challenge>;
     @collection static confirmTokens: Documents<TokenId, TokenRec>;
@@ -623,36 +651,51 @@ class Auth {
         // Whether login is then BLOCKED is a separate check (requireConfirmation,
         // used in login/finish), so a domain can verify-at-register without gating.
         const mustConfirm = sendConfirmationEmail();
-        const a = new AuthAccount();
-        a.username = username;
-        a.email = email;
-        a.emailConfirmed = !mustConfirm; // auto-confirm when confirmation is off
-        a.salt = deriveSalt(h, username);
-        a.publicKey = pk;
-        a.memKiB = MEM_KIB;
-        a.iterations = ITERS;
-        a.parallelism = PAR;
-        // Derive + persist the stable id once. Tenant-scoped, and unique WITHOUT a
-        // separate index: the framed derive maps distinct (username, domain) to
-        // distinct ids, and username is unique per realm (accounts.create below), so
-        // two accounts can never share an id.
-        a.toilUserId = ToilUserId.derive(pk, username, authDomain(ctx)).toBytes();
-        // create-if-absent IS the authoritative, race-safe uniqueness guard
-        // (serialized at the key's home): a duplicate username loses here and gets the
-        // distinguishable ST_TAKEN. No pre-`exists` read needed -- the create result
-        // is the answer.
-        if (!AuthDb.accounts.create(new Username(h, username), a)) {
-            return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
+        const accountKey = new Username(h, username);
+        let abandoned = AuthDb.accounts.getCurrentSnapshot(accountKey);
+        if (abandoned != null && !abandoned.value.deleting && this.wasDeleted(h, abandoned.value)) {
+            // A stale account row may have arrived after its deletion. The
+            // permanent incarnation guard authorizes finishing its cleanup again.
+            abandoned.value.deleting = true;
+            if (!AuthDb.accounts.compareExchangeSnapshot(accountKey, abandoned, abandoned.value)) return fail();
+            abandoned = new DocumentSnapshot<AuthAccount>(abandoned.value, abandoned.value.encode());
         }
-        // Reserve the email -> username index (email uniqueness + reset-by-email). A
-        // duplicate email loses here; roll back the account so nothing is orphaned.
-        if (!AuthDb.emails.create(new EmailKey(h, email), new EmailOwner(username))) {
-            AuthDb.accounts.delete(new Username(h, username));
+        if (abandoned != null && abandoned.value.deleting) this.finishDeletion(ctx, accountKey, abandoned);
+        let a: AuthAccount;
+        let registering: DocumentSnapshot<AuthAccount>;
+        if (abandoned != null && abandoned.value.registering && abandoned.value.email == email &&
+            ctEqual(abandoned.value.publicKey, pk)) {
+            // The verified password proof authorizes resuming this exact pending
+            // registration after a crash between account and email reservation.
+            a = abandoned.value;
+            registering = abandoned;
+        } else {
+            a = new AuthAccount();
+            a.accountId = randomBytes(32);
+            a.registering = true;
+            a.username = username;
+            a.email = email;
+            a.emailConfirmed = !mustConfirm;
+            a.salt = deriveSalt(h, username);
+            a.publicKey = pk;
+            a.memKiB = MEM_KIB;
+            a.iterations = ITERS;
+            a.parallelism = PAR;
+            a.toilUserId = ToilUserId.derive(pk, username, authDomain(ctx)).toBytes();
+            if (!AuthDb.accounts.compareExchange(accountKey, null, a)) {
+                return Response.bytes(new DataWriter().writeU8(ST_TAKEN).toBytes());
+            }
+            registering = new DocumentSnapshot<AuthAccount>(a, a.encode());
+        }
+        if (!this.reserveEmail(new EmailKey(h, email), a)) {
+            AuthDb.accounts.compareDeleteSnapshot(accountKey, registering);
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
 
+        a.registering = false;
+        if (!AuthDb.accounts.compareExchangeSnapshot(accountKey, registering, a)) return fail();
         if (mustConfirm) {
-            this.issueConfirmation(h, ctx, username, email);
+            this.issueConfirmation(h, ctx, username, email, a);
         }
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
@@ -673,11 +716,14 @@ class Auth {
         const rec = AuthDb.confirmTokens.getDelete(tokenId(h, raw));
         if (rec == null) return fail();
         if (nowSecs() >= rec.exp) return fail();
-        const acct = AuthDb.accounts.get(new Username(h, rec.username));
-        if (acct == null) return fail();
+        const key = new Username(h, rec.username);
+        const observed = AuthDb.accounts.getCurrentSnapshot(key);
+        if (observed == null) return fail();
+        const acct = observed.value;
+        if (acct.deleting || acct.registering || this.wasDeleted(h, acct) || !ctEqual(rec.accountId, this.incarnation(acct))) return fail();
         if (!acct.emailConfirmed) {
             acct.emailConfirmed = true;
-            AuthDb.accounts.patch(new Username(h, rec.username), acct);
+            if (!AuthDb.accounts.compareExchangeSnapshot(key, observed, acct)) return fail();
         }
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
@@ -694,9 +740,9 @@ class Auth {
         const h = realm(ctx);
         const owner = AuthDb.emails.get(new EmailKey(h, email));
         if (owner != null) {
-            const acct = AuthDb.accounts.get(new Username(h, owner.username));
-            if (acct != null && !acct.emailConfirmed) {
-                this.issueConfirmation(h, ctx, owner.username, email);
+            const acct = this.account(new Username(h, owner.username));
+            if (acct != null && acct.email == email && !acct.emailConfirmed) {
+                this.issueConfirmation(h, ctx, owner.username, email, acct);
             }
         }
         return ackOk();
@@ -719,7 +765,7 @@ class Auth {
         if (evaluated.length != AuthService.OPRF_ELEMENT_LEN) return fail();
 
         const h = realm(ctx);
-        const known = AuthDb.accounts.exists(new Username(h, username));
+        const known = this.account(new Username(h, username));
         const cid = randomBytes(16);
         const nonce = randomBytes(32);
         const iat = nowSecs();
@@ -728,16 +774,17 @@ class Auth {
         // Persist only for a real account; the response is identical either way,
         // and login/finish for an unknown user fails generically at consume. The
         // challenge key folds in `h`, so a challenge is bound to the login domain.
-        if (known) {
+        if (known != null) {
             const c = new Challenge();
             c.cid = cid;
             c.username = username;
             c.nonce = nonce;
             c.iat = iat;
             c.exp = exp;
-            const account = AuthDb.accounts.get(new Username(h, username))!;
+            const account = known;
             c.sessionEpoch = SessionEpochs.current(__toilEncodeAuthUser(this.stableUserId(ctx, h, username, account), username));
             c.sessionVersion = 2;
+            c.accountId = this.incarnation(account);
             AuthDb.challenges.create(new ChallengeId(h, cid), c);
         }
 
@@ -777,8 +824,8 @@ class Auth {
 
         // 2. Rebuild the message from OUR stored values + the client's ct (and
         //    the bound params + server key id), load the account key, verify.
-        const acct = AuthDb.accounts.get(new Username(h, ch.username));
-        if (acct == null) return fail();
+        const acct = this.account(new Username(h, ch.username));
+        if (acct == null || !ctEqual(ch.accountId, this.incarnation(acct))) return fail();
         const message = AuthService.buildLoginMessage(
             ch.username,
             aud(),
@@ -820,7 +867,7 @@ class Auth {
         //     never resetTokens/confirmTokens). This runs AFTER the signature
         //     verify above, so it is not an oracle, and the login `Challenge` was
         //     already consumed (getDelete) at the top of this handler.
-        const factorMethod = FactorRepository.read(h, ch.username, acct.twoFactorMethod).method;
+        const factorMethod = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod).method;
         if (factorMethod != TWOFA_NONE) {
             const raw = randomBytes(16); // the twoFaId the client echoes to /2fa/verify
             const codeHash = this.twoFaDeliver(
@@ -834,6 +881,7 @@ class Auth {
             if (codeHash.length == 0) return fail(); // unsupported/misconfigured method
             const c2 = new TwoFaChallenge();
             c2.username = ch.username;
+            c2.accountId = ch.accountId;
             c2.method = factorMethod;
             c2.codeHash = codeHash;
             c2.exp = nowSecs() + TWOFA_TTL_SECS;
@@ -879,19 +927,21 @@ class Auth {
         if (!r.ok) return fail();
         const h = realm(ctx);
         const owner = AuthDb.emails.get(new EmailKey(h, email));
-        if (owner != null && AuthDb.accounts.exists(new Username(h, owner.username))) {
+        const resetAccount: AuthAccount | null = owner == null ? null : this.account(new Username(h, owner.username));
+        if (owner != null && resetAccount != null && resetAccount.email == email) {
             // Invalidate this user's previous reset token (bound to one outstanding).
-            const prev = AuthDb.resetTokenOf.getDelete(new Username(h, owner.username));
+            const prev = AuthDb.resetTokenOf.getDelete(this.secondaryKey(h, resetAccount));
             if (prev != null) AuthDb.resetTokens.delete(prev);
             const raw = mintToken();
             const tid = tokenId(h, raw); // realm-bound: unredeemable on another domain
             const rec = new TokenRec();
             rec.username = owner.username;
+            rec.accountId = this.incarnation(resetAccount);
             rec.exp = nowSecs() + RESET_TTL_SECS;
             AuthDb.resetTokens.create(tid, rec);
             // If a concurrent reset request won the pointer index, roll back the
             // token we just minted so exactly one stays outstanding (no orphan).
-            if (!AuthDb.resetTokenOf.create(new Username(h, owner.username), tid)) {
+            if (!AuthDb.resetTokenOf.create(this.secondaryKey(h, resetAccount), tid)) {
                 AuthDb.resetTokens.delete(tid);
             }
             // Token in the URL FRAGMENT, not the query string: a fragment is never
@@ -955,8 +1005,11 @@ class Auth {
         const rec = AuthDb.resetTokens.getDelete(tokenId(h, raw));
         if (rec == null) return fail();
         if (nowSecs() >= rec.exp) return fail();
-        const acct = AuthDb.accounts.get(new Username(h, rec.username));
-        if (acct == null) return fail();
+        const key = new Username(h, rec.username);
+        const observed = AuthDb.accounts.getCurrentSnapshot(key);
+        if (observed == null) return fail();
+        const acct = observed.value;
+        if (acct.deleting || acct.registering || this.wasDeleted(h, acct) || !ctEqual(rec.accountId, this.incarnation(acct))) return fail();
 
         const regMsg = AuthService.buildRegisterMessage(rec.username, pk);
         if (!AuthService.verifyRegister(pk, regMsg, proof)) return fail();
@@ -964,22 +1017,167 @@ class Auth {
         // Overwrite ONLY the login verifier. Salt/params are deterministic
         // constants (unchanged); a successful reset also implies email ownership,
         // so confirm the account while we are here.
-        const stableId = this.stableUserId(ctx, h, rec.username, acct);
+        const stableId = this.stableUserId(ctx, h, rec.username, acct, false);
+        acct.toilUserId = stableId;
+        if (acct.accountId.length == 0) acct.legacyFactors = true;
+        acct.accountId = this.incarnation(acct);
         acct.publicKey = pk;
         acct.emailConfirmed = true;
-        AuthDb.accounts.patch(new Username(h, rec.username), acct);
+        if (!AuthDb.accounts.compareExchangeSnapshot(key, observed, acct)) return fail();
         AuthService.revokeUserSessions(__toilEncodeAuthUser(stableId, rec.username));
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
 
     /** The account's STABLE ToilUserId, persisted at registration (so reset never
      *  changes it). An empty stored id is derived once, persisted, and indexed. */
-    private stableUserId(ctx: RouteContext, h: string, username: string, acct: AuthAccount): Uint8Array {
+    private stableUserId(ctx: RouteContext, h: string, username: string, acct: AuthAccount, persist: bool = true): Uint8Array {
         if (acct.toilUserId.length > 0) return acct.toilUserId;
         const uid = ToilUserId.derive(acct.publicKey, username, authDomain(ctx)).toBytes();
+        if (!persist || acct.deleting) return uid;
+        const key = new Username(h, username);
+        const observed = AuthDb.accounts.getCurrentSnapshot(key);
+        if (observed == null || observed.value.deleting || observed.value.registering ||
+            !ctEqual(this.incarnation(observed.value), this.incarnation(acct)) || this.wasDeleted(h, observed.value))
+            throw new Error('Account identity temporarily unavailable');
+        if (observed.value.toilUserId.length != 0) {
+            acct.toilUserId = observed.value.toilUserId;
+            return acct.toilUserId;
+        }
+        observed.value.toilUserId = uid;
+        if (!AuthDb.accounts.compareExchangeSnapshot(key, observed, observed.value))
+            throw new Error('Account identity changed; retry sign-in');
         acct.toilUserId = uid;
-        AuthDb.accounts.patch(new Username(h, username), acct);
         return uid;
+    }
+
+    private reserveEmail(key: EmailKey, acct: AuthAccount): bool {
+        const desired = new EmailOwner(acct.username, acct.accountId);
+        if (AuthDb.emails.compareExchange(key, null, desired)) return true;
+        const reserved = AuthDb.emails.getCurrentSnapshot(key);
+        if (reserved == null) {
+            if (Db.lastError() != DbError.None) throw new Error('Email index temporarily unavailable');
+            return AuthDb.emails.compareExchange(key, null, desired);
+        }
+        if (reserved.value.username == acct.username && ctEqual(reserved.value.accountId, acct.accountId)) return true;
+        // A deleted owner's index may arrive late from a replica, or survive an
+        // interrupted registration. Reclaim only if its authoritative account
+        // no longer owns this email. Preserve reservations for pending accounts.
+        const prior = AuthDb.accounts.getCurrentSnapshot(new Username(key.host, reserved.value.username));
+        if (prior == null && Db.lastError() != DbError.None) throw new Error('Email owner temporarily unavailable');
+        if (prior != null && !prior.value.deleting && prior.value.email == key.email && !this.wasDeleted(key.host, prior.value)) {
+            const ownerMatches = reserved.value.accountId.length == 0
+                ? prior.value.accountId.length == 0 || prior.value.legacyFactors
+                : ctEqual(reserved.value.accountId, this.incarnation(prior.value));
+            if (ownerMatches) return false;
+        }
+        if (!AuthDb.emails.compareDeleteSnapshot(key, reserved)) return false;
+        return AuthDb.emails.compareExchange(key, null, desired);
+    }
+
+    private account(key: Username): AuthAccount | null {
+        const observed = AuthDb.accounts.getCurrentSnapshot(key);
+        if (observed == null) {
+            if (Db.lastError() != DbError.None) throw new Error('Account temporarily unavailable');
+            return null;
+        }
+        if (observed.value.deleting || observed.value.registering || this.wasDeleted(key.host, observed.value)) return null;
+        return observed.value;
+    }
+
+    private wasDeleted(host: string, acct: AuthAccount): bool {
+        const marker = AuthDb.deletedAccounts.getCurrentSnapshot(new DeletedAccountKey(host, crypto.toHex(this.incarnation(acct))));
+        if (marker == null && Db.lastError() != DbError.None) throw new Error('Account deletion state temporarily unavailable');
+        if (marker != null) return true;
+        if (acct.accountId.length == 0 || acct.legacyFactors) {
+            // Older credentials predate an incarnation field. Their salt remains
+            // stable across resets, unlike the public key used in a legacy fallback.
+            const legacy = AuthDb.deletedAccounts.getCurrentSnapshot(new DeletedAccountKey(host, 'legacy:' + crypto.toHex(crypto.sha256(acct.salt))));
+            if (legacy == null && Db.lastError() != DbError.None) throw new Error('Account deletion state temporarily unavailable');
+            return legacy != null;
+        }
+        return false;
+    }
+
+    private incarnation(acct: AuthAccount): Uint8Array {
+        if (acct.accountId.length != 0) return acct.accountId;
+        // Legacy accounts have no incarnation. Preserve this identity across reset.
+        return crypto.sha256Text(crypto.toHex(acct.salt) + ':' + crypto.toHex(acct.publicKey));
+    }
+
+    private factorName(acct: AuthAccount): string {
+        return acct.accountId.length == 0 || acct.legacyFactors ? acct.username : acct.username + '\x00' + crypto.toHex(acct.accountId);
+    }
+
+    private secondaryKey(host: string, acct: AuthAccount): Username {
+        return new Username(host, acct.username + '\x00' + crypto.toHex(this.incarnation(acct)));
+    }
+
+    private finishDeletion(ctx: RouteContext, key: Username, observed: DocumentSnapshot<AuthAccount>): bool {
+        const acct = observed.value;
+        if (!acct.deleting) return false;
+        const deletedKey = new DeletedAccountKey(key.host, crypto.toHex(this.incarnation(acct)));
+        if (!AuthDb.deletedAccounts.compareExchange(deletedKey, null, new DeletedAccountMarker()) && !this.wasDeleted(key.host, acct))
+            throw new Error('Account deletion state temporarily unavailable');
+        if (acct.accountId.length == 0 || acct.legacyFactors) {
+            const legacyKey = new DeletedAccountKey(key.host, 'legacy:' + crypto.toHex(crypto.sha256(acct.salt)));
+            if (!AuthDb.deletedAccounts.compareExchange(legacyKey, null, new DeletedAccountMarker())) {
+                const legacy = AuthDb.deletedAccounts.getCurrentSnapshot(legacyKey);
+                if (legacy == null) throw new Error('Legacy deletion state temporarily unavailable');
+            }
+        }
+        const emailKey = new EmailKey(key.host, acct.email);
+        const email = AuthDb.emails.getCurrentSnapshot(emailKey);
+        if (email == null && Db.lastError() != DbError.None) throw new Error('Email index temporarily unavailable');
+        if (email != null && email.value.username == acct.username &&
+            (email.value.accountId.length == 0 || ctEqual(email.value.accountId, this.incarnation(acct)))) {
+            AuthDb.emails.compareDeleteSnapshot(emailKey, email);
+        }
+        const secondary = this.secondaryKey(key.host, acct);
+        const confirm = AuthDb.confirmTokenOf.getDelete(secondary);
+        if (confirm == null && Db.lastError() != DbError.None) throw new Error('Confirmation token temporarily unavailable');
+        if (confirm != null) AuthDb.confirmTokens.delete(confirm);
+        const reset = AuthDb.resetTokenOf.getDelete(secondary);
+        if (reset == null && Db.lastError() != DbError.None) throw new Error('Reset token temporarily unavailable');
+        if (reset != null) AuthDb.resetTokens.delete(reset);
+        AuthDb.twoFaSetup.delete(secondary);
+        // Pre-incarnation heads use the plain username. New accounts never use
+        // these keys, so cleaning them cannot touch a later registration.
+        const legacy = new Username(key.host, acct.username);
+        const legacyConfirm = AuthDb.confirmTokenOf.getDelete(legacy);
+        if (legacyConfirm == null && Db.lastError() != DbError.None) throw new Error('Confirmation token temporarily unavailable');
+        if (legacyConfirm != null) AuthDb.confirmTokens.delete(legacyConfirm);
+        const legacyReset = AuthDb.resetTokenOf.getDelete(legacy);
+        if (legacyReset == null && Db.lastError() != DbError.None) throw new Error('Reset token temporarily unavailable');
+        if (legacyReset != null) AuthDb.resetTokens.delete(legacyReset);
+        AuthDb.twoFaSetup.delete(legacy);
+        // Security epochs intentionally remain so copied cookies and in-flight
+        // logins cannot become valid when the same identity signs up again.
+        AuthService.revokeUserSessions(__toilEncodeAuthUser(this.stableUserId(ctx, key.host, acct.username, acct), acct.username));
+        return AuthDb.accounts.compareDeleteSnapshot(key, observed);
+    }
+
+    /** Delete the authenticated sign-in account, freeing username and email.
+     * App-owned data should be cleaned by the application before this request. */
+    @auth
+    @post('/delete')
+    public deleteAccount(ctx: RouteContext): Response {
+        const user = AuthService.getUser();
+        if (user == null) return fail();
+        const h = realm(ctx);
+        const key = new Username(h, user.username);
+        let observed = AuthDb.accounts.getCurrentSnapshot(key);
+        if (observed == null || !ctEqual(this.stableUserId(ctx, h, user.username, observed.value, false), user.toilUserId)) return fail();
+        if (!observed.value.deleting) {
+            const acct = observed.value;
+            acct.deleting = true;
+            if (!AuthDb.accounts.compareExchangeSnapshot(key, observed, acct)) return fail();
+            observed = new DocumentSnapshot<AuthAccount>(acct, acct.encode());
+        }
+        if (!this.finishDeletion(ctx, key, observed)) return fail();
+        const response = Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+        response.setCookie(AuthService.clearSession());
+        response.setCookie(AuthService.clearUserCookie());
+        return response;
     }
 
     /** GET /auth/me  (@auth: 401 without a valid session) -> the typed user
@@ -1073,8 +1271,8 @@ class Auth {
         // SUCCESS: consume-once, then mint the session EXACTLY like login/finish.
         const consumed = AuthDb.twoFaLogins.getDelete(key);
         if (consumed == null) return fail();
-        const acct = AuthDb.accounts.get(new Username(h, ch.username));
-        if (acct == null) return fail();
+        const acct = this.account(new Username(h, ch.username));
+        if (acct == null || !ctEqual(consumed.accountId, this.incarnation(acct))) return fail();
         const toilUserId = this.stableUserId(ctx, h, ch.username, acct);
         const userData = __toilEncodeAuthUser(toilUserId, ch.username);
         const w = new DataWriter();
@@ -1104,10 +1302,10 @@ class Auth {
         const u = AuthService.getUser();
         if (u == null) return fail();
         const h = realm(_ctx);
-        const acct = AuthDb.accounts.get(new Username(h, u.username));
+        const acct = this.account(new Username(h, u.username));
         if (acct == null) return fail();
 
-        const settings = FactorRepository.read(h, u.username, acct.twoFactorMethod);
+        const settings = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod);
         // Disabling when 2FA is already off: nothing to prove; generic ST_OK.
         if (targetMethod == TWOFA_NONE && settings.method == TWOFA_NONE) {
             return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
@@ -1136,6 +1334,7 @@ class Auth {
 
         const c = new TwoFaChallenge();
         c.username = u.username;
+        c.accountId = this.incarnation(acct);
         c.settingsRevision = settings.revision;
         c.sessionVersion = 2;
         c.sessionEpoch = SessionEpochs.current(AuthService.getSessionBytes()!);
@@ -1145,8 +1344,8 @@ class Auth {
         c.attempts = 0;
         c.targetMethod = targetMethod; // what to set account.twoFactorMethod to on success
         // One outstanding setup challenge per user: overwrite any prior.
-        AuthDb.twoFaSetup.delete(new Username(h, u.username));
-        AuthDb.twoFaSetup.create(new Username(h, u.username), c);
+        AuthDb.twoFaSetup.delete(this.secondaryKey(h, acct));
+        AuthDb.twoFaSetup.create(this.secondaryKey(h, acct), c);
         return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
     }
 
@@ -1179,7 +1378,10 @@ class Auth {
         );
         if (srl != null) return srl;
 
-        const key = new Username(h, u.username);
+        const accountKey = new Username(h, u.username);
+        const current = this.account(accountKey);
+        if (current == null) return fail();
+        const key = this.secondaryKey(h, current);
         const ch = AuthDb.twoFaSetup.get(key);
         if (ch == null || ch.sessionVersion != 2 || !SessionEpochs.allowed(AuthService.getSessionBytes()!, ch.sessionEpoch)) return fail();
         if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
@@ -1196,9 +1398,9 @@ class Auth {
         // SUCCESS: consume-once + apply the method change.
         const consumed = AuthDb.twoFaSetup.getDelete(key);
         if (consumed == null || nowSecs() >= consumed.exp || !this.twoFaVerifyCode(h, consumed.username, code, consumed)) return fail();
-        const acct = AuthDb.accounts.get(key);
-        if (acct == null) return fail();
-        if (!FactorRepository.save(h, u.username, consumed.targetMethod, consumed.settingsRevision)) return fail();
+        const acct = this.account(accountKey);
+        if (acct == null || !ctEqual(consumed.accountId, this.incarnation(acct))) return fail();
+        if (!FactorRepository.save(h, this.factorName(acct), consumed.targetMethod, consumed.settingsRevision)) return fail();
         const userData = __toilEncodeAuthUser(this.stableUserId(_ctx, h, u.username, acct), u.username);
         AuthService.revokeUserSessions(userData);
         const response = Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
@@ -1215,9 +1417,9 @@ class Auth {
         const u = AuthService.getUser();
         if (u == null) return fail();
         const h = realm(_ctx);
-        const acct = AuthDb.accounts.get(new Username(h, u.username));
+        const acct = this.account(new Username(h, u.username));
         if (acct == null) return fail();
-        return Response.bytes(new DataWriter().writeU8(FactorRepository.read(h, u.username, acct.twoFactorMethod).method).toBytes());
+        return Response.bytes(new DataWriter().writeU8(FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod).method).toBytes());
     }
 
     /**
@@ -1296,19 +1498,21 @@ class Auth {
         ctx: RouteContext,
         username: string,
         email: string,
+        account: AuthAccount,
     ): void {
         // Invalidate this user's previous confirm token (bound to one outstanding).
-        const prev = AuthDb.confirmTokenOf.getDelete(new Username(host, username));
+        const prev = AuthDb.confirmTokenOf.getDelete(this.secondaryKey(host, account));
         if (prev != null) AuthDb.confirmTokens.delete(prev);
         const raw = mintToken();
         const tid = tokenId(host, raw); // realm-bound token id (see tokenId)
         const rec = new TokenRec();
         rec.username = username;
+        rec.accountId = this.incarnation(account);
         rec.exp = nowSecs() + CONFIRM_TTL_SECS;
         AuthDb.confirmTokens.create(tid, rec);
         // If a concurrent request won the pointer index, roll back the token we
         // just minted so exactly one stays outstanding (no orphan).
-        if (!AuthDb.confirmTokenOf.create(new Username(host, username), tid)) {
+        if (!AuthDb.confirmTokenOf.create(this.secondaryKey(host, account), tid)) {
             AuthDb.confirmTokens.delete(tid);
         }
         // Token in the URL FRAGMENT (see resetRequest): kept out of server/CDN

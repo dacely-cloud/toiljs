@@ -37,6 +37,8 @@ import {
     unpackHandleResult,
 } from '../http/envelope.js';
 import { buildHostImports, freshDispatchState, type MemoryRef } from './host.js';
+import { envelopeWindowOf } from '../wasm/envelope-window.js';
+import { registerMaterializer, unregisterMaterializer } from '../db/materialization.js';
 
 export { WasmAbortError } from './host.js';
 
@@ -106,6 +108,7 @@ const PROVIDED_IMPORTS = new Set([
     'respond_file',
     'thread_spawn',
     'Date.now',
+    'server_log',
     'client_ip',
     'ratelimit_check',
     'email_send',
@@ -147,20 +150,26 @@ const PROVIDED_IMPORTS = new Set([
     'data.unique_release',
     'data.view_get',
     'data.view_publish',
+    'data.view_delete',
     'data.membership_contains',
     'data.membership_add',
     'data.membership_remove',
     'data.membership_list',
+    'data.membership_page',
     'data.counter_get',
     'data.counter_add',
     'data.append',
     'data.append_once',
     'data.enqueue',
     'data.compare_exchange',
+    'data.compare_delete',
     'data.get_current',
     'data.latest',
     'data.events_since',
     'data.events_get',
+    'data.events_reference',
+    'data.events_redact',
+    'data.events_entries',
     'data.events_last',
     'data.capacity_set_total',
     'data.capacity_available',
@@ -181,6 +190,8 @@ export class WasmServerModule {
     // Set when a (re)compile loaded a module with @derive methods; the first
     // dispatch afterward rebuilds every materialized view from its sources.
     private derivesDirty = false;
+    private envelopeWindow: number | null = null;
+    private readonly pendingDerives = new Set<number>();
 
     constructor(private readonly wasmPath: string) {}
 
@@ -200,6 +211,7 @@ export class WasmServerModule {
         try {
             mtimeMs = fs.statSync(this.wasmPath).mtimeMs;
         } catch {
+            unregisterMaterializer(this.wasmPath);
             this.module = null;
             this.routeKinds = [];
             this.rpcKinds = [];
@@ -211,6 +223,7 @@ export class WasmServerModule {
         if (this.module !== null && mtimeMs === this.loadedMtimeMs) return false;
 
         const bytes = fs.readFileSync(this.wasmPath);
+        this.envelopeWindow = envelopeWindowOf(bytes);
         const module = new WebAssembly.Module(bytes);
         this.assertImportSurface(module);
         this.assertExportSurface(module);
@@ -226,6 +239,14 @@ export class WasmServerModule {
         // (after persistence is configured), so a freshly-loaded box serves
         // up-to-date views even after an out-of-band change to the source data.
         this.derivesDirty = this.derives.length > 0;
+        registerMaterializer(this.wasmPath, (written) => {
+            if (!fs.existsSync(this.wasmPath)) {
+                unregisterMaterializer(this.wasmPath);
+                return;
+            }
+            this.runAffectedDerives(written);
+            persistDb();
+        });
         return true;
     }
 
@@ -241,7 +262,7 @@ export class WasmServerModule {
         // before serving the request, so reads see fresh views.
         this.rebuildDerivedViewsIfStale();
 
-        const envelope = encodeRequestEnvelope(req);
+        const envelope = this.requestEnvelope(req);
 
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
@@ -272,16 +293,7 @@ export class WasmServerModule {
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
 
-        // The edge writes the envelope at offset 0, which only holds for tiny
-        // requests: ToilScript static data starts at offset 1024, so anything
-        // larger would corrupt the guest. `handle(req_ofs, req_len)` takes the
-        // offset as a parameter, so we stay ABI-compatible and write past the
-        // current end of linear memory instead (grown to fit). The guest heap
-        // grows upward from its data section and copies the envelope into
-        // managed objects on decode, well before it could reach this region.
-        const reqOfs = exports.memory.buffer.byteLength;
-        exports.memory.grow(Math.ceil(envelope.length / WASM_PAGE) || 1);
-        Buffer.from(exports.memory.buffer).set(envelope, reqOfs);
+        const reqOfs = this.writeRequestEnvelope(exports.memory, envelope);
 
         const packed = exports.handle(reqOfs, envelope.length);
         const { ptr, len } = unpackHandleResult(packed);
@@ -332,7 +344,8 @@ export class WasmServerModule {
     dispatchRender(req: EnvelopeRequest): Uint8Array {
         if (this.module === null) throw new Error(`server wasm not loaded (${this.wasmPath})`);
 
-        const envelope = encodeRequestEnvelope(req);
+        this.rebuildDerivedViewsIfStale();
+        const envelope = this.requestEnvelope(req);
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
         state.clientIp = req.clientIp ?? '';
@@ -345,9 +358,7 @@ export class WasmServerModule {
             throw new Error(`guest wasm has no 'render' export (${this.wasmPath})`);
         ref.memory = exports.memory;
 
-        const reqOfs = exports.memory.buffer.byteLength;
-        exports.memory.grow(Math.ceil(envelope.length / WASM_PAGE) || 1);
-        Buffer.from(exports.memory.buffer).set(envelope, reqOfs);
+        const reqOfs = this.writeRequestEnvelope(exports.memory, envelope);
 
         const packed = exports.render(reqOfs, envelope.length);
         const { ptr, len } = unpackHandleResult(packed);
@@ -373,9 +384,12 @@ export class WasmServerModule {
      */
     private runAffectedDerives(written: ReadonlySet<string>): void {
         if (this.module === null) return;
-        for (const derive of derivesForWrites(this.derives, written)) {
+        const affected = derivesForWrites(this.derives, written);
+        for (const derive of affected) this.pendingDerives.add(derive.deriveId);
+        for (const derive of this.derives.filter((d) => this.pendingDerives.has(d.deriveId))) {
             try {
                 this.runDerive(derive.deriveId);
+                this.pendingDerives.delete(derive.deriveId);
             } catch (err) {
                 console.error(`[toil] derive ${derive.dbName}#${derive.methodName} failed:`, err);
             }
@@ -390,6 +404,7 @@ export class WasmServerModule {
      * view from its event log when a box first comes up.
      */
     private rebuildDerivedViewsIfStale(): void {
+        this.runAffectedDerives(new Set());
         if (!this.derivesDirty) return;
         this.derivesDirty = false;
         for (const derive of this.derives) {
@@ -422,6 +437,26 @@ export class WasmServerModule {
         // store), so commit the `events.since` cursor advances staged this run. A trapped fold throws above
         // and never reaches here, leaving the durable cursor for a re-read on the next trigger.
         commitDeriveCheckpoints(state.db);
+    }
+
+    private requestEnvelope(req: EnvelopeRequest): Uint8Array {
+        const envelope = encodeRequestEnvelope(req);
+        if (envelope.length > 8 * 1024 * 1024)
+            throw new Error('request envelope exceeds the native 8 MiB request limit');
+        return envelope;
+    }
+
+    private writeRequestEnvelope(memory: WebAssembly.Memory, envelope: Uint8Array): number {
+        // Match the native host: use the reserved prefix when it fits, otherwise
+        // deliver above the current heap. The toiljs entrypoint reserves that
+        // tail before decoding so later allocations cannot overwrite the input.
+        const fits = this.envelopeWindow === null || envelope.length <= this.envelopeWindow;
+        const offset = fits ? 0 : memory.buffer.byteLength;
+        const needed = offset + envelope.length;
+        if (needed > memory.buffer.byteLength)
+            memory.grow(Math.ceil((needed - memory.buffer.byteLength) / WASM_PAGE));
+        Buffer.from(memory.buffer).set(envelope, offset);
+        return offset;
     }
 
     /** Fail instantiation up front, with names, when the guest needs imports we do not provide. */

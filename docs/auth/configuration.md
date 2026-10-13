@@ -155,3 +155,20 @@ Successful password and two-factor sign-ins issue sessions valid for seven days
 match. This is a fixed lifetime from sign-in, not an idle timeout. Logout, password
 reset, and account revocation can end a session earlier. Existing cookies retain
 the expiry they were issued with; sign in again to receive the longer lifetime.
+
+## Account deletion
+
+`await Auth.deleteAccount(options)` calls authenticated `POST /auth/delete`.
+It releases the sign-in account's username and email, revokes all its sessions,
+and clears both browser cookies. Clean application-owned records and projections
+before calling it. The endpoint operates only on the authenticated user's account.
+
+Deletion marks the old account before cleanup and frees the username last.
+If cleanup is interrupted, retry with the existing session. Registration also
+finishes an interrupted deletion before claiming the username. Conditional
+writes prevent an overlapping request from removing or modifying a replacement
+account. Confirm/reset links and pending logins bind to an account incarnation;
+links issued before this upgrade are rejected and can be requested again.
+A re-registered account starts with fresh factor settings. Revocation epochs and opaque deletion-incarnation guards
+remain to reject copied cookies and delayed replays of old account rows; random login challenges expire and cannot
+be redeemed against a replacement account.

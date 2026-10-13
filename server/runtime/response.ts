@@ -59,13 +59,17 @@ export class Response {
     }
 
     /**
-     * A raw binary body, tagged `application/octet-stream`. Used by `@route`
+     * A raw binary body, defaulting to `application/octet-stream`. Used by `@route`
      * methods with `stream: DataStream.Binary` to ship a `@data` `encode()`.
      */
-    public static bytes(body: Uint8Array, status: u16 = 200): Response {
+    public static bytes(
+        body: Uint8Array,
+        status: u16 = 200,
+        contentType: string = 'application/octet-stream',
+    ): Response {
         const r = new Response(status, body);
 
-        r.setHeader('content-type', 'application/octet-stream');
+        r.setHeader('content-type', contentType);
 
         return r;
     }
@@ -100,9 +104,13 @@ export class Response {
     }
 
     /**
-     * Builder-style: returns `this` so calls can chain.
+     * Replace all headers with this name (case-insensitive). Returns `this`.
      */
     public setHeader(name: string, value: string): Response {
+        const lower = name.toLowerCase();
+        for (let i = this.headers.length - 1; i >= 0; i--) {
+            if (this.headers[i].name.toLowerCase() === lower) this.headers.splice(i, 1);
+        }
         this.headers.push(new Header(name, value));
 
         return this;

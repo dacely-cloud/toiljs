@@ -555,6 +555,8 @@ async function runToilscriptPass(
     // export — the warning is pure noise here.
     const args = [binJs, ...files, '--target', 'release'];
     if (opts.mode !== null) args.push('--targetMode', opts.mode);
+    // Resident daemons must reclaim temporary values between scheduled calls.
+    if (opts.mode === 'cold') args.push('--runtime', 'incremental');
     if (opts.outFile !== null) args.push('--outFile', opts.outFile);
     if (opts.withRpc) args.push('--rpcModule', 'shared/server.ts');
     if (opts.rpcSurfaceFiles)

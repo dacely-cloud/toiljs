@@ -18,10 +18,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 
 import { WasmServerModule } from '../src/devserver/index.js';
-import { __resetDbForTests } from '../src/devserver/db/index.js';
+import { __resetDbForTests, devDb } from '../src/devserver/db/index.js';
 import { __resetRatelimitForTests } from '../src/devserver/config/ratelimit.js';
 import { clearEnvCache } from '../src/devserver/config/dotenv.js';
 import { __sentEmails, __clearSentEmails } from '../src/devserver/email/index.js';
@@ -187,6 +187,168 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         setConfirmation(false);
         setEmailConfirmation(false);
     });
+
+    it('account deletion frees both keys, revokes copied cookies, and rejects old reset links', async () => {
+        await Auth.register('reuse', 'original-password-A1', 'reuse@example.com');
+        await login('reuse', 'original-password-A1');
+        const originalCookie = jar.get('toil_sess')!;
+        await Auth.requestPasswordReset('reuse@example.com');
+        const token = tokenFromEmail('reset', 'reuse@example.com');
+        await Auth.deleteAccount();
+        const copied = mod.dispatch({ method: 'GET', path: '/auth/me',
+            headers: [['host', 'localhost:3000'], ['cookie', 'toil_sess=' + originalCookie]], body: new Uint8Array(0) });
+        expect(copied.status).toBe(401);
+        __resetRatelimitForTests();
+        await Auth.register('reuse', 'replacement-password-A1', 'different@example.com');
+        await Auth.register('emailreuse', 'another-password-A1', 'reuse@example.com');
+        await expect(Auth.resetPassword(token, 'attacker-password-A1')).rejects.toThrow();
+        await login('reuse', 'replacement-password-A1');
+        await login('emailreuse', 'another-password-A1');
+    }, 60000);
+
+    it('a late replay of a released email index cannot block a new account permanently', async () => {
+        await Auth.register('emailreplay', 'original-password-A1', 'emailreplay@example.com');
+        await login('emailreplay', 'original-password-A1');
+        const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
+        const old = [...store.entries()].find(([key]) => key.startsWith('AuthDb/emails\0'))!;
+        const oldBytes = Buffer.from(old[1]);
+        await Auth.deleteAccount();
+        store.set(old[0], oldBytes);
+        __resetRatelimitForTests();
+        await Auth.register('emailreplay', 'replacement-password-A1', 'emailreplay@example.com');
+        await login('emailreplay', 'replacement-password-A1');
+    }, 60000);
+
+    it('a late replay of the deleted account row cannot re-enable sign-in', async () => {
+        await Auth.register('replaydelete', 'original-password-A1', 'replaydelete@example.com');
+        await login('replaydelete', 'original-password-A1');
+        const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
+        const old = [...store.entries()].find(([key]) => key.startsWith('AuthDb/accounts\0'))!;
+        const oldBytes = Buffer.from(old[1]);
+        await Auth.deleteAccount();
+        store.set(old[0], oldBytes); // delayed old snapshot/replication row
+        await expect(login('replaydelete', 'original-password-A1')).rejects.toThrow();
+        __resetRatelimitForTests();
+        await Auth.register('replaydelete', 'replacement-password-A1', 'replaydelete@example.com');
+        await login('replaydelete', 'replacement-password-A1');
+    }, 60000);
+
+    it('deletes accounts stored before incarnation fields were added', async () => {
+        await Auth.register('legacydelete', 'original-password-A1', 'legacydelete@example.com');
+        await login('legacydelete', 'original-password-A1');
+        // The prior AuthAccount codec ended after toilUserId; EmailOwner ended
+        // after username. Keep those exact stored bytes, rather than re-encoding
+        // the values with new default fields before a conditional comparison.
+        const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
+        const accountEntry = [...store.entries()].find(([key]) => key.startsWith('AuthDb/accounts\0'))!;
+        const emailEntry = [...store.entries()].find(([key]) => key.startsWith('AuthDb/emails\0'))!;
+        expect(accountEntry).toBeDefined();
+        expect(emailEntry).toBeDefined();
+        store.set(accountEntry[0], accountEntry[1].subarray(0, accountEntry[1].length - 39));
+        store.set(emailEntry[0], emailEntry[1].subarray(0, emailEntry[1].length - 36));
+        await Auth.deleteAccount();
+        __resetRatelimitForTests();
+        await Auth.register('legacydelete', 'replacement-password-A1', 'legacydelete@example.com');
+        await login('legacydelete', 'replacement-password-A1');
+    }, 60000);
+
+    it('legacy accounts without a stored stable ID converge through a conditional write', async () => {
+        await Auth.register('legacyuid', 'original-password-A1', 'legacyuid@example.com');
+        const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
+        const old = [...store.entries()].find(([key]) => key.startsWith('AuthDb/accounts\0'))!;
+        store.set(old[0], old[1].subarray(0, old[1].length - 75)); // before toilUserId and incarnation fields
+        await login('legacyuid', 'original-password-A1');
+        await Auth.requestPasswordReset('legacyuid@example.com');
+        await Auth.resetPassword(tokenFromEmail('reset', 'legacyuid@example.com'), 'replacement-password-A1');
+        __resetRatelimitForTests();
+        await login('legacyuid', 'replacement-password-A1');
+        await Auth.deleteAccount();
+        await Auth.register('legacyuid', 'fresh-password-A1', 'legacyuid@example.com');
+    }, 60000);
+
+    it('a pre-incarnation account replay from before password reset stays deleted', async () => {
+        await Auth.register('legacyreplay', 'original-password-A1', 'legacyreplay@example.com');
+        await login('legacyreplay', 'original-password-A1');
+        const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
+        const old = [...store.entries()].find(([key]) => key.startsWith('AuthDb/accounts\0'))!;
+        const oldBytes = Buffer.from(old[1].subarray(0, old[1].length - 39));
+        store.set(old[0], oldBytes);
+        await Auth.requestPasswordReset('legacyreplay@example.com');
+        await Auth.resetPassword(tokenFromEmail('reset', 'legacyreplay@example.com'), 'replacement-password-A1');
+        // Model a reset performed by the previous codec, before it persisted an
+        // account incarnation: publicKey changed, the original stable ID remained.
+        const reset = store.get(old[0])!;
+        store.set(old[0], reset.subarray(0, reset.length - 39));
+        __resetRatelimitForTests();
+        await login('legacyreplay', 'replacement-password-A1');
+        await Auth.deleteAccount();
+        store.set(old[0], oldBytes);
+        __resetRatelimitForTests();
+        await expect(login('legacyreplay', 'original-password-A1')).rejects.toThrow();
+        await Auth.register('legacyreplay', 'fresh-password-A1', 'legacyreplay@example.com');
+        await login('legacyreplay', 'fresh-password-A1');
+    }, 60000);
+
+    it('a verified registration can resume after its email reservation was interrupted', async () => {
+        const originalCompare = devDb.compareExchange.bind(devDb);
+        let operations = 0;
+        const failure = vi.spyOn(devDb, 'compareExchange').mockImplementation((...args) => {
+            if (++operations === 3) throw new Error('simulated registration interruption');
+            return originalCompare(...args);
+        });
+        try { await expect(Auth.register('retryregister', 'original-password-A1', 'retryregister@example.com')).rejects.toThrow(); }
+        finally { failure.mockRestore(); }
+        await expect(login('retryregister', 'original-password-A1')).rejects.toThrow();
+        await Auth.register('retryregister', 'original-password-A1', 'retryregister@example.com');
+        await login('retryregister', 'original-password-A1');
+    }, 60000);
+
+    it('an interrupted deletion can resume before freeing the account keys', async () => {
+        await Auth.register('retrydelete', 'original-password-A1', 'retrydelete@example.com');
+        await login('retrydelete', 'original-password-A1');
+        const failure = vi.spyOn(devDb, 'compareDelete').mockImplementationOnce(() => {
+            throw new Error('simulated cleanup interruption');
+        });
+        try { await expect(Auth.deleteAccount()).rejects.toThrow(); }
+        finally { failure.mockRestore(); }
+        await expect(login('retrydelete', 'original-password-A1')).rejects.toThrow();
+        await Auth.deleteAccount();
+        __resetRatelimitForTests();
+        await Auth.register('retrydelete', 'replacement-password-A1', 'retrydelete@example.com');
+        await login('retrydelete', 'replacement-password-A1');
+    }, 60000);
+
+    it('re-registering a deleted username starts with two-factor disabled', async () => {
+        await Auth.register('factorreuse', 'original-password-A1', 'factorreuse@example.com');
+        await login('factorreuse', 'original-password-A1');
+        await Auth.setupTwoFactor(Auth.TwoFactorMethod.Email);
+        await Auth.confirmTwoFactorSetup(codeFromEmail('factorreuse@example.com'));
+        __resetRatelimitForTests();
+        try { await login('factorreuse', 'original-password-A1'); } catch (e) {
+            expect(e).toBeInstanceOf(TwoFactorRequiredError);
+            await Auth.verifyTwoFactor((e as TwoFactorRequiredError).twoFaId, codeFromEmail('factorreuse@example.com'));
+        }
+        await Auth.deleteAccount();
+        __resetRatelimitForTests();
+        await Auth.register('factorreuse', 'replacement-password-A1', 'factorreuse@example.com');
+        await login('factorreuse', 'replacement-password-A1');
+        expect(await Auth.twoFactorStatus()).toBe(Auth.TwoFactorMethod.None);
+    }, 60000);
+
+    it('old confirmation links cannot confirm a replacement account', async () => {
+        setEmailConfirmation(true);
+        await Auth.register('confirmreuse', 'original-password-A1', 'confirmreuse@example.com');
+        const old = tokenFromEmail('confirm', 'confirmreuse@example.com');
+        await login('confirmreuse', 'original-password-A1');
+        await Auth.deleteAccount();
+        __resetRatelimitForTests();
+        setConfirmation(true);
+        await Auth.register('confirmreuse', 'replacement-password-A1', 'confirmreuse@example.com');
+        await expect(Auth.confirmEmail(old)).rejects.toThrow();
+        await expect(login('confirmreuse', 'replacement-password-A1')).rejects.toBeInstanceOf(EmailNotConfirmedError);
+        await Auth.confirmEmail(tokenFromEmail('confirm', 'confirmreuse@example.com'));
+        await login('confirmreuse', 'replacement-password-A1');
+    }, 60000);
 
     it(
         'confirmation OFF (default): register auto-confirms, login succeeds, /auth/me returns the user',

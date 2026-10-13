@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
     CollectionFamily,
@@ -531,10 +531,14 @@ describe('toildb dev emulator (record family)', () => {
             };
             db.functionKind = DbFunctionKind.Query;
             expect(imports['data.get_many'](h, 128, frame(32))).toBeGreaterThan(0);
-            expect(imports['data.get_many'](h, 128, frame(33))).toBe(-1020);
+            expect(() => imports['data.get_many'](h, 128, frame(33))).toThrow(
+                /TDL020.*batch_keys=33 max_batch_keys=32/,
+            );
             db.functionKind = DbFunctionKind.Action;
             expect(imports['data.get_many'](h, 128, frame(64))).toBeGreaterThan(0);
-            expect(imports['data.get_many'](h, 128, frame(65))).toBe(-1020);
+            expect(() => imports['data.get_many'](h, 128, frame(65))).toThrow(
+                /TDL020.*batch_keys=65 max_batch_keys=64/,
+            );
         },
     );
 
@@ -621,6 +625,109 @@ describe('toildb dev emulator (record family)', () => {
         expect(() => imports['data.get_many'](h, 128, MAX_VALUE + 1)).toThrow(
             /2097153 bytes; maximum is 2097152 bytes.*Use smaller getMany batches/,
         );
+    });
+
+    it('optional native budgets reject the reported 390 KB read and count complete batch framing', () => {
+        const { imports, buf, db } = setup(8);
+        const h = resolve(imports, buf, 'App/users');
+        const [kp, kl] = put(buf, 128, 'large');
+        buf.fill(65, 256, 256 + 390 * 1024);
+        expect(imports['data.create'](h, kp, kl, 256, 390 * 1024, 0)).toBe(0);
+        db.functionKind = DbFunctionKind.Query;
+        vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '1');
+        try {
+            expect(() => imports['data.get'](h, kp, kl)).toThrow(/TDL021.*maximum is 65536/);
+            const frame = Buffer.alloc(4 + 4 + kl);
+            frame.writeUInt32LE(1);
+            frame.writeUInt32LE(kl, 4);
+            buf.copy(frame, 8, kp, kp + kl);
+            frame.copy(buf, 128);
+            expect(() => imports['data.get_many'](h, 128, frame.length)).toThrow(
+                /TDL021.*maximum is 65536/,
+            );
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('optional native budgets enforce cumulative reads, operation counts, and write counts', () => {
+        const { imports, buf, db } = setup(2);
+        const h = resolve(imports, buf, 'App/users');
+        const [kp, kl] = put(buf, 128, 'key');
+        buf.fill(65, 256, 40256);
+        expect(imports['data.create'](h, kp, kl, 256, 40000, 0)).toBe(0);
+        db.functionKind = DbFunctionKind.Query;
+        vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '1');
+        try {
+            for (let i = 0; i < 3; i++) expect(imports['data.get'](h, kp, kl)).toBe(40000);
+            expect(() => imports['data.get'](h, kp, kl)).toThrow(/cumulative DB byte budget/);
+            const second = setup();
+            const handle = resolve(second.imports, second.buf, 'App/users');
+            const [p, l] = put(second.buf, 128, 'missing');
+            second.db.functionKind = DbFunctionKind.Query;
+            for (let i = 0; i < 64; i++)
+                expect(second.imports['data.exists'](handle, p, l)).toBe(0);
+            expect(() => second.imports['data.exists'](handle, p, l)).toThrow(/TDL020.*65\/64/);
+            second.db.functionKind = DbFunctionKind.Action;
+            second.buf[256] = 1;
+            for (let i = 0; i < 32; i++) second.imports['data.create'](handle, p, l, 256, 1, 0);
+            expect(() => second.imports['data.create'](handle, p, l, 256, 1, 0)).toThrow(
+                /TDL020.*33\/32 writes/,
+            );
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+
+    it('view.delete removes a key, rejects Query, and does not retrigger its own materializer', () => {
+        const { imports, buf, db } = setup();
+        const h = resolve(imports, buf, 'App/pages');
+        const [kp, kl] = put(buf, 128, 'page');
+        const [vp, vl] = put(buf, 160, 'private projection');
+        expect(imports['data.view_publish'](h, kp, kl, vp, vl, 0)).toBe(0);
+        db.functionKind = DbFunctionKind.Query;
+        expect(imports['data.view_delete'](h, kp, kl, 0)).toBe(-1011);
+        db.functionKind = DbFunctionKind.Action;
+        expect(imports['data.view_delete'](h, kp, kl, 0)).toBe(0);
+        expect(imports['data.view_delete'](h, kp, kl, 0)).toBe(0);
+        expect(imports['data.view_get'](h, kp, kl)).toBe(-2);
+        expect(db.writtenCollections.size).toBe(0);
+    });
+
+    it('membership pages walk beyond a single batch with an exclusive cursor', () => {
+        const { imports, buf, db } = setup();
+        const h = resolve(imports, buf, 'App/rooms');
+        const [sp, sl] = put(buf, 128, 'room');
+        for (let i = 79; i >= 0; i--) {
+            const [mp, ml] = put(buf, 160, String(i).padStart(3, '0'));
+            expect(imports['data.membership_add'](h, sp, sl, mp, ml, 0)).toBe(0);
+        }
+        let cursorLen = -1;
+        const seen: string[] = [];
+        for (let step = 0; step < 20; step++) {
+            const size = imports['data.membership_page'](h, sp, sl, 256, cursorLen, 7);
+            expect(size).toBeGreaterThan(0);
+            imports['data.take_result'](1024, size);
+            const count = buf.readUInt32LE(1024);
+            let offset = 1028;
+            for (let i = 0; i < count; i++) {
+                offset += 4;
+                const len = buf.readUInt32LE(offset);
+                offset += 4;
+                seen.push(buf.toString('utf8', offset, offset + len));
+                offset += len;
+            }
+            if (buf[offset++] === 0) break;
+            cursorLen = buf.readUInt32LE(offset);
+            offset += 4;
+            buf.copy(buf, 256, offset, offset + cursorLen);
+            expect(imports['data.membership_remove'](h, sp, sl, 256, cursorLen, 0)).toBe(0);
+        }
+        expect(seen).toEqual(Array.from({ length: 80 }, (_, i) => String(i).padStart(3, '0')));
+        expect(() => imports['data.membership_page'](h, sp, sl, 0, -2, 7)).toThrow(/cursor/);
+        expect(() => imports['data.membership_page'](h, sp, sl, 0, -1, 1025)).toThrow(/TDL020/);
+        db.functionKind = DbFunctionKind.Query;
+        expect(imports['data.membership_page'](h, sp, sl, 0, -1, 7)).toBe(-1011);
     });
 
     it('membership: add/contains/remove + sorted framed list', () => {
@@ -1018,6 +1125,28 @@ describe('toildb dev emulator (record family)', () => {
         expect(cas(handle, kp, kl, bp, bl, ap, 0)).toBe(1);
         expect(cas(handle, kp, kl, 0, -1, ap, al)).toBe(0);
         expect(cas(handle, kp, kl, ap, 0, ap, al)).toBe(1);
+    });
+
+    it('conditional deletion cannot erase a replacement, handles empty values, and rejects Query writes', () => {
+        const { imports, buf, db } = setup();
+        const handle = resolve(imports, buf, 'App/users');
+        const [kp, kl] = put(buf, 32, 'account');
+        const [ap, al] = put(buf, 128, 'first incarnation');
+        const [bp, bl] = put(buf, 256, 'replacement incarnation');
+        const cas = imports['data.compare_exchange'];
+        const del = imports['data.compare_delete'];
+        expect(cas(handle, kp, kl, 0, -1, ap, al)).toBe(1);
+        expect(cas(handle, kp, kl, ap, al, bp, bl)).toBe(1);
+        expect(del(handle, kp, kl, ap, al)).toBe(0);
+        expect(imports['data.get'](handle, kp, kl)).toBe(bl);
+        db.functionKind = DbFunctionKind.Query;
+        expect(del(handle, kp, kl, bp, bl)).toBe(-1011);
+        db.functionKind = DbFunctionKind.Action;
+        expect(del(handle, kp, kl, bp, bl)).toBe(1);
+        expect(del(handle, kp, kl, bp, bl)).toBe(0);
+        expect(cas(handle, kp, kl, 0, -1, ap, 0)).toBe(1);
+        expect(del(handle, kp, kl, ap, 0)).toBe(1);
+        expect(() => del(handle, kp, kl, ap, -1)).toThrow(/requires an expected value/);
     });
 
     it('append_once dedups on eventId; enqueue replaces an existing record', () => {
