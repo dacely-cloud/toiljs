@@ -149,7 +149,7 @@ function scaffold(
         oxlint: '^1.87.0',
         'oxlint-tsgolint': '^7.0.2003',
         prettier: '^3.9.9',
-        toilscript: '>=0.1.63',
+        toilscript: '>=0.1.64',
         typescript: '^7.0.2',
     };
     for (const dep of requiredPackages(features).sort()) {

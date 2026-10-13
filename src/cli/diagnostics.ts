@@ -457,8 +457,8 @@ export function checkWasmBuilt(exists: boolean): Check {
 
 // --- Typed RPC (@data / @remote / @service) -------------------------------------------------------
 
-/** Minimum supported toilscript, including database point reads and complete Documents typings. */
-export const RPC_TOILSCRIPT_MIN = '0.1.63';
+/** Minimum supported toilscript, including conditional writes, event erasure and cold materializers. */
+export const RPC_TOILSCRIPT_MIN = '0.1.64';
 
 /** Whether each piece of the typed-RPC wiring is in place (computed in `doctor.ts`). */
 export interface RpcFacts {
