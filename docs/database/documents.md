@@ -161,12 +161,12 @@ returns `false` if another writer changed or removed it. Neither operation
 supports values with `@unique` fields. The synchronous host fails closed when
 a key belongs to another cell.
 
-On ScyllaDB, the conditional state change and its replication-oplog insert are
-separate statements. If the state commits but the oplog insert still fails after
-retries, the owner can return success while peers retain the earlier value.
-Owner RPCs retain failed envelopes in memory for retry; a restart before repair
-can leave peers stale until a snapshot or another write repairs them. Use the
-authoritative owner read when a conditional protocol needs the current state.
+On ScyllaDB, a conditional state change and its recovery journal commit together
+in the same partition. Shipping that journal to the replication oplog is a
+separate step, so the owner can return success before peers receive the value.
+Pending journals survive restarts and are replayed before writer sequences are
+recovered; replay repairs replication without applying the state change again.
+Use the authoritative owner read when a conditional protocol needs current state.
 
 For values that may migrate while decoding, use `getSnapshot(key)`. It returns
 `DocumentSnapshot<V> | null`, retaining `value` and the original `encoded` bytes
