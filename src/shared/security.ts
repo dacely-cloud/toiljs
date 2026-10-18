@@ -2,8 +2,9 @@
 export const DEFAULT_COOP = 'same-origin';
 
 /**
- * Script trust comes only from build-time hashes (production) or a fresh HTML
- * transform nonce (development). CSS inline styles support React's style prop.
+ * Script trust defaults to build-time hashes (production) or a fresh HTML
+ * transform nonce (development). Explicit script directives replace that default.
+ * CSS inline styles support React's style prop.
  * wasm-unsafe-eval permits the client's password hashing without enabling eval.
  */
 export function contentSecurityPolicy(
@@ -39,6 +40,9 @@ export function contentSecurityPolicy(
         'trusted-types',
         'form-action',
         'frame-ancestors',
+        'script-src',
+        'script-src-elem',
+        'require-trusted-types-for',
     ]);
     for (const [name, sources] of Object.entries(extraSources)) {
         if (!extensible.has(name))
@@ -52,6 +56,16 @@ export function contentSecurityPolicy(
             throw new Error(`Invalid client.cspSources value for ${name}`);
         }
         const index = directives.findIndex((directive) => directive.startsWith(name + ' '));
+        if (name === 'require-trusted-types-for' && sources.length === 0) {
+            if (index >= 0) directives.splice(index, 1);
+            continue;
+        }
+        if (name === 'script-src' || name === 'script-src-elem') {
+            const directive = `${name} ${sources.length ? sources.join(' ') : "'none'"}`;
+            if (index < 0) directives.push(directive);
+            else directives[index] = directive;
+            continue;
+        }
         if (index < 0) directives.push(`${name} 'self' ${sources.join(' ')}`.trim());
         else if (sources.length) directives[index] += ' ' + sources.join(' ');
     }

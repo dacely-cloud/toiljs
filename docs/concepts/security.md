@@ -110,9 +110,38 @@ export default defineConfig({
 
 Values are appended to the directive's defaults. If an allowed directive is absent from the default policy, toiljs creates it starting with `'self'`. Changes apply to development and to the production header and meta policy after rebuilding.
 
-Supported keys are `connect-src`, `img-src`, `media-src`, `font-src`, `style-src`, `frame-src`, `child-src`, `worker-src`, `manifest-src`, `trusted-types`, `form-action`, and `frame-ancestors`. For `trusted-types`, supply policy names rather than origins, and only add names for reviewed policies your application needs.
+Supported keys are `connect-src`, `img-src`, `media-src`, `font-src`, `style-src`, `frame-src`, `child-src`, `worker-src`, `manifest-src`, `trusted-types`, `form-action`, `frame-ancestors`, `script-src`, `script-src-elem`, and `require-trusted-types-for`. For `trusted-types`, supply policy names rather than origins, and only add names for reviewed policies your application needs.
 
-Each array entry must be a nonempty source token without whitespace, semicolons, commas, or angle brackets. Unsupported keys and invalid values are rejected. `script-src`, `script-src-elem`, `script-src-attr`, `default-src`, `base-uri`, `object-src`, and `require-trusted-types-for` cannot be changed through this option. Script trust and DOM enforcement remain framework-owned. See the [configuration reference](./config.md#clientcspsources).
+Each array entry must be a nonempty source token without whitespace, semicolons, commas, or angle brackets. Unsupported keys and invalid values are rejected. `script-src-attr`, `default-src`, `base-uri`, and `object-src` remain framework-owned. See the [configuration reference](./config.md#clientcspsources).
+
+Explicit `script-src` and `script-src-elem` arrays **replace** their generated
+directives instead of extending them. An empty script array means `'none'`.
+An empty `require-trusted-types-for` array removes DOM sink enforcement. Omitting
+these options preserves the strict hash/nonce, strict-dynamic, and Trusted Types
+defaults. These explicit overrides are for integrations that inject scripts after
+the build and cannot use the normal trusted script loader.
+
+For example, a site that chooses Cloudflare's automatically injected Web Analytics
+and JavaScript Detections can configure:
+
+```ts
+client: {
+    cspSources: {
+        'script-src': ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'", 'blob:',
+            'https://static.cloudflareinsights.com', 'https://challenges.cloudflare.com'],
+        'connect-src': ['https://cloudflareinsights.com', 'https://challenges.cloudflare.com'],
+        'frame-src': ['https://challenges.cloudflare.com'],
+        'require-trusted-types-for': [],
+    },
+}
+```
+
+This permits arbitrary inline script elements and raw DOM sinks, so it offers
+less injection protection than the default policy. Inline event handlers and
+JavaScript eval remain blocked. Prefer the default with `Toil.Script` for
+integrations you control, or a fresh per-response nonce integration at the origin.
+Deploy rebuilt HTML and the updated HTTP policy together: a more permissive
+header cannot override an older restrictive HTML meta policy, or vice versa.
 
 ### COOP and custom responses
 

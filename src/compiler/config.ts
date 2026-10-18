@@ -70,7 +70,9 @@ export interface ClientConfig {
      */
     readonly fonts?: boolean;
     /** Additional resource origins or Trusted Types policy names, keyed by CSP directive.
-     * Script trust, Trusted Types enforcement, object-src and base-uri remain framework-owned. */
+     * Explicit script-src/script-src-elem arrays replace generated script trust.
+     * An empty require-trusted-types-for array disables DOM sink enforcement.
+     * Omitting these overrides preserves strict script and Trusted Types defaults. */
     readonly cspSources?: Readonly<Record<string, readonly string[]>>;
     /**
      * Animate cross-page navigations with the browser View Transitions API (a crossfade by default;

@@ -64,11 +64,46 @@ describe('default browser security', () => {
         expect(out.policy).toContain("frame-src 'self' https://widget.example.com");
         expect(builtContentSecurityPolicy(out.html)).toBe(out.policy);
         expect(() =>
-            contentSecurityPolicy([], false, { 'script-src': ["'unsafe-eval'"] }),
+            contentSecurityPolicy([], false, { 'script-src-attr': ["'unsafe-eval'"] }),
         ).toThrow();
         expect(() =>
             contentSecurityPolicy([], false, { 'connect-src': ['https://x;script-src'] }),
         ).toThrow();
+    });
+
+    it('uses explicit script overrides without silently retaining hash-only enforcement', () => {
+        const out = secureBuiltHtml('<head><script>window.ok=1</script></head>', {
+            'script-src': [
+                "'self'",
+                "'unsafe-inline'",
+                "'wasm-unsafe-eval'",
+                'https://scripts.example.org',
+            ],
+            'require-trusted-types-for': [],
+        });
+        expect(out.policy).toContain(
+            "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://scripts.example.org",
+        );
+        expect(out.policy).not.toContain('strict-dynamic');
+        expect(out.policy).not.toContain('require-trusted-types-for');
+        expect(out.policy).toContain("script-src-attr 'none'");
+        expect(out.policy).not.toContain("'unsafe-eval'");
+        expect(builtContentSecurityPolicy(out.html)).toBe(out.policy);
+        const strict = secureBuiltHtml('<head><script>window.ok=1</script></head>');
+        expect(strict.policy).toContain("'strict-dynamic'");
+        expect(strict.policy).toContain("require-trusted-types-for 'script'");
+    });
+
+    it('supports element-only script overrides and treats empty script sources as none', () => {
+        const policy = contentSecurityPolicy([], false, {
+            'script-src-elem': ['https://scripts.example.org'],
+        });
+        expect(policy).toContain("script-src 'none'");
+        expect(policy).toContain('script-src-elem https://scripts.example.org');
+        expect(policy).toContain("require-trusted-types-for 'script'");
+        expect(contentSecurityPolicy(["'sha384-YWJj'"], false, { 'script-src': [] })).toContain(
+            "script-src 'none'",
+        );
     });
 
     it('fills defaults case-insensitively while preserving explicit policies', () => {

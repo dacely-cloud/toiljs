@@ -113,7 +113,14 @@ export default defineConfig({
 });
 ```
 
-Entries extend the directive's defaults in development and production. Rebuild before deploying a change. Supported directives, validation rules, Trusted Types policy names, and external-host requirements are covered in [Security](./security.md#allowing-additional-resources). Script execution rules and Trusted Types enforcement cannot be disabled through this option. This setting applies to frontend documents; custom backend HTML handlers set their policies with `Response.setHeader`.
+Resource entries extend the directive's defaults in development and production.
+Explicit `script-src`/`script-src-elem` arrays instead replace generated script
+trust, and an empty `require-trusted-types-for` array disables DOM sink enforcement.
+Omitting these overrides preserves the strict defaults. Rebuild before deploying
+a change. Supported directives, validation rules, security tradeoffs, Trusted Types
+policy names, and external-host requirements are covered in
+[Security](./security.md#allowing-additional-resources). This setting applies to
+frontend documents; custom backend HTML handlers set policies with `Response.setHeader`.
 
 ### `client.devtools`
 
