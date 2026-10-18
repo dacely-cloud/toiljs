@@ -110,7 +110,7 @@ function renderMatched(
     const chain = matched.layouts ?? [];
     for (let i = chain.length - 1; i >= 0; i--) {
         content = (
-            <Suspense fallback={null}>
+            <Suspense fallback={fallback}>
                 <DataLayout load={chain[i]} params={params} dataKey={`layout:${String(i)}:${dataKey}`} epoch={epoch}>{content}</DataLayout>
             </Suspense>
         );
