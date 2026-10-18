@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
+import { createRequire } from 'node:module';
 import { expect, it } from 'vitest';
 import { argon2id } from 'hash-wasm';
 import { ristretto255_oprf } from '@noble/curves/ed25519.js';
@@ -9,12 +10,30 @@ import { ml_dsa44 } from '@dacely/noble-post-quantum/ml-dsa.js';
 import { ml_kem768 } from '@dacely/noble-post-quantum/ml-kem.js';
 import { buildLoginMessage, buildRegisterMessage } from '../src/client/auth.js';
 import { buildHostImports, freshDispatchState } from '../src/devserver/runtime/host.js';
+import { writeDocs } from '../src/compiler/docs.js';
 
 const vector = JSON.parse(readFileSync(resolve('docs/auth/vectors-v1.json'), 'utf8')) as Record<
     string,
     string | number
 >;
 const field = (name: string) => Buffer.from(vector[name] as string, 'hex');
+it('keeps the protocol guide link resolvable in generated docs and the package export', () => {
+    const root = mkdtempSync(join(tmpdir(), 'toil-vector-docs-'));
+    try {
+        writeDocs(root);
+        const guide = join(root, 'docs/auth/native-protocol.md');
+        const link = /\[vectors-v1\.json\]\(([^)]+)\)/.exec(readFileSync(guide, 'utf8'));
+        expect(link).not.toBeNull();
+        const generated = JSON.parse(readFileSync(resolve(root, 'docs/auth', link![1]), 'utf8'));
+        expect(generated).toEqual(vector);
+        const require = createRequire(import.meta.url);
+        expect(
+            JSON.parse(readFileSync(require.resolve('toiljs/auth/vectors-v1.json'), 'utf8')),
+        ).toEqual(vector);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
 it('pins the portable client password, OPRF, KDF, ML-DSA, ML-KEM and wire vectors', async () => {
     const password = new TextEncoder().encode((vector.password as string).normalize('NFKC'));
     expect(Buffer.from(password)).toEqual(field('passwordNfkcUtf8'));

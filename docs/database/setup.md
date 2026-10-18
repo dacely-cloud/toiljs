@@ -115,7 +115,15 @@ What each kind may do:
 | **Action** | `@post` or `@action` | Everything a Query can, plus bounded writes: `create`, `patch`, `delete`, `getDelete`, `enqueue`, `append`, `appendOnce`, counter `add`, membership `add`/`remove`, unique `claim`/`release`, capacity `reserve`/`confirm`/`cancel`. | Scans. Publishing a View. |
 | **Derive / Job** | Host dispatches Derive / Job; compiler checks `@derive` / `@job` | Reads including **scans** (`latest`, membership `list`), plus `publish` a View. | (Run off the request path; see below.) |
 
-**The host determines the execution kind.** With toilscript 0.1.65, toiljs 0.0.126, and a v2-capable edge host, a `@scheduled` method tagged `@job` runs as **Job**, including scans and `View.publish`. Daemon `onStart` and untagged ticks run as **Action**. Tagging a helper `@job` does not change its caller's runtime permissions. Job catalogs use v2; older edge hosts reject them rather than silently downgrade to Action. See [daemon permissions](../background/daemons.md#onstart-run-once-at-boot).
+**The host determines the execution kind.** An unannotated daemon `onStart` or
+scheduled tick runs as **Action**. A `@scheduled` method tagged `@job` runs as
+**Job**, including scans and `View.publish`; this requires toilscript 0.1.65,
+toiljs 0.0.126, and a v2-capable native host. Annotating `onStart` itself with
+`@job` also gives startup **Job** permissions, using toilscript 0.1.66,
+toiljs 0.0.128, and daemon catalog v3. Older hosts reject unsupported catalogs
+rather than silently downgrade permissions. Tagging a helper `@job` does not
+change its caller's runtime permissions. See
+[startup with Job permissions](../background/daemons.md#startup-with-job-permissions).
 
 Two rules trip people up, so they are worth stating plainly:
 

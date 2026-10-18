@@ -2,6 +2,8 @@
 
 A native client can implement the same protocol as `toiljs/client` without a
 WebView. The portable known-answer fixture is [vectors-v1.json](./vectors-v1.json).
+The package ships it as `toiljs/auth/vectors-v1.json`, and builds copy it beside
+this guide under `.toil/docs/auth/` so the relative link works locally.
 It contains public test seeds and keys, intermediate values, complete signed
 messages, signatures, and confirmation tags. The fixture is tested against the
 JavaScript client, compiled ToilScript server helpers, and native Rust OPRF,

@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Build-time generator: turns the human Markdown guides in `docs/` into the agent
- * documentation map (`TOIL_DOCS`) consumed by the compiler.
+ * Build-time generator: bundles the human Markdown guides and explicitly
+ * published resources in `docs/` into the compiler's `TOIL_DOCS` map.
  *
  * `docs/*.md` is the SINGLE SOURCE for both the human docs (the site) and the agent
  * docs written into a project's `.toil/docs/` on `toiljs dev` / `build` / `create`.
  * This script reads every published guide, builds `Record<filename, content>`, and
  * writes a generated TS module that `src/compiler/docs.ts` imports. The generated
  * file is gitignored and (re)created before `build:compiler`, so the shipped
- * compiler never reads the filesystem at a user's build time, and the npm package
- * does not need to carry `docs/`.
+ * compiler never reads the source docs at a user's build time. The npm package
+ * also carries the portable auth-vector JSON for direct consumers.
  *
  * Run: `node scripts/gen-toil-docs.mjs` (wired into `npm run build`).
  */
@@ -29,6 +29,9 @@ const outFile = path.join(repoRoot, 'src', 'compiler', 'toil-docs.generated.ts')
  */
 const EXCLUDE = new Set();
 
+// Only explicitly published non-Markdown resources belong in generated docs.
+const RESOURCES = new Set(['auth/vectors-v1.json']);
+
 /**
  * Stable order for the agent docs: the root landing page first, then every
  * other guide alphabetically by its repo-relative path (which naturally groups
@@ -42,10 +45,16 @@ function collect() {
     // repo-relative path (`auth/index.md`). Adding a `docs/**/*.md` is picked up automatically.
     const files = [];
     const walk = (dir, prefix) => {
-        for (const ent of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+        for (const ent of fs
+            .readdirSync(dir, { withFileTypes: true })
+            .sort((a, b) => a.name.localeCompare(b.name))) {
             if (ent.isDirectory()) {
                 walk(path.join(dir, ent.name), prefix + ent.name + '/');
-            } else if (ent.name.endsWith('.md') && !EXCLUDE.has(prefix + ent.name) && !EXCLUDE.has(ent.name)) {
+            } else if (
+                (ent.name.endsWith('.md') || RESOURCES.has(prefix + ent.name)) &&
+                !EXCLUDE.has(prefix + ent.name) &&
+                !EXCLUDE.has(ent.name)
+            ) {
                 files.push(prefix + ent.name);
             }
         }
@@ -58,6 +67,9 @@ function collect() {
     const out = {};
     for (const name of ordered) {
         out[name] = fs.readFileSync(path.join(docsDir, name), 'utf8');
+    }
+    for (const name of RESOURCES) {
+        if (!(name in out)) throw new Error(`Missing published documentation resource: ${name}`);
     }
     return out;
 }
@@ -72,7 +84,7 @@ function emit(map) {
         '// `docs/*.md` is the single source for both the human docs and these agent docs.\n' +
         '// Regenerate with `node scripts/gen-toil-docs.mjs` (runs before `build:compiler`).\n' +
         '\n' +
-        '/** The framework guides written into `.toil/docs/`, keyed by filename, generated from `docs/`. */\n' +
+        '/** Framework guides and linked resources written into `.toil/docs/`, keyed by filename. */\n' +
         'export const TOIL_DOCS: Record<string, string> = {\n' +
         entries +
         '\n};\n'

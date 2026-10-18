@@ -91,7 +91,7 @@ Both are optional and have sensible defaults; set them for stability across host
 | Key | Meaning | Default |
 | --- | --- | --- |
 | `TOIL_AUTH_AUDIENCE` | The service audience bound into the signed login message. | `"toil"` |
-| `TOIL_AUTH_DOMAIN` | The `domain` input of the stable `ToilUserId` (`sha256(pubkey ‖ username ‖ domain)`). | the request `Host` header, else `localhost` |
+| `TOIL_AUTH_DOMAIN` | The `domain` field in the [stable `ToilUserId` derivation](./how-it-works.md#the-stable-user-identity-toiluserid): SHA-256 over the length-prefixed `toil.userid.v1` label, ML-DSA public key, username, and domain. | the request `Host` header, else `localhost` |
 
 Set `TOIL_AUTH_DOMAIN` explicitly if your site answers on multiple hostnames, otherwise the same user could
 get different `ToilUserId`s from different aliases. Once users exist, changing it changes everyone's id, so

@@ -117,6 +117,10 @@ built-in `@user`):
 toilUserId = SHA-256(bytes("toil.userid.v1") ‖ bytes(mldsaPublicKey) ‖ bytes(username) ‖ bytes(domain))
 ```
 
+Each `bytes(x)` writes a `u32` little-endian byte length followed by the bytes.
+Text fields use UTF-8. The prefix is framed the same way as the other fields;
+the preimage is not a raw concatenation of strings.
+
 - **Stable:** same login key + username on the same tenant `domain` → same id, forever, across sessions
   and devices. Key your own data on it.
 - **Opaque + one-way:** it's a hash: safe to store, log, or expose without leaking the key or the address.

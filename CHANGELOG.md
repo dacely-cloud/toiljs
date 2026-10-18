@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Correct RegExp compile-error guidance, the framed and domain-separated user-id derivation, and startup Job permissions throughout the docs and API comments.
+- Ship the native auth vectors as a package JSON export and beside the generated protocol guide so its fixture link resolves.
+
 ## [v0.0.128] - 2026-10-18
 
 - Add query-readable `SortedIndex` cursor pages and sortable `SortKey` encodings, so request handlers can read ordered lists without assembling their own paged Views.

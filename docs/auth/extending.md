@@ -6,7 +6,10 @@ user shape, and hand-writing auth from the same primitives.
 
 ## `ToilUserId`
 
-The stable, tenant-scoped user identity: `sha256(mldsaPublicKey ‖ identifier ‖ domain)`, a 256-bit value.
+The stable, tenant-scoped user identity is a 256-bit SHA-256 hash of four
+length-prefixed fields: the `toil.userid.v1` label, ML-DSA public key, identifier
+(the built-in account username), and tenant domain. See the
+[exact derivation](./how-it-works.md#the-stable-user-identity-toiluserid).
 It's a **global** (no import), like `crypto`.
 
 ```ts

@@ -1,7 +1,7 @@
 /**
  * `ToilUserId` — the stable, tenant-scoped 256-bit user identity.
  *
- * Derived once as `sha256(mldsaPublicKey || identifier || domain)`, so the SAME user (same ML-DSA login
+ * Derived once by SHA-256 over length-framed context, public key, identifier, and domain fields, so the SAME user (same ML-DSA login
  * public key + the same email/username) on the SAME tenant domain always maps to the SAME id — independent
  * of session, cookie, or device. It is opaque and one-way (a hash), so it is safe to store, log, or use as
  * a stable database key without leaking the underlying key or address.
@@ -24,10 +24,9 @@ export class ToilUserId {
 
     /**
      * Derive the id from the user's ML-DSA public key, their identifier (email or username), and the
-     * tenant `domain` (the site on dacely). Deterministic: identical inputs → identical id. The three
-     * inputs are concatenated in order and SHA-256'd; length-framing is unnecessary because the ML-DSA
-     * public key is a FIXED length (1312 bytes for ML-DSA-44), so the boundary before `identifier` is
-     * unambiguous, and `domain` is the trusted tail supplied by the host, not the user.
+     * tenant `domain` (the site on dacely). Deterministic: identical inputs → identical id.
+     * SHA-256 hashes four fields in order: UTF-8 `toil.userid.v1`, the public key,
+     * UTF-8 identifier, and UTF-8 domain. Each field has a u32 little-endian byte-length prefix.
      */
     static derive(mldsaPublicKey: Uint8Array, identifier: string, domain: string): ToilUserId {
         // Length-framed, domain-separated preimage: a u32 length prefix on every

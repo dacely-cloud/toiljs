@@ -1,5 +1,8 @@
 .vs
-/docs
+/docs/*
+!/docs/auth/
+/docs/auth/*
+!/docs/auth/vectors-v1.json
 src
 !/build
 tests

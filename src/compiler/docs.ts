@@ -113,7 +113,7 @@ export function aiHelperFiles(ids: readonly string[]): Record<string, string> {
     return out;
 }
 
-/** Writes the framework docs into `<toilDir>/docs/`. Called by `generate` each dev/build. */
+/** Writes the framework docs and linked resources into `<toilDir>/docs/` each dev/build. */
 export function writeDocs(toilDir: string): void {
     const dir = path.join(toilDir, 'docs');
     fs.mkdirSync(dir, { recursive: true });

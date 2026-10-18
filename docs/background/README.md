@@ -95,7 +95,14 @@ class Jobs {
 }
 ```
 
-`onStart` always runs as Action. A helper tagged `@job` inherits its caller's runtime permissions; calling it from startup or an untagged scheduled method does not elevate the call. Job ticks carry a v2 daemon catalog, which older edge hosts reject at load time. Action-only daemons retain the v1 catalog and remain compatible.
+An unannotated `onStart` runs as Action. Annotate `onStart` itself with `@job`
+for Job permissions at startup; this requires toilscript 0.1.66, toiljs 0.0.128,
+and a native host accepting daemon catalog v3. A helper tagged `@job` inherits
+its caller's runtime permissions, so calling it from Action startup or an
+untagged tick does not elevate the call. Scheduled Job ticks use catalog v2
+unless Job startup requires v3. Daemons with Action startup and only Action
+ticks retain v1. Older hosts reject unsupported catalogs at load time. See
+[startup with Job permissions](./daemons.md#startup-with-job-permissions).
 
 ### `@job` versus `@derive`
 

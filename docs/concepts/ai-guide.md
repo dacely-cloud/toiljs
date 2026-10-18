@@ -87,7 +87,7 @@ public settings(): Response {
 - **No `any`.** Every value has a concrete type; that is what lets it compile to WASM.
 - **No arbitrary npm.** Only the toilscript standard library plus the toiljs host APIs.
 - **Use `null`, not `undefined`** for "no value" (`T | null`, narrowed with `if (x != null)` or a `!` assertion).
-- **No usable built-in `RegExp`** (it is a host stub that throws). Parse strings by hand.
+- **`RegExp` is not implemented.** Construction and matching are rejected at compile time. Use string operations or a supported parser.
 - **Structured values are `@data` classes, not object literals.** Encode and decode raw binary with `DataWriter` / `DataReader` (imported on the server from the `data` module: `import { DataWriter, DataReader } from 'data';`). For dynamic JSON, use the ambient `JSON` value tree.
 - **Read config with `Environment.get(key)` and secrets with `Environment.getSecure(key)`** (each returns `string | null`; the two buckets are disjoint so a secret can never leak through `get`). See [Environment](../services/environment.md).
 - **Return a runtime `Response`** (`Response.json` / `.text` / `.html` / `.bytes` / `.notFound` / ...), or return a `@data` value and let toiljs serialize it.
