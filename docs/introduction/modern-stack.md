@@ -73,7 +73,7 @@ Owned means the core of a working app is toil's. It does not mean outside servic
 
 toil grades itself on honesty. Read these before you count on anything.
 
-- **Distributed writes are built, live multi-cell is config-gated.** The home-region model and its core logic are real and tested. Live multi-region deployment (WAN routing, the ScyllaDB backing) is opt-in, not on by default. The local dev database is a single in-process store. toil is built to distribute writes worldwide. Not every app is running a live global write cluster today.
+- **Distributed writes are built, live multi-cell is config-gated.** The home-region model and its core logic are real and tested. Live multi-region deployment (WAN routing and persistent storage) is opt-in, not on by default. The local dev database is a single in-process store. toil is built to distribute writes worldwide. Not every app is running a live global write cluster today.
 - **Analytics is a dev stub locally.** It is real on the edge. The local dev server returns sample data.
 - **Auth secrets ship as dev placeholders.** The session HMAC, OPRF seed, and ML-KEM key are clearly insecure placeholders so `toiljs dev` just works. A real deployment must set its own. Per-tenant auto-generation at domain registration is the plan.
 - **Page search indexes static metadata only.** Routes whose metadata comes from a dynamic `generateMetadata` are not in the index.

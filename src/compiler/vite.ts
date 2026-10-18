@@ -16,6 +16,7 @@ import { imageBlurPlugin } from './image-blur.js';
 import { toilPlugin } from './plugin.js';
 import { prerenderPlugin } from './prerender.js';
 import { sriPlugin } from './sri.js';
+import { devSecurityPlugin } from './security.js';
 
 // `vite-plugin-node-polyfills` rewrites react/react-dom to import its `vite-plugin-node-polyfills/
 // shims/*` modules. When a consumer links toiljs by symlink (`file:`/workspace), that package lives
@@ -205,6 +206,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             react(),
             sharedResolverPlugin(cfg),
             toilPlugin(cfg),
+            devSecurityPlugin(cfg.cspSources),
         ],
         resolve: {
             alias: {

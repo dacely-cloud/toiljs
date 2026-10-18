@@ -48,10 +48,13 @@ The seven families are:
 | **Documents** | Records you look up by id (users, posts, orders). | [Documents](./documents.md) |
 | **Unique** | A claim on a value that must be one-of-a-kind (usernames, emails, slugs). | [Unique](./unique.md) |
 | **Counter** | A running total that many callers increment at once (likes, views). | [Counters](./counters.md) |
-| **Events** | An append-only log of things that happened (feeds, audit trails). | [Events](./events.md) |
+| **Events** | An append-only log (feeds, audit trails); read one event with `get` or `last`, or scan batches in the background. | [Events](./events.md) |
 | **Capacity** | A limited quantity you hand out without overselling (tickets, seats). | [Capacity](./capacity.md) |
 | **Membership** | Sets of "who belongs to what" (followers, tags, room members). | [Membership](./membership.md) |
 | **View** | A precomputed, read-optimized snapshot (home pages, leaderboards). | [Views](./views.md) |
+
+For files, use [Blobs](./blobs.md): typed file namespaces with streamed transfers
+and range reads, backed by object storage in production and disk in dev.
 
 ## The one idea shared by all seven: key then value
 
@@ -138,6 +141,7 @@ Real apps mix families freely. The demo guestbook, for example, uses **Events** 
 
 - [Setup](./setup.md): declare a database, its collections, and reach them from a handler.
 - [Documents](./documents.md): the general-purpose record store (start here).
+- [Atomic partitioned documents](./atomic.md): conditional batches across collections in one explicit partition.
 - [Unique](./unique.md), [Counters](./counters.md), [Events](./events.md), [Views](./views.md), [Membership](./membership.md), [Capacity](./capacity.md): the specialized families.
 
 ## Related
@@ -146,3 +150,16 @@ Real apps mix families freely. The demo guestbook, for example, uses **Events** 
 - [Data types (`@data`)](../backend/data.md): the typed keys and values every family uses.
 - [Tiers](../concepts/tiers.md): where your backend and its data run.
 - [Decorators](../concepts/decorators.md): `@query`, `@action`, `@derive`, and friends.
+
+## Catalog and collection ceilings
+
+The native default catalog accepts 32 logical databases, **128 collections per
+database**, and **512 collections total**, with up to 512 resolved handles per
+instance. Catalog sections are capped at 256 KiB and values at 256 declared
+fields. Framework authentication collections count too. The dev catalog parser
+checks these same defaults. The `u16` collection count is the wire encoding,
+not an allowance of 65,535 collections.
+
+Operators can change the native `db_limits` settings, including
+`max_databases`, `max_collections_per_db`, `max_collections_total`, and
+`max_handles`; validate against the settings of the deployment you will use.

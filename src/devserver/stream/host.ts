@@ -1,3 +1,4 @@
+import { freshImageState, type ImageDevState } from '../images/index.js';
 /**
  * Host-import surface for the dev STREAM (hot, L2/L3) box, mirroring the production edge's stream box
  * (`toil-backend` `src/wasm/stream`). A `@stream` box is a HOT artifact: it imports the same request
@@ -19,10 +20,11 @@ import { buildEnvImports, type MemoryRef } from '../runtime/host.js';
 export interface StreamBoxState {
     crypto: CryptoState;
     db: DbDevState;
+    images: ImageDevState;
 }
 
 export function freshStreamBoxState(): StreamBoxState {
-    return { crypto: freshCryptoState(), db: freshDbState() };
+    return { crypto: freshCryptoState(), db: freshDbState(), images: freshImageState() };
 }
 
 /**

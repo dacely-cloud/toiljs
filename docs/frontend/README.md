@@ -102,4 +102,5 @@ Read them in roughly this order:
 - [Getting started](../getting-started/README.md): install toiljs and create a project.
 - [Project structure](../getting-started/project-structure.md): the full folder layout.
 - [Backend overview](../backend/README.md): the `server/` side your frontend talks to.
+- [Security](../concepts/security.md): default CSP, COOP, Trusted Types, and resource permissions.
 - [The CLI](../cli/README.md): `toiljs dev`, `toiljs build`, and every flag.

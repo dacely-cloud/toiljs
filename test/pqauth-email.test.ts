@@ -192,12 +192,23 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         await Auth.register('reuse', 'original-password-A1', 'reuse@example.com');
         await login('reuse', 'original-password-A1');
         const originalCookie = jar.get('toil_sess')!;
+        await login('reuse', 'original-password-A1');
+        const secondCookie = jar.get('toil_sess')!;
+        expect(secondCookie).not.toBe(originalCookie);
+        const checkSession = (cookie: string) => mod.dispatch({
+            method: 'GET', path: '/auth/me',
+            headers: [['host', 'localhost:3000'], ['cookie', 'toil_sess=' + cookie]],
+            body: new Uint8Array(0),
+        });
+        expect(checkSession(originalCookie).status).toBe(200);
+        expect(checkSession(secondCookie).status).toBe(200);
         await Auth.requestPasswordReset('reuse@example.com');
         const token = tokenFromEmail('reset', 'reuse@example.com');
         await Auth.deleteAccount();
         const copied = mod.dispatch({ method: 'GET', path: '/auth/me',
             headers: [['host', 'localhost:3000'], ['cookie', 'toil_sess=' + originalCookie]], body: new Uint8Array(0) });
         expect(copied.status).toBe(401);
+        expect(checkSession(secondCookie).status).toBe(401);
         __resetRatelimitForTests();
         await Auth.register('reuse', 'replacement-password-A1', 'different@example.com');
         await Auth.register('emailreuse', 'another-password-A1', 'reuse@example.com');

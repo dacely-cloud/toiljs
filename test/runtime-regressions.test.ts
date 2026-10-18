@@ -57,9 +57,8 @@ export { handle } from '${runtime}/exports/index';
     });
 
     it('declares session revocation for application typechecking', () => {
-        expect(TOIL_SERVER_ENV_DTS).toContain(
-            'function revokeUserSessions(userData: Uint8Array): void;',
-        );
+        expect(TOIL_SERVER_ENV_DTS).toContain('toiljs/server/globals');
+        expect(readFileSync(resolve('server/globals.d.ts'), 'utf8')).toContain('function revokeUserSessions(userData: Uint8Array): void;');
     });
 
     it.each([1024, 65536, 262144])(

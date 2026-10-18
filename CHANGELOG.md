@@ -1,5 +1,27 @@
 # Changelog
 
+## [v0.0.128] - 2026-10-18
+
+- Add query-readable `SortedIndex` cursor pages and sortable `SortKey` encodings, so request handlers can read ordered lists without assembling their own paged Views.
+- Add `Db.atomic` and partitioned Documents for all-or-nothing conditional batches across up to 16 records, with durable idempotency tokens. These require one explicit partition, one database, localOnly Documents without `@unique`, and shared persistent ToilDB; ordinary or cross-partition records are outside this API.
+- Add `Db.changes` with bounded changed-key candidates and conservative full-rescan fallback. View publications do not retrigger their own derive.
+- Persist named derive checkpoints by database and method, so reordering declarations does not redirect cursors. Add durable `Db.continueDerive` requests and idle background retries, plus `Db.runDerive` for scheduled time-dependent folds.
+- Add bounded Job/Derive `Documents.scan` pages with typed snapshots and scoped cursors. Scans require a complete local copy; existing native keyspaces need scan-directory backfill after all writers upgrade.
+- Expose `Db.budget` counters and remaining limits, with dev diagnostics and matching native accounting. Document catalog ceilings and native result-byte accounting, including missing-entry framing.
+- Preserve completed dev database writes when a later guest operation traps, including persistence to disk. Document that traps and timeouts do not roll back earlier ordinary writes.
+- Add `@job onStart`, background `AuthService.deleteUser(id, realm)`, bounded legacy account-index backfill, session revocation, incarnation fencing, and deletion-index cleanup. Add the preactivation, retryable `AuthService.onRegistered` hook.
+- Add typed `Blobs<K>` with exact-size signed uploads, streamed client transfers, range reads, method-bound URLs, and a persistent loopback disk adapter for dev. Production storage uses configured S3 Signature V4 operations; document bucket CORS and application CSP origins.
+- Add bounded `Images.stripExif`, `Images.resize`, and `Images.thumbnail` for JPEG, PNG, and still WebP. The shared Rust codec runs in disposable native/WASI workers, applies orientation, strips personal metadata, and preserves ICC profiles and alpha within documented limits.
+- Add `Response.data(value, status)` and default percent/UTF-8/plus query decoding. The companion native HTTP fix preserves all valid status codes rather than silently returning 200 for unlisted codes.
+- Ship static server/runtime/global declarations for fresh projects and the standard auth principal. Generate editor codec declarations during build and dev, including typed `encode`, `decode`, and `encodedSize`, so WebStorm with TypeScript 7 can see compiler-generated methods.
+- Add a supported daemon `httpMock`, public `runTask(name, atMillis)` results, an injected dev clock, and deterministic request interleaving hooks for real Wasm race tests.
+- Document the native auth protocol with independently checked JavaScript, guest-Wasm, and Rust vectors. Document the supported shared TypeScript/ToilScript subset.
+- Add default CSP/COOP headers, Trusted Types integration, integrity-pinned scripts, and configurable resource origins across browser, SSR, dev, and production responses.
+- Require toilscript 0.1.66, which also adds strict nontrapping u256 parsing, checked integer arithmetic, Unicode normalization/properties, generated encoded sizes, and compile-time rejection of unsupported RegExp.
+- Document a loopback native staging host that exercises gas, DB deadlines, uniqueness, JSON statuses, and query decoding against live ToilDB. Native capability reports identify the binary hash, supported daemon catalogs, and host imports; deployed fleet compatibility still requires operator inventory.
+
+New native imports and daemon startup metadata require the matching toil-backend build. The npm packages do not deploy that backend. Native blob/image, atomic-batch, scan/backfill, and account-maintenance deployment requirements are documented with each API.
+
 ## [v0.0.127] - 2026-10-18
 
 - Show the route's loading view while a nested layout loader is pending, then render the layout and page when their data is ready.

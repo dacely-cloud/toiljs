@@ -133,12 +133,12 @@ do {
 } while (cursor != null);
 ```
 
-Limits must be positive and at most 1024, within the background scan budget.
+Page limits must be positive: at most 32 on Query, 64 on Action, and 1024 in background work. Result and cumulative byte budgets also apply.
 The ordering is lexicographic over encoded member bytes, not alphabetical over
 display names. Removing the cursor member does not prevent continuation. This is
 not a snapshot: additions behind the cursor appear on a subsequent walk, and
 concurrent removals can omit members. Reads remain scoped to one collection
-and set key. `listPage`, like `list`, is barred on Query and Action paths.
+and set key. Bounded `listPage` is allowed on Query and Action; `list` remains a background scan.
 
 ### `list`
 
@@ -269,3 +269,27 @@ feeds a view.
 - [`@derive`](../background/derive.md): runs `list` off the request path.
 - [Data types (`@data`)](../concepts/types.md): how set keys and members are stored.
 - [Decorators](../concepts/decorators.md): which handler kinds may add/remove vs scan.
+
+
+## Sorted request indexes
+
+Declare `SortedIndex<GroupKey, ItemId>` as a collection to maintain an ordered,
+query-readable index backed by membership storage:
+
+```ts
+@database
+class Listings {
+    @collection static byDate: SortedIndex<BoardKey, ListingId>;
+}
+// In an Action or Job; index stable IDs, then fetch the current documents.
+Listings.byDate.add(board, SortKey.descendingU64(timestamp), listingId);
+const page = Listings.byDate.page(board, 16, cursor); // page.items, page.cursor
+```
+
+Order keys compare by UTF-8 bytes. `SortKey.u64` and `descendingU64` produce
+fixed-width keys with unsigned numeric order. Encoded item bytes break ties.
+Adding the same order-key/item pair is idempotent. To change an entry's order,
+remove the old pair with `remove(board, oldOrder, listingId)` and add the new one.
+Each page is one bounded read, subject to the limits above. Cursors are exclusive;
+a full page can require an empty final page. Pagination is not a snapshot of
+concurrent changes and has the same replica consistency as membership reads.

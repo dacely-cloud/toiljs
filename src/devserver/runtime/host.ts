@@ -1,3 +1,4 @@
+import { buildImageImports, freshImageState, type ImageDevState } from '../images/index.js';
 /**
  * The host import surface the dev server exposes to the guest, mirroring the
  * functions the production edge (`toil-backend/src/wasm/host/imports.rs`)
@@ -63,6 +64,7 @@ export interface DispatchState {
     crypto: CryptoState;
     /** Per-dispatch ToilDB state: resolved collection handles + result stash. */
     db: DbDevState;
+    images: ImageDevState;
 }
 
 /** A fresh, zeroed per-dispatch state (the edge resets the same way before each request). */
@@ -75,6 +77,7 @@ export function freshDispatchState(): DispatchState {
         clientIp: '',
         crypto: freshCryptoState(),
         db: freshDbState(),
+        images: freshImageState(),
     };
 }
 
@@ -85,6 +88,8 @@ export function freshDispatchState(): DispatchState {
  */
 export interface MemoryRef {
     memory: WebAssembly.Memory | null;
+    /** Optional per-instance clock; never changes the process clock. */
+    now?: () => number;
 }
 
 function mem(ref: MemoryRef): Buffer {
@@ -282,10 +287,11 @@ function buildLogImports(
 
 export function buildEnvImports(
     ref: MemoryRef,
-    _state: { crypto: CryptoState; db: DbDevState },
+    _state: { crypto: CryptoState; db: DbDevState; images: ImageDevState },
 ): Record<string, (...a: never[]) => unknown> {
     return {
         ...buildLogImports(ref, _state.db),
+        ...buildImageImports(ref, _state.images, () => _state.db.functionKind),
         abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
             throw new WasmAbortError(
                 readGuestString(ref, msgPtr),
@@ -306,7 +312,7 @@ export function buildEnvImports(
         thread_spawn: (_startArg: number): number => -1,
 
         // `Date.now()` -> wall-clock milliseconds, matching the edge host.
-        'Date.now': (): bigint => BigInt(Date.now()),
+        'Date.now': (): bigint => BigInt(ref.now?.() ?? Date.now()),
 
         // `env::email_send` / `email_send_detached`: the FULL email pipeline in
         // dev. A daemon may send mail, so this stays in the shared subset (00 B2 /
@@ -325,6 +331,7 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
     return {
         env: {
             ...buildLogImports(ref, state.db),
+            ...buildImageImports(ref, state.images, () => state.db.functionKind),
             abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
                 throw new WasmAbortError(
                     readGuestString(ref, msgPtr),
@@ -429,7 +436,7 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
 
             // `Date.now()` -> wall-clock milliseconds, matching the edge host.
             // The guest divides by 1000 for Unix seconds (sessions, challenges).
-            'Date.now': (): bigint => BigInt(Date.now()),
+            'Date.now': (): bigint => BigInt(ref.now?.() ?? Date.now()),
 
             // Web Crypto host functions (`env.crypto.*`), backed by Node's
             // `crypto`. The dev server skips metering, so these charge nothing.
@@ -438,7 +445,7 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
             // `env::data.*`: the ToilDB data API, emulated in process (see
             // ./database.ts). Backs the auth example's accounts + login
             // challenges so register/login spans requests under `toiljs dev`;
-            // the production edge backs the SAME imports with ScyllaDB.
+            // the production edge backs the SAME imports with persistent ToilDB.
             ...buildDatabaseImports(ref, state.db),
 
             // `env.analytics_read`: the per-domain analytics import, emulated in process (see

@@ -129,3 +129,5 @@ export { Server } from './rpc.js';
 export { parseError } from './errors.js';
 export { Hole, RawHtml, Repeat, Island, attr, __setSsrBuild, __isSsrBuild } from './ssr/markers.js';
 export type { HoleProps, RawHtmlProps, RepeatProps, IslandProps } from './ssr/markers.js';
+
+export { sanitizeHtml } from './html.js';

@@ -98,6 +98,11 @@ public settings(): Response {
 - **`Unique<K,V>`**: a globally one-of-a-kind claim (usernames, emails, slugs).
 - **`Counter<K>`**: a running total many callers bump at once (likes, views); `add` a delta only.
 - **`Events<K,V>`**: an append-only log kept in order (feeds, audit trails).
+  `get(key, eventId)` reads an `appendOnce` event by ID; `last(key)` reads the
+  newest event. Both are request-safe and return `V | null`; check `Db.lastError()`
+  immediately on null. `latest`/`since` are background scans. A `last` followed by
+  an append is not atomic; duplicate IDs do not replace existing events. See
+  [Events](../database/events.md#get-and-last).
 - **`Capacity<K>`**: a limited quantity handed out without overselling (tickets, seats).
 - **`Membership<K,M>`**: sets of who belongs to what (followers, tags, room members).
 - **`View<K,V>`**: a precomputed read-optimized snapshot (leaderboards, home pages).

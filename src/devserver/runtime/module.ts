@@ -1,3 +1,6 @@
+import { deriveChangesFrame, fullRescanFrame } from '../db/changes.js';
+import type { DbDevState } from '../db/types.js';
+import { deriveContinuationKey, deriveCheckpointKey } from '../db/derives.js';
 /**
  * Loads the ToilScript-compiled server wasm and dispatches request envelopes
  * into it, the dev-mode equivalent of the edge's fresh dispatcher
@@ -88,6 +91,27 @@ export interface WasmDispatchResult {
     readonly unhandled: boolean;
 }
 
+export interface DatabaseInterleavingPoint {
+    readonly request: EnvelopeRequest;
+    readonly operation: string;
+    readonly collection: string | null;
+    readonly key: Uint8Array | null;
+}
+export interface DispatchInterleaving {
+    beforeDatabaseOperation?(point: DatabaseInterleavingPoint): void | Promise<void>;
+    afterDatabaseOperation?(
+        point: DatabaseInterleavingPoint & { readonly result: number | bigint },
+    ): void | Promise<void>;
+}
+interface PromiseIntegration {
+    Suspending: new (
+        implementation: (...args: number[]) => Promise<number | bigint>,
+    ) => WebAssembly.ImportValue;
+    promising(
+        fn: (offset: number, length: number) => bigint,
+    ): (offset: number, length: number) => Promise<bigint>;
+}
+
 interface HandleExports {
     readonly memory: WebAssembly.Memory;
     readonly handle: (reqOfs: number, reqLen: number) => bigint;
@@ -134,7 +158,7 @@ const PROVIDED_IMPORTS = new Set([
     'crypto.mldsa_verify',
     'crypto.mlkem_decapsulate',
     'crypto.voprf_evaluate',
-    // ToilDB data API (see ./database.ts). Backed by ScyllaDB on the production
+    // ToilDB data API (see ./database.ts). Backed by persistent ToilDB on the production
     // edge; backs the auth example's accounts + login challenges in dev.
     'data.resolve_collection',
     'data.get',
@@ -156,6 +180,11 @@ const PROVIDED_IMPORTS = new Set([
     'data.membership_remove',
     'data.membership_list',
     'data.membership_page',
+    'data.documents_scan',
+    'data.atomic_get',
+    'data.atomic_batch',
+    'image.process',
+    'image.take_result',
     'data.counter_get',
     'data.counter_add',
     'data.append',
@@ -179,6 +208,12 @@ const PROVIDED_IMPORTS = new Set([
     'data.take_result',
     'data.result_schema_version',
     'data.write_allowed',
+    'data.job_allowed',
+    'data.budget',
+    'data.changes',
+    'data.begin_derive',
+    'data.end_derive',
+    'data.continue_derive',
 ]);
 
 export class WasmServerModule {
@@ -256,6 +291,93 @@ export class WasmServerModule {
      * missing module; the caller shapes those into a 500.
      */
     dispatch(req: EnvelopeRequest): WasmDispatchResult {
+        try {
+            const context = this.prepareDispatch(req);
+            const packed = context.exports.handle(context.reqOfs, context.length);
+            return this.finishDispatch(context.exports, context.state, packed);
+        } catch (error) {
+            persistDb();
+            throw error;
+        }
+    }
+
+    /** Development race harness: suspend before/after chosen DB imports while
+     * another fresh request instance operates on the same shared store. */
+    async dispatchAsync(
+        req: EnvelopeRequest,
+        hooks: DispatchInterleaving = {},
+    ): Promise<WasmDispatchResult> {
+        const jspi = WebAssembly as unknown as PromiseIntegration;
+        if (typeof jspi.Suspending !== 'function' || typeof jspi.promising !== 'function')
+            throw new Error(
+                'dispatchAsync requires WebAssembly JSPI (Suspending/promising); use a Node release with JSPI enabled',
+            );
+        const context = this.prepareDispatch(req, (imports, ref, state) => {
+            const env = imports.env;
+            for (const [operation, value] of Object.entries(env)) {
+                if (
+                    !operation.startsWith('data.') ||
+                    typeof value !== 'function' ||
+                    [
+                        'data.resolve_collection',
+                        'data.take_result',
+                        'data.budget',
+                        'data.changes',
+                        'data.begin_derive',
+                        'data.end_derive',
+                        'data.continue_derive',
+                        'data.result_schema_version',
+                        'data.write_allowed',
+                        'data.job_allowed',
+                    ].includes(operation)
+                )
+                    continue;
+                const implementation = value as (...args: number[]) => number | bigint;
+                env[operation] = new jspi.Suspending(async (...args: number[]) => {
+                    const memory = ref.memory;
+                    const [handle, ptr, len] = args;
+                    const key =
+                        memory !== null &&
+                        ptr >= 0 &&
+                        len >= 0 &&
+                        len <= 4096 &&
+                        ptr <= memory.buffer.byteLength &&
+                        len <= memory.buffer.byteLength - ptr
+                            ? new Uint8Array(memory.buffer, ptr, len).slice()
+                            : null;
+                    const point: DatabaseInterleavingPoint = {
+                        request: req,
+                        operation,
+                        collection: state.db.handles[handle]?.name ?? null,
+                        key,
+                    };
+                    await hooks.beforeDatabaseOperation?.(point);
+                    const result = implementation(...args);
+                    await hooks.afterDatabaseOperation?.({ ...point, result });
+                    return result;
+                });
+            }
+        });
+        try {
+            const packed = await jspi.promising(context.exports.handle)(
+                context.reqOfs,
+                context.length,
+            );
+            return this.finishDispatch(context.exports, context.state, packed);
+        } catch (error) {
+            persistDb();
+            throw error;
+        }
+    }
+
+    private prepareDispatch(
+        req: EnvelopeRequest,
+        wrap?: (
+            imports: WebAssembly.Imports,
+            ref: MemoryRef,
+            state: ReturnType<typeof freshDispatchState>,
+        ) => void,
+    ) {
         if (this.module === null) throw new Error(`server wasm not loaded (${this.wasmPath})`);
 
         // First dispatch after a (re)load: materialize views from their sources
@@ -266,6 +388,7 @@ export class WasmServerModule {
 
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         state.clientIp = req.clientIp ?? '';
         // Match the edge DB gate: the HTTP method is the baseline authority, and `toildb.route_kinds`
         // can only tighten a mutating route to query. The reserved /__toil_rpc endpoint is the inverse -
@@ -289,13 +412,22 @@ export class WasmServerModule {
         } else {
             state.db.functionKind = dbFunctionKindForRequest(this.routeKinds, req.method, req.path);
         }
-        const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
+        const imports = buildHostImports(ref, state);
+        if (wrap !== undefined) wrap(imports, ref, state);
+        const instance = new WebAssembly.Instance(this.module, imports);
         const exports = instance.exports as unknown as HandleExports;
         ref.memory = exports.memory;
 
         const reqOfs = this.writeRequestEnvelope(exports.memory, envelope);
 
-        const packed = exports.handle(reqOfs, envelope.length);
+        return { exports, state, reqOfs, length: envelope.length };
+    }
+
+    private finishDispatch(
+        exports: HandleExports,
+        state: ReturnType<typeof freshDispatchState>,
+        packed: bigint,
+    ): WasmDispatchResult {
         const { ptr, len } = unpackHandleResult(packed);
 
         // Same bounds validation as the edge: never trust the guest's pointer.
@@ -319,7 +451,7 @@ export class WasmServerModule {
         // view.publish lands BEFORE the single persistDb() below flushes both the
         // request's writes and the derive's view to disk. A read writes nothing,
         // so this is a no-op for GETs.
-        this.runAffectedDerives(state.db.writtenCollections);
+        this.runAffectedDerives(state.db.writtenCollections, state.db);
 
         // Flush any DB writes this request made to disk, so dev data survives a
         // restart (and a crash never loses an already-served write).
@@ -348,6 +480,7 @@ export class WasmServerModule {
         const envelope = this.requestEnvelope(req);
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         state.clientIp = req.clientIp ?? '';
         state.db.functionKind = DbFunctionKind.Query;
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
@@ -382,13 +515,19 @@ export class WasmServerModule {
      * which folds events into the view off the request path; in single-process
      * dev, running it synchronously-after-the-write is observably equivalent.
      */
-    private runAffectedDerives(written: ReadonlySet<string>): void {
+    private runAffectedDerives(written: ReadonlySet<string>, source?: DbDevState): void {
         if (this.module === null) return;
+        const retrying = new Set(this.pendingDerives);
         const affected = derivesForWrites(this.derives, written);
         for (const derive of affected) this.pendingDerives.add(derive.deriveId);
         for (const derive of this.derives.filter((d) => this.pendingDerives.has(d.deriveId))) {
             try {
-                this.runDerive(derive.deriveId);
+                this.runDerive(
+                    derive.deriveId,
+                    source === undefined
+                        ? fullRescanFrame()
+                        : deriveChangesFrame(source, derive.dbName, retrying.has(derive.deriveId)),
+                );
                 this.pendingDerives.delete(derive.deriveId);
             } catch (err) {
                 console.error(`[toil] derive ${derive.dbName}#${derive.methodName} failed:`, err);
@@ -422,17 +561,23 @@ export class WasmServerModule {
     /** One derive invocation: a fresh instance under Derive kind, calling the
      *  synthesized `derive_run(derive_id)` export (writes flow to the shared dev
      *  store via the `data.*` imports; the caller's persistDb() flushes them). */
-    private runDerive(deriveId: number): void {
+    private runDerive(deriveId: number, changes = fullRescanFrame()): void {
         if (this.module === null) return;
         const ref: MemoryRef = { memory: null };
         const state = freshDispatchState();
+        state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         state.db.functionKind = DbFunctionKind.Derive;
         state.db.deriveId = deriveId;
+        state.db.deriveChanges = changes;
+        const entry = this.derives.find((derive) => derive.deriveId === deriveId);
+        if (entry === undefined) throw new Error('Unknown derive identity');
+        state.db.deriveKey = deriveCheckpointKey(entry);
         const instance = new WebAssembly.Instance(this.module, buildHostImports(ref, state));
         const exports = instance.exports as unknown as DeriveExports;
         ref.memory = exports.memory;
         if (typeof exports.derive_run !== 'function') return;
-        exports.derive_run(deriveId);
+        const rc = exports.derive_run(deriveId);
+        if (rc !== 0n) throw new Error(`derive_run returned ${String(rc)}`);
         // Publish-then-persist: derive_run returned (its `view.publish`es landed synchronously in the dev
         // store), so commit the `events.since` cursor advances staged this run. A trapped fold throws above
         // and never reaches here, leaving the durable cursor for a re-read on the next trigger.

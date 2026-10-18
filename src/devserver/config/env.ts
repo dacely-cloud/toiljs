@@ -20,11 +20,24 @@ import { loadEnvFiles } from './dotenv.js';
 /** A plain var by exact key, or `null`. Reads ONLY the `.env` (vars) bucket. */
 export function devEnvGet(key: string): string | null {
     const v = loadEnvFiles(process.cwd()).vars.get(key);
-    return v === undefined ? null : v;
+    return v === undefined ? (blobEnvironment?.vars.get(key) ?? null) : v;
 }
 
 /** A secret by exact key, or `null`. Reads ONLY the `.env.secrets` bucket. */
 export function devEnvGetSecure(key: string): string | null {
     const v = loadEnvFiles(process.cwd()).secrets.get(key);
-    return v === undefined ? null : v;
+    return v === undefined ? (blobEnvironment?.secrets.get(key) ?? null) : v;
+}
+
+interface DevBlobEnvironment {
+    vars: ReadonlyMap<string, string>;
+    secrets: ReadonlyMap<string, string>;
+}
+let blobEnvironment: DevBlobEnvironment | null = null;
+/** Installed only by the dev server's loopback disk adapter. */
+export function installDevBlobEnvironment(environment: DevBlobEnvironment): () => void {
+    blobEnvironment = environment;
+    return () => {
+        if (blobEnvironment === environment) blobEnvironment = null;
+    };
 }

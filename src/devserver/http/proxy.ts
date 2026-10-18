@@ -7,6 +7,8 @@
  */
 
 import { type Request, type Response, type Server, type Websocket } from '@dacely/hyper-express';
+import { writeResponseHeader } from 'toiljs/backend';
+import { builtContentSecurityPolicy } from 'toiljs/shared';
 
 /** Where the internal Vite dev server listens (always loopback). */
 export interface ViteTarget {
@@ -58,7 +60,7 @@ export async function proxyToVite(
     const body = hasBody ? await request.buffer() : undefined;
 
     const upstream = await fetch(url, {
-        method: request.method,
+        method: request.method === 'HEAD' ? 'GET' : request.method,
         headers,
         body: body && body.length > 0 ? new Uint8Array(body) : undefined,
         // The browser follows redirects itself; pass them through untouched.
@@ -67,7 +69,7 @@ export async function proxyToVite(
 
     response.status(upstream.status);
     upstream.headers.forEach((value, name) => {
-        if (!SKIP_RESPONSE_HEADERS.has(name)) response.header(name, value);
+        if (!SKIP_RESPONSE_HEADERS.has(name)) writeResponseHeader(response, name, value);
     });
 
     // Buffer the full upstream body and send it with a content-length, instead
@@ -77,7 +79,14 @@ export async function proxyToVite(
     // responses are finite (HMR rides the separate websocket), so buffering is
     // safe and sidesteps the chunked framing entirely.
     const buf = Buffer.from(await upstream.arrayBuffer());
-    if (buf.length === 0) {
+    if (
+        upstream.headers.get('content-type')?.includes('text/html') &&
+        !upstream.headers.has('content-security-policy')
+    ) {
+        const policy = builtContentSecurityPolicy(buf.toString('utf8'));
+        if (policy !== null) response.header('content-security-policy', policy, true);
+    }
+    if (request.method === 'HEAD' || buf.length === 0) {
         response.send();
         return;
     }

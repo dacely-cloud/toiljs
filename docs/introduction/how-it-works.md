@@ -84,7 +84,7 @@ State lives in [ToilDB](../database/README.md), toil's own database, replicated 
 
 The hard part is **distributed writes**. Every key has one **home region** that orders its writes, while the data replicates outward so reads stay fast and local everywhere. Most stacks distribute reads but pin writes to one region. toil is built to distribute both.
 
-Where this stands today. The home-region model and its core logic are real and tested. A live multi-region deployment, meaning WAN routing over the ScyllaDB backing, is configuration-gated. It is not switched on for every app by default. A far read can also lag its home by a few milliseconds, the eventual-consistency trade-off. Your local `toiljs dev` database is a single in-process store. The [distributed writes page](./distributed.md) covers the write model and its trade-off in full.
+Where this stands today. The home-region model and its core logic are real and tested. A live multi-region deployment, meaning WAN routing and persistent storage, is configuration-gated. It is not switched on for every app by default. A far read can also lag its home by a few milliseconds, the eventual-consistency trade-off. Your local `toiljs dev` database is a single in-process store. The [distributed writes page](./distributed.md) covers the write model and its trade-off in full.
 
 ## The four compute tiers
 

@@ -79,13 +79,15 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 
 **Build the backend**
 - [Backend overview](./backend/README.md), [HTTP routes (`@rest`)](./backend/rest.md),
-  [Typed RPC (`@service`/`@remote`)](./backend/rpc.md), [Data types (`@data`)](./backend/data.md).
+  [Typed RPC (`@service`/`@remote`)](./backend/rpc.md), [Data types (`@data`)](./backend/data.md),
+  [Server image processing](./backend/images.md), [Native staging](./backend/native-staging.md).
 
 **The database (ToilDB)**
 - [Database overview and choosing a family](./database/README.md), [Setup (`@database`)](./database/setup.md),
   [Documents](./database/documents.md), [Unique](./database/unique.md), [Counters](./database/counters.md),
   [Events](./database/events.md), [Views and `@derive`](./database/views.md),
-  [Membership](./database/membership.md), [Capacity](./database/capacity.md).
+  [Membership](./database/membership.md), [Capacity](./database/capacity.md),
+  [Atomic batches](./database/atomic.md), [Blobs](./database/blobs.md).
 
 **Auth**: [the full auth guide](./auth/README.md) covers post-quantum login, sessions, and `ToilUserId`;
 [customizing the auth emails](./auth/emails.md) shows how to brand the verification, reset, and 2FA mail.
@@ -104,4 +106,4 @@ Run `toiljs dev`, open the browser, and both are live with hot reload. That is t
 - [Writing toiljs correctly (AI + human quick rules)](./concepts/ai-guide.md),
   [Compute tiers (L1 to L4)](./concepts/tiers.md), [Types (u64, u256, and friends)](./concepts/types.md),
   [Every decorator](./concepts/decorators.md), [Configuration](./concepts/config.md),
-  [Security and SRI](./concepts/security.md).
+  [Security: CSP, COOP, Trusted Types, and SRI](./concepts/security.md).

@@ -1,10 +1,13 @@
+import { scanDocuments } from './document-scan.js';
+import { buildAtomicImports } from './atomic.js';
+import { deriveContinuationKey } from './derives.js';
+import { captureDbKey } from './changes.js';
 /**
  * DEV emulation of the ToilDB record-family data API (`env::data.*`).
  *
  * The compiler-emitted guest (`@database` + `App.users.get/create/...`) calls
  * these; under `toiljs dev` we back them with a single-process in-memory store.
- * The production edge backs the SAME imports with ScyllaDB via the off-core
- * "scylla rail" (toil-backend). The wire ABI mirrors the edge exactly
+ * The production edge backs the SAME imports with persistent ToilDB via the native storage host. The wire ABI mirrors the edge exactly
  * (toildb/ABI.md): every byte region is a (ptr,len) into guest memory; returns
  * are `>= 0` success (a length/handle/flag), `-1` too-small, `-2` absent,
  * `<= -1000` a typed error (`-(1000+TDLnnn)`); variable-length results use the
@@ -24,7 +27,12 @@ import { DataReader, DataWriter } from 'toiljs/io';
 import type { MemoryRef } from '../runtime/host.js';
 import { parseCatalog } from './catalog.js';
 import { queueMaterialization } from './materialization.js';
-import { checkDbResultSize, withDbLimits } from './limits.js';
+import {
+    checkDbResultSize,
+    withDbLimits,
+    dbBudgetSnapshot,
+    chargeDbControlWrite,
+} from './limits.js';
 import {
     ABSENT,
     ALREADY_EXISTS,
@@ -213,6 +221,8 @@ enum DbOp {
     MembershipAdd,
     MembershipRemove,
     MembershipList,
+    MembershipPage,
+    DocumentsScan,
     UniqueLookup,
     UniqueClaim,
     UniqueRelease,
@@ -248,6 +258,8 @@ function isReadOp(op: DbOp): boolean {
         op === DbOp.CounterGet ||
         op === DbOp.MembershipContains ||
         op === DbOp.MembershipList ||
+        op === DbOp.MembershipPage ||
+        op === DbOp.DocumentsScan ||
         op === DbOp.UniqueLookup ||
         op === DbOp.Latest ||
         op === DbOp.EventsSince ||
@@ -260,7 +272,13 @@ function isReadOp(op: DbOp): boolean {
 }
 
 function isScanOp(op: DbOp): boolean {
-    return op === DbOp.Latest || op === DbOp.MembershipList || op === DbOp.EventsSince || op === DbOp.EventsEntries;
+    return (
+        op === DbOp.Latest ||
+        op === DbOp.MembershipList ||
+        op === DbOp.DocumentsScan ||
+        op === DbOp.EventsSince ||
+        op === DbOp.EventsEntries
+    );
 }
 
 function kindAllows(kind: DbFunctionKind, op: DbOp): boolean {
@@ -328,6 +346,9 @@ type CatalogSeedEntry =
  * Process-lifetime, shared across dispatches via the module singleton {@link devDb}.
  */
 export class DevDatabase {
+    atomicImports(ref: MemoryRef, db: DbDevState) {
+        return buildAtomicImports(ref, db, { store: this.store, versions: this.versions });
+    }
     /** Process-lifetime store: `"collection\0keyLatin1"` -> value. Shared across dispatches. */
     private readonly store = new Map<string, Buffer>();
     /** Record-family idempotency claims/outcomes: collection+key+op+idem -> row. */
@@ -349,6 +370,8 @@ export class DevDatabase {
      *  `derive_run` returns (publish-then-persist, mirroring the edge), so a trapped fold never advances the
      *  cursor past unpublished events. Persisted in the snapshot so a restart resumes the fold. */
     private readonly deriveCheckpoints = new Map<string, number>();
+    private readonly deriveContinuations = new Map<string, bigint>();
+    private deriveContinuationSequence = 0n;
     /** append_once dedup: `"collection\0key"` -> set of eventIds already appended. */
     private readonly eventDedup = new Map<string, Set<string>>();
     private readonly eventPositions = new Map<string, Map<string, number>>();
@@ -467,6 +490,10 @@ export class DevDatabase {
             eventPositions: {},
             erasedEvents: {},
             deriveCheckpoints: {},
+            deriveContinuations: Object.fromEntries(
+                [...this.deriveContinuations].map(([key, value]) => [key, value.toString()]),
+            ),
+            deriveContinuationSequence: this.deriveContinuationSequence.toString(),
             capacity: {},
         };
         for (const [k, v] of this.store)
@@ -490,7 +517,11 @@ export class DevDatabase {
         for (const [k, v] of this.counterIdem) snap.counterIdem[k] = v.toString();
         for (const [k, log] of this.events) {
             const ver = this.eventVersions.get(k) ?? [];
-            snap.events[k] = log.map((b, i) => ({ v: b.toString('base64'), sv: ver[i] ?? 0, hlc: (this.eventHlcs.get(k)?.[i] ?? BigInt(i + 1)).toString() }));
+            snap.events[k] = log.map((b, i) => ({
+                v: b.toString('base64'),
+                sv: ver[i] ?? 0,
+                hlc: (this.eventHlcs.get(k)?.[i] ?? BigInt(i + 1)).toString(),
+            }));
         }
         for (const [k, positions] of this.eventPositions) snap.eventPositions[k] = [...positions];
         for (const [k, erased] of this.erasedEvents) snap.erasedEvents[k] = [...erased];
@@ -563,7 +594,10 @@ export class DevDatabase {
                 k,
                 log.map((e) => Buffer.from(e.v, 'base64')),
             );
-            this.eventVersions.set(k, log.map((e) => e.sv));
+            this.eventVersions.set(
+                k,
+                log.map((e) => e.sv),
+            );
             const hlcs = log.map((e, i) => BigInt(e.hlc ?? String(i + 1)));
             this.eventHlcs.set(k, hlcs);
             for (const hlc of hlcs) if (hlc > this.eventClock) this.eventClock = hlc;
@@ -582,6 +616,22 @@ export class DevDatabase {
             this.eventPositions.set(k, new Map(positions));
         for (const [k, ids] of Object.entries(snap.eventDedup ?? {}))
             this.eventDedup.set(k, new Set(ids));
+        const sequence = BigInt(snap.deriveContinuationSequence ?? '0');
+        const continuations = Object.entries(snap.deriveContinuations ?? {});
+        if (
+            sequence < 0n ||
+            sequence > 0xffffffffffffffffn ||
+            continuations.length > 1024 ||
+            12 + continuations.reduce((sum, [key]) => sum + 12 + Buffer.byteLength(key), 0) > 262144
+        )
+            throw new Error('Invalid continuation snapshot');
+        for (const [key, value] of continuations) {
+            const generation = BigInt(value);
+            if (Buffer.byteLength(key) > 2056 || generation <= 0n || generation > sequence)
+                throw new Error('Invalid continuation generation');
+        }
+        this.deriveContinuationSequence = sequence;
+        for (const [key, value] of continuations) this.deriveContinuations.set(key, BigInt(value));
         for (const [k, v] of Object.entries(snap.deriveCheckpoints ?? {}))
             this.deriveCheckpoints.set(k, v);
         for (const [k, l] of Object.entries(snap.capacity ?? {})) {
@@ -618,6 +668,8 @@ export class DevDatabase {
         this.eventDedup.clear();
         this.eventPositions.clear();
         this.deriveCheckpoints.clear();
+        this.deriveContinuations.clear();
+        this.deriveContinuationSequence = 0n;
         this.capacity.clear();
     }
 
@@ -960,6 +1012,7 @@ export class DevDatabase {
         this.store.delete(sk);
         this.versions.delete(sk);
         const outcome: RecordOutcome = { kind: 'unit' };
+        this.recordWrite(db, coll);
         this.recordIdemFinish(coll, key, 'D', idem, requestHash, outcome);
         return this.replayRecordOutcome(db, outcome);
     }
@@ -995,6 +1048,7 @@ export class DevDatabase {
             this.store.delete(sk);
             this.versions.delete(sk);
         }
+        if (outcome.kind === 'value') this.recordWrite(db, coll);
         this.recordIdemFinish(coll, key, 'G', idem, requestHash, outcome);
         return this.replayRecordOutcome(db, outcome);
     }
@@ -1040,6 +1094,7 @@ export class DevDatabase {
             this.store.set(sk, owner);
             this.uniqueIdem.set(sk, idem);
             this.stampVersion(coll, sk);
+            this.recordWrite(db, coll);
             return 0; // Claimed
         }
         if (existing.equals(owner)) {
@@ -1067,6 +1122,7 @@ export class DevDatabase {
         this.store.delete(sk);
         this.uniqueIdem.delete(sk);
         this.versions.delete(sk);
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1115,6 +1171,7 @@ export class DevDatabase {
             this.memberVersions.set(sk, mv);
         }
         mv.set(ml, this.currentSchemaVersion(coll));
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1133,6 +1190,7 @@ export class DevDatabase {
         const ml = readCopy(ref, memberPtr, memberLen).toString('latin1');
         this.members.get(sk)?.delete(ml);
         this.memberVersions.get(sk)?.delete(ml);
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1169,6 +1227,23 @@ export class DevDatabase {
         return db.lastResult.length;
     }
 
+    documentsScan(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        cursorPtr: number,
+        cursorLen: number,
+        limit: number,
+    ): number {
+        if (cursorLen < -1 || cursorLen > MAX_KEY + 64 || limit < 1 || limit > 64)
+            throw new Error('data.documents_scan: invalid cursor length or limit');
+        const coll = collForOp(db, handle, DbOp.DocumentsScan, CollectionFamily.Record);
+        if (typeof coll === 'number') return coll;
+        const cursor = cursorLen === -1 ? null : readCopy(ref, cursorPtr, cursorLen);
+        db.lastResult = scanDocuments(coll.name, this.store, this.versions, db, cursor, limit);
+        return db.lastResult.length;
+    }
+
     membershipPage(
         ref: MemoryRef,
         db: DbDevState,
@@ -1182,13 +1257,20 @@ export class DevDatabase {
         if (cursorLen < -1 || limit < 1 || limit > 0xffff)
             throw new Error('data.membership_page: invalid cursor length or limit');
         checkValueSize(cursorLen, 'cursor');
-        const coll = collForOp(db, handle, DbOp.MembershipList, CollectionFamily.Membership);
+        const coll = collForOp(db, handle, DbOp.MembershipPage, CollectionFamily.Membership);
         if (typeof coll === 'number') return coll;
-        if (limit > 1024) throw new Error('data.membership_page: TDL020 scan limit exceeds 1024');
+        const maxKeys =
+            db.functionKind === DbFunctionKind.Query
+                ? 32
+                : db.functionKind === DbFunctionKind.Action
+                  ? 64
+                  : 1024;
+        if (limit > maxKeys)
+            throw new Error(`data.membership_page: TDL020 page limit exceeds ${maxKeys}`);
         const cursor = cursorLen === -1 ? null : readCopy(ref, cursorPtr, cursorLen);
         const sk = storeKey(coll.name, readKey(ref, setPtr, setLen));
         const members = Array.from(this.members.get(sk)?.values() ?? [])
-            .sort(Buffer.compare)
+            .sort((left, right) => Buffer.compare(left, right))
             .filter((m) => cursor === null || Buffer.compare(m, cursor) > 0)
             .slice(0, limit);
         const versions = this.memberVersions.get(sk);
@@ -1237,6 +1319,7 @@ export class DevDatabase {
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
         this.views.set(sk, readCopy(ref, valPtr, valLen));
         this.stampVersion(coll, sk);
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1246,6 +1329,7 @@ export class DevDatabase {
         const key = storeKey(coll.name, readKey(ref, kp, kl));
         this.views.delete(key);
         this.versions.delete(key);
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1276,7 +1360,8 @@ export class DevDatabase {
      *  derive's OWN writes run under FunctionKind=Derive and must never
      *  re-trigger a derive (which would loop), so they are never recorded. */
     private recordWrite(db: DbDevState, coll: DevCollectionHandle): void {
-        if (db.functionKind === DbFunctionKind.Derive) return;
+        if (db.functionKind === DbFunctionKind.Derive || coll.family === CollectionFamily.View)
+            return;
         db.writtenCollections.add(coll.name);
         if (db.functionKind === DbFunctionKind.Job) queueMaterialization(coll.name);
     }
@@ -1348,9 +1433,10 @@ export class DevDatabase {
             this.eventVersions.set(sk, versions);
         }
         const hlcs = this.eventHlcs.get(sk) ?? [];
-        const now = BigInt(Date.now()) << 16n;
+        const now = BigInt(ref.now?.() ?? Date.now()) << 16n;
         this.eventClock = now > this.eventClock ? now : this.eventClock + 1n;
-        hlcs.push(this.eventClock); this.eventHlcs.set(sk, hlcs);
+        hlcs.push(this.eventClock);
+        this.eventHlcs.set(sk, hlcs);
         this.recordWrite(db, coll);
         return 0;
     }
@@ -1400,9 +1486,10 @@ export class DevDatabase {
         positions.set(evid, position);
         seen.add(evid);
         const hlcs = this.eventHlcs.get(sk) ?? [];
-        const now = BigInt(Date.now()) << 16n;
+        const now = BigInt(ref.now?.() ?? Date.now()) << 16n;
         this.eventClock = now > this.eventClock ? now : this.eventClock + 1n;
-        hlcs.push(this.eventClock); this.eventHlcs.set(sk, hlcs);
+        hlcs.push(this.eventClock);
+        this.eventHlcs.set(sk, hlcs);
         this.recordWrite(db, coll);
         return 1;
     }
@@ -1457,57 +1544,107 @@ export class DevDatabase {
         return value === undefined ? ABSENT : value.length;
     }
 
-    public eventsReference(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number, ip: number, il: number): number {
+    public eventsReference(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        kp: number,
+        kl: number,
+        ip: number,
+        il: number,
+    ): number {
         const coll = collForOp(db, handle, DbOp.EventsReference, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
         if (il < 0 || il > MAX_KEY) throw new Error('Invalid event ID length');
-        const sk = storeKey(coll.name, readKey(ref,kp,kl));
-        const id = readCopy(ref,ip,il).toString('latin1');
+        const sk = storeKey(coll.name, readKey(ref, kp, kl));
+        const id = readCopy(ref, ip, il).toString('latin1');
         const position = this.eventPositions.get(sk)?.get(id);
         if (position === undefined) return this.eventDedup.get(sk)?.has(id) ? UNAVAILABLE : ABSENT;
         const bytes = Buffer.alloc(16);
         bytes.writeBigUInt64LE(BigInt(position + 1));
         bytes.writeBigUInt64LE(this.eventHlcs.get(sk)?.[position] ?? BigInt(position + 1), 8);
-        db.lastResult = bytes; db.lastResultVersion = -1;
+        db.lastResult = bytes;
+        db.lastResultVersion = -1;
         return bytes.length;
     }
 
-    public eventsRedact(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number, seq: bigint, hlc: bigint): number {
+    public eventsRedact(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        kp: number,
+        kl: number,
+        seq: bigint,
+        hlc: bigint,
+    ): number {
         const coll = collForOp(db, handle, DbOp.EventsRedact, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
         if (seq <= 0n || hlc < 0n) throw new Error('Invalid event reference');
-        const sk = storeKey(coll.name,readKey(ref,kp,kl));
+        const sk = storeKey(coll.name, readKey(ref, kp, kl));
         let erased = this.erasedEvents.get(sk);
-        if (erased === undefined) { erased = new Set(); this.erasedEvents.set(sk,erased); }
+        if (erased === undefined) {
+            erased = new Set();
+            this.erasedEvents.set(sk, erased);
+        }
         erased.add(seq.toString() + ':' + hlc.toString());
         const position = Number(seq - 1n);
         const log = this.events.get(sk);
-        if (Number.isSafeInteger(position) && position >= 0 && log !== undefined && position < log.length &&
-            (this.eventHlcs.get(sk)?.[position] ?? seq) === hlc) log[position] = Buffer.alloc(0);
-        for (const key of this.deriveCheckpoints.keys()) if (key.endsWith('\0' + sk)) this.deriveCheckpoints.delete(key);
-        for (const key of db.pendingCheckpoints.keys()) if (key.endsWith('\0' + sk)) db.pendingCheckpoints.delete(key);
-        this.recordWrite(db,coll);
+        if (
+            Number.isSafeInteger(position) &&
+            position >= 0 &&
+            log !== undefined &&
+            position < log.length &&
+            (this.eventHlcs.get(sk)?.[position] ?? seq) === hlc
+        )
+            log[position] = Buffer.alloc(0);
+        for (const key of this.deriveCheckpoints.keys())
+            if (key.endsWith('\0' + sk)) this.deriveCheckpoints.delete(key);
+        for (const key of db.pendingCheckpoints.keys())
+            if (key.endsWith('\0' + sk)) db.pendingCheckpoints.delete(key);
+        this.recordWrite(db, coll);
         // Dev dedup holds positions only, so there are no additional payload copies to scrub.
         return 1;
     }
 
-    public eventsEntries(ref: MemoryRef, db: DbDevState, handle: number, kp: number, kl: number, limit: number, after: bigint): number {
-        const coll = collForOp(db,handle,DbOp.EventsEntries,CollectionFamily.Events);
+    public eventsEntries(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        kp: number,
+        kl: number,
+        limit: number,
+        after: bigint,
+    ): number {
+        const coll = collForOp(db, handle, DbOp.EventsEntries, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
-        if (!Number.isInteger(limit) || limit < 1 || limit > 1024 || after < 0n || after > BigInt(Number.MAX_SAFE_INTEGER))
+        if (
+            !Number.isInteger(limit) ||
+            limit < 1 ||
+            limit > 1024 ||
+            after < 0n ||
+            after > BigInt(Number.MAX_SAFE_INTEGER)
+        )
             throw new Error('Invalid event page cursor or limit');
-        const sk = storeKey(coll.name,readKey(ref,kp,kl));
+        const sk = storeKey(coll.name, readKey(ref, kp, kl));
         const log = this.events.get(sk) ?? [];
         const positions: number[] = [];
         let cursor = Number(after);
-        while (cursor < log.length && positions.length < limit) { if (log[cursor].length > 0) positions.push(cursor); cursor++; }
+        while (cursor < log.length && positions.length < limit) {
+            if (log[cursor].length > 0) positions.push(cursor);
+            cursor++;
+        }
         const writer = new DataWriter().writeU32(positions.length);
-        for (const position of positions) writer.writeU64(BigInt(position+1))
-            .writeU64(this.eventHlcs.get(sk)?.[position] ?? BigInt(position+1))
-            .writeU32(this.eventVersions.get(sk)?.[position] ?? 0).writeBytes(log[position]);
+        for (const position of positions)
+            writer
+                .writeU64(BigInt(position + 1))
+                .writeU64(this.eventHlcs.get(sk)?.[position] ?? BigInt(position + 1))
+                .writeU32(this.eventVersions.get(sk)?.[position] ?? 0)
+                .writeBytes(log[position]);
         const hasMore = positions.length === limit;
-        writer.writeU8(hasMore ? 1 : 0); if (hasMore) writer.writeU64(BigInt(cursor));
-        db.lastResult = Buffer.from(writer.toBytes()); db.lastResultVersion = -1;
+        writer.writeU8(hasMore ? 1 : 0);
+        if (hasMore) writer.writeU64(BigInt(cursor));
+        db.lastResult = Buffer.from(writer.toBytes());
+        db.lastResultVersion = -1;
         return db.lastResult.length;
     }
 
@@ -1551,8 +1688,15 @@ export class DevDatabase {
         return 1;
     }
 
-    public compareDelete(ref: MemoryRef, db: DbDevState, handle: number,
-        kp: number, kl: number, ep: number, el: number): number {
+    public compareDelete(
+        ref: MemoryRef,
+        db: DbDevState,
+        handle: number,
+        kp: number,
+        kl: number,
+        ep: number,
+        el: number,
+    ): number {
         const coll = collForOp(db, handle, DbOp.Delete, CollectionFamily.Record);
         if (typeof coll === 'number') return coll;
         checkKeyValueSize(kl, el, 'expected value');
@@ -1620,9 +1764,16 @@ export class DevDatabase {
         const log = this.events.get(sk) ?? [];
         const vers = this.eventVersions.get(sk) ?? [];
         const n = Math.max(0, Math.min(limit, 0xffff));
-        const positions = n === 0 ? [] : log.map((_,i) => i).filter(i => log[i].length > 0).slice(-n).reverse();
-        const newest = positions.map(i => log[i]);
-        const newestVers = positions.map(i => vers[i]);
+        const positions =
+            n === 0
+                ? []
+                : log
+                      .map((_, i) => i)
+                      .filter((i) => log[i].length > 0)
+                      .slice(-n)
+                      .reverse();
+        const newest = positions.map((i) => log[i]);
+        const newestVers = positions.map((i) => vers[i]);
         // u32 count, then per event its stored schema_version (u32) + bytes (u32 len
         // + bytes), newest first. Same framing as the edge op_latest.
         const w = new DataWriter();
@@ -1650,7 +1801,7 @@ export class DevDatabase {
         const coll = collForOp(db, handle, DbOp.EventsSince, CollectionFamily.Events);
         if (typeof coll === 'number') return coll;
         const sk = storeKey(coll.name, readKey(ref, keyPtr, keyLen));
-        const ckKey = `${db.deriveId}\0${sk}`;
+        const ckKey = `named-v1:${db.deriveKey ?? `legacy:${db.deriveId}`}\0${sk}`;
         const log = this.events.get(sk) ?? [];
         const vers = this.eventVersions.get(sk) ?? [];
         // Resume from this run's staged cursor if `since` was already called for this key, else the durable
@@ -1659,9 +1810,12 @@ export class DevDatabase {
         const n = Math.max(0, Math.min(limit, 0xffff));
         const positions: number[] = [];
         let end = cursor;
-        while (end < log.length && positions.length < n) { if (log[end].length > 0) positions.push(end); end++; }
-        const batch = positions.map(i => log[i]);
-        const batchVers = positions.map(i => vers[i]);
+        while (end < log.length && positions.length < n) {
+            if (log[end].length > 0) positions.push(end);
+            end++;
+        }
+        const batch = positions.map((i) => log[i]);
+        const batchVers = positions.map((i) => vers[i]);
         db.pendingCheckpoints.set(ckKey, end); // staged; committed only on derive success
         const w = new DataWriter();
         w.writeU32(batch.length);
@@ -1699,6 +1853,7 @@ export class DevDatabase {
         const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
         const t = BigInt(total);
         l.total = satI64(t < 0n ? 0n : t);
+        this.recordWrite(db, coll);
         return 0;
     }
 
@@ -1713,7 +1868,7 @@ export class DevDatabase {
         const coll = collForOp(db, handle, DbOp.CapacityAvailable, CollectionFamily.Capacity);
         if (typeof coll === 'number') return coll;
         const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
-        this.capPrune(l, Date.now());
+        this.capPrune(l, ref.now?.() ?? Date.now());
         const avail = l.total - this.capReserved(l);
         const out = Buffer.alloc(8);
         out.writeBigInt64LE(avail < 0n ? 0n : avail);
@@ -1745,7 +1900,7 @@ export class DevDatabase {
         const ttl = Math.min(Math.max(0, Number(ttlMs)), MAX_RESERVATION_TTL_MS);
         const requestedId = idem === null ? null : reservationIdFromIdem(coll, key, idem);
         const l = this.capLedger(storeKey(coll.name, key));
-        const now = Date.now();
+        const now = ref.now?.() ?? Date.now();
         this.capPrune(l, now);
         if (requestedId !== null) {
             const existing = l.reservations.get(requestedId);
@@ -1761,6 +1916,7 @@ export class DevDatabase {
             return ABSENT; // never oversell; bound the reservation count
         const id = requestedId ?? l.nextId++;
         l.reservations.set(id, { amount: want, expiresMs: now + ttl, confirmed: false });
+        this.recordWrite(db, coll);
         const out = Buffer.alloc(8);
         out.writeBigUInt64LE(id);
         db.lastResult = out;
@@ -1781,10 +1937,11 @@ export class DevDatabase {
         const coll = collForOp(db, handle, DbOp.CapacityConfirm, CollectionFamily.Capacity);
         if (typeof coll === 'number') return coll;
         const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
-        this.capPrune(l, Date.now());
+        this.capPrune(l, ref.now?.() ?? Date.now());
         const r = l.reservations.get(BigInt(reservationId));
         if (r === undefined) return 0;
         r.confirmed = true;
+        this.recordWrite(db, coll);
         return 1;
     }
 
@@ -1801,11 +1958,12 @@ export class DevDatabase {
         const coll = collForOp(db, handle, DbOp.CapacityCancel, CollectionFamily.Capacity);
         if (typeof coll === 'number') return coll;
         const l = this.capLedger(storeKey(coll.name, readKey(ref, keyPtr, keyLen)));
-        this.capPrune(l, Date.now());
+        this.capPrune(l, ref.now?.() ?? Date.now());
         const id = BigInt(reservationId);
         const r = l.reservations.get(id);
         if (r === undefined || r.confirmed) return 0;
         l.reservations.delete(id);
+        this.recordWrite(db, coll);
         return 1;
     }
 
@@ -1836,6 +1994,50 @@ export class DevDatabase {
     }
 
     // --- test hooks ---
+
+    pendingContinuations(): ReadonlyMap<string, bigint> {
+        return new Map(this.deriveContinuations);
+    }
+
+    requestContinuation(db: DbDevState): void {
+        if (db.functionKind !== DbFunctionKind.Derive || db.deriveKey === null)
+            throw new Error('TDL011: continuation requires Derive');
+        const [dbName, methodName] = JSON.parse(db.deriveKey) as [string, string];
+        const identity = deriveContinuationKey({ dbName, methodName });
+        if (!db.knownDerives.has(identity))
+            throw new Error('continuation requires a deployed @derive identity');
+        if (db.continuationRequested) return;
+        const queue = new Map(this.deriveContinuations);
+        if (this.deriveContinuationSequence === 0xffffffffffffffffn)
+            throw new Error('continuation generation exhausted');
+        const generation = this.deriveContinuationSequence + 1n;
+        const encodedSize = (entries: ReadonlyMap<string, bigint>) =>
+            12 + [...entries.keys()].reduce((n, key) => n + 12 + Buffer.byteLength(key), 0);
+        queue.set(identity, generation);
+        if (queue.size > 1024 || encodedSize(queue) > 262144)
+            throw new Error('TDL021: continuation queue is full');
+        chargeDbControlWrite(
+            db,
+            (this.deriveContinuationSequence === 0n ? 0 : encodedSize(this.deriveContinuations)) +
+                encodedSize(queue),
+        );
+        this.deriveContinuationSequence = generation;
+        this.deriveContinuations.set(identity, generation);
+        db.continuationRequested = true;
+        db.lastResult = null;
+        db.lastResultVersion = -1;
+        this.persist();
+    }
+
+    acknowledgeContinuation(identity: string, generation: bigint): boolean {
+        if (this.deriveContinuations.get(identity) !== generation) return false;
+        if (this.deriveContinuationSequence === 0xffffffffffffffffn)
+            throw new Error('continuation generation exhausted');
+        this.deriveContinuationSequence++;
+        this.deriveContinuations.delete(identity);
+        this.persist();
+        return true;
+    }
 
     /** Test-only: clear the stores + catalog + persistence between unit tests. */
     resetForTests(): void {
@@ -1917,6 +2119,7 @@ export function buildDatabaseImports(
     db: DbDevState,
 ): Record<string, (...args: number[]) => number | bigint> {
     const imports: Record<string, (...args: number[]) => number | bigint> = {
+        ...devDb.atomicImports(ref, db),
         'data.resolve_collection': (
             namePtr: number,
             nameLen: number,
@@ -2017,6 +2220,9 @@ export function buildDatabaseImports(
             _idemPtr: number,
         ): number => devDb.membershipRemove(ref, db, handle, setPtr, setLen, memberPtr, memberLen),
 
+        'data.documents_scan': (h: number, cp: number, cl: number, limit: number): number =>
+            devDb.documentsScan(ref, db, h, cp, cl, limit),
+
         'data.membership_page': (
             h: number,
             sp: number,
@@ -2080,8 +2286,13 @@ export function buildDatabaseImports(
 
         'data.get_current': (handle: number, kp: number, kl: number): number =>
             devDb.get(ref, db, handle, kp, kl),
-        'data.compare_delete': (h: number, kp: number, kl: number, ep: number, el: number): number =>
-            devDb.compareDelete(ref, db, h, kp, kl, ep, el),
+        'data.compare_delete': (
+            h: number,
+            kp: number,
+            kl: number,
+            ep: number,
+            el: number,
+        ): number => devDb.compareDelete(ref, db, h, kp, kl, ep, el),
         'data.compare_exchange': (
             handle: number,
             kp: number,
@@ -2102,9 +2313,27 @@ export function buildDatabaseImports(
 
         'data.latest': (handle: number, keyPtr: number, keyLen: number, limit: number): number =>
             devDb.latest(ref, db, handle, keyPtr, keyLen, limit),
-        'data.events_reference': (h: number,kp: number,kl: number,ip: number,il: number): number => devDb.eventsReference(ref,db,h,kp,kl,ip,il),
-        'data.events_redact': (h: number,kp: number,kl: number,seq: number | bigint,hlc: number | bigint): number => devDb.eventsRedact(ref,db,h,kp,kl,BigInt(seq),BigInt(hlc)),
-        'data.events_entries': (h: number,kp: number,kl: number,limit: number,after: number | bigint): number => devDb.eventsEntries(ref,db,h,kp,kl,limit,BigInt(after)),
+        'data.events_reference': (
+            h: number,
+            kp: number,
+            kl: number,
+            ip: number,
+            il: number,
+        ): number => devDb.eventsReference(ref, db, h, kp, kl, ip, il),
+        'data.events_redact': (
+            h: number,
+            kp: number,
+            kl: number,
+            seq: number | bigint,
+            hlc: number | bigint,
+        ): number => devDb.eventsRedact(ref, db, h, kp, kl, BigInt(seq), BigInt(hlc)),
+        'data.events_entries': (
+            h: number,
+            kp: number,
+            kl: number,
+            limit: number,
+            after: number | bigint,
+        ): number => devDb.eventsEntries(ref, db, h, kp, kl, limit, BigInt(after)),
         'data.events_get': (
             handle: number,
             keyPtr: number,
@@ -2160,12 +2389,109 @@ export function buildDatabaseImports(
         'data.take_result': (outPtr: number, outCap: number): number =>
             devDb.takeResult(ref, db, outPtr, outCap),
 
+        'data.continue_derive': (): number => {
+            devDb.requestContinuation(db);
+            return 0;
+        },
+        'data.begin_derive': (
+            dbPtr: number,
+            dbLen: number,
+            methodPtr: number,
+            methodLen: number,
+        ): number => {
+            if (db.functionKind !== DbFunctionKind.Job || db.manualDerive)
+                throw new Error('TDL011: runDerive requires Job and cannot nest');
+            if (dbLen < 1 || dbLen > 1024 || methodLen < 1 || methodLen > 1024)
+                throw new Error('Invalid derive identity length');
+            const decoder = new TextDecoder('utf-8', { fatal: true });
+            const database = decoder.decode(readCopy(ref, dbPtr, dbLen));
+            const method = decoder.decode(readCopy(ref, methodPtr, methodLen));
+            db.budgetKind = DbFunctionKind.Job;
+            db.functionKind = DbFunctionKind.Derive;
+            db.manualDerive = true;
+            db.continuationRequested = false;
+            db.deriveKey = JSON.stringify([database, method]);
+            db.deriveId = 0;
+            db.deriveChanges = Buffer.from([1, 0, 0, 0, 0]);
+            db.pendingCheckpoints.clear();
+            return 0;
+        },
+        'data.end_derive': (): number => {
+            if (!db.manualDerive || db.functionKind !== DbFunctionKind.Derive)
+                throw new Error('TDL011: no Job materializer is running');
+            commitDeriveCheckpoints(db);
+            db.pendingCheckpoints.clear();
+            db.deriveKey = null;
+            db.deriveId = 0;
+            db.manualDerive = false;
+            db.functionKind = DbFunctionKind.Job;
+            db.budgetKind = null;
+            return 0;
+        },
+        'data.changes': (outPtr: number, outCap: number): number => {
+            if (db.functionKind !== DbFunctionKind.Derive)
+                throw new Error('TDL011: data.changes requires Derive kind');
+            const memory = mem(ref);
+            if (
+                outPtr < 0 ||
+                outCap < 0 ||
+                outPtr > memory.length ||
+                outCap > memory.length - outPtr
+            )
+                throw new Error('data.changes: output out of bounds');
+            if (outCap < db.deriveChanges.length) return TOO_SMALL;
+            memory.set(db.deriveChanges, outPtr);
+            return db.deriveChanges.length;
+        },
+
+        'data.budget': (outPtr: number, outCap: number): number => {
+            const length = 28;
+            const memory = mem(ref);
+            if (
+                outPtr < 0 ||
+                outCap < 0 ||
+                outPtr > memory.length ||
+                outCap > memory.length - outPtr
+            )
+                throw new Error('data.budget: output out of bounds');
+            if (outCap < length) return TOO_SMALL;
+            const b = dbBudgetSnapshot(db);
+            [b.ops, b.writes, b.bytes, b.maxOps, b.maxWrites, b.maxBytes, b.maxResultBytes].forEach(
+                (value, index) =>
+                    memory.writeUInt32LE(Math.min(value, 0xffffffff), outPtr + index * 4),
+            );
+            return length;
+        },
+
         'data.result_schema_version': (): bigint => devDb.resultSchemaVersion(db),
 
         // `data.write_allowed() -> i32`: 1 if the current call may issue the
         // record patch used by rewrite-on-read migration convergence.
+        'data.job_allowed': (): number => (db.functionKind === DbFunctionKind.Job ? 1 : 0),
         'data.write_allowed': (): number => (kindAllows(db.functionKind, DbOp.Patch) ? 1 : 0),
     };
+    const metadata = new Set([
+        'data.resolve_collection',
+        'data.take_result',
+        'data.result_schema_version',
+        'data.write_allowed',
+        'data.budget',
+        'data.changes',
+        'data.begin_derive',
+        'data.end_derive',
+        'data.continue_derive',
+        'data.get_many',
+        'data.documents_scan',
+        'data.atomic_get',
+        'data.atomic_batch',
+    ]);
+    for (const [name, implementation] of Object.entries(imports)) {
+        if (metadata.has(name)) continue;
+        imports[name] = (...args: number[]) => {
+            captureDbKey(db, ref, args);
+            return implementation(...args);
+        };
+    }
     return withDbLimits(imports, db);
 }
 

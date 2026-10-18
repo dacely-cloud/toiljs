@@ -52,7 +52,7 @@ None of these are permanent, and the right tool is the one that fits the job in 
 
 Most stacks cap in the same place. The write path is one box in one region, or the critical path leans on services you rent and cannot fix. toil refuses both. It owns the whole stack and distributes the writes, so the structural caps are designed out. The limits left are the ones your own code sets.
 
-One caveat, to keep the mechanism honest. The home-region model and its core logic are real and tested. Live multi-region deployment is configuration-gated rather than on by default: the WAN routing and the ScyllaDB backing are opt-in, and the local dev database is a single in-process store. Compute works the same way. Your code runs at the edge on every request, while the regional, continental, and global-daemon tiers are opt-in. So the honest claim is that toil is built to distribute writes worldwide and the mechanism is real. It does not mean every app is already running a live global write cluster today.
+One caveat, to keep the mechanism honest. The home-region model and its core logic are real and tested. Live multi-region deployment is configuration-gated rather than on by default: WAN routing and persistent storage are opt-in, and the local dev database is a single in-process store. Compute works the same way. Your code runs at the edge on every request, while the regional, continental, and global-daemon tiers are opt-in. So the honest claim is that toil is built to distribute writes worldwide and the mechanism is real. It does not mean every app is already running a live global write cluster today.
 
 Whether the trade fits your project is the checklist in [Why toil](./why-toil.md).
 

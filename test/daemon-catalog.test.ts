@@ -66,6 +66,15 @@ function buildDaemonCatalogBytes(hasDaemon: boolean, tasks: BuildTask[], version
 }
 
 describe('parseDaemonCatalog (Part 5)', () => {
+    it('accepts v3 Job startup and rejects unsupported startup rights', () => {
+        const parse = (bytes: number[]) =>
+            parseDaemonCatalog(wasmWithSection('toildaemon.catalog', Buffer.from(bytes)));
+        expect(parse([3, 0, 1, 2, 0, 0])?.startupKind).toBe(DbFunctionKind.Job);
+        expect(parse([3, 0, 1, 1, 0, 0])?.startupKind).toBe(DbFunctionKind.Action);
+        for (const kind of [0, 3, 4, 255]) expect(parse([3, 0, 1, kind, 0, 0])).toBeNull();
+        expect(parse([4, 0, 1, 2, 0, 0])).toBeNull();
+    });
+
     it('decodes an interval task and a cron task field-for-field', () => {
         // `0 */6 * * *`: minute 0; hours 0,6,12,18; dom 1..31; month 1..12; dow 0..6.
         const payload = buildDaemonCatalogBytes(true, [
@@ -156,13 +165,19 @@ describe('parseDaemonCatalog (Part 5)', () => {
             { name: 'job', taskIndex: 0, kind: 0, intervalMs: 1000n, functionKind: 2 },
             { name: 'action', taskIndex: 1, kind: 0, intervalMs: 1000n, functionKind: 1 },
         ];
-        const parse = (bytes: Uint8Array) => parseDaemonCatalog(wasmWithSection('toildaemon.catalog', bytes));
+        const parse = (bytes: Uint8Array) =>
+            parseDaemonCatalog(wasmWithSection('toildaemon.catalog', bytes));
         const payload = buildDaemonCatalogBytes(true, tasks, 2);
-        expect(parse(payload)?.tasks.map(t => t.functionKind)).toEqual([DbFunctionKind.Job, DbFunctionKind.Action]);
+        expect(parse(payload)?.tasks.map((t) => t.functionKind)).toEqual([
+            DbFunctionKind.Job,
+            DbFunctionKind.Action,
+        ]);
         expect(parse(payload.subarray(0, payload.length - 1))).toBeNull();
         expect(parse(Buffer.concat([payload, Buffer.from([0])]))).toBeNull();
         for (const functionKind of [0, 3, 4, 255]) {
-            expect(parse(buildDaemonCatalogBytes(true, [{ ...tasks[0], functionKind }], 2))).toBeNull();
+            expect(
+                parse(buildDaemonCatalogBytes(true, [{ ...tasks[0], functionKind }], 2)),
+            ).toBeNull();
         }
         expect(parse(buildDaemonCatalogBytes(true, [{ ...tasks[0], taskIndex: 7 }], 2))).toBeNull();
         expect(parse(buildDaemonCatalogBytes(true, [], 3))).toBeNull();

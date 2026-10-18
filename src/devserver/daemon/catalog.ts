@@ -8,8 +8,9 @@
  * Byte layout (RECONCILIATION Part 5, all little-endian; mirrors the toilscript
  * `CatWriter` emitter byte-for-byte):
  *
- *   u16 format_version = 1 or 2
+ *   u16 format_version = 1, 2, or 3
  *   u8  has_daemon
+ *   u8 startup_kind             (v3 only: 1 Action, 2 Job; older versions Action)
  *   u16 n_scheduled
  *   per task:
  *     str name                  (u32 len + UTF-8)
@@ -24,7 +25,7 @@
  *     u8  overlap_policy        (0 = skip-if-running)
  *     u8  catchup_policy        (0 = no-backfill)
  *     u64 gas_hint
- *     u8 function_kind          (v2 only: 1 Action, 2 Job; v1 is Action)
+ *     u8 function_kind          (v2/v3: 1 Action, 2 Job; v1 is Action)
  *
  * Fails closed via `DataReader.ok`: a short read rejects the whole catalog.
  * An absent or unparseable section returns `null`, so the daemon emulator does not start
@@ -69,6 +70,7 @@ export interface ScheduledTask {
 
 export interface DaemonCatalog {
     readonly hasDaemon: boolean;
+    readonly startupKind: DbFunctionKind.Action | DbFunctionKind.Job;
     readonly tasks: readonly ScheduledTask[];
 }
 
@@ -83,8 +85,11 @@ export function parseDaemonCatalog(wasm: Buffer): DaemonCatalog | null {
 
     const r = new DataReader(sec);
     const version = r.readU16();
-    if (version !== 1 && version !== 2) return null;
+    if (version !== 1 && version !== 2 && version !== 3) return null;
     const hasDaemon = r.readU8() === 1;
+    const startupByte = version === 3 ? r.readU8() : 1;
+    if (startupByte !== 1 && startupByte !== 2) return null;
+    const startupKind = startupByte === 2 ? DbFunctionKind.Job : DbFunctionKind.Action;
     const n = r.readU16(); // n_scheduled
     // The 5-byte header must read cleanly; a short read here is a garbage section
     // (fail closed -> no daemon). A `hasDaemon` byte salvaged from a too-short
@@ -104,9 +109,14 @@ export function parseDaemonCatalog(wasm: Buffer): DaemonCatalog | null {
         const overlapPolicy = r.readU8();
         const catchupPolicy = r.readU8();
         const gasHint = r.readU64();
-        const functionKindByte = version === 2 ? r.readU8() : 1;
-        if (!r.ok || taskIndex !== i || Buffer.byteLength(name) > 1024 ||
-            (functionKindByte !== 1 && functionKindByte !== 2)) return null;
+        const functionKindByte = version >= 2 ? r.readU8() : 1;
+        if (
+            !r.ok ||
+            taskIndex !== i ||
+            Buffer.byteLength(name) > 1024 ||
+            (functionKindByte !== 1 && functionKindByte !== 2)
+        )
+            return null;
         const functionKind = functionKindByte === 2 ? DbFunctionKind.Job : DbFunctionKind.Action;
         if (r.ok)
             tasks.push({
@@ -123,5 +133,5 @@ export function parseDaemonCatalog(wasm: Buffer): DaemonCatalog | null {
             });
     }
     if (!r.ok || r.remaining() !== 0) return null;
-    return { hasDaemon, tasks };
+    return { hasDaemon, startupKind, tasks };
 }

@@ -68,10 +68,20 @@ export interface DbDevState {
      *  Only populated for non-Derive dispatches (a derive's own writes must not
      *  re-trigger it - see `database.ts` `recordWrite`). */
     writtenCollections: Set<string>;
+    changeCandidates: Map<string, { database: string; collection: string; key: Buffer }>;
+    changeCandidateBytes: number;
+    changesOverflow: boolean;
+    deriveChanges: Buffer;
+    manualDerive: boolean;
+    knownDerives: Set<string>;
+    continuationRequested: boolean;
+    budgetKind: DbFunctionKind | null;
     /** The derive index currently running (set by `runDerive`), so `events.since` keys its resumable
      *  checkpoint per (derive, source key). 0 outside a derive. */
     deriveId: number;
-    /** Checkpoint advances `events.since` staged during THIS derive run, keyed `"<deriveId>\0<storeKey>"` ->
+    /** Durable identity from deployment metadata, independent of dispatch order. */
+    deriveKey: string | null;
+    /** Checkpoint advances `events.since` staged during THIS derive run, keyed `"<database/method>\0<storeKey>"` ->
      *  events-folded count. Committed to the durable `deriveCheckpoints` only after the fold's `derive_run`
      *  returns (its `view.publish`es have landed): a trapped fold discards this overlay, so the next run
      *  re-reads the batch rather than skipping it (publish-then-persist, mirroring the edge). */
@@ -86,7 +96,16 @@ export function freshDbState(): DbDevState {
         lastResultVersion: -1,
         functionKind: DbFunctionKind.Job,
         writtenCollections: new Set<string>(),
+        changeCandidates: new Map(),
+        changeCandidateBytes: 0,
+        changesOverflow: false,
+        deriveChanges: Buffer.from([1, 0, 0, 0, 0]),
+        manualDerive: false,
+        knownDerives: new Set(),
+        continuationRequested: false,
+        budgetKind: null,
         deriveId: 0,
+        deriveKey: null,
         pendingCheckpoints: new Map<string, number>(),
     };
 }
@@ -122,9 +141,11 @@ export interface DbSnapshot {
     eventDedup: Record<string, string[]>;
     /** Event ID -> append-order index, for bounded point reads. */
     eventPositions?: Record<string, [string, number][]>;
-    /** Durable `events.since` cursors, `"<deriveId>\0<storeKey>"` -> events-folded count, so a restart
+    /** Durable `events.since` cursors, `"<database/method>\0<storeKey>"` -> events-folded count, so a restart
      *  resumes an incremental `@derive` instead of re-folding the whole log onto the persisted view. */
     deriveCheckpoints?: Record<string, number>;
+    deriveContinuations?: Record<string, string>;
+    deriveContinuationSequence?: string;
     capacity: Record<
         string,
         {
@@ -154,7 +175,7 @@ export const MAX_VALUE = 2 * 1024 * 1024;
 export const DEFAULT_FILL_WAIT_MS = 50;
 export const MAX_FILL_WAIT_MS = 60_000;
 
-// i64 saturation bounds (the edge `MemEngine`/`ScyllaEngine` counters are i64).
+// i64 saturation bounds (native ToilDB counters are i64).
 const I64_MIN = -(2n ** 63n);
 const I64_MAX = 2n ** 63n - 1n;
 export function satI64(v: bigint): bigint {

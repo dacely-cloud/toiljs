@@ -59,7 +59,7 @@ This is the design, not a benchmark. Real throughput and latency depend on your 
 Some parts are honestly staged, not already everywhere.
 
 - The per-request L1 edge path is live and real. The L2 regional, L3 continental, and L4 global-daemon tiers are opt-in and deployment-gated, not always-on for every app. See the [tiers page](../concepts/tiers.md).
-- ToilDB's home-region write model and its core logic are real and tested. Live multi-cell deployment, meaning WAN routing and the ScyllaDB backing, is configuration-gated, not on by default. The local dev database is a single in-process store. [How toil is distributed](./distributed.md) is honest about what is finished.
+- ToilDB's home-region write model and its core logic are real and tested. Live multi-cell deployment, meaning WAN routing and persistent storage, is configuration-gated, not on by default. The local dev database is a single in-process store. [How toil is distributed](./distributed.md) is honest about what is finished.
 
 ## Related
 

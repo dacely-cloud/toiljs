@@ -1,7 +1,7 @@
 /**
  * The dev ToilDB subsystem: the {@link DevDatabase} class + its process
  * singleton, the per-request state, the catalog parser, and the `data.*` host
- * imports. The production edge backs the SAME imports with ScyllaDB.
+ * imports. The production edge backs the SAME imports with persistent ToilDB.
  */
 
 export {

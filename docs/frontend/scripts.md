@@ -81,9 +81,9 @@ Three optional callbacks let you run code around the script's lifecycle:
 />
 ```
 
-- `onLoad` fires **once**, when an external script finishes loading (or an inline script is inserted).
+- `onLoad` fires **once**, after the script has loaded and executed.
 - `onReady` fires after load **and on every later mount** once the script is already loaded. So if a route that renders the `Toil.Script` is left and revisited, `onReady` runs again, which is the right place to re-initialise a widget.
-- `onError` fires if an **external** script fails to load. After an error the script's key is cleared, so a later remount retries the load.
+- `onError` fires if a script fails to load or its URL is rejected. After an error the script's key is cleared, so a later remount retries the load.
 
 ## All props
 
@@ -96,11 +96,19 @@ Read them straight from the source (`src/client/components/Script.tsx`):
 | `strategy` | `'beforeInteractive' \| 'afterInteractive' \| 'lazyOnload'` | `'afterInteractive'` | When to inject the script (see above). |
 | `id` | `string` | `src` for external scripts | Stable identity for dedup. **Required** for inline scripts. |
 | `type` | `string` | (none) | The `type` attribute, e.g. `'module'` or `'application/json'`. |
-| `onLoad` | `() => void` | (none) | Fired once the script has loaded (external) or been inserted (inline). |
+| `onLoad` | `() => void` | (none) | Fired once the script has loaded and executed. |
 | `onReady` | `() => void` | (none) | Fired after load, and on every later mount once the script is already loaded. |
-| `onError` | `(error: unknown) => void` | (none) | Fired if an external script fails to load. |
+| `onError` | `(error: unknown) => void` | (none) | Fired if loading fails or its URL is rejected. |
 
 External scripts are injected with `async` set, so they never block other work while downloading.
+
+## CSP and Trusted Types
+
+See [Security](../concepts/security.md#loading-scripts) for the full browser policy and deployment requirements.
+
+`Toil.Script` works with Toil's enforced CSP and Trusted Types defaults. External scripts use a private Trusted Types policy accepting HTTP(S) URLs. Inline code loads through a temporary blob URL created by the framework, so it can inherit script trust without enabling unrestricted inline scripts or `eval`. Blob URLs are revoked after loading; callbacks run after execution. Use absolute URLs for imports inside inline module scripts, since relative imports cannot resolve against a blob URL.
+
+Only pass application-controlled code and URLs to `Toil.Script`. The default CSP allows connections to the app's own origin; a third-party script may need additional connection, image, or frame origins in `client.cspSources` (see [Default browser security](../getting-started/deploy.md#default-browser-security)). Scripts written directly in the HTML template must have build-generated or explicit integrity hashes when external; inline template scripts are hashed by the build.
 
 ## Gotchas
 

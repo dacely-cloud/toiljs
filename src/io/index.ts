@@ -8,3 +8,5 @@ export { DataWriter, DataReader } from './codec.js';
 
 export type { PropertyExtendedKey, FastRecord, IndexKey } from './FastMap.js';
 export type { i8, i16, i32, i64, u8, u16, u32, u64, Selector, BufferLike } from './types.js';
+
+export { readDeriveCatalog, deriveIdentity, type DeriveMetadata } from './derive-metadata.js';

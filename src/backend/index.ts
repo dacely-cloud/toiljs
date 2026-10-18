@@ -17,6 +17,9 @@ import {
     type Websocket,
 } from '@dacely/hyper-express';
 
+import { installSecurityHeaders, sendSecureStaticFile } from './security.js';
+export { installSecurityHeaders, sendSecureStaticFile, writeResponseHeader } from './security.js';
+
 const DEFAULT_MAX_BODY_LENGTH = 1024 * 1024 * 8;
 const MAX_BODY_BUFFER = 1024 * 32;
 const HTTP_IDLE_TIMEOUT = 60;
@@ -118,6 +121,8 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
         response_timeout: HTTP_RESPONSE_TIMEOUT,
     });
 
+    installSecurityHeaders(app);
+
     const clients = new Set<Websocket>();
 
     app.set_error_handler((_request: Request, response: Response, _error: Error) => {
@@ -181,11 +186,13 @@ export async function startBackend(options: BackendOptions): Promise<RunningBack
         response.upgrade({});
     });
 
-    app.get('/*', (request: Request, response: Response) => {
+    const serveClient = (request: Request, response: Response): void => {
         if (response.completed) return;
         const file = resolveStaticFile(root, request.path);
-        response.sendFile(file ?? indexHtml);
-    });
+        sendSecureStaticFile(response, file ?? indexHtml);
+    };
+    app.get('/*', serveClient);
+    app.head('/*', serveClient);
 
     await app.listen(port, host);
 

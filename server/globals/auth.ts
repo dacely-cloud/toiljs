@@ -12,6 +12,7 @@ import { AuthReads } from 'toiljs/server/auth/AuthReads';
 
 import { DataWriter, DataReader } from 'data';
 import { SessionEpochs } from 'toiljs/server/auth/SessionEpochs';
+import { toildbHost } from 'bindings/toildb';
 import { AuthStateDb, SessionDigest, RevokedSession } from 'toiljs/server/auth/AuthStateDb';
 import { HmacImportParams, HmacParams, ALG_SHA_256, FMT_RAW, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
 
@@ -244,7 +245,62 @@ function __reqIsSecure(): bool {
     return base != null && base.startsWith('https://');
 }
 
+/** Standard identity prefix when a plain compiler entry has no custom @user. */
+@global
+class __ToilBuiltinAuthUser {
+    toilUserId: Uint8Array = new Uint8Array(0);
+    username: string = '';
+}
+@global
+function __toilDecodeBuiltinAuthUser(bytes: Uint8Array): __ToilBuiltinAuthUser {
+    const reader = new DataReader(bytes);
+    reader.readU32(); // The signed payload's application-specific @data tag.
+    const result = new __ToilBuiltinAuthUser();
+    result.toilUserId = reader.readBytes();
+    result.username = reader.readString();
+    if (!reader.ok || result.toilUserId.length != 32) throw new Error('Invalid session identity');
+    return result;
+}
+
+@lazy let __registrationHook: ((id: ToilUserId, username: string, email: string) => void) | null = null;
+@lazy let __deleteUser: ((id: ToilUserId, realm: string) => bool) | null = null;
+@lazy let __indexUsers: ((limit: i32, cursor: Uint8Array | null) => Uint8Array | null) | null = null;
+
 export namespace AuthService {
+    /** Delete an auth account after app-owned data has been cleaned. Job only.
+     * Returns false if absent; concurrent changes throw so the Job can retry. */
+    export function deleteUser(id: ToilUserId, realm: string = ''): bool {
+        if (toildbHost.jobAllowed() != 1) throw new Error('deleteUser requires a Job');
+        const handler = __deleteUser;
+        if (handler == null) throw new Error('Built-in auth maintenance is not installed');
+        return handler(id, realm);
+    }
+
+    /** Bounded legacy-account index backfill. Keep invoking with the returned
+     * cursor until null; pages may be empty. Job only. */
+    export function indexUsers(limit: i32 = 8, cursor: Uint8Array | null = null): Uint8Array | null {
+        if (toildbHost.jobAllowed() != 1) throw new Error('indexUsers requires a Job');
+        const handler = __indexUsers;
+        if (handler == null) throw new Error('Built-in auth maintenance is not installed');
+        return handler(limit, cursor);
+    }
+
+    export function __installMaintenance(remove: (id: ToilUserId, realm: string) => bool,
+        index: (limit: i32, cursor: Uint8Array | null) => Uint8Array | null): void {
+        __deleteUser = remove; __indexUsers = index;
+    }
+    /** Register an idempotent initializer in the server entry point. It runs
+     * after identity/email reservation and before the account becomes active.
+     * A trapped initializer leaves registration pending for a verified retry. */
+    export function onRegistered(handler: (id: ToilUserId, username: string, email: string) => void): void {
+        __registrationHook = handler;
+    }
+
+    /** Framework registration seam; applications register with onRegistered. */
+    export function __initializeRegistration(id: ToilUserId, username: string, email: string): void {
+        const hook = __registrationHook;
+        if (hook != null) hook(id, username, email);
+    }
     /** Signed session cookie name (the HTTPS form). `__Host-` pairs with
      *  `asHostPrefixed()` (Secure, Path=/, no Domain) for the strongest browser
      *  scoping; over plain HTTP the unprefixed `toil_sess` is used instead. */

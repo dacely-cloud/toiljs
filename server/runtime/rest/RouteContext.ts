@@ -6,6 +6,7 @@
  */
 
 import { Request } from '../request';
+import { percentDecode } from '../http/percent';
 
 // Host import: write the request's UNSPOOFABLE peer IP (the socket's remote
 // address, NOT a client-supplied header) into a guest buffer. Returns the byte
@@ -40,7 +41,7 @@ export class RouteContext {
         return '';
     }
 
-    /** A query-string value (`?q=hi` gives `query("q")`), or "" if absent. Not URL-decoded in v1. */
+    /** A decoded query value, or "" if absent. Percent escapes and form `+` are decoded once. */
     query(name: string): string {
         this.ensureQuery();
         const keys = this.queryKeys!;
@@ -90,11 +91,11 @@ export class RouteContext {
                 if (pair.length == 0) continue;
                 const eq = pair.indexOf('=');
                 if (eq < 0) {
-                    keys.push(pair);
+                    keys.push(percentDecode(pair.replaceAll('+', ' ')));
                     vals.push('');
                 } else {
-                    keys.push(pair.substring(0, eq));
-                    vals.push(pair.substring(eq + 1));
+                    keys.push(percentDecode(pair.substring(0, eq).replaceAll('+', ' ')));
+                    vals.push(percentDecode(pair.substring(eq + 1).replaceAll('+', ' ')));
                 }
             }
         }

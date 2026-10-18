@@ -31,7 +31,7 @@ import {
     writeUtf8
 } from './memory';
 import { Header, Method, Request } from './request';
-import { Response } from './response';
+import { Response, ensureSecurityHeaders } from './response';
 
 class DecodeCursor {
     base: usize;
@@ -140,6 +140,7 @@ export function decodeRequest(req_ofs: usize, req_len: usize): Request | null {
  * encoder fault.
  */
 export function encodeResponse(resp: Response, dst_ofs: usize): u32 {
+    ensureSecurityHeaders(resp);
     // Validate fits-in-u16/u32 limits up front so we never half-write.
     if (resp.headers.length > 0xffff) {
         return encodeFallback500(dst_ofs);

@@ -18,6 +18,8 @@ import {
 } from '@dacely/hyper-express';
 import pc from 'picocolors';
 
+import { installSecurityHeaders, sendSecureStaticFile, writeResponseHeader } from 'toiljs/backend';
+
 import type { EmailBackendConfig } from 'toiljs/shared';
 
 import type { ResolvedDaemonConfig } from './daemon/host.js';
@@ -189,7 +191,7 @@ function preparedReply(out: {
 function sendThreadedReply(response: Response, reply: ThreadedReply): boolean {
     if (reply.kind === 'fallback') return false;
     response.status(reply.status);
-    for (const [name, value] of reply.headers) response.header(name, value);
+    for (const [name, value] of reply.headers) writeResponseHeader(response, name, value);
     if (reply.sendfile !== null) {
         response.sendFile(reply.sendfile);
         return true;
@@ -378,6 +380,8 @@ async function startBuiltHttpServer(
 
     const app = new Server(runtimeServerOptions(options));
 
+    installSecurityHeaders(app);
+
     const clients = new Set<Websocket>();
 
     installRuntimeErrorHandler(app);
@@ -440,7 +444,7 @@ async function startBuiltHttpServer(
         if (request.method === 'GET' || request.method === 'HEAD') {
             const file = resolveStaticFile(paths.staticRoot, request.path);
             if (file !== null) {
-                response.sendFile(file);
+                sendSecureStaticFile(response, file);
                 return;
             }
         }
@@ -459,7 +463,7 @@ async function startBuiltHttpServer(
             // client then hydrates it for the concrete URL. Falls back to the root shell if none.
             const dynHtml =
                 routeHtml === null ? resolveDynamicFile(paths.staticRoot, request.path) : null;
-            response.sendFile(routeHtml ?? dynHtml ?? paths.indexHtml);
+            sendSecureStaticFile(response, routeHtml ?? dynHtml ?? paths.indexHtml);
             return;
         }
 

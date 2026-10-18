@@ -301,3 +301,28 @@ describe('Response cookies', () => {
         );
     });
 });
+
+@data
+class StatusAnswer { message: string = 'olá'; }
+
+import { RouteContext } from '../../server/runtime/rest/RouteContext';
+
+describe('reported HTTP and encoding bugs', () => {
+    it('preserves raw Unicode during percent decoding', () => {
+        expect<string>(Cookies.decodeValue('olá%20東京')).toBe('olá 東京');
+    });
+    it('decodes query names and values once, preserving escaped plus signs', () => {
+        const request = new Request(Method.GET, '/?q=ol%C3%A1+東京%2B%2520&%6Eame=a%26b&bad=%ZZ', [], new Uint8Array(0));
+        const ctx = new RouteContext(request, [], []);
+        expect<string>(ctx.query('q')).toBe('olá 東京+%20');
+        expect<string>(ctx.query('name')).toBe('a&b');
+        expect<string>(ctx.query('bad')).toBe('%ZZ');
+        expect<string>(ctx.query('absent')).toBe('');
+    });
+    it('returns a data value with the requested status and JSON content type', () => {
+        const response = Response.data(new StatusAnswer(), 422);
+        expect<u16>(response.status).toBe(422);
+        expect<string>(headerValue(response, 'content-type')).toBe('application/json; charset=utf-8');
+        expect<string>(String.UTF8.decodeUnsafe(response.body.dataStart, response.body.byteLength)).toBe('{"message":"olá"}');
+    });
+});

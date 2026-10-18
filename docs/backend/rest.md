@@ -151,7 +151,7 @@ Set the mode on the whole controller with `@rest({ stream: DataStream.Binary })`
 | --- | --- | --- |
 | `request` | `Request` | The raw request (method, path, headers, body). |
 | `param` | `param(name: string): string` | A captured path param, or `""` if absent. |
-| `query` | `query(name: string): string` | A query-string value (`?q=hi`), or `""` if absent. Not URL-decoded in v1. |
+| `query` | `query(name: string): string` | A query-string value (`?q=hi`), or `""` if absent. URL-decoded once; `+` becomes a space. |
 | `header` | `header(name: string): string \| null` | A request header, case-insensitive, or `null`. |
 | `text` | `text(): string` | The raw request body decoded as UTF-8 text. |
 | `clientIp` | `clientIp(): string` | The connecting client's IP, or `""` if unavailable. |
@@ -388,7 +388,7 @@ See [RPC and the generated client](./rpc.md#the-rest-fetch-client) for that clie
 - **Fields do not persist.** A fresh controller instance serves each request, so instance fields reset every time and are never shared between requests or edge nodes. Persist to [ToilDB](../database/README.md).
 - **`Response.json` wants a string.** Pass an already-serialized JSON string (or return the `@data` value directly). Passing an object will not do what you expect.
 - **`@del`, not `@delete`.** `delete` is a reserved word, so the decorator is `@del`.
-- **Query values are not URL-decoded in v1.** `ctx.query('q')` returns the raw value; decode it yourself if it may contain percent-encoding.
+- **Query keys and values are decoded once.** `ctx.query('q')` decodes UTF-8 percent escapes and form `+`; malformed escapes remain literal. Remove a previous manual `Cookies.decodeValue` call to avoid double decoding.
 - **Path matching is exact on segment count.** `/todos/:id` does not match `/todos/1/extra`. Add a route for the longer path.
 - **`notFound()` vs `unhandled()`.** Returning `notFound()` from your top handler stops the edge from falling through to static files or the client app. Use `unhandled()` for "not my path."
 
@@ -401,3 +401,11 @@ See [RPC and the generated client](./rpc.md#the-rest-fetch-client) for that clie
 - [Cookies](../services/cookies.md), [Caching](../services/caching.md), [Rate limiting](../services/ratelimit.md): response helpers and guards.
 - [Auth](../auth/README.md): protecting routes with `@auth`.
 - [The database](../database/README.md): persisting data between requests.
+
+
+### Data responses with a status
+
+`Response.data(answer, 422)` serializes a `@data` answer as JSON and returns the
+requested HTTP status with `application/json; charset=utf-8`. It also composes
+with response headers and cookies. Binary routes can use
+`Response.bytes(answer.encode(), status)` explicitly.

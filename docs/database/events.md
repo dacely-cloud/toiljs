@@ -9,7 +9,7 @@ Use explicit [redaction](#redacting-personal-data) when a stored payload must be
 An "append-only log" means exactly two things happen to it:
 
 1. You **append** a new event (it goes on the end).
-2. You **read** events back (newest first).
+2. You **read** a specific event, the newest event, or a batch of events.
 
 Each event records something that happened: "Ada signed the guestbook", "order
 1234 was refunded", "user logged in from a new device".
@@ -62,6 +62,9 @@ class Activity {
   action: string = '';   // 'login', 'post.create', 'comment', ...
   detail: string = '';
   at: u64 = 0;           // unix seconds
+  constructor(action: string = '', detail: string = '', at: u64 = 0) {
+    this.action = action; this.detail = detail; this.at = at;
+  }
 }
 
 @database
@@ -136,30 +139,100 @@ silently dropped as a "duplicate".
 
 ### `get` and `last`
 
-Read one event directly from a route, query, action, derive, or job:
+Use these when a request needs one event. Both are bounded reads allowed in a
+route, query, action, derive, or job. They return `V | null` and decode the event
+using its stored schema version, including any `@migrate` transform. Reading an
+event does not rewrite it or advance a derive checkpoint.
+
+#### `get(key, eventId)`: retrieve a known event
+
+Pass the exact string ID used with `appendOnce`:
 
 ```ts
-const event = FeedDb.activity.get(new UserKey('ada'), 'order-refunded:123');
+// In an action: keep this ID stable when retrying the same operation.
+const key = new UserKey('ada');
+FeedDb.activity.appendOnce(
+  key,
+  'order-refunded:123',
+  new Activity('order.refund', '123', 1700000000),
+);
+
+// In a query or action:
+const event = FeedDb.activity.get(key, 'order-refunded:123');
+```
+
+The ID is scoped to the collection and stream key. Looking up the same ID under
+`new UserKey('grace')` reads Grace's stream, not Ada's. Ordinary `append` does not
+expose an ID for `get`; use `appendOnce` when you need to retrieve an event later
+by a caller-chosen ID. The ID is not an array offset or a built-in revision number.
+
+#### `last(key)`: retrieve the newest event
+
+```ts
 const newest = FeedDb.activity.last(new UserKey('ada'));
 ```
 
-`get` uses the exact string ID supplied to `appendOnce`, scoped to that collection
-and stream key. Ordinary `append` does not expose an ID for `get`. `last` reads the
-newest appended event from either write method; it does not interpret application
-revision numbers or sort event IDs. A duplicate `appendOnce` neither replaces the
-original event nor moves it to the end of the stream.
+`last` reads the event with the highest stored sequence, using the same ordering
+as `latest(key, 1)`. It works for events written with either `append` or
+`appendOnce`. It does not sort your event IDs, revision fields, or timestamps.
+An empty stream returns `null`.
 
-Both operations return `null` when absent. As with Documents reads, inspect
-`Db.lastError()` immediately after a null result to distinguish absence from a
-retryable storage failure. Values decode using their stored schema version, so
-`@migrate` applies without rewriting the immutable event.
+Unlike `latest`, `last` is allowed in request handlers. Use `last` for one event;
+use `latest` in a derive or job for a list.
 
-These are bounded point reads, permitted on the request path. `latest` and `since`
-remain background-only scans. Point reads do not add compare-and-swap semantics,
-or validate revision sequences. Production async reads fetch from the stream’s home
-cell; synchronous execution reports unavailable when the home is remote. Event IDs
-and stream keys are limited to 4096 encoded bytes. Deploy the updated backend and
-mesh peers before deploying modules that call these methods.
+#### Handle absence separately from unavailability
+
+A null result can mean either "not found" or a read failure. Inspect
+`Db.lastError()` immediately after the null result, before another database read:
+
+```ts
+@query
+export function findActivity(userId: string, eventId: string): Activity | null {
+  const event = FeedDb.activity.get(new UserKey(userId), eventId);
+  if (event == null && Db.lastError() != DbError.None) {
+    throw new Error('Activity temporarily unavailable');
+  }
+  return event; // null here means the event was not found.
+}
+```
+
+Apply the same check to `last`. At an HTTP boundary, map an availability failure
+to a retryable response instead of reporting a missing event. `Db.isRetryable`
+classifies transient errors when implementing retry handling.
+
+For example, a crash during `appendOnce` can leave its ID reserved before its
+event row is stored. `get` reports unavailable in that state; retrying the original
+`appendOnce` can recover the original event. Reads do not perform that recovery.
+
+#### Concurrent writes and duplicate IDs
+
+A duplicate `appendOnce` neither replaces the original event nor moves it to the
+end of the stream. Its `false` result means the ID was already used, even if the
+new payload differs. Use `get` to inspect the stored payload when reconciling a
+retry; do not assume the duplicate's payload was accepted.
+
+`last` is a snapshot read, not a lock. Another writer can append immediately after
+it returns. A `last` followed by an `append` is two separate operations, not an
+atomic "append only if the current revision is X" operation. These reads do not
+validate revision sequences or add compare-and-swap semantics.
+
+Use [Documents `enqueue`](./documents.md#writing-create-vs-upsert-vs-patch-vs-enqueue)
+for conditional updates to an existing document. Keep [Unique](./unique.md) for
+ownership constraints such as a username across accounts; event ID deduplication
+only applies within its collection and stream.
+
+#### Runtime requirements and existing dev data
+
+Production async reads fetch from the stream's home cell. Synchronous execution
+reports unavailable when the home is remote. Home-routing failures, including a
+stale placement decision, are unavailable results, not proof that an event is
+missing. Event IDs are limited to 4096 UTF-8 bytes; stream keys are limited to
+4096 bytes of their encoded `@data` representation.
+
+Deploy the updated backend and mesh peers before deploying modules that call
+these methods. Older hosts do not provide the new imports, and older mesh peers
+do not understand the Events point-read extension. These methods do not require
+a new ToilDB storage namespace.
 
 Dev snapshots created before event ID positions were recorded cannot reliably
 associate old deduplication IDs with events. For such IDs, `get` reports
@@ -302,12 +375,14 @@ few honest details about what that means for events:
   where appends are serialized and stamped with an increasing sequence number. So
   `latest` always returns a consistent newest-first order for that key.
 - **`latest` is newest first.** Index `0` is the most recent event.
-- **Reads can lag slightly across regions.** An append is applied at the log's
+- **Background scans and derived views can lag across regions.** An append is applied at the log's
   home first, then copied out to other regions in the background (this is called
   *asynchronous replication*, and the result is *eventual consistency*: given a
   little time, every region converges to the same log). A read served from a far
   region may briefly miss the very newest event. A `@derive` runs right after the
   append that triggered it, so the view it publishes reflects that write.
+  `get` and `last` instead read from the stream’s home; they still do not lock
+  the stream against subsequent writes.
 - **`appendOnce` dedups by your id.** The at-most-once guarantee is anchored to
   the `eventId` you pass, so retries are safe even across a flaky network.
 - **A log grows without bound.** Appending never shrinks it. Keep events small,

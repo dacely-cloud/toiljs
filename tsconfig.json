@@ -8,6 +8,15 @@
         "noEmit": true,
         "incremental": false
     },
-    "include": ["src/**/*.ts", "src/**/*.tsx", "std/client/index.d.ts"],
-    "exclude": ["node_modules", "build", "server"]
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx",
+        "src/**/*.mjs",
+        "std/client/index.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "build",
+        "server"
+    ]
 }

@@ -1,3 +1,6 @@
+import { dbBudgetSnapshot } from '../src/devserver/db/limits.js';
+import { parseCatalog } from '../src/devserver/db/catalog.js';
+import { DataWriter } from '../src/io/codec.js';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -69,14 +72,20 @@ function resolve(
 }
 
 function wasmWithSection(name: string, payload: Uint8Array): Buffer {
+    const leb = (value: number): Buffer => {
+        const bytes: number[] = [];
+        do {
+            const byte = value & 0x7f;
+            value >>>= 7;
+            bytes.push(byte | (value ? 0x80 : 0));
+        } while (value);
+        return Buffer.from(bytes);
+    };
     const nameBytes = Buffer.from(name);
-    const sectionPayload = Buffer.concat([
-        Buffer.from([nameBytes.length]),
-        nameBytes,
-        Buffer.from(payload),
-    ]);
+    const sectionPayload = Buffer.concat([leb(nameBytes.length), nameBytes, Buffer.from(payload)]);
     return Buffer.concat([
-        Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x00, sectionPayload.length]),
+        Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x00]),
+        leb(sectionPayload.length),
         sectionPayload,
     ]);
 }
@@ -727,7 +736,8 @@ describe('toildb dev emulator (record family)', () => {
         expect(() => imports['data.membership_page'](h, sp, sl, 0, -2, 7)).toThrow(/cursor/);
         expect(() => imports['data.membership_page'](h, sp, sl, 0, -1, 1025)).toThrow(/TDL020/);
         db.functionKind = DbFunctionKind.Query;
-        expect(imports['data.membership_page'](h, sp, sl, 0, -1, 7)).toBe(-1011);
+        expect(imports['data.membership_page'](h, sp, sl, 0, -1, 7)).toBeGreaterThan(0);
+        expect(() => imports['data.membership_page'](h, sp, sl, 0, -1, 33)).toThrow(/TDL020/);
     });
 
     it('membership: add/contains/remove + sorted framed list', () => {
@@ -1186,6 +1196,21 @@ describe('toildb dev emulator (record family)', () => {
 type Imports = Record<string, (...args: number[]) => number>;
 
 describe('toildb dev emulator (capacity family)', () => {
+    it('uses the injected dispatch clock for reservation expiry', () => {
+        const { imports, buf, ref } = setup();
+        let now = 1000;
+        ref.now = () => now;
+        const h = resolve(imports, buf, 'App/seats');
+        const [kp, kl] = put(buf, 32, 'clock');
+        imports['data.capacity_set_total'](h, kp, kl, 1, 0);
+        expect(imports['data.capacity_reserve'](h, kp, kl, 1, 100, 0)).toBe(8);
+        expect(avail(imports, buf, h, kp, kl)).toBe(0n);
+        now = 1099;
+        expect(avail(imports, buf, h, kp, kl)).toBe(0n);
+        now = 1100;
+        expect(avail(imports, buf, h, kp, kl)).toBe(1n);
+    });
+
     // Pull the last stashed i64 available into the buffer and read it.
     function avail(imports: Imports, buf: Buffer, h: number, kPtr: number, kLen: number): bigint {
         expect(imports['data.capacity_available'](h, kPtr, kLen)).toBe(8);
@@ -1484,4 +1509,124 @@ describe('toildb dev derives (toildb.derives parser + write routing)', () => {
         // no writes -> nothing runs
         expect(derivesForWrites(derives, new Set<string>()).map(id)).toEqual([]);
     });
+});
+
+describe('public DB budget meter', () => {
+    it('tracks writes and framed results even when optional limit checks are disabled', () => {
+        const { imports, buf, db } = setup();
+        vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '0');
+        try {
+            db.functionKind = DbFunctionKind.Action;
+            const handle = resolve(imports, buf, 'App/docs');
+            const [kp, kl] = put(buf, 128, 'item');
+            const [vp, vl] = put(buf, 256, 'value');
+            expect(imports['data.create'](handle, kp, kl, vp, vl, 0)).toBe(0);
+            expect(imports['data.get'](handle, kp, kl)).toBe(vl);
+            expect(imports['data.budget'](1024, 27)).toBe(-1);
+            expect(imports['data.budget'](1024, 28)).toBe(28);
+            expect(Array.from({ length: 7 }, (_, i) => buf.readUInt32LE(1024 + 4 * i))).toEqual([
+                2,
+                1,
+                2 * vl,
+                64,
+                32,
+                2097152,
+                131072,
+            ]);
+            expect(imports['data.budget'](1024, 28)).toBe(28); // Introspection is exempt.
+            expect(buf.readUInt32LE(1024)).toBe(2);
+            expect(imports['data.take_result'](2048, vl)).toBe(vl); // Stash is untouched.
+            expect(buf.toString('utf8', 2048, 2048 + vl)).toBe('value');
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+    it('does not consume the failed operation when a budget rejects it', () => {
+        const { imports, buf, db } = setup();
+        vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '1');
+        try {
+            db.functionKind = DbFunctionKind.Query;
+            const handle = resolve(imports, buf, 'App/docs');
+            const [kp, kl] = put(buf, 128, 'missing');
+            for (let i = 0; i < 64; i++) imports['data.exists'](handle, kp, kl);
+            expect(() => imports['data.exists'](handle, kp, kl)).toThrow(/TDL020/);
+            expect(imports['data.budget'](1024, 28)).toBe(28);
+            expect(buf.readUInt32LE(1024)).toBe(64);
+        } finally {
+            vi.unstubAllEnvs();
+        }
+    });
+});
+
+describe('stable named derive checkpoints', () => {
+    it('keeps cursors with their database/method when dispatch numbers change', () => {
+        const { ref, imports, buf, db } = setup();
+        const handle = resolve(imports, buf, 'App/feed');
+        const [kp, kl] = put(buf, 128, 'source');
+        const [vp, vl] = put(buf, 256, 'event');
+        imports['data.append'](handle, kp, kl, vp, vl, 0);
+        db.functionKind = DbFunctionKind.Derive;
+        db.deriveId = 0;
+        db.deriveKey = JSON.stringify(['App', 'cards']);
+        imports['data.events_since'](handle, kp, kl, 10);
+        commitDeriveCheckpoints(db);
+        const next = freshDbState();
+        next.functionKind = DbFunctionKind.Derive;
+        next.deriveId = 17;
+        next.deriveKey = JSON.stringify(['App', 'cards']);
+        const imps = buildDatabaseImports(ref, next) as Record<
+            string,
+            (...args: number[]) => number
+        >;
+        const nextHandle = resolve(imps, buf, 'App/feed');
+        expect(imps['data.events_since'](nextHandle, kp, kl, 10)).toBe(4); // Empty frame.
+        next.deriveId = 0;
+        next.deriveKey = JSON.stringify(['App', 'newDerive']);
+        next.pendingCheckpoints.clear();
+        expect(imps['data.events_since'](nextHandle, kp, kl, 10)).toBeGreaterThan(4);
+    });
+});
+
+describe('native-default collection ceilings', () => {
+    function catalog(counts: number[]): Buffer {
+        const w = new DataWriter().writeU16(1).writeU16(counts.length);
+        counts.forEach((count, d) => {
+            w.writeString(`Db${d}`).writeU16(count);
+            for (let c = 0; c < count; c++) {
+                w.writeString(`c${c}`)
+                    .writeU8(0)
+                    .writeString('Key')
+                    .writeString('Value')
+                    .writeU32(1)
+                    .writeU32(1)
+                    .writeU32(0)
+                    .writeU8(0)
+                    .writeU8(0)
+                    .writeU32(50)
+                    .writeU8(1)
+                    .writeU16(0)
+                    .writeU16(0);
+            }
+        });
+        return wasmWithSection('toildb.catalog', Buffer.from(w.toBytes()));
+    }
+    it('accepts 128 per database and 512 total, rejects the next collection', () => {
+        expect(parseCatalog(catalog([128])).kind).toBe('present');
+        expect(parseCatalog(catalog([129])).kind).toBe('malformed');
+        expect(parseCatalog(catalog([128, 128, 128, 128])).kind).toBe('present');
+        expect(parseCatalog(catalog([128, 128, 128, 128, 1])).kind).toBe('malformed');
+        expect(parseCatalog(catalog(Array(32).fill(0))).kind).toBe('present');
+        expect(parseCatalog(catalog(Array(33).fill(0))).kind).toBe('malformed');
+    });
+});
+
+it('accounts a durable continuation once, including its complete control-row framing', () => {
+    const { db, imports } = setupRaw();
+    db.functionKind = DbFunctionKind.Derive;
+    db.deriveKey = JSON.stringify(['App', 'fold']);
+    db.knownDerives.add('3:Appfold');
+    expect(imports['data.continue_derive']()).toBe(0);
+    expect(dbBudgetSnapshot(db)).toMatchObject({ ops: 1, writes: 1, bytes: 33 });
+    expect(imports['data.continue_derive']()).toBe(0);
+    expect(dbBudgetSnapshot(db)).toMatchObject({ ops: 1, writes: 1, bytes: 33 });
 });

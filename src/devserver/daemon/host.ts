@@ -1,3 +1,5 @@
+import { freshImageState, type ImageDevState } from '../images/index.js';
+import { mockDaemonHttp, type DaemonHttpMock } from './http.js';
 /**
  * Host-import surface for the dev daemon (cold) box, mirroring the production
  * edge's `daemon.*` imports. DAEMON path only (streams are Phase 4).
@@ -68,6 +70,7 @@ export interface DaemonRuntime {
     taskCount(): number;
     /** Next computed fire time (epoch ms) for `taskId`, or `null` if unknown. */
     nextFireMs(taskId: number): number | null;
+    httpMock?: DaemonHttpMock;
 }
 
 /** A host-import map: each value is a function over i32 args (i64 params are typed
@@ -78,7 +81,7 @@ type HostFnMap = Record<string, (...args: number[]) => number | bigint>;
  *  are BARE (`is_leader`, not `daemon.is_leader`): they are keyed under the `daemon`
  *  wasm module, matching the edge. These imports do not read guest memory (they answer
  *  from the resident scheduler state), so they take no `MemoryRef`. */
-export function buildDaemonNamespace(rt: DaemonRuntime): HostFnMap {
+export function buildDaemonNamespace(rt: DaemonRuntime, ref?: MemoryRef): HostFnMap {
     return {
         is_leader: (): number => (rt.isLeader() ? 1 : 0),
         // The edge answers -1 (EPOCH_NONE) when this node does not hold the lease.
@@ -92,14 +95,11 @@ export function buildDaemonNamespace(rt: DaemonRuntime): HostFnMap {
             const at = rt.nextFireMs(taskId);
             return at === null ? DAEMON_NONE : BigInt(at);
         },
-        // Outbound HTTP call stub: dev returns a "call failed" sentinel rather than
-        // performing real network I/O from a synchronous wasm import (section 5.4).
-        http_call: (
-            _reqPtr: number,
-            _reqLen: number,
-            _outPtr: number,
-            _outCap: number,
-        ): bigint => BigInt(encodeAbiError(AbiError.DaemonCallFailed)),
+        // A synchronous mock transports the real wire envelope without network I/O.
+        http_call: (reqPtr: number, reqLen: number, outPtr: number, outCap: number): bigint =>
+            ref === undefined
+                ? BigInt(encodeAbiError(AbiError.DaemonCallFailed))
+                : mockDaemonHttp(ref, rt.httpMock, reqPtr, reqLen, outPtr, outCap),
     };
 }
 
@@ -107,10 +107,11 @@ export function buildDaemonNamespace(rt: DaemonRuntime): HostFnMap {
 export interface DaemonState {
     crypto: CryptoState;
     db: DbDevState;
+    images: ImageDevState;
 }
 
 export function freshDaemonState(): DaemonState {
-    return { crypto: freshCryptoState(), db: freshDbState() };
+    return { crypto: freshCryptoState(), db: freshDbState(), images: freshImageState() };
 }
 
 /**
@@ -129,6 +130,6 @@ export function buildDaemonImports(
             ...buildCryptoImports(ref, state.crypto),
             ...buildDatabaseImports(ref, state.db),
         },
-        daemon: buildDaemonNamespace(rt),
+        daemon: buildDaemonNamespace(rt, ref),
     };
 }

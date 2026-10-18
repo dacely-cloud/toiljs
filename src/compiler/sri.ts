@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { Plugin } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
+import { secureBuiltHtml } from './security.js';
 
 /** SHA-384 Subresource-Integrity token (`sha384-<base64>`) for a local file, or `null` if it can't
  *  be read. Memoized per absolute path (the same asset is referenced by many baked pages). */
@@ -64,7 +65,9 @@ export function injectSri(html: string, outDir: string, base: string): string {
         if (rel === null) return full;
         const sri = computeSri(path.join(outDir, rel), cache);
         if (sri === null) return full;
-        const cross = /(?<![\w-])crossorigin(?![\w-])/i.test(attrs) ? '' : ' crossorigin="anonymous"';
+        const cross = /(?<![\w-])crossorigin(?![\w-])/i.test(attrs)
+            ? ''
+            : ' crossorigin="anonymous"';
         return `<${tag}${attrs} integrity="${sri}"${cross}${selfClose ? ' /' : ''}>`;
     });
 }
@@ -138,7 +141,17 @@ export function sriPlugin(cfg: ResolvedToilConfig): Plugin {
             let out = injectSri(html, outDir, cfg.base);
             const importMap = buildImportMapIntegrity(outDir, cfg.base, cache);
             if (importMap !== null) out = injectImportMap(out, importMap);
-            if (out !== html) fs.writeFileSync(shell, out);
+            const secured = secureBuiltHtml(out, cfg.cspSources);
+            fs.writeFileSync(shell, secured.html);
+            // Conventional static-host header artifact. The policy is inherited by
+            // prerendered/SSG/SSR pages from this shell; native hosts must apply it too.
+            const headersFile = path.join(outDir, '_headers');
+            const existing = fs.existsSync(headersFile) ? fs.readFileSync(headersFile, 'utf8') : '';
+            fs.writeFileSync(
+                headersFile,
+                existing +
+                    `\n/*\n  Content-Security-Policy: ${secured.policy}\n  Cross-Origin-Opener-Policy: same-origin\n`,
+            );
         },
     };
 }

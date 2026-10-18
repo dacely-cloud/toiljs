@@ -1,7 +1,7 @@
 {
     "name": "toiljs",
     "type": "module",
-    "version": "0.0.127",
+    "version": "0.0.128",
     "author": "Dacely",
     "description": "The modern React framework: a file-based React frontend and a ToilScript-compiled WebAssembly backend.",
     "repository": {
@@ -56,16 +56,19 @@
             "default": "./build/io/index.js"
         },
         "./server/runtime": {
-            "types": "./server/runtime/index.ts",
+            "types": "./std/server/index.d.ts",
             "default": "./server/runtime/index.ts"
         },
         "./server/runtime/exports": {
-            "types": "./server/runtime/exports/index.ts",
+            "types": "./std/server/exports/index.d.ts",
             "default": "./server/runtime/exports/index.ts"
         },
         "./server/runtime/*": {
-            "types": "./server/runtime/*.ts",
+            "types": "./std/server/*.d.ts",
             "default": "./server/runtime/*.ts"
+        },
+        "./server/globals": {
+            "types": "./server/globals.d.ts"
         },
         "./server/auth": {
             "types": "./server/auth/index.ts",
@@ -87,6 +90,11 @@
             "types": "./build/testing/setup.d.ts",
             "import": "./build/testing/setup.js",
             "default": "./build/testing/setup.js"
+        },
+        "./files": {
+            "types": "./build/client/files.d.ts",
+            "import": "./build/client/files.js",
+            "default": "./build/client/files.js"
         }
     },
     "bin": {
@@ -114,8 +122,9 @@
         "prepare": "npm run build",
         "watch": "tsc -p tsconfig.json --watch",
         "prepublishOnly": "npm run build",
+        "gen:server-types": "node scripts/gen-server-types.mjs",
         "gen:docs": "node scripts/gen-toil-docs.mjs",
-        "build": "npm run build:shared && npm run build:logger && npm run build:io && npm run build:client && npm run build:backend && npm run build:devserver && npm run build:compiler && npm run build:cli && npm run build:testing",
+        "build": "npm run gen:server-types && npm run build:shared && npm run build:logger && npm run build:io && npm run build:client && npm run build:backend && npm run build:devserver && npm run build:compiler && npm run build:cli && npm run build:testing",
         "build:shared": "tsc -p tsconfig.shared.json",
         "build:logger": "tsc -p tsconfig.logger.json",
         "build:client": "tsc -p tsconfig.client.json",
@@ -144,6 +153,8 @@
         "@noble/curves": "^2.4.0",
         "@stylistic/eslint-plugin": "^5.10.0",
         "@vitejs/plugin-react": "^6.1.2",
+        "busboy": "^1.6.0",
+        "dompurify": "^3.4.17",
         "eslint-plugin-react-hooks": "^7.1.1",
         "hash-wasm": "^4.12.0",
         "juice": "^12.2.0",
@@ -154,7 +165,7 @@
         "picocolors": "^1.1.1",
         "semver": "^7.8.5",
         "sharp": "^0.35.5",
-        "toilscript": ">=0.1.65",
+        "toilscript": ">=0.1.66",
         "vite": "^8.3.4",
         "vite-imagetools": "^12.0.1",
         "vite-plugin-node-polyfills": "^0.28.0"
@@ -163,7 +174,7 @@
         "prettier": ">=3.0.0",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",
-        "toilscript": ">=0.1.65",
+        "toilscript": ">=0.1.66",
         "vitest": "^5.0.3",
         "@vitest/browser-webdriverio": "^5.0.0",
         "@vitest/coverage-v8": "^5.0.3",
@@ -179,6 +190,7 @@
         "@clack/prompts": "^1.8.1",
         "@testing-library/dom": "^10.4.2",
         "@testing-library/react": "^16.3.3",
+        "@types/busboy": "^1.5.5",
         "@types/node": "^26.6.5",
         "@types/nodemailer": "^8.0.2",
         "@types/react": "^19.3.0",

@@ -200,3 +200,37 @@ The config flag and the import are identical at build time, both make the build 
 `@rest` class self-mounts. (A framework decorator source only weaves as an entry; that's why a plain
 `import` of the controller isn't enough on its own, the marker import is detected by the build, which does
 the entry injection.) This is why built-in auth needs no runtime registration call.
+
+
+## Static server typings
+
+Server editor declarations ship with the package; they do not require an app
+build. Importing `toiljs/server/runtime` loads them. A project with no runtime
+import can add `/// <reference types="toiljs/server/globals" />` to a declaration
+file, or include `"toiljs/server/globals"` in its tsconfig `types` alongside
+`"assembly"`. The generated `toil-server-env.d.ts` is only a reference shim;
+create, build and doctor share the same declaration source.
+
+A plain ToilScript compile needs the framework globals in `--lib`. Without a
+custom `@user` entry, `AuthService.getUser()` exposes the standard signed
+identity prefix (`toilUserId: Uint8Array` and `username: string`) without a
+generated application declaration. Its decoder validates the 32-byte identity.
+An explicit `@user` source entry preserves the application's full typed codec,
+including additional fields. The framework auth build still appends the built-in
+user codec when auth is enabled and no custom user exists. That codec also
+supplies the account controller's session encoder.
+
+## Initializing application records during registration
+
+Install `AuthService.onRegistered((id, username, email) => { ... })` from your
+server entry point. The callback receives the reserved stable `ToilUserId` and
+validated account fields. It runs before the account becomes active and uses the
+same Action budget as registration. Use conditional create/upsert logic suitable
+for retries: the callback may run more than once.
+
+If it traps, registration remains pending and cannot sign in. A new registration
+attempt with the same credentials and proof resumes it and reruns the initializer.
+Earlier successful database calls remain committed, so callbacks must be
+idempotent. This is appropriate for creating an initial profile or pending
+eligibility record; it does not supply extra age/profile answers absent from the
+registration protocol.

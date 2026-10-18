@@ -278,3 +278,52 @@ Now any request handler can serve the summary with a single keyed read, and it i
 - [Derived views (`@derive`)](./derive.md): keep a read-view in sync on every write.
 - [Compute tiers (L1 to L4)](../concepts/tiers.md): the daemon runs on the L4 global tier.
 - [Counters](../database/counters.md), [Documents](../database/documents.md), [Events](../database/events.md): the data a daemon reads and writes.
+
+
+## Public development task and HTTP test API
+
+Import `DaemonHost` from `toiljs/devserver`, call `refresh()` to load its artifact,
+then call `host.runTask(taskName, atMillis)`. Use the catalogued names in
+`host.tasks`. The result contains `status`, `task`, `atMillis`, `returnCode`,
+`error`, `durationMs`, and the task's database `budget`. Statuses distinguish
+success, a returned error, a trap, a skipped/inactive task and an unknown name.
+A trapped task leaves the resident box available for another call.
+
+The fifth constructor argument accepts `{ clock, httpMock }`. `clock` supplies
+the instance's default guest time; `runTask` temporarily uses its supplied time
+without replacing process-wide `Date.now`. The synchronous `httpMock(request)`
+receives decoded method, absolute URL, headers and body, and returns
+`{ status, headers?, body? }` or `null`. It exercises the real daemon HTTP wire
+codec and native buffer/size limits without making a network connection. When
+no mock is installed, the dev import retains the `DaemonCallFailed` result.
+
+This hook is a test transport, not an emulation of DNS/SSRF policy or production
+HTTP timing. Validate those on the native host.
+
+### Startup with Job permissions
+
+Annotate the daemon's `onStart` method with `@job` when initialization needs
+background scans or view publication:
+
+```ts
+@daemon
+class Maintenance {
+    @job
+    onStart(): void {
+        // Membership.list/listPage and View.publish are available here.
+        // Initialize indexes or resume persisted startup work idempotently.
+    }
+}
+```
+
+The host selects Job permissions and its DB budget before calling `daemon_start`.
+The unannotated method keeps Action permissions. Startup runs once per resident
+box start; a restart or replacement box runs it again, so initialization must be
+idempotent. It is not a durable exactly-once migration. Scheduled tasks retain
+their own declared kind and budget.
+
+Job startup emits daemon catalog **v3** with an explicit startup-kind byte;
+older catalogs retain Action startup. Updated dev and native source hosts accept
+v1/v2/v3. An older native host rejects v3 rather than silently running startup
+with reduced permissions. Actual deployed-host versions still need to be checked
+against the deployment inventory before rollout.

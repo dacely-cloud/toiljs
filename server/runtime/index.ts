@@ -1,3 +1,4 @@
+/// <reference path="../globals.d.ts" />
 /**
  * Public surface of the toiljs server runtime. The user does
  *
@@ -41,3 +42,7 @@ export { Cookie, SameSite, CookieEncoding, CookiePrefix, CookieValidation } from
 export { Cookies, CookieMap } from './http/cookies';
 export { SecureCookies } from './http/securecookies';
 export { base64UrlEncode, base64UrlDecode } from './http/base64';
+
+export { Blobs, BlobStorage, BlobUpload, BlobField } from './files/blobs';
+
+export { Images, ImageResult, ImageFormat, ImageError } from './files/images';

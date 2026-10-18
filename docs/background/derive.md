@@ -172,7 +172,7 @@ The host owns the cursor, you never manage it: it seeds `since` from a durable c
 ## When not to use a derive
 
 - **When the read is already cheap.** If a route can answer with a plain keyed `.get`, you do not need a view at all.
-- **When you need it on a timer, not on a data change.** Recomputing "yesterday's report" at 2am is a [daemon](./daemons.md) job, not a derive (a derive is triggered by writes, not by the clock).
+- **When the task is only a scheduled side effect.** Use a [daemon Job](./daemons.md). A timed materialized projection can call `Db.runDerive` from that Job (see below).
 - **When the source is an unbounded full-history fold.** See the limitation above; keep derives to bounded reads.
 
 ## Related
@@ -182,3 +182,116 @@ The host owns the cursor, you never manage it: it seeds `since` from a durable c
 - [Counters](../database/counters.md): running totals a derive can read.
 - [Background overview](./README.md): `@derive` versus `@daemon`, and which to reach for.
 - [Data types (`@data`)](../backend/data.md): the value and key types a view stores.
+
+
+## Stable incremental checkpoints
+
+Durable `events.since` checkpoints use the database and method name, independently
+of the artifact-local numeric dispatch index. Inserting or reordering a derive
+therefore preserves each existing method's cursor. Renaming a database or method
+creates a new cursor. Upgrading from ordinal-only checkpoints starts named cursors
+from the beginning, rather than attach another method's cursor; folds must remain
+idempotent when replaying existing events.
+
+
+## Reading invalidated keys
+
+`Db.changes()` is available inside a derive. It returns `fullRescan: bool` and
+`keys: DbChange[]`; each entry contains `database`, `collection` (without the
+database prefix), and the original encoded `key`. Decode the key with that
+collection's key type, then read the current row. An absent row means the
+materialized entry must be removed. Keep enough index information to remove an
+entry whose old sort key or group changed.
+
+```ts
+const changes = Db.changes();
+if (changes.fullRescan) {
+    // Rebuild from your source index or resumable event log.
+} else {
+    for (let i = 0; i < changes.keys.length; i++) {
+        const change = changes.keys[i];
+        if (change.collection != 'listings') continue;
+        const key = ListingKey.decode(change.key);
+        const current = Market.listings.get(key);
+        // Idempotently replace or remove the indexed listing.
+    }
+}
+```
+
+Keys are deduplicated invalidation hints from collections that committed writes;
+they can include reads, retries, and no-op attempts in those collections. They
+are not an ordered event stream and contain neither old values nor write counts.
+Only the derive's database is included. Membership and event keys identify the
+set or partition, rather than an individual member or event.
+
+Always implement the full-rescan path. Startup, failed-run retries, hints arriving
+from another execution surface, an unknown mutation, or overflow requests a full
+rescan with an empty key list. The context holds at most 256 keys and 64 KiB of
+framed metadata. It is request context rather than durable history; keep
+`events.since` for durable event processing. Reading context consumes host gas,
+without consuming a database operation or replacing the last result stash.
+
+## Running a derive on a timer
+
+A scheduled Job can invoke a materializer directly with
+`Db.runDerive(databaseName, methodName, body)`. This enters Derive context for
+the callback, supplies `Db.changes().fullRescan`, and uses the same named
+`events.since` checkpoint as automatic runs. The Job's existing budget and
+consumed counters remain in effect.
+
+```ts
+function refreshBrowse(): void { new Market().refreshBrowse(); }
+
+@daemon
+class Timers {
+    @scheduled('1h')
+    @job
+    refresh(): void {
+        Db.runDerive('Market', 'refreshBrowse', refreshBrowse);
+    }
+}
+```
+
+The database and method strings must exactly match the `@derive` declaration.
+Keep the database in a shared source file included in both artifacts. Checkpoints
+commit after the callback returns successfully. A trap preserves completed
+writes and leaves its checkpoint unadvanced, so callbacks must be idempotent.
+Calls outside a Job, nested calls, and empty or oversized identities trap.
+This API lets a scheduled Job remove expired events from a projection without
+appending a synthetic source change. It runs one bounded invocation per call;
+keep large rebuilds resumable within the Job budget.
+
+## Requesting another invocation
+
+Call `Db.continueDerive()` when a bounded fold has more work. The request is
+persisted before the call returns. The resident cold scheduler polls queued work
+while idle, so no unrelated write or HTTP request is required. Repeated calls
+within one invocation coalesce into one DB operation/write. The budget meter
+includes that operation and its control-row bytes.
+
+```ts
+@derive
+fold(): void {
+    const rows = Market.changes.since(new FeedKey(), 64);
+    for (let i = 0; i < rows.length; i++) applyIdempotently(rows[i]);
+    if (rows.length == 64) Db.continueDerive();
+}
+```
+
+A continuation runs with fresh gas/DB limits and `Db.changes().fullRescan`; its
+named `events.since` cursors still resume after successfully published batches.
+A crash before a cursor commit can repeat a batch, so processing must remain
+idempotent. Acknowledgements match a generation: an older run cannot clear a
+newer continuation. The queue is bounded to 1024 identities and 256 KiB per
+tenant; a full queue fails explicitly. Removed/renamed methods do not inherit
+another method's pending work.
+
+Include a resident `@daemon` (an empty class is sufficient) and put materializer
+databases in shared source files compiled into both artifacts. The framework
+build rejects missing cold materializers when a hot artifact imports this API.
+Run the cold scheduler and use the same persistent ToilDB control storage for
+the hot and cold workers. The native in-memory adapter is ephemeral; persistent ToilDB provides
+the durable queue. Dev persists it with the configured DB snapshot. Updated
+native host imports are required. Calls outside Derive, or with no deployed
+`@derive` identity, fail closed. `Db.runDerive` can also request a continuation
+when its names match a deployed materializer.

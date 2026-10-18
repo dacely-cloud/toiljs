@@ -121,7 +121,7 @@ export default function RestDemo() {
                 The same <code>Server.REST.*</code> client, but the route stores each signature in a ToilDB{' '}
                 <code>events</code> stream and a <code>counter</code>. So unlike the players above, these{' '}
                 <strong>persist</strong> across requests and page reloads - locally under <code>toil dev</code> and on
-                ScyllaDB at the edge, with the same code.
+                ToilDB at the edge, with the same code.
             </p>
             <button onClick={onSign}>sign the guestbook</button>{' '}
             <button onClick={onBook}>refresh ({String(book.total)} signatures)</button>

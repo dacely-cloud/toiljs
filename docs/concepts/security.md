@@ -1,6 +1,6 @@
 # Security
 
-Security in toil is not a single feature you switch on. It is a set of defaults that are already on, spread across the whole stack, so that the safe path is also the default path.
+toiljs enables an enforced Content Security Policy (CSP), Cross-Origin-Opener-Policy (COOP), and Trusted Types by default in its development and self-host servers. Production builds include script integrity metadata and security headers for deployment. This page explains those defaults, how to allow additional resources, and what an external host must serve.
 
 ## The model
 
@@ -9,10 +9,157 @@ Toil is built for **defense in depth**: many independent layers, so that one wea
 - All traffic is encrypted in transit with modern TLS (Transport Layer Security, the encryption every `https://` connection uses).
 - The login design never lets the server see a password it could reuse.
 - Secrets never live in your code.
-- The browser verifies every asset it loads before running it.
+- Built scripts and styles carry integrity metadata; module-graph verification also applies in browsers supporting import-map integrity.
 - There is no implicit trust between the parts of the system (zero trust): each request is checked on its own merits.
 
 The rest of this page walks through each layer and points to where it is documented in full.
+
+## Default browser security
+
+No configuration is needed for the framework's development or self-host servers. The defaults are:
+
+| Protection | Default | Purpose |
+| --- | --- | --- |
+| Content Security Policy | Enforced `Content-Security-Policy` header | Restricts script execution and resource loading. This is not a report-only policy. |
+| Opener isolation | `Cross-Origin-Opener-Policy: same-origin` | Isolates the document from cross-origin openers and popups. |
+| Trusted Types | `require-trusted-types-for 'script'` in the CSP | Requires trusted values at DOM injection sinks in supporting browsers. |
+| Policy creation | `trusted-types toil-script dompurify` | Allows the framework's script and HTML policies. No default policy is installed. |
+
+HSTS is not emitted by toiljs. Configure it at your HTTPS deployment if needed.
+
+### The enforced CSP
+
+The production policy uses these directives. The script hashes are generated from the build; do not copy placeholder hashes into a deployment.
+
+| Directive | Default |
+| --- | --- |
+| `default-src` | `'self'` |
+| `base-uri` | `'none'` |
+| `object-src` | `'none'` |
+| `frame-ancestors` | `'self'` |
+| `script-src` | Generated script hashes, `'strict-dynamic'`, and `'wasm-unsafe-eval'` |
+| `script-src-attr` | `'none'` |
+| `style-src` | `'self' 'unsafe-inline'` |
+| `img-src` | `'self' data: blob:` |
+| `font-src` | `'self' data:` |
+| `connect-src` | `'self'` |
+| `worker-src` | `'self' blob:` |
+| `require-trusted-types-for` | `'script'` |
+| `trusted-types` | `toil-script dompurify` |
+
+The compiler authorizes inline template scripts by their content hashes and external entry scripts by their integrity hashes. It also includes the integrity hashes for the bundled module graph. Prerendered pages, SSG pages, and SSR templates inherit the protected shell. Request values inserted into SSR slots do not receive new script hashes.
+
+Inline event handlers and JavaScript `eval` are blocked. `'wasm-unsafe-eval'` permits WebAssembly compilation, which client password hashing needs, without allowing JavaScript `eval`. Inline CSS remains allowed for React style props and framework styles.
+
+Backend responses without an explicit CSP receive the same resource and DOM protections with `script-src 'none'`. Consequently, a standalone `Response.html(...)` does not authorize executable scripts. A custom HTML handler that needs scripts must provide an appropriate CSP explicitly.
+
+### Development and SSR
+
+`toiljs dev` uses fresh request nonces for scripts instead of production hashes. WebSocket connections (`ws:` and `wss:`) are permitted for HMR. This applies both to the client-only Vite server and to the Vite proxy used by backend projects.
+
+Development SSR rotates the nonce in the trusted template before inserting request values. Production SSR takes its policy from the built template. Both paths preserve script loading and hydration without enabling unrestricted inline scripts or JavaScript `eval`.
+
+### Loading scripts
+
+Use [`Toil.Script`](../frontend/scripts.md) for application-controlled scripts loaded from React:
+
+```tsx
+<Toil.Script src="https://widgets.example.com/widget.js" />
+
+<Toil.Script id="configure-widget">
+    {'window.widgetOptions = { compact: true };'}
+</Toil.Script>
+```
+
+External script URLs must use HTTP(S). Executable inline snippets load through temporary blob URLs created by the framework; those URLs are revoked after loading. `onLoad` and `onReady` run after an executable script has loaded and executed. Inert data blocks such as `type="application/json"` remain inline. Inline module snippets must use absolute import URLs because relative imports cannot resolve against a blob URL.
+
+Only pass application-controlled code and URLs to this component. A third-party script can require additional connection, image, stylesheet, or frame origins; authorizing the script itself does not allow every resource it might request.
+
+### Trusted Types and HTML
+
+In supporting browsers, raw string assignments to protected DOM sinks such as `innerHTML` are rejected. `Toil.Script` handles its own trusted script values. `Toil.RawHtml` sanitizes HTML in the browser through a private DOMPurify instance and supplies a trusted HTML value where supported:
+
+```tsx
+<Toil.RawHtml id="article" html={articleHtml} />
+```
+
+**Sanitize HTML on the server before putting it into an SSR raw slot.** Browser sanitization cannot protect the initial HTML response, which is parsed before hydration. The same server responsibility applies to `SlotValues.setRaw` and `HtmlBuilder.raw`.
+
+`Toil.sanitizeHtml(html)` is also available for browser code that needs sanitized HTML for React's `dangerouslySetInnerHTML`. It returns `string | TrustedHTML` and throws without a browser DOM. If a component calls it while rendering, place that component inside `Toil.Island` so it runs only after hydration. Browsers without Trusted Types still receive DOMPurify sanitization and the other supported CSP protections.
+
+### Allowing additional resources
+
+Add resource origins in `client.cspSources` rather than replacing the generated CSP:
+
+```ts
+// toil.config.ts
+import { defineConfig } from 'toiljs/compiler';
+
+export default defineConfig({
+    client: {
+        cspSources: {
+            'connect-src': ['https://api.example.com', 'wss://events.example.com'],
+            'img-src': ['https://images.example.com'],
+            'style-src': ['https://styles.example.com'],
+            'font-src': ['https://fonts.example.com'],
+            'frame-src': ['https://widgets.example.com'],
+        },
+    },
+});
+```
+
+Values are appended to the directive's defaults. If an allowed directive is absent from the default policy, toiljs creates it starting with `'self'`. Changes apply to development and to the production header and meta policy after rebuilding.
+
+Supported keys are `connect-src`, `img-src`, `media-src`, `font-src`, `style-src`, `frame-src`, `child-src`, `worker-src`, `manifest-src`, `trusted-types`, `form-action`, and `frame-ancestors`. For `trusted-types`, supply policy names rather than origins, and only add names for reviewed policies your application needs.
+
+Each array entry must be a nonempty source token without whitespace, semicolons, commas, or angle brackets. Unsupported keys and invalid values are rejected. `script-src`, `script-src-elem`, `script-src-attr`, `default-src`, `base-uri`, `object-src`, and `require-trusted-types-for` cannot be changed through this option. Script trust and DOM enforcement remain framework-owned. See the [configuration reference](./config.md#clientcspsources).
+
+### COOP and custom responses
+
+`Cross-Origin-Opener-Policy: same-origin` affects integrations that depend on a cross-origin popup retaining its opener. It does not enable COEP or guarantee `window.crossOriginIsolated` by itself.
+
+A backend handler can explicitly set CSP or COOP with `Response.setHeader`. Framework defaults fill absent headers case-insensitively and preserve explicit application values. For example, a custom handler that deliberately needs opener compatibility can set:
+
+```ts
+return Response.html(html)
+    .setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+```
+
+This changes that handler's response. It does not change the policy of frontend pages served from the build. Keep the CSP header and the built HTML's meta policy consistent; a more permissive header does not remove restrictions from an existing meta policy.
+
+### Deployment headers
+
+`toiljs start` serves CSP and COOP automatically, including when running multiple HTTP workers. Native backend HTTP response envelopes also include defaults. The production build writes `_headers` into the configured client output directory (`build/client/_headers` by default):
+
+```text
+/*
+  Content-Security-Policy: <the complete policy generated for this build>
+  Cross-Origin-Opener-Policy: same-origin
+```
+
+Hosts that support this file format can consume it directly. Other static hosts, reverse proxies, and managed edge integrations must apply the generated headers to their document responses, including SSR responses. Merely uploading the HTML does not configure an external host's HTTP headers.
+
+The HTML includes a CSP meta fallback. **COOP and `frame-ancestors` require HTTP headers**; the fallback cannot supply them. Preserve the generated import map, integrity attributes, and CSP metadata. Rebuild after changing scripts or resource permissions, and deploy matching HTML, assets, and headers together. See [Deploying a toiljs app](../getting-started/deploy.md#default-browser-security).
+
+### Checking a deployment
+
+Inspect a real document response from your deployed origin:
+
+```bash
+curl -sSI https://app.example.com/
+```
+
+Confirm it includes an enforced `Content-Security-Policy` with `require-trusted-types-for 'script'` and `Cross-Origin-Opener-Policy: same-origin`. Check an SSR URL too if your app uses SSR. In browser developer tools, review CSP violations while exercising navigation, scripts, and integrations. A CSP violation usually identifies the resource and directive that need attention.
+
+The framework's regression suite checks headers, native response envelopes, sanitization, and browser behavior. From the framework checkout, run:
+
+```bash
+npm run build
+npx vitest run test/security.test.ts test/security-native.test.ts test/dom/security.test.tsx
+TOILJS_BROWSER_TESTS=1 npx vitest run test/security-browser.test.ts
+```
+
+The browser suite requires Chrome. Set `CHROME_BIN` if it is installed outside `/usr/bin/google-chrome`. It checks blocked injections alongside SSR hydration, lazy routes, `Toil.Script`, static serving, production workers, and development HMR.
 
 ## The backend is a sandbox
 

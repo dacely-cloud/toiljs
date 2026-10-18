@@ -58,6 +58,11 @@ export class Response {
         return r;
     }
 
+    /** A JSON @data value with an explicit HTTP status. */
+    public static data<T>(value: T, status: u16 = 200): Response {
+        return Response.json(value.toJSON().toString(), status);
+    }
+
     /**
      * A raw binary body, defaulting to `application/octet-stream`. Used by `@route`
      * methods with `stream: DataStream.Binary` to ship a `@data` `encode()`.
@@ -199,4 +204,19 @@ export class Response {
     public cacheFor(minutes: u16): Response {
         return this.cache(minutes);
     }
+}
+
+/** Fill browser security headers at the HTTP serialization boundary. */
+export function ensureSecurityHeaders(response: Response): void {
+    // Mirror toiljs/shared's defaults for native edge hosts as well as Node.
+    let hasCsp = false;
+    let hasCoop = false;
+    for (let i = 0; i < response.headers.length; i++) {
+        const name = response.headers[i].name.toLowerCase();
+        if (name == 'content-security-policy') hasCsp = true;
+        if (name == 'cross-origin-opener-policy') hasCoop = true;
+    }
+    if (!hasCsp) response.setHeader('content-security-policy',
+        "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'self'; script-src 'none'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; require-trusted-types-for 'script'; trusted-types toil-script dompurify");
+    if (!hasCoop) response.setHeader('cross-origin-opener-policy', 'same-origin');
 }

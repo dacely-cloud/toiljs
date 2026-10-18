@@ -1,0 +1,10 @@
+{
+  "sha256": "51061fa3be015ffc4cd86c15d087c6074d0e7f30b5d21b519de609afc1bcc245",
+  "maximumMemoryBytes": 805306368,
+  "sourceHashes": {
+    "Cargo.toml": "ac001ddcd49ac5a86b95133ce11b396c53b1a451feaf4e6e3a29f040a92df3bd",
+    "Cargo.lock": "9003201cfaafd595ee51baa47cc0f1b81c86b0522bb2afd13d3e1746ffa64fa0",
+    "src/lib.rs": "d05da566f1269a54788a8ed5eeb44beb30754ecc533e4b09f2e751f6107f6549",
+    "src/main.rs": "b2c37b8ce166b1cd81260b1c75e575b661ce7d0f527b80d9921686c62a3a43f4"
+  }
+}

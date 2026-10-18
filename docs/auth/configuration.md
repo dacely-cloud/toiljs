@@ -172,3 +172,36 @@ links issued before this upgrade are rejected and can be requested again.
 A re-registered account starts with fresh factor settings. Revocation epochs and opaque deletion-incarnation guards
 remain to reject copied cookies and delayed replays of old account rows; random login challenges expire and cannot
 be redeemed against a replacement account.
+
+For cleanup that spans background runs, finish deleting application-owned data,
+then call `AuthService.deleteUser(id)` from a `@job`, passing a `ToilUserId`.
+It uses the same account cleanup and session revocation as `/auth/delete`,
+without a signed-in request. Request Actions, Queries, and Derives are rejected.
+It returns `true` after removing the account, or `false` if the ID is absent,
+its index is stale, or its account incarnation no longer owns that ID. Concurrent
+updates and storage failures throw; retry them to resume deletion. A marked account
+cannot sign in while cleanup is incomplete. Permanent incarnation guards and
+session epochs remain after deletion. The ID index removes the deleted account's
+username/realm pointer after the account is removed, using a conditional update
+that preserves pointers for replacement accounts.
+
+Registration stores the ID index before activating the account; sign-in repairs
+missing entries. Existing deployments should backfill their accounts from a Job
+before relying on ID deletion. `AuthService.indexUsers(limit = 8, cursor = null)`
+indexes at most eight accounts per invocation and returns the next cursor, or
+`null` at completion. Persist the cursor after a successful invocation and keep
+calling even when a page indexes no accounts. Retry the same cursor on failure.
+The scan requires a [complete local collection copy](../database/documents.md#background-collection-scans)
+and, for existing native data, the record-directory migration described there.
+Accounts predating stored stable IDs require the original `TOIL_AUTH_DOMAIN`
+value; the Job refuses to guess a historic request hostname or port. Accounts
+with stored IDs do not require that setting.
+
+Normally an ID identifies one realm. If a deployment intentionally assigns the
+same ID to accounts in multiple realms, pass the normalized realm as the second
+argument: `AuthService.deleteUser(id, 'example.com')`. Ambiguous lookups throw.
+The index supports up to sixteen realms per ID. Account pointers include an
+incarnation so a delayed cleanup cannot remove a replacement with another ID.
+Re-registering with identical credentials and identity-domain inputs can reuse
+the same stable ID; applications requiring a distinction between those lifetimes
+should retain their own deletion generation.

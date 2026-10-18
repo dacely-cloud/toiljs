@@ -8,7 +8,7 @@ import { NewMessage } from '../models/NewMessage';
  * The contrast with `Players` (whose comment notes "memory resets next request")
  * is the whole point: every signature is appended to an `events` stream and
  * tallied in a `counter`, so the data SURVIVES across requests under `toiljs dev`
- * (the in-process ToilDB emulator) and runs on ScyllaDB at the edge - same code,
+ * (the in-process ToilDB emulator) and uses persistent ToilDB at the edge - same code,
  * no connection string. On the client:
  *
  *   await Server.REST.guestbook.sign({ body: new NewMessage('Ada', 'hi!') });

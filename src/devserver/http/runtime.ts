@@ -1,8 +1,12 @@
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { type Request, type Response, type Server } from '@dacely/hyper-express';
 import pc from 'picocolors';
+
+import { writeResponseHeader } from 'toiljs/backend';
+import { builtContentSecurityPolicy, DEFAULT_CSP, withSecurityHeaders } from 'toiljs/shared';
 
 import { type EnvelopeRequest, METHOD_CODES } from './envelope.js';
 import { applyCacheRule, lookupCache, type CacheableResult } from './cache.js';
@@ -238,16 +242,27 @@ export function prepareWasmResponse(
                 MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream',
             ]);
         }
-        return { status: result.status, headers, body: new Uint8Array(0), sendfile: file };
+        return {
+            status: result.status,
+            headers: withSecurityHeaders(headers),
+            body: new Uint8Array(0),
+            sendfile: file,
+        };
     }
 
     if (!hasContentType) headers.push(['content-type', 'text/plain; charset=utf-8']);
-    return { status: result.status, headers, body: result.body, sendfile: null };
+    return {
+        status: result.status,
+        headers: withSecurityHeaders(headers),
+        body: result.body,
+        sendfile: null,
+    };
 }
 
 export function sendPreparedResponse(response: Response, out: PreparedHttpResponse): void {
     response.status(out.status);
-    for (const [name, value] of out.headers) response.header(name, value);
+    for (const [name, value] of withSecurityHeaders(out.headers))
+        writeResponseHeader(response, name, value);
     if (out.sendfile !== null) {
         response.sendFile(out.sendfile);
         return;
@@ -279,7 +294,7 @@ export function prepareSsrResponse(
     headers.push(['server', serverHeader]);
     return {
         status: out.status,
-        headers,
+        headers: withSecurityHeaders(headers),
         body: headOnly ? new Uint8Array(0) : out.html,
         sendfile: null,
     };
@@ -381,7 +396,26 @@ export function assembleRouteSsr(
     module: WasmServerModule | null,
     envelopeReq: EnvelopeRequest,
 ): SsrResult | null {
-    if (route.entries.length === 0) return { status: 200, headers: [], html: route.tmpl };
-    if (module === null || !module.available) return null;
-    return assembleSsr(route, module.dispatchRender(envelopeReq));
+    // Development templates retain a startup nonce. Rotate it in the trusted
+    // template BEFORE splicing request values, preserving all byte offsets.
+    const templateHtml = new TextDecoder().decode(route.tmpl);
+    let policy = builtContentSecurityPolicy(templateHtml) ?? DEFAULT_CSP;
+    const oldNonce = /'nonce-([A-Za-z0-9+/]{32})'/.exec(policy)?.[1];
+    if (oldNonce !== undefined) {
+        const nonce = randomBytes(24).toString('base64');
+        route = {
+            ...route,
+            tmpl: new TextEncoder().encode(templateHtml.replaceAll(oldNonce, nonce)),
+        };
+        policy = policy.replaceAll(oldNonce, nonce);
+    }
+    const out =
+        route.entries.length === 0
+            ? { status: 200, headers: [], html: route.tmpl }
+            : module === null || !module.available
+              ? null
+              : assembleSsr(route, module.dispatchRender(envelopeReq));
+    if (out === null) return null;
+    // Derive trust from the immutable template, before any request data is spliced.
+    return { ...out, headers: withSecurityHeaders(out.headers, policy).map(([k, v]) => [k, v]) };
 }

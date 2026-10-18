@@ -44,3 +44,11 @@ export interface EmailBackendConfig {
     /** SMTP connection details (the `gmail` / `smtp` providers). */
     readonly smtp?: SmtpBackendConfig;
 }
+
+export {
+    DEFAULT_COOP,
+    DEFAULT_CSP,
+    contentSecurityPolicy,
+    builtContentSecurityPolicy,
+    withSecurityHeaders,
+} from './security.js';

@@ -1,3 +1,4 @@
+import { resetImageState } from '../images/index.js';
 /**
  * Dev STREAM (L2/L3) emulation: load a `release-stream.wasm` hot artifact into a resident per-connection
  * box and drive its lifecycle (`@connect` / `@message` / `@close` / `@disconnect`) through the
@@ -168,6 +169,7 @@ export class DevStreamBox {
     }
 
     private dispatch(eventKind: number, streamId: bigint): bigint {
+        resetImageState(this._state.images);
         const lo = Number(streamId & 0xffff_ffffn) | 0;
         const hi = Number((streamId >> 32n) & 0xffff_ffffn) | 0;
         return this.exports.stream_dispatch(eventKind, lo, hi);

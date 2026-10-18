@@ -28,9 +28,11 @@ These mark a route's dynamic bits so the edge can server-render it (the compiler
 | --- | --- | --- |
 | `Toil.Hole` | `Hole(props: HoleProps): ReactNode` | A scalar text hole (`{ id: string; children?: ReactNode }`); renders `children` in the browser, a text insertion point under the SSR extractor. |
 | `Toil.Repeat` | `Repeat<T>(props: RepeatProps<T>): ReactNode` | A repeat region (`{ id; each: readonly T[]; children: (item: T, index: number) => ReactNode }`); `each.map(children)` in the browser. |
-| `Toil.RawHtml` | `RawHtml(props: RawHtmlProps): ReactNode` | A raw-HTML block hole (`{ id; html; as? }`); wraps `dangerouslySetInnerHTML` in a host element (default `div`). |
+| `Toil.RawHtml` | `RawHtml(props: RawHtmlProps): ReactNode` | A raw-HTML block hole (`{ id; html; as? }`); sanitizes HTML in the browser and wraps it in a host element (default `div`). Sanitize server data before rendering. |
 | `Toil.attr` | `attr(id: string, value: string): string` | An attribute-value hole, used in attribute position (`href={Toil.attr('u', d.url)}`); returns `value` unchanged in the browser. |
 | `Toil.Island` | `Island(props: IslandProps): ReactNode` | A client-only escape hatch (`{ children? }`); renders nothing on the server and first paint, then reveals `children` after mount (so no SSR / SEO, by design). |
+
+`Toil.sanitizeHtml(html: string): string | TrustedHTML` sanitizes HTML in browser code for React or DOM sinks. It returns a Trusted Types value when supported and throws without a browser DOM.
 
 ## Navigation
 

@@ -52,15 +52,16 @@ export function percentEncode(s: string): string {
  * form-encoded, so `+` is not a space).
  */
 export function percentDecode(s: string): string {
-    const n = s.length;
+    const input = Uint8Array.wrap(String.UTF8.encode(s));
+    const n = input.length;
     const bytes = new Array<u8>();
     let i = 0;
     while (i < n) {
-        const c = s.charCodeAt(i);
+        const c = input[i];
         if (c == 37 && i + 2 < n) {
             // '%'
-            const hi = hexVal(s.charCodeAt(i + 1));
-            const lo = hexVal(s.charCodeAt(i + 2));
+            const hi = hexVal(input[i + 1]);
+            const lo = hexVal(input[i + 2]);
             if (hi >= 0 && lo >= 0) {
                 bytes.push(<u8>((hi << 4) | lo));
                 i += 3;

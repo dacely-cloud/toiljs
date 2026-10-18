@@ -104,17 +104,17 @@ On successful login the server mints **two** cookies:
 - **`__Secure-toil_user`**: a **readable** companion carrying the same payload, so the browser can show
   "logged in as …" via the client's `getUser()`. The server **never trusts it**, it is display-only.
 
-Each request runs in a fresh wasm instance, but the signed cookie is self-contained, so no server-side
-session store is needed. `AUTH_SESSION_SECRET` must be identical across every edge instance (it is, via the
+Each request runs in a fresh wasm instance. The signed payload is self-contained,
+but verification also reads the revoked-session and user-generation collections. `AUTH_SESSION_SECRET` must be identical across every edge instance (it is, via the
 env store) so a cookie minted anywhere verifies everywhere.
 
 ## The stable user identity: `ToilUserId`
 
-At login the server derives a stable, tenant-scoped id and stores it in the session (the first field of the
+At account creation the server derives and stores a stable, tenant-scoped id; login puts that stored id in the session (the first field of the
 built-in `@user`):
 
 ```
-toilUserId = SHA-256( mldsaPublicKey ‖ username ‖ domain )      // 256 bits
+toilUserId = SHA-256(bytes("toil.userid.v1") ‖ bytes(mldsaPublicKey) ‖ bytes(username) ‖ bytes(domain))
 ```
 
 - **Stable:** same login key + username on the same tenant `domain` → same id, forever, across sessions
@@ -136,3 +136,5 @@ toilUserId = SHA-256( mldsaPublicKey ‖ username ‖ domain )      // 256 bits
 
 Residual responsibilities are yours: set the [secrets](./configuration.md), pin your deployment's KEM
 public key in the client, and raise the Argon2id params for production.
+
+For native/mobile ports, see the [binary protocol and verified test vectors](./native-protocol.md).

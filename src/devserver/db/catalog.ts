@@ -26,6 +26,15 @@ import {
     MAX_FILL_WAIT_MS,
 } from './types.js';
 
+/** Native CatalogLimits defaults; u16 wire counts are not the platform allowance. */
+export const DEFAULT_CATALOG_LIMITS = {
+    maxBytes: 256 * 1024,
+    maxDatabases: 32,
+    maxCollectionsPerDb: 128,
+    maxCollections: 512,
+    maxFields: 256,
+} as const;
+
 function validReplication(value: number): boolean {
     return value === 0 || value === 1 || value === 2 || value === 5;
 }
@@ -46,15 +55,20 @@ export function parseCatalog(wasm: Buffer): DbCatalogState {
         return { kind: 'no-section' }; // garbage section table (mid-rebuild) -> no catalog
     }
     if (sec === null) return { kind: 'no-section' };
+    if (sec.length > DEFAULT_CATALOG_LIMITS.maxBytes) return { kind: 'malformed' };
 
     const r = new DataReader(sec);
     const version = r.readU16();
     if (!r.ok || version !== 1) return { kind: 'malformed' };
     const ndb = r.readU16();
+    if (ndb > DEFAULT_CATALOG_LIMITS.maxDatabases) return { kind: 'malformed' };
     for (let d = 0; d < ndb && r.ok; d++) {
         const db = r.readString();
         const nc = r.readU16();
+        if (nc > DEFAULT_CATALOG_LIMITS.maxCollectionsPerDb) return { kind: 'malformed' };
         for (let c = 0; c < nc && r.ok; c++) {
+            if (collections.size >= DEFAULT_CATALOG_LIMITS.maxCollections)
+                return { kind: 'malformed' };
             const name = r.readString();
             const family = r.readU8();
             r.readString(); // keyType
@@ -73,6 +87,7 @@ export function parseCatalog(wasm: Buffer): DbCatalogState {
                 return { kind: 'malformed' };
             const fillAllowStale = fillAllowStaleByte === 1;
             const nFields = r.readU16();
+            if (nFields > DEFAULT_CATALOG_LIMITS.maxFields) return { kind: 'malformed' };
             const fields: DevField[] = [];
             for (let f = 0; f < nFields; f++) {
                 const fName = r.readString();

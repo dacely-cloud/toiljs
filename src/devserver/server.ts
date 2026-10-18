@@ -1,3 +1,4 @@
+import { startDevBlobStorage } from './files/dev.js';
 /**
  * The toiljs WASM dev server: a uWebSockets.js front (via @dacely/hyper-express,
  * the same stack as `toiljs/backend`) that dispatches HTTP requests into the
@@ -23,6 +24,7 @@ import path from 'node:path';
 
 import { Server } from '@dacely/hyper-express';
 import pc from 'picocolors';
+import { installSecurityHeaders } from 'toiljs/backend';
 
 import type { EmailBackendConfig } from 'toiljs/shared';
 
@@ -170,6 +172,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
 
     const app = new Server(runtimeServerOptions(options));
     installRuntimeErrorHandler(app);
+    installSecurityHeaders(app);
 
     const nodeMode = options.nodeMode ?? 'all';
 
@@ -182,6 +185,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         wireWebsocketProxy(app, options.vite);
     }
 
+    const blobs = await startDevBlobStorage(root);
     const daemon = startDaemonRuntime({
         coldWasmFile: options.coldWasmFile,
         nodeMode,
@@ -238,13 +242,20 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         await proxyToVite(request, response, options.vite);
     });
 
-    await app.listen(options.port, host);
+    try {
+        await app.listen(options.port, host);
+    } catch (error) {
+        daemon?.close();
+        await blobs?.close();
+        throw error;
+    }
 
     return {
         port: options.port,
         host,
         close: async (): Promise<void> => {
             daemon?.close();
+            await blobs?.close();
             await app.shutdown();
         },
     };

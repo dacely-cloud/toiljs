@@ -1,3 +1,4 @@
+import { readDeriveCatalog, deriveIdentity, type DeriveMetadata } from 'toiljs/io';
 import { customSection } from '../wasm/sections.js';
 
 /**
@@ -13,45 +14,21 @@ import { customSection } from '../wasm/sections.js';
  *   u16 n_derives
  *   per derive: u16 derive_id, str db_name, str method_name   (str = u32 len + bytes)
  */
-export interface DeriveEntry {
-    readonly deriveId: number;
-    readonly dbName: string;
-    readonly methodName: string;
-}
+export type DeriveEntry = DeriveMetadata;
 
-const SECTION = 'toildb.derives';
-const VERSION = 1;
-const MAX_SECTION_BYTES = 128 * 1024;
-const MAX_DERIVES = 1024;
-const MAX_NAME_BYTES = 1024;
-const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
+/** Length-framed identity; the numeric id is only a dispatcher index. */
+export function deriveCheckpointKey(entry: DeriveEntry): string {
+    return JSON.stringify([entry.dbName, entry.methodName]);
+}
+export const deriveContinuationKey = deriveIdentity;
 
 export function parseDerives(wasm: Buffer): readonly DeriveEntry[] {
-    let section: Buffer | null;
     try {
-        section = customSection(wasm, SECTION);
+        const section = customSection(wasm, 'toildb.derives');
+        return section === null ? [] : (readDeriveCatalog(section) ?? []);
     } catch {
         return [];
     }
-    if (section === null) return [];
-    if (section.length > MAX_SECTION_BYTES) return [];
-
-    const r = new Reader(section);
-    const version = r.u16();
-    if (!r.ok || version !== VERSION) return [];
-    const count = r.u16();
-    if (!r.ok || count > MAX_DERIVES) return [];
-
-    const derives: DeriveEntry[] = [];
-    for (let i = 0; i < count && r.ok; i++) {
-        const deriveId = r.u16();
-        const dbName = r.string();
-        const methodName = r.string();
-        if (!r.ok || dbName.length === 0) return [];
-        derives.push({ deriveId, dbName, methodName });
-    }
-    if (!r.ok || r.remaining() !== 0) return [];
-    return derives;
 }
 
 /**
@@ -71,51 +48,4 @@ export function derivesForWrites(
         dbs.add(slash >= 0 ? key.slice(0, slash) : key);
     }
     return derives.filter((d) => dbs.has(d.dbName));
-}
-
-class Reader {
-    private pos = 0;
-    ok = true;
-
-    constructor(private readonly bytes: Buffer) {}
-
-    remaining(): number {
-        return this.bytes.length - this.pos;
-    }
-
-    u16(): number {
-        if (!this.ok || this.pos + 2 > this.bytes.length) {
-            this.ok = false;
-            return 0;
-        }
-        const out = this.bytes.readUInt16LE(this.pos);
-        this.pos += 2;
-        return out;
-    }
-
-    u32(): number {
-        if (!this.ok || this.pos + 4 > this.bytes.length) {
-            this.ok = false;
-            return 0;
-        }
-        const out = this.bytes.readUInt32LE(this.pos);
-        this.pos += 4;
-        return out;
-    }
-
-    string(): string {
-        const len = this.u32();
-        if (!this.ok || len > MAX_NAME_BYTES || this.pos + len > this.bytes.length) {
-            this.ok = false;
-            return '';
-        }
-        try {
-            const out = UTF8_DECODER.decode(this.bytes.subarray(this.pos, this.pos + len));
-            this.pos += len;
-            return out;
-        } catch {
-            this.ok = false;
-            return '';
-        }
-    }
 }

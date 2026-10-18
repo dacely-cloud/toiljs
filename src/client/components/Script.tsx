@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect } from 'react';
+import { isDataScript, setScriptBody, setScriptData, setScriptSource } from '../security.js';
 
 /**
  * When a {@link Script} is injected, relative to the app becoming interactive:
@@ -19,11 +20,11 @@ export interface ScriptProps {
     id?: string;
     /** `type` attribute (e.g. `'module'`, `'application/json'`). */
     type?: string;
-    /** Fired once the script has loaded (external) or been inserted (inline). */
+    /** Fired once the script has loaded and executed. */
     onLoad?: () => void;
     /** Fired after load, and on every later mount once the script is already loaded. */
     onReady?: () => void;
-    /** Fired if an external script fails to load. */
+    /** Fired if script loading fails or its URL is rejected. */
     onError?: (error: unknown) => void;
     /** Inline script body. Mutually exclusive with `src`. */
     children?: string;
@@ -39,26 +40,26 @@ function inject(props: ScriptProps, key: string): void {
     el.dataset.toilScript = key;
     if (type !== undefined) el.type = type;
 
-    if (src !== undefined) {
-        el.src = src;
-        el.async = true;
-        el.addEventListener('load', () => {
-            registry.set(key, 'ready');
-            onLoad?.();
-            onReady?.();
-        });
-        el.addEventListener('error', (event) => {
-            registry.delete(key); // allow a later remount to retry
-            onError?.(event);
-        });
-        document.head.appendChild(el);
-    } else {
-        el.textContent = children ?? '';
+    if (src !== undefined) setScriptSource(el, src);
+    else if (isDataScript(type ?? '')) {
+        setScriptData(el, children ?? '');
         document.head.appendChild(el);
         registry.set(key, 'ready');
         onLoad?.();
         onReady?.();
-    }
+        return;
+    } else setScriptBody(el, children ?? '');
+    el.async = true;
+    el.addEventListener('load', () => {
+        registry.set(key, 'ready');
+        onLoad?.();
+        onReady?.();
+    });
+    el.addEventListener('error', (event) => {
+        registry.delete(key); // allow a later remount to retry
+        onError?.(event);
+    });
+    document.head.appendChild(el);
 }
 
 /**
@@ -87,7 +88,13 @@ export function Script(props: ScriptProps): ReactNode {
 
         registry.set(key, 'loading');
         const run = (): void => {
-            inject(props, key);
+            try {
+                inject(props, key);
+            } catch (error) {
+                registry.delete(key);
+                props.onError?.(error);
+                if (!props.onError) throw error;
+            }
         };
 
         if (strategy === 'lazyOnload') {

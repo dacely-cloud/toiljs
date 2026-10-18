@@ -78,6 +78,31 @@ Then put a reverse proxy (nginx, Caddy) in front for TLS and a real hostname, po
 - **Self-host is one place, not the whole world.** You get one server (or however many you run yourself). The latency and worldwide reach of the managed edge is exactly the thing self-hosting does not give you.
 - **The database is different.** Self-hosting runs the built server, but ToilDB's worldwide data layer is an edge feature. Treat self-host as a way to run and test your build, not as a substitute for the managed edge's global database.
 
+## Default browser security
+
+See [Security](../concepts/security.md#default-browser-security) for the complete policy, configuration examples, Trusted Types usage, and deployment checks.
+
+`toiljs build` and `toiljs start` enable browser security without application configuration:
+
+- An enforced **Content-Security-Policy** authorizes scripts with build-time hashes and Subresource Integrity, including static imports and lazy route chunks. It blocks inline event handlers, `eval`, plugin objects, and changes to the document base URL. WebAssembly compilation remains available for client password hashing.
+- **Cross-Origin-Opener-Policy: same-origin** isolates the window from cross-origin openers and popups. Integrations that require a cross-origin popup to keep its opener must account for this policy.
+- **Trusted Types** enforcement blocks raw strings at DOM injection sinks in supporting browsers. Toil uses a private script URL policy for `Toil.Script`, and DOMPurify for `Toil.RawHtml`. There is no permissive default policy. In browser code, `Toil.sanitizeHtml(html)` returns sanitized HTML suitable for React's `dangerouslySetInnerHTML`, including `TrustedHTML` when supported. Server code must sanitize raw HTML before rendering it.
+
+The policy permits React inline styles, same-origin connections, and local images/fonts (including data/blob image URLs). Add third-party resource origins through `client.cspSources` in `toil.config.ts`, for example `cspSources: { 'connect-src': ['https://api.example.com'], 'img-src': ['https://images.example.com'], 'frame-src': ['https://widget.example.com'] }`. These additions apply to both the headers and meta policy, in development and production. Script trust and Trusted Types enforcement remain enabled. See [Scripts](../frontend/scripts.md) for loading intentional application scripts. A backend handler can supply its own CSP or COOP with `Response.setHeader`; defaults fill missing headers case-insensitively.
+
+`toiljs dev` applies the same protections using fresh per-request script nonces and permits WebSocket connections for HMR. Production uses stable hashes, so HTML remains cacheable. SSR policy comes from the trusted template before request values are inserted.
+
+The build includes `build/client/_headers` with the production CSP and COOP for static hosts that support this format. Other hosts, including managed edge integrations, must apply these headers when serving the build. The HTML also carries a CSP meta fallback; **COOP and `frame-ancestors` require HTTP headers**. Native backend response envelopes include default CSP and COOP themselves. HSTS is left to the deployment's TLS configuration.
+
+To run the browser security regression suite with Chrome installed:
+
+```bash
+npm run build
+TOILJS_BROWSER_TESTS=1 npx vitest run test/security-browser.test.ts
+```
+
+Set `CHROME_BIN` if Chrome is installed outside `/usr/bin/google-chrome`.
+
 ## The managed Dacely edge
 
 The managed **Dacely edge** is the platform toiljs targets: a fleet of servers in many cities that runs your compiled backend as close to each user as possible, backed by the worldwide **ToilDB** database. You write one project, and the build already decides which part of your code belongs to which layer of the edge.

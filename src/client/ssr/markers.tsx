@@ -22,6 +22,7 @@
  */
 
 import { createElement, Fragment, type ReactNode, useEffect, useState } from 'react';
+import { sanitizeHtml } from '../html.js';
 
 /** Token framing codepoints (Unicode Private Use Area). */
 export const SENTINEL_START = String.fromCharCode(0xe000);
@@ -100,8 +101,8 @@ export function attr(id: string, value: string): string {
 
 export interface RawHtmlProps {
     id: string;
-    /** Raw HTML string. The author owns sanitisation (same as React
-     * `dangerouslySetInnerHTML`). */
+    /** HTML string. Sanitized in the browser for Trusted Types. The author
+     * must also sanitize data before inserting it into server-rendered HTML. */
     html: string;
     /** Wrapper element tag (raw HTML needs a host element to live in so server
      * and client DOM match). Defaults to `div`. */
@@ -116,7 +117,11 @@ export function RawHtml(props: RawHtmlProps): ReactNode {
     if (ssrBuild) {
         return createElement(tag, null, token(HoleKindChar.Raw, props.id));
     }
-    return createElement(tag, { dangerouslySetInnerHTML: { __html: props.html } });
+    return createElement(tag, {
+        dangerouslySetInnerHTML: {
+            __html: typeof window === 'undefined' ? props.html : sanitizeHtml(props.html),
+        },
+    });
 }
 
 export interface RepeatProps<T> {

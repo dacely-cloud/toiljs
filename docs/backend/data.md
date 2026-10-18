@@ -44,6 +44,7 @@ From your `@data` class, the compiler adds these members:
 
 | Member | What it does |
 | --- | --- |
+| `encodedSize(): i32` | Exact binary size including the 4-byte type-id frame. It currently encodes the value to measure it. |
 | `encode(): Uint8Array` | Serialize to bytes, with a 4-byte type-id prefix. |
 | `static decode(buf): T` | Rebuild a value from bytes produced by `encode()`. |
 | `encodeInto(w: DataWriter)` | Serialize without the type-id frame, for nesting inside another value. |
@@ -52,6 +53,21 @@ From your `@data` class, the compiler adds these members:
 | `static dataId(): u32` | A stable hash (FNV-1a) of the class name, written as the type-id prefix. |
 
 You mostly do not call these directly; routes, RPC, and the database call them for you. But they are there when you need them (for example `value.toJSON().toString()` to build a `Response.json`).
+
+## Editor support in TypeScript 7
+
+`toiljs build` and `toiljs dev` generate `toilscript.*.generated.d.ts` files
+beside the server entry, including typed `encode()` and static `decode()`
+methods. This supports WebStorm and TypeScript 7 without a language-service
+plugin. Keep these files included in the server `tsconfig.json`; the usual
+`"include": ["./**/*.ts"]` includes them. Run a build after upgrading, and restart
+WebStorm's TypeScript service if old errors remain cached.
+
+Use top-level named exports for module-scoped models (`@data export class ...`).
+For a direct compiler build, pass
+`--editorTypes server/toilscript.generated.d.ts` or put that path in the
+`editorTypes` option of `toilconfig.json`. The declarations are editor-only and
+leave the runtime codec unchanged.
 
 ## Supported field types
 
@@ -349,3 +365,93 @@ Gotchas specific to `JSON`:
 - [Typed RPC](./rpc.md): `@data` as RPC arguments and results, and the generated client classes.
 - [The database](../database/README.md): storing `@data` values in ToilDB.
 - [Backend overview](./README.md): where `@data` fits in the request lifecycle.
+
+
+## Checked integer arithmetic and parsing
+
+`u256.tryParse(text, radix)` returns `u256 | null`, without trapping or wrapping.
+Radix must be 10 or 16. Input must contain at least one valid digit; signs,
+whitespace and prefixes are rejected. For example, check the pointer with
+`changetype<usize>(value) == 0` before using the result, since u256 overloads
+value equality. `u256.fromString` remains the throwing API and rejects overflow.
+
+`Checked.add<T>`, `Checked.subtract<T>`, and `Checked.multiply<T>` return
+`CheckedResult<T>` with `ok` and `value`. They support primitive signed/unsigned
+integer types, including 64-bit types; a failure returns `ok == false` and a zero
+value. They do not rely on assertions, so `--noAssert` does not disable checking.
+Floats and big-integer specializations are compile errors.
+
+Constructing `RegExp` is a compile error until regular expressions are implemented;
+it no longer compiles into a runtime stub that traps.
+
+## Sharing pure code with TypeScript clients
+
+A pure module can be compiled unchanged by both TypeScript and ToilScript. Add
+`/// <reference types="toilscript/shared" />` at its top. This shipped types-only
+entry gives the client compiler the numeric names `i8`, `u8`, `i16`, `u16`,
+`i32`, `u32`, `f64`, and `bool`; ToilScript already understands those names.
+There is no runtime shim or global installation. Use the same relative source
+imports from the server and the phone or browser build.
+
+The supported subset consists of explicitly typed functions, local variables,
+conditionals, indexed loops, strings, booleans, `f64` arithmetic, and bounded
+`Uint8Array` access. Use standard operations implemented by both runtimes, such
+as `length`, `charCodeAt`, `slice`, and `subarray`. Keep UI, network, database,
+codec decorators, pointers, and asynchronous work in adapters around that code.
+Use normal value imports for shared functions; ToilScript does not parse
+TypeScript's `import type` syntax.
+
+Integer semantics need explicit conversions in shared code. JavaScript erases
+type assertions and does not truncate an assignment to `u8` or `i32`. Write
+`value & 255`, `value | 0`, or `value >>> 0` where byte, signed 32-bit, or unsigned
+32-bit coercion is intended. Widen bytes **before** shifts: ToilScript applies
+bit operations at the operand's integer width.
+
+```ts
+/// <reference types="toilscript/shared" />
+export function readU32BE(bytes: Uint8Array, offset: i32): u32 {
+    if (offset < 0 || offset > bytes.length - 4) return 0;
+    const a: u32 = bytes[offset], b: u32 = bytes[offset + 1];
+    const c: u32 = bytes[offset + 2], d: u32 = bytes[offset + 3];
+    return ((a << 24) | (b << 16) | (c << 8) | d) >>> 0;
+}
+```
+
+Check bounds before every indexed access and keep integer values within their
+declared ranges. Avoid `i64`/`u64`, integer division, implicit wrapping, `f32`,
+exceptions, dynamic objects, and runtime-specific APIs in shared modules.
+TypeScript and Wasm parity tests compile the identical source file and compare
+byte operations and checked decimal parsing, including malformed input and
+integer boundaries. Use the same approach for a shared photo metadata parser;
+this subset does not supply an image decoder or resizing API.
+
+## Unicode normalization and character classes
+
+Strings support `text.normalize()` (NFC by default), plus `normalize('NFD')`,
+`normalize('NFKC')`, and `normalize('NFKD')`. An unknown form traps. Normalization
+uses pinned Unicode 17.0.0 data and preserves unpaired UTF-16 units.
+
+`Unicode.category(codePoint)` returns the two-letter General_Category, such as
+`Lu`, `Ll`, `Mn`, or `Nd`. `Unicode.isLetter`, `isMark`, `isNumber`, and
+`isWhitespace` test the Unicode L, M, N, and White_Space properties. Pass a
+Unicode code point rather than one half of a surrogate pair:
+
+```ts
+const decomposed = text.normalize('NFKD');
+let folded = '';
+for (let i = 0; i < decomposed.length; i++) {
+    const cp = decomposed.codePointAt(i);
+    if (cp > 0xffff) i++;
+    if (!Unicode.isMark(cp)) folded += String.fromCodePoint(cp);
+}
+```
+
+This example removes marks after compatibility decomposition; decide separately
+whether that behavior is appropriate for your language and search rules.
+`Unicode.version()` reports the table version. Values outside 0..0x10FFFF have
+category `Cn` and fail the property tests. The implementation follows
+[Unicode normalization](https://www.unicode.org/reports/tr15/) and is checked
+against all four forms in the official Unicode 17 normalization conformance
+corpus. Long combining-mark runs use a stable merge sort. The compiler's
+`npm run gen:unicode` regenerates tables from checksum-pinned upstream data;
+the Unicode data license ships with the generated tables.

@@ -15,7 +15,7 @@
 
 import { Server } from '../env/Server';
 import { decodeRequest, encodeResponse } from '../envelope';
-import { Response } from '../response';
+import { Response, ensureSecurityHeaders } from '../response';
 import { Rpc } from '../rpc/Rpc';
 
 // Ensure the cookie library is in every build so its `@global` types
@@ -79,6 +79,7 @@ export function handle(req_ofs: i32, req_len: i32): i64 {
     // and the soft guard tightens to it automatically. Encode runs AFTER decode,
     // so it can never clobber the request; the max() keeps it clear of an
     // oversized request envelope regardless.
+    ensureSecurityHeaders(resp);
     let bound: usize = 512 + <usize>resp.body.length;
     for (let i = 0, n = resp.headers.length; i < n; i++) {
         const h = resp.headers[i];

@@ -38,6 +38,7 @@ Here is every operation, its shape, and what it gives back. `K` is your key type
 | `get` | `get(key: K): V \| null` | the value, or `null` if absent | read one record |
 | `require` | `require(key: K): V` | the value; **traps** if absent | read a record you are sure exists |
 | `getMany` | `getMany(keys: K[]): Array<V \| null>` | one entry per key, in order, each value or `null` | read several records in one call |
+| `scan` | `scan(limit: i32, cursor?: Uint8Array \| null): DocumentPage<K, V>` | typed entries and a continuation cursor | walk a collection from a Job or Derive |
 | `exists` | `exists(key: K): bool` | `true` if the record is present | check presence without reading the value |
 | `create` | `create(key: K, value: V): bool` | `true` if inserted, `false` if the key was already taken | add a **new** record without overwriting |
 | `patch` | `patch(key: K, value: V): V` | the newly stored value; **traps** if the record is absent | replace an **existing** record's value |
@@ -82,6 +83,56 @@ const found: Array<User | null> = AppDb.users.getMany(ids);
 
 In `toiljs dev` and the current production host, one `getMany` call accepts up to **32 keys in a Query**, **64 in an Action**, or **1024 in background function kinds**. Each encoded key may be at most **4096 bytes**, and the complete encoded keys frame (the count, length prefixes, and key bytes) may be at most **2097152 bytes (2 MiB)**. Split a larger list into smaller calls; production also applies cumulative request budgets, so separate requests may be needed for a large job.
 
+### Background collection scans
+
+`Documents.scan(limit, cursor)` lets a **Job or Derive** walk records without
+maintaining Membership buckets. Query and Action cannot call it. Each page has
+`entries` and `cursor`; each entry has `key`, `value`, `encodedKey`, and `snapshot`.
+The snapshot retains the exact stored bytes for conditional cleanup, including
+values decoded through a migration:
+
+```ts
+let cleanupCursor: Uint8Array | null = null;
+
+@daemon
+class Cleanup {
+  @scheduled('1m')
+  @job
+  clean(): void {
+    const page = AppDb.users.scan(32, cleanupCursor);
+    for (let i = 0; i < page.entries.length; i++) {
+      const entry = page.entries[i];
+      if (shouldRemove(entry.value)) {
+        AppDb.users.compareDeleteSnapshot(entry.key, entry.snapshot);
+      }
+    }
+    cleanupCursor = page.cursor;
+  }
+}
+```
+
+A **null cursor ends the walk**. An empty or short page can still carry a cursor:
+the host bounds work spent crossing empty buckets and deleted records. Limits are
+1–64 entries and eight directory/partition probes per page; each probe consumes a
+DB operation. The complete frame, including keys and cursor, must fit the result
+byte budget. There is no snapshot isolation across pages. Concurrent inserts
+before the cursor can be missed until the next walk; use idempotent processing
+and conditional writes. Persist the cursor in your application if a restart must
+resume a walk; otherwise start from null and process safely again. Cursor formats
+are opaque and differ between dev and native hosts.
+
+Native scans require an updated host and a **complete local collection copy**:
+a standalone deployment or an `allPopsHot`/`allPopsFull` collection. A controlled
+multi-cell deployment rejects an edge-cache or regional collection with
+`DataUnavailable`; it cannot safely call the cached subset a complete scan.
+Replication is still eventual, so a fully replicated scan can lag recent remote
+writes. Dev has a complete local store. Native ToilDB indexes only hashes in a separate
+256-bucket directory; it does not duplicate encoded user keys. Deleted hashes and
+failed-create hashes can remain as directory entries, so storage grows with
+distinct historical keys. Existing keyspaces require the operator's record-directory
+backfill after **all writers** have been upgraded; scans fail with
+`SchemaUnavailable` until the backfill finishes.
+
 ### Size limits and file uploads
 
 A stored value may be at most **2097152 encoded bytes (2 MiB)**, including the `@data` message id, field lengths, and other codec overhead. The limit applies in both `toiljs dev` and production. A photo can be stored whole when its encoded record fits this limit; a photo with 2 MiB of raw content will exceed it once wrapped in a record. `create`, `patch`, `upsert`, and `enqueue` all enforce the same limit; changing the write method does not bypass it. Events, View values, Unique owners, and Membership members have the same encoded value cap.
@@ -98,12 +149,19 @@ Write payloads also consume these byte budgets; they are not reserved solely for
 
 Set `TOIL_DEV_CHECK_DB_LIMITS=1` when starting `toiljs dev` or `toiljs start` to check default database operation counts, write counts, write-payload bytes, complete result framing, and cumulative database bytes locally. The checks are optional so existing local fixtures can still use larger data sets. Gas, storage latency, DB wait deadlines, and additional internal operations for unique-field enforcement require validation on the native host; the synchronous Node emulator does not reproduce them.
 
-For files larger than the encoded value or request budgets allow, store the content in external file storage and keep its reference and metadata in Documents, or store chunks under separate keys:
+Framework database calls share the request's budget on both hosts; authentication
+has no separate allowance. A valid signed-in request normally uses three reads
+(revoked-session lookup, epoch-head read, next-revision lookup), once per request.
+`revokeUserSessions` normally adds five operations and two writes. Stale heads and
+concurrent revocations can cost more. These collections have no `@unique` fields;
+the internal unique-field enforcement caveat above does not add operations to
+these session checks.
 
-1. Give each upload an id and store each chunk under `(uploadId, chunkIndex)`. Reserve room below 2 MiB for the record's codec overhead, and choose smaller chunks if the deployed request result budget requires them. Check your complete encoded record and result sizes before writing it.
-2. Store upload metadata separately: content type, total byte count, expected chunk count, and an expiry. Bound those counts and the number of chunks processed by any one request.
-3. Validate that every expected chunk arrived before publishing a completed upload. Readers use the completion marker so an interrupted upload is not mistaken for a complete file. Retry chunk writes with `upsert` when replacing that chunk is acceptable.
-4. Read known chunk keys with bounded `getMany` calls or individual `get` calls, keeping every result and the request's total under the deployed budgets. Remove abandoned chunks using background work. Allow for replication delay when verifying newly written chunks from a different cell.
+Use [Blobs](./blobs.md) for files: typed keys, direct streamed uploads/downloads,
+and byte-range reads. Keep application metadata and the file key in Documents.
+The production adapter uses S3-compatible storage and dev supplies a local disk
+adapter. A complete blob transfer publishes the file, including replacements;
+application code does not need a chunk table or completion marker.
 
 The local HTTP transport body limit defaults to **8 MiB**. Dev also bounds the full encoded request at 8 MiB and uses the compiled request-envelope window like the current native edge: requests that fit below `memoryBase` use the reserved prefix, while larger requests are delivered above the heap. The toiljs entrypoint reserves that tail before decoding. `memoryBase` controls this fast-path window rather than a hard upload-body cap; accepting an upload does not make its body a valid database value. See [route execution and transport limits](../concepts/config.md#route-execution-and-transport-limits) and [upload expiry versus elapsed deadlines](../services/time.md#upload-expiry-versus-elapsed-deadlines).
 
@@ -161,7 +219,7 @@ returns `false` if another writer changed or removed it. Neither operation
 supports values with `@unique` fields. The synchronous host fails closed when
 a key belongs to another cell.
 
-On ScyllaDB, a conditional state change and its recovery journal commit together
+On the native host, a conditional state change and its recovery journal commit together
 in the same partition. Shipping that journal to the replication oplog is a
 separate step, so the owner can return success before peers receive the value.
 Pending journals survive restarts and are replayed before writer sequences are
@@ -319,3 +377,45 @@ Documents follows ToilDB's general model (see [the overview](./README.md#eventua
 - [Data types (`@data`)](../backend/data.md): keys and values.
 - [Counters](./counters.md): when you are really just counting.
 - [Events](./events.md) and [Views](./views.md): for "the latest N" and precomputed reads.
+
+### Inspecting the request budget
+
+`Db.budget()` returns a snapshot with `ops`, `writes`, and `bytes`, their limits
+(`maxOps`, `maxWrites`, `maxBytes`, `maxResultBytes`), and `remainingOps`,
+`remainingWrites`, `remainingBytes`. It includes framework calls. Reading the
+meter consumes host gas but no database operation or byte allowance and does
+not replace the last database result. Native snapshots use the operator's
+configured limits; dev snapshots use the native defaults even when optional
+limit enforcement is off. Set `TOIL_DEV_TRACE_DB_LIMITS=1` to print used and
+remaining resources after each dev operation.
+
+Result-byte accounting includes the complete host frame:
+
+| Read | Counted result bytes |
+| --- | --- |
+| A document, unique owner, or View | The encoded stored value |
+| `getMany` / `lookupMany` | 4-byte count; 1 byte per missing item; 9 bytes plus encoded value per present item |
+| Event or membership list | 4-byte count; 8 bytes plus encoded value per item |
+| Membership or sorted-index page | The list frame above plus 1 cursor-presence byte, and, when present, 4 bytes plus the cursor |
+
+`data.take_result` copies an already-counted result without charging it again.
+The HTTP response envelope and headers are not database result bytes. Write
+payloads also consume the cumulative budget; conditional writes count their
+expected bytes as well. An Action read of a 123,573-byte **encoded value** has
+7,499 bytes of single-result headroom under the default 131,072-byte ceiling.
+That does not describe raw photo size or the remaining cumulative allowance.
+
+### What a trap leaves behind
+
+Ordinary database calls commit independently. On both the dev and native hosts,
+a write that completed before a later guest trap remains visible; discarding
+the Wasm instance does not undo it. The same applies when a later operation
+exceeds a budget. The dev store makes those changes immediately in memory;
+its configured snapshot persistence flushes on successful and trapped dispatches
+(best effort if the local filesystem fails). Native storage commits
+through its storage engine before the successful operation returns.
+
+Use conditional writes and idempotent retry/recovery steps for workflows that
+span records. An ordinary sequence of calls has no request-wide rollback.
+For conditional all-or-nothing writes across collections in one explicit
+partition, use [atomic partitioned documents](./atomic.md).

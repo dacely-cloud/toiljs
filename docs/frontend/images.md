@@ -30,7 +30,7 @@ export default function Post() {
 
 `alt` is required (toiljs enforces it for accessibility). For a purely decorative image, pass `alt=""`.
 
-There is no server-side resizing here: `Toil.Image` is a client component. Point `src` at an already-optimized image. When you import an image (see below), Vite hashes and optimizes the file for you.
+`Toil.Image` is a client component. Point `src` at an already-optimized image. Server code can process uploads with [`Images.resize` and `Images.thumbnail`](../backend/images.md). When you import an image (see below), Vite hashes and optimizes the file for you.
 
 ## Automatic blur placeholders with `?toil`
 
@@ -135,7 +135,7 @@ Every other standard `<img>` attribute (`className`, `style`, `onLoad`, `sizes`,
 
 ## Gotchas
 
-- **No server-side resizing.** `Toil.Image` does not shrink or convert your image at request time. Ship an appropriately sized `src` (importing it lets Vite optimize and hash it). The `?toil` blur is only a placeholder, not a resized copy.
+- **Prepare the source image.** `Toil.Image` does not shrink or convert its URL at request time. Process uploaded images with the [server image API](../backend/images.md), or import a sized asset. The `?toil` blur is only a placeholder.
 - **A placeholder needs a reserved box.** `placeholder="blur"` only shows if there is a size to paint into. Give `width` + `height`, or use `fill` inside a sized parent.
 - **`?toil` is for raster images.** SVGs and animated formats do not get a generated blur (importing them with `?toil` skips the blur step). Import an SVG normally.
 - **`alt` is mandatory.** This is intentional. For decorative images that add no meaning, pass `alt=""` so screen readers skip them.

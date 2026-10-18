@@ -77,7 +77,7 @@ This is the hard part that almost nobody ships, so here is a straight account of
 
 The per-key-home model and all its core logic are **built and tested**: placement, rehoming, replication, idempotent apply, escrow, quotas, failover. This is running code, and it passes its tests.
 
-The **live multi-region deployment** is not on by default. Wiring many real regions into one running mesh (the WAN routing) and the [ScyllaDB](https://www.scylladb.com/) storage that backs a production cluster are **configuration-gated**. You switch them on for a real deployment. You do not get a live global write cluster automatically. The full database-level **leader fencing** on the write path is also still landing, and a host-side leader gate is the current version. The design is settled. What remains is the last-mile host wiring.
+The **live multi-region deployment** is not on by default. Wiring many real regions into one running mesh (the WAN routing) and the persistent storage that backs a production cluster are **configuration-gated**. You switch them on for a real deployment. You do not get a live global write cluster automatically. The full database-level **leader fencing** on the write path is also still landing, and a host-side leader gate is the current version. The design is settled. What remains is the last-mile host wiring.
 
 On your laptop, `toiljs dev` runs a single **in-process** database. Everything homes in one place, so your code behaves exactly as it will worldwide. The distribution only spreads out once you deploy with the multi-cell backing configured. You write your app the same way either way.
 

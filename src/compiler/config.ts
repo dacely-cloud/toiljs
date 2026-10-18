@@ -69,6 +69,9 @@ export interface ClientConfig {
      * `@font-face` font so it loads in parallel with the CSS (faster text paint). Default `true`.
      */
     readonly fonts?: boolean;
+    /** Additional resource origins or Trusted Types policy names, keyed by CSP directive.
+     * Script trust, Trusted Types enforcement, object-src and base-uri remain framework-owned. */
+    readonly cspSources?: Readonly<Record<string, readonly string[]>>;
     /**
      * Animate cross-page navigations with the browser View Transitions API (a crossfade by default;
      * add `view-transition-name` in CSS for shared-element transitions). Respects
@@ -205,6 +208,7 @@ export interface ResolvedToilConfig {
     readonly images: boolean;
     /** Whether build-time font preloading is enabled. */
     readonly fonts: boolean;
+    readonly cspSources?: Readonly<Record<string, readonly string[]>>;
     /** Whether animated View Transitions are enabled for navigation. */
     readonly viewTransitions: boolean;
     /** Whether navigations are wrapped in a React transition (keep current page while loading). */
@@ -293,6 +297,7 @@ export async function loadConfig(
         host: opts.host ?? envHost() ?? client.host ?? '127.0.0.1',
         images: client.images ?? true,
         fonts: client.fonts ?? true,
+        cspSources: client.cspSources ?? {},
         viewTransitions: client.viewTransitions ?? false,
         transitions: client.transitions ?? false,
         devtools: client.devtools !== false,

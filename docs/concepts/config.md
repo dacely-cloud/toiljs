@@ -74,6 +74,7 @@ Configures the frontend: source folders, the dev server, and build-time optimiza
 | `port` | `number` | `3000` | The dev server port. `--port` on the CLI overrides it. |
 | `images` | `boolean` | `true` | Optimize imported images at build time (resize and convert). See [Images](../frontend/images.md). |
 | `fonts` | `boolean` | `true` | Preload bundled fonts (inject `<link rel="preload">` for each `@font-face`) so text paints faster. |
+| `cspSources` | `Readonly<Record<string, readonly string[]>>` | `{}` | Append resource origins or Trusted Types policy names to the default CSP. See [`client.cspSources`](#clientcspsources). |
 | `viewTransitions` | `boolean` | `false` | Animate page navigations with the browser View Transitions API (a crossfade by default). Respects `prefers-reduced-motion`. |
 | `transitions` | `boolean` | `false` | Wrap navigations in a React transition, keeping the current page visible while the next route's loader runs (instead of showing its loading state immediately). |
 | `devtools` | `boolean` or object | `true` | The floating dev toolbar (route/build info, errors, live controls). It is dev-only and never ships in production. Set `false` to disable, or pass an object to configure its AI integration. |
@@ -95,6 +96,24 @@ export default defineConfig({
     },
 });
 ```
+
+### `client.cspSources`
+
+CSP, COOP, and Trusted Types are enabled by default. Use `cspSources` to permit resources from additional origins without replacing the generated script policy:
+
+```ts
+export default defineConfig({
+    client: {
+        cspSources: {
+            'connect-src': ['https://api.example.com'],
+            'img-src': ['https://images.example.com'],
+            'frame-src': ['https://widgets.example.com'],
+        },
+    },
+});
+```
+
+Entries extend the directive's defaults in development and production. Rebuild before deploying a change. Supported directives, validation rules, Trusted Types policy names, and external-host requirements are covered in [Security](./security.md#allowing-additional-resources). Script execution rules and Trusted Types enforcement cannot be disabled through this option. This setting applies to frontend documents; custom backend HTML handlers set their policies with `Response.setHeader`.
 
 ### `client.devtools`
 

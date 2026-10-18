@@ -25,6 +25,21 @@ check revocation state again; local revocation and signing-secret changes invali
 the cached result. Temporary failures reading revocations, generations, or
 two-factor state abort the request; they never mean that a restriction is absent.
 
+Session generations use immutable revocation claims and a conditional head update.
+Reads probe at most eight revisions beyond the head. Writable requests repair a
+stale head without overwriting a concurrent advance; read-only queries never
+repair it. If a chain exceeds the probe limit, verification fails closed with
+`Session state recovering; retry`. A writable sign-in or revocation attempt still
+persists its scanned progress before failing, so repeated attempts recover even
+chains longer than 64 revisions. No sessions are minted from a partial scan.
+Authentication calls count against the same database budget as your handler;
+see [database limits](../database/documents.md#size-limits-and-file-uploads).
+
+When a generated `@auth` guard returns 401, it clears both the signed session and
+readable user cookies, using their HTTP or HTTPS names and attributes. Storage
+failures abort verification instead of returning that 401, preserving credentials
+for a retry.
+
 The `AuthStateDb` layout replaces the separate session and factor database
 namespaces. It requires a fresh store or an explicit migration of existing security
 state; it does not read the previous namespaces. The Nerva rollout uses a database

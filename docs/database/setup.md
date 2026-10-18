@@ -132,8 +132,8 @@ When toilscript compiles your backend, it scans every `@database` class and writ
 
 Then, wherever your backend runs, the host reads that catalog once at startup and builds your collections to match:
 
-- Under **`toiljs dev`**, the host is an in-process, in-memory emulator. It reads the catalog and stands up all seven families in memory. This is a development store: single process, single tenant, and cleared when you restart. It exists so you can build and test against real ToilDB behavior with no services to run.
-- On the **Dacely edge**, the host is the real ToilDB, backed by a globally distributed ScyllaDB cluster. It reads the *same* catalog and serves the *same* operations, now durable and worldwide.
+- Under **`toiljs dev`**, the host is an in-process emulator. It reads the catalog and stands up all seven families, persisting development data under `.toil/devdata.json` across restarts. This is a single-process, single-tenant development store, so you can test ToilDB behavior with no services to run.
+- On the **Dacely edge**, the host is the real ToilDB, with durable, distributed storage. It reads the *same* catalog and serves the *same* operations, now durable and worldwide.
 
 Because both sides read the same catalog, **the same code runs unchanged in dev and in production.** There is no connection string to swap and no provisioning step to run.
 
@@ -141,15 +141,15 @@ Because both sides read the same catalog, **the same code runs unchanged in dev 
 flowchart TD
     SRC["@database AppDb<br/>@collection static users: Documents...<br/>@data UserId / User"]
     SRC -->|toilscript compile| WASM["server.wasm<br/>(with an embedded<br/>toildb catalog section)"]
-    WASM -->|toiljs dev reads the catalog| DEV["In-memory dev store<br/>(one process, cleared on restart)"]
-    WASM -->|edge reads the same catalog| EDGE[("ToilDB on the Dacely edge<br/>(ScyllaDB, worldwide, durable)")]
+    WASM -->|toiljs dev reads the catalog| DEV["Dev store<br/>(one process, local snapshot)"]
+    WASM -->|edge reads the same catalog| EDGE[("ToilDB on the Dacely edge<br/>(worldwide, durable)")]
 ```
 
 ## Gotchas
 
 - **Declare collections as `static` fields with no initializer.** Do not try to `new` a collection or assign a handle yourself; the compiler owns that.
 - **Every `@data` field needs a default, and value types must be default-constructible.** A missing default fails to compile.
-- **Dev data is not durable.** The `toiljs dev` store lives in memory and resets on restart. Do not rely on it to persist across dev runs; that is what the edge is for.
+- **Dev storage is local.** The `toiljs dev` snapshot survives restarts but is not a production backup or a distributed store. Delete `.toil/devdata.json` to reset it. Direct test-host instances stay in memory unless configured for persistence.
 - **Changing a `@data` type is a format change.** Reordering fields or changing a field's type changes the stored layout. Add new fields at the end, and use a migration when you evolve a stored type. See [data types](../backend/data.md).
 - **Pick the family at the type.** The family is read from the collection's declared type, so `Counter<K>` versus `Documents<K, V>` is a real, load-bearing choice, not a hint. Revisit [Choosing a family](./README.md#choosing-a-family-the-decision-guide) if unsure.
 

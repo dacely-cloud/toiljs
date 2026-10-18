@@ -26,13 +26,19 @@ export {
 } from './http/envelope.js';
 export type { EnvelopeRequest, EnvelopeResponse } from './http/envelope.js';
 export { WasmServerModule, WasmAbortError, UNHANDLED_HEADER } from './runtime/module.js';
-export type { WasmDispatchResult } from './runtime/module.js';
+export type {
+    WasmDispatchResult,
+    DatabaseInterleavingPoint,
+    DispatchInterleaving,
+} from './runtime/module.js';
 export { buildHostImports, freshDispatchState } from './runtime/host.js';
 export type { DispatchState, MemoryRef } from './runtime/host.js';
 export type { ViteTarget } from './http/proxy.js';
 
 // Dev DAEMON (L4) emulation (RECONCILIATION Part 2/5; doc 08 section 5).
 export { DaemonHost, daemonEmulationEnabled } from './daemon/index.js';
+export type { DaemonHostOptions, DaemonTaskResult } from './daemon/index.js';
+export type { DaemonHttpMock, DaemonHttpRequest, DaemonHttpResponse } from './daemon/http.js';
 export { parseDaemonCatalog } from './daemon/catalog.js';
 export type { DaemonCatalog, ScheduledTask, CronMasks } from './daemon/catalog.js';
 export { buildDaemonImports, freshDaemonState } from './daemon/host.js';

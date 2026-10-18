@@ -1,3 +1,9 @@
+import { resetImageState } from '../images/index.js';
+import { devDb } from '../db/database.js';
+import { deriveChangesFrame } from '../db/changes.js';
+import { dbBudgetSnapshot, type DbBudgetSnapshot } from '../db/limits.js';
+import type { DaemonHttpMock } from './http.js';
+import { deriveContinuationKey, deriveCheckpointKey } from '../db/derives.js';
 /**
  * Dev DAEMON (L4) emulation. Loads `release-cold.wasm` ONCE into a single resident
  * instance, calls the guest `daemon_start()` export (RECONCILIATION Part 2; runs
@@ -79,7 +85,23 @@ export function daemonEmulationEnabled(nodeMode: string): boolean {
     return nodeMode === 'daemon' || nodeMode === 'all';
 }
 
+export interface DaemonHostOptions {
+    readonly clock?: () => number;
+    readonly httpMock?: DaemonHttpMock;
+}
+
+export interface DaemonTaskResult {
+    task: string;
+    atMillis: number;
+    status: 'ok' | 'failed' | 'trapped' | 'skipped' | 'inactive' | 'not-found';
+    returnCode: bigint | null;
+    error: string | null;
+    durationMs: number;
+    budget: DbBudgetSnapshot;
+}
+
 export class DaemonHost implements DaemonRuntime {
+    private taskTime: number | null = null;
     private module: WebAssembly.Module | null = null;
     private instance: WebAssembly.Instance | null = null;
     private exports: ColdExports | null = null;
@@ -104,7 +126,40 @@ export class DaemonHost implements DaemonRuntime {
         private readonly cfg: ResolvedDaemonConfig,
         private readonly nodeMode: string,
         private readonly log: (s: string) => void = (s) => process.stdout.write(s),
+        private readonly options: DaemonHostOptions = {},
     ) {}
+
+    get httpMock(): DaemonHttpMock | undefined {
+        return this.options.httpMock;
+    }
+
+    private now(): number {
+        return this.taskTime ?? this.options.clock?.() ?? Date.now();
+    }
+
+    /** Run a catalogued task at a deterministic guest time without changing Date.now. */
+    runTask(name: string, atMillis: number = this.now()): DaemonTaskResult {
+        if (!Number.isSafeInteger(atMillis) || atMillis < 0)
+            throw new RangeError('atMillis must be a nonnegative safe integer');
+        const task = this.tasks.find((task) => task.name === name);
+        if (task === undefined)
+            return {
+                task: name,
+                atMillis,
+                status: 'not-found',
+                returnCode: null,
+                error: 'Unknown task',
+                durationMs: 0,
+                budget: dbBudgetSnapshot(this.state.db),
+            };
+        const previous = this.taskTime;
+        this.taskTime = atMillis;
+        try {
+            return this.runTick(task);
+        } finally {
+            this.taskTime = previous;
+        }
+    }
 
     /** Whether the daemon box is currently resident and started. */
     get active(): boolean {
@@ -210,8 +265,9 @@ export class DaemonHost implements DaemonRuntime {
     /** Instantiate the cold box, run daemon_start once, register the tasks. */
     private start(): void {
         if (this.module === null || this.catalog === null) return;
-        const ref: MemoryRef = { memory: null };
+        const ref: MemoryRef = { memory: null, now: () => this.now() };
         this.state = freshDaemonState();
+        this.state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         this.state.db.functionKind = DbFunctionKind.Action;
         const imports = buildDaemonImports(ref, this.state, this);
 
@@ -263,6 +319,9 @@ export class DaemonHost implements DaemonRuntime {
                 this.state.db.logMessages = 0;
                 resetDbLimits(this.state.db);
             }
+            resetImageState(this.state.images);
+            this.state.db.functionKind = this.catalog.startupKind;
+            resetDbLimits(this.state.db);
             const rc = this.exports.daemon_start();
             if (rc !== 0) {
                 this.log(
@@ -285,7 +344,14 @@ export class DaemonHost implements DaemonRuntime {
 
         this.running = true;
         this.deriveRetryTimer = setInterval(() => {
-            if (this.running && this.pendingDerives.size > 0 && this.isLeader())
+            if (
+                this.running &&
+                (this.pendingDerives.size > 0 ||
+                    this.derives.some((derive) =>
+                        devDb.pendingContinuations().has(deriveContinuationKey(derive)),
+                    )) &&
+                this.isLeader()
+            )
                 this.materializeWrites();
         }, 1000);
         this.deriveRetryTimer.unref?.();
@@ -371,52 +437,76 @@ export class DaemonHost implements DaemonRuntime {
     }
 
     /** Fire one `@scheduled` task via `scheduled_tick(task_id)` (Part 2). */
-    private runTick(task: ScheduledTask): void {
-        if (!this.running || this.exports === null) return;
-        if (this.ticking.has(task.taskIndex)) {
-            // overlap_policy 0 = skip-if-running: a slow tick must not pile up.
-            this.log(
-                pc.dim(`  ⏱ @scheduled ${task.name} overran its interval; skipping a tick`) + '\n',
-            );
-            return;
+    private runTick(task: ScheduledTask): DaemonTaskResult {
+        const result: DaemonTaskResult = {
+            task: task.name,
+            atMillis: this.now(),
+            status: 'ok',
+            returnCode: null,
+            error: null,
+            durationMs: 0,
+            budget: dbBudgetSnapshot(this.state.db),
+        };
+        if (!this.running || this.exports === null) {
+            result.status = 'inactive';
+            return result;
         }
-        if (!this.isLeader()) return; // always true in dev; kept for parity
+        if (this.ticking.has(task.taskIndex) || !this.isLeader()) {
+            result.status = 'skipped';
+            return result;
+        }
         this.ticking.add(task.taskIndex);
-        // The edge selects permissions and a fresh budget from the validated task catalog.
+        resetImageState(this.state.images);
         this.state.db.functionKind = task.functionKind;
         this.state.db.logMessages = 0;
         resetDbLimits(this.state.db);
+        this.state.db.continuationRequested = false;
+        this.state.db.manualDerive = false;
+        this.state.db.budgetKind = null;
         this.state.db.writtenCollections.clear();
+        this.state.db.changeCandidates.clear();
+        this.state.db.changeCandidateBytes = 0;
+        this.state.db.changesOverflow = false;
         const startedAt = performance.now();
         try {
-            const ret = this.exports.scheduled_tick(task.taskIndex); // packed-i64
-            if (ret < 0n)
+            result.returnCode = this.exports.scheduled_tick(task.taskIndex);
+            if (result.returnCode < 0n) {
+                result.status = 'failed';
+                result.error = decodeAbiError(result.returnCode);
                 this.log(
-                    pc.yellow(`  ⏱ @scheduled ${task.name} returned error ${decodeAbiError(ret)}`) +
-                        '\n',
+                    pc.yellow(`  ⏱ @scheduled ${task.name} returned error ${result.error}`) + '\n',
                 );
-        } catch (e) {
-            // A trapped tick does NOT tear down the long-lived daemon box (unlike a
-            // stream box); the next tick runs normally on the same memory.
-            this.log(pc.red(`  ✗ @scheduled ${task.name} trapped: ${String(e)}`) + '\n');
+            }
+        } catch (error) {
+            result.status = 'trapped';
+            result.error = String(error);
+            this.log(pc.red(`  ✗ @scheduled ${task.name} trapped: ${result.error}`) + '\n');
         } finally {
-            this.materializeWrites();
-            const took = performance.now() - startedAt;
-            if (took > this.cfg.tickBudgetMs)
-                this.log(
-                    pc.yellow(
-                        `  ⏱ @scheduled ${task.name} took ${String(took)}ms (> tickBudgetMs ${String(
-                            this.cfg.tickBudgetMs,
-                        )})`,
-                    ) + '\n',
-                );
-            this.ticking.delete(task.taskIndex);
+            result.budget = dbBudgetSnapshot(this.state.db);
+            try {
+                this.materializeWrites();
+            } finally {
+                result.durationMs = performance.now() - startedAt;
+                if (result.durationMs > this.cfg.tickBudgetMs)
+                    this.log(
+                        pc.yellow(
+                            `  ⏱ @scheduled ${task.name} took ${result.durationMs}ms (> tickBudgetMs ${this.cfg.tickBudgetMs})`,
+                        ) + '\n',
+                    );
+                this.ticking.delete(task.taskIndex);
+            }
         }
+        return result;
     }
 
     /** Tear the daemon down for good (dev-server shutdown). */
     private materializeWrites(): void {
         if (this.derives.length > 0 && this.exports?.derive_run !== undefined) {
+            const queued = devDb.pendingContinuations();
+            for (const derive of this.derives)
+                if (queued.has(deriveContinuationKey(derive)))
+                    this.pendingDerives.add(derive.deriveId);
+            const retrying = new Set(this.pendingDerives);
             for (const derive of derivesForWrites(this.derives, this.state.db.writtenCollections))
                 this.pendingDerives.add(derive.deriveId);
             const db = this.state.db;
@@ -426,7 +516,15 @@ export class DaemonHost implements DaemonRuntime {
                 for (const derive of this.derives.filter((d) =>
                     this.pendingDerives.has(d.deriveId),
                 )) {
+                    db.deriveChanges = deriveChangesFrame(
+                        db,
+                        derive.dbName,
+                        retrying.has(derive.deriveId),
+                    );
+                    db.continuationRequested = false;
                     db.deriveId = derive.deriveId;
+                    db.deriveKey = deriveCheckpointKey(derive);
+                    resetImageState(this.state.images);
                     db.logMessages = 0;
                     resetDbLimits(db);
                     db.pendingCheckpoints.clear();
@@ -434,6 +532,9 @@ export class DaemonHost implements DaemonRuntime {
                         const rc = this.exports.derive_run(derive.deriveId);
                         if (rc !== 0n) throw new Error(`derive_run returned ${String(rc)}`);
                         commitDeriveCheckpoints(db);
+                        const key = deriveContinuationKey(derive),
+                            token = queued.get(key);
+                        if (token !== undefined) devDb.acknowledgeContinuation(key, token);
                         this.pendingDerives.delete(derive.deriveId);
                     } catch (error) {
                         this.log(
@@ -454,7 +555,13 @@ export class DaemonHost implements DaemonRuntime {
             flushMaterializations();
         }
         persistDb();
+        this.state.db.continuationRequested = false;
+        this.state.db.manualDerive = false;
+        this.state.db.budgetKind = null;
         this.state.db.writtenCollections.clear();
+        this.state.db.changeCandidates.clear();
+        this.state.db.changeCandidateBytes = 0;
+        this.state.db.changesOverflow = false;
     }
 
     /** Tear the daemon down for good (dev-server shutdown). */
