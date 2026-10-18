@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.127] - 2026-10-18
+
+- Show the route's loading view while a nested layout loader is pending, then render the layout and page when their data is ready.
+- Ship the explicit `.js` SSR marker import so the built client loads in Node ESM without application postinstall patches.
+- Cover pending layout data and direct Node ESM client imports with framework regression tests.
+
 ## [v0.0.126] - 2026-10-13
 
 - Run daemon methods tagged `@scheduled` and `@job` with Job database permissions and budgets in dev and on an updated edge host. Startup and untagged ticks retain Action permissions.
