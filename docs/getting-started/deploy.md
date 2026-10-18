@@ -94,6 +94,11 @@ The policy permits React inline styles, same-origin connections, and local image
 
 The build includes `build/client/_headers` with the production CSP and COOP for static hosts that support this format. Other hosts, including managed edge integrations, must apply these headers when serving the build. The HTML also carries a CSP meta fallback; **COOP and `frame-ancestors` require HTTP headers**. Native backend response envelopes include default CSP and COOP themselves. HSTS is left to the deployment's TLS configuration.
 
+`toiljs build` prints the actual generated header rules after a successful client
+build, with copyable Cloudflare expressions, header values, and operations. It
+reads the completed `_headers` file so project-specific policies and route
+exceptions are included. See [Deployment headers](../concepts/security.md#deployment-headers).
+
 To run the browser security regression suite with Chrome installed:
 
 ```bash

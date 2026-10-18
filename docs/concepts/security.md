@@ -139,6 +139,17 @@ This changes that handler's response. It does not change the policy of frontend 
 
 Hosts that support this file format can consume it directly. Other static hosts, reverse proxies, and managed edge integrations must apply the generated headers to their document responses, including SSR responses. Merely uploading the HTML does not configure an external host's HTTP headers.
 
+After a successful client build, `toiljs build` prints deployment instructions
+from the final `_headers` file, including rules written by project plugins. The
+output includes Cloudflare filter expressions, header names, complete values,
+and the **Set static** or **Remove** operation for each rule, in file order.
+The hostname comes from `client.seo.url` when configured; otherwise the output
+asks you to scope the expressions to your deployment hostname. Paths, wildcard
+rules, CSP resource origins, and COOP exceptions come from the generated rules.
+Rules using placeholders are shown with instructions to configure them at the
+origin or in a Worker. No additional logging flag is required. Server-only
+builds and builds without generated CSP/COOP policies do not print these steps.
+
 The HTML includes a CSP meta fallback. **COOP and `frame-ancestors` require HTTP headers**; the fallback cannot supply them. Preserve the generated import map, integrity attributes, and CSP metadata. Rebuild after changing scripts or resource permissions, and deploy matching HTML, assets, and headers together. See [Deploying a toiljs app](../getting-started/deploy.md#default-browser-security).
 
 ### Checking a deployment

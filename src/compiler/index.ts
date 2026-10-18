@@ -29,6 +29,7 @@ import {
     extractTemplates,
 } from './template-build.js';
 import { createViteConfig } from './vite.js';
+import { logSecurityDeployment } from './security-deployment.js';
 
 /**
  * A surface declaration - a file with one defines client and/or server surface, so it must be
@@ -1173,6 +1174,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
         );
         await buildServer(cfg.root, cfg.auth);
     }
+    logSecurityDeployment(cfg);
 }
 
 /**
