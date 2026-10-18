@@ -31,3 +31,4 @@ oxlint.config.ts
 scripts/gen-api-docs.mjs
 scripts/test-create-install.mjs
 build/docs
+**/*.tsbuildinfo
