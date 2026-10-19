@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -46,10 +47,20 @@ describe('generic security deployment instructions', () => {
             const output = securityDeploymentInstructions(
                 `/*\n  Content-Security-Policy: ${policy}\n  Cross-Origin-Opener-Policy: same-origin\n`,
                 `https://${hostname}/app/`,
+                false,
             );
+            const colored = securityDeploymentInstructions(
+                `/*\n  Content-Security-Policy: ${policy}\n  Cross-Origin-Opener-Policy: same-origin\n`,
+                `https://${hostname}/app/`,
+                true,
+            );
+            expect(colored).not.toBe(output);
+            expect(stripVTControlCharacters(colored ?? '')).toBe(output);
             expect(output).toContain(`http.host eq "${hostname}"`);
-            expect(output).toContain(`Value:\n${policy}`);
-            expect(output).toContain('Set static: Cross-Origin-Opener-Policy\nValue:\nsame-origin');
+            expect(output).toContain(`Value\n      ${policy}`);
+            expect(output).toContain(
+                'Set static  Cross-Origin-Opener-Policy\n      Value\n      same-origin',
+            );
             expect(output).not.toMatch(/nerva|dacely|localhost|__.*preview/i);
         }
     });
@@ -74,8 +85,8 @@ describe('generic security deployment instructions', () => {
         expect(output).toContain(
             '(http.host eq "identity.example.net") and (http.request.uri.path eq "/callback")',
         );
-        expect(output).toContain('Value:\nsame-origin-allow-popups');
-        expect(output).toContain('Remove: Cross-Origin-Opener-Policy');
+        expect(output).toContain('Value\n      same-origin-allow-popups');
+        expect(output).toContain('Remove  Cross-Origin-Opener-Policy');
         expect(output?.indexOf('2. /App/Workers/*')).toBeLessThan(
             output?.indexOf('4. /app/consent') ?? 0,
         );
@@ -101,9 +112,9 @@ describe('generic security deployment instructions', () => {
                 '  X-Project: :project',
             ].join('\n'),
         );
-        expect(output).toContain('requiring configuration at the origin or in a Worker');
+        expect(output).toContain('Configure at the origin or in a Worker');
         expect(output).toContain('X-Project: :project');
-        expect(output).not.toContain('Set static: X-Project');
+        expect(output).not.toContain('Set static  X-Project');
     });
 
     it('reads the configured output directory and stays silent without a generated policy', async () => {
@@ -152,13 +163,13 @@ describe('generic security deployment instructions', () => {
         const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
         await build({ root });
         const logs = stdout.mock.calls
-            .map(([message]) => String(message))
+            .map(([message]) => stripVTControlCharacters(String(message)))
             .filter((message) => message.includes('Browser security deployment setup'));
         expect(logs).toHaveLength(1);
         expect(logs[0]).toContain('http.host eq "fixture.example.org"');
         expect(logs[0]).toContain('http.request.uri.path eq "/consent"');
-        expect(logs[0]).toContain("Value:\ndefault-src 'none'");
-        expect(logs[0]).toContain('Value:\nunsafe-none');
+        expect(logs[0]).toContain("Value\n      default-src 'none'");
+        expect(logs[0]).toContain('Value\n      unsafe-none');
     }, 30000);
 
     it('does not log stale client headers during a server-only build', async () => {

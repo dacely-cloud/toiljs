@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import pc from 'picocolors';
+
 import type { ResolvedToilConfig } from './config.js';
 
 /** A response-header operation from the completed build's static-host rules. */
@@ -58,7 +60,11 @@ function expression(pattern: string, hostname: string | undefined): string | nul
  * Format copyable deployment steps from the final generated headers, not app-specific rules.
  * Builds without a CSP or COOP policy have no security setup message.
  */
-export function securityDeploymentInstructions(headers: string, siteUrl?: string): string | null {
+export function securityDeploymentInstructions(
+    headers: string,
+    siteUrl?: string,
+    color: boolean = pc.isColorSupported,
+): string | null {
     const rules = headerRules(headers);
     if (
         !rules.some((rule) =>
@@ -76,47 +82,81 @@ export function securityDeploymentInstructions(headers: string, siteUrl?: string
     const site = siteUrl && URL.canParse(siteUrl) ? new URL(siteUrl) : undefined;
     const hostname =
         site && ['https:', 'http:'].includes(site.protocol) ? site.hostname : undefined;
+    const colors = pc.createColors(color);
+    const separator = `  ${colors.dim('─'.repeat(64))}`;
     const lines = [
-        '\nBrowser security deployment setup',
-        'Cloudflare Pages static hosting: deploy the generated _headers with the client output.',
-        'Other hosts must send the generated response headers; uploading _headers alone does not apply them.',
-        'toiljs start applies the framework headers automatically. Pages Functions / Workers must set headers in their handlers.',
         '',
-        'Cloudflare: Rules > Transform Rules > Modify Response Header > Create rule.',
-        'Create the following rules in order using Custom filter expression > Edit expression.',
-        'Choose Set static for each header value, or Remove where indicated, then Deploy.',
+        `  ${colors.bold(colors.cyan('Browser security deployment setup'))}`,
+        separator,
+        '',
+        `  ${colors.bold('Hosting')}`,
+        ...[
+            ['Cloudflare Pages', 'Deploy _headers with the client output.'],
+            ['toiljs start', 'Framework headers apply automatically.'],
+            ['Other hosts', 'Configure response headers on your host.'],
+            ['', 'Uploading _headers alone does not apply them.'],
+            ['Functions / Workers', 'Set response headers in your handlers.'],
+        ].map(([label, description]) => `    ${colors.bold(label.padEnd(21))}${description}`),
+        '',
+        `  ${colors.bold('Cloudflare response header rules')}`,
+        `    Rules ${colors.dim('›')} Transform Rules ${colors.dim('›')} Modify Response Header ${colors.dim('›')} Create rule`,
+        '',
+        '    Create the rules below in order.',
+        `    Select ${colors.bold('Custom filter expression')} ${colors.dim('›')} ${colors.bold('Edit expression')}.`,
+        `    Choose ${colors.green('Set static')} or ${colors.yellow('Remove')} as shown, then ${colors.bold('Deploy')}.`,
+        '',
     ];
     if (!hostname)
         lines.push(
-            'No site hostname configured in client.seo.url: scope these expressions to your deployment hostname if needed.',
+            `    ${colors.yellow('No site hostname configured')} in client.seo.url.`,
+            '    Scope these expressions to your deployment hostname if needed.',
+            '',
         );
     for (const [index, rule] of rules.entries()) {
-        lines.push('', `${index + 1}. ${rule.pattern}`);
+        lines.push(
+            separator,
+            '',
+            `  ${colors.bold(colors.cyan(`${index + 1}. ${rule.pattern}`))}`,
+            '',
+        );
         const filter = expression(rule.pattern, hostname);
         if (
             filter === null ||
             rule.headers.some((header) => /:[A-Za-z_]\w*/.test(header.value ?? ''))
         ) {
             lines.push(
-                'This rule uses a pattern or placeholder requiring configuration at the origin or in a Worker.',
-                rule.pattern,
+                `    ${colors.yellow('Configure at the origin or in a Worker')}`,
+                '    This rule uses a pattern or placeholder requiring configuration there.',
+                '',
+                `      ${rule.pattern}`,
                 ...rule.headers.map((header) =>
                     header.value === null
-                        ? `  ! ${header.name}`
-                        : `  ${header.name}: ${header.value}`,
+                        ? `        ! ${header.name}`
+                        : `        ${header.name}: ${header.value}`,
                 ),
+                '',
             );
             continue;
         }
-        lines.push('Expression:', filter);
+        lines.push(`    ${colors.dim('Expression')}`, `      ${filter}`, '');
         for (const header of rule.headers) {
-            if (header.value === null) lines.push(`Remove: ${header.name}`);
-            else lines.push(`Set static: ${header.name}`, 'Value:', header.value);
+            if (header.value === null)
+                lines.push(`    ${colors.yellow('Remove')}  ${colors.bold(header.name)}`, '');
+            else
+                lines.push(
+                    `    ${colors.green('Set static')}  ${colors.bold(header.name)}`,
+                    `      ${colors.dim('Value')}`,
+                    `      ${header.value}`,
+                    '',
+                );
         }
     }
     lines.push(
+        separator,
         '',
-        'Keep the generated HTML CSP meta policy, import map, and integrity attributes when deploying.',
+        `  ${colors.bold('When deploying')}`,
+        '    Keep the generated HTML CSP meta policy, import map, and integrity attributes.',
+        '    Expressions and header values above are complete; copy each as a single value.',
         '',
     );
     return lines.join('\n');

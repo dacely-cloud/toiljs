@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.130] - 2026-10-19
+
+- Format browser security deployment instructions with colored headings and actions, aligned hosting guidance, and spaced rule blocks. Preserve complete copyable expressions and header values, generic project rules, and plain output when terminal colors are disabled.
+
 ## [v0.0.129] - 2026-10-19
 
 - Print generic Cloudflare deployment instructions after successful client builds, using the final generated header rules, configured hostname, complete policy values, and project-defined route exceptions.
