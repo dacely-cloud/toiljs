@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.132] - 2026-10-19
+
+- Declare the compiler-provided `AuthUser` type and `__toildbResolve` collection resolver in the shipped server globals so editors recognize them without application shims or generated lint output. Preserve custom `@user` fields through the generated principal declarations.
+
 ## [v0.0.131] - 2026-10-19
 
 - Preserve the browser Host header through the development Vite proxy so application origin-specific response policies, including localhost popup handoffs, receive the public origin instead of the internal loopback address. Retain multiple Set-Cookie headers, manual redirects, binary bodies, and HEAD handling.

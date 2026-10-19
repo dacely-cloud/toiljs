@@ -1,27 +1,57 @@
-import { spawnSync } from 'node:child_process';
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { buildHostImports, freshDispatchState } from '../src/devserver/runtime/host.js';
 
-it('typechecks server imports and all globals in a fresh tree without generated declarations', () => {
-    const root = mkdtempSync(join(tmpdir(), 'toil-static-types-'));
-    try {
-        mkdirSync(join(root, 'node_modules'));
-        symlinkSync(resolve('.'), join(root, 'node_modules/toiljs'));
-        symlinkSync(
-            process.env.TOILSCRIPT_TEST_BIN
-                ? dirname(dirname(process.env.TOILSCRIPT_TEST_BIN))
-                : resolve('node_modules/toilscript'),
-            join(root, 'node_modules/toilscript'),
-        );
-        writeFileSync(
-            join(root, 'main.ts'),
-            `
+it.each([false, true])(
+    'typechecks server globals without build artifacts (custom user: %s)',
+    (customUser: boolean): void => {
+        const root: string = mkdtempSync(join(tmpdir(), 'toil-static-types-'));
+        try {
+            mkdirSync(join(root, 'node_modules'));
+            symlinkSync(resolve('.'), join(root, 'node_modules/toiljs'), 'junction');
+            symlinkSync(
+                process.env.TOILSCRIPT_TEST_BIN
+                    ? dirname(dirname(process.env.TOILSCRIPT_TEST_BIN))
+                    : resolve('node_modules/toilscript'),
+                join(root, 'node_modules/toilscript'),
+                'junction',
+            );
+            if (customUser) {
+                writeFileSync(
+                    join(root, 'user.ts'),
+                    "@user export class CustomUser { toilUserId: Uint8Array = new Uint8Array(32); username: string = ''; role: string = 'admin'; }\n",
+                );
+                const generated: SpawnSyncReturns<string> = spawnSync(
+                    process.execPath,
+                    [
+                        process.env.TOILSCRIPT_TEST_BIN ??
+                            resolve('node_modules/toilscript/bin/toilscript.js'),
+                        join(root, 'user.ts'),
+                        '-o',
+                        join(root, 'user.wasm'),
+                        '--editorTypes',
+                        join(root, 'user.generated.d.ts'),
+                        '--runtime',
+                        'stub',
+                        '--memoryBase',
+                        '65536',
+                        '--lib',
+                        relative(root, resolve('server/globals')),
+                    ],
+                    { cwd: root, encoding: 'utf8' },
+                );
+                expect(generated.status, generated.stdout + generated.stderr).toBe(0);
+            }
+            writeFileSync(
+                join(root, 'main.ts'),
+                `
 import { Response } from 'toiljs/server/runtime';
+export function collectionHandle(name: string): u32 { return __toildbResolve(name); }
 export function me(): Response {
-    const user = AuthService.getUser();
+    const user: AuthUser | null = AuthService.getUser();
     const env = Environment.get('PUBLIC_BASE_URL');
     if (user != null) { const id: Uint8Array = user.toilUserId; return Response.text(user.username + id.length.toString()); }
     if (false) {
@@ -36,37 +66,67 @@ export function me(): Response {
     }
     return Response.text(user == null ? 'anonymous' : env ?? 'signed in');
 }
+${customUser ? 'export function role(user: AuthUser): string { return user.role; }' : ''}
 `,
-        );
-        writeFileSync(
-            join(root, 'tsconfig.json'),
-            JSON.stringify({
-                extends: join(root, 'node_modules/toilscript/std/assembly.json'),
-                compilerOptions: { noEmit: true, skipLibCheck: true },
-                include: ['main.ts'],
-            }),
-        );
-        const result = spawnSync(
-            process.execPath,
-            [
-                resolve('node_modules/typescript/bin/tsc'),
-                '--noEmit',
-                '-p',
+            );
+            writeFileSync(
                 join(root, 'tsconfig.json'),
-            ],
-            { encoding: 'utf8' },
-        );
-        expect(result.status, result.stdout + result.stderr).toBe(0);
-    } finally {
-        rmSync(root, { recursive: true, force: true });
-    }
-});
+                JSON.stringify({
+                    extends: join(root, 'node_modules/toilscript/std/assembly.json'),
+                    compilerOptions: { noEmit: true, skipLibCheck: true },
+                    include: ['main.ts', 'user.ts', 'user.generated.d.ts'],
+                }),
+            );
+            const result: SpawnSyncReturns<string> = spawnSync(
+                process.execPath,
+                [
+                    resolve('node_modules/typescript/bin/tsc'),
+                    '--noEmit',
+                    '-p',
+                    join(root, 'tsconfig.json'),
+                ],
+                { encoding: 'utf8' },
+            );
+            expect(result.status, result.stdout + result.stderr).toBe(0);
+            writeFileSync(
+                join(root, 'main.ts'),
+                readFileSync(join(root, 'main.ts'), 'utf8') +
+                    `\nexport const invalidHandle: string = __toildbResolve('App/users');
+export const invalidUser: AuthUser = 1;
+${customUser ? 'export function invalidRole(user: AuthUser): number { return user.role; }' : ''}
+`,
+            );
+            const invalid: SpawnSyncReturns<string> = spawnSync(
+                process.execPath,
+                [
+                    resolve('node_modules/typescript/bin/tsc'),
+                    '--noEmit',
+                    '-p',
+                    join(root, 'tsconfig.json'),
+                ],
+                { encoding: 'utf8' },
+            );
+            expect(invalid.status).not.toBe(0);
+            expect(invalid.stdout).toContain("Type 'number' is not assignable to type 'string'");
+            expect(invalid.stdout).toContain(
+                "Type 'number' is not assignable to type '__ToilAuthUser'",
+            );
+            if (customUser) {
+                expect(invalid.stdout).toContain(
+                    "Type 'string' is not assignable to type 'number'",
+                );
+            }
+        } finally {
+            rmSync(root, { recursive: true, force: true });
+        }
+    },
+);
 
 it('compiles and decodes the built-in principal without a generated user entry', () => {
     const root = mkdtempSync(join(tmpdir(), 'toil-default-user-'));
     try {
         mkdirSync(join(root, 'node_modules'));
-        symlinkSync(resolve('.'), join(root, 'node_modules/toiljs'));
+        symlinkSync(resolve('.'), join(root, 'node_modules/toiljs'), 'junction');
         const app = join(root, 'app.ts'),
             out = join(root, 'app.wasm');
         writeFileSync(
