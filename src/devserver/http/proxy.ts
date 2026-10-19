@@ -2,10 +2,11 @@
  * Transparent proxy from the uWebSockets.js front server to the internal Vite
  * dev server, so every Vite dev feature (module transforms, HMR websocket,
  * `/__toil/*` toolbar endpoints, public assets, SPA fallback) keeps working
- * unchanged behind the WASM dispatcher. HTTP goes through `fetch`, the HMR
+ * unchanged behind the WASM dispatcher. HTTP goes through Node's HTTP client, the HMR
  * websocket through Node's built-in `WebSocket` client, both loopback-only.
  */
 
+import { request as httpRequest, type IncomingHttpHeaders } from 'node:http';
 import { type Request, type Response, type Server, type Websocket } from '@dacely/hyper-express';
 import { writeResponseHeader } from 'toiljs/backend';
 import { builtContentSecurityPolicy } from 'toiljs/shared';
@@ -16,9 +17,16 @@ export interface ViteTarget {
     readonly port: number;
 }
 
+/** Buffered internal response; Node HTTP preserves the browser's Host and Set-Cookie headers. */
+interface ViteReply {
+    readonly status: number;
+    readonly headers: IncomingHttpHeaders;
+    readonly body: Buffer;
+}
+
 /**
- * Hop-by-hop request headers (RFC 9110 §7.6.1) plus headers `fetch` manages
- * itself; everything else is forwarded verbatim. `accept-encoding` is dropped
+ * Hop-by-hop request headers (RFC 9110 §7.6.1) plus the body framing headers;
+ * everything else is forwarded verbatim. `accept-encoding` is replaced
  * so Vite answers identity-encoded and bytes can be piped through untouched.
  */
 const SKIP_REQUEST_HEADERS = new Set([
@@ -49,28 +57,50 @@ export async function proxyToVite(
     response: Response,
     target: ViteTarget,
 ): Promise<void> {
-    const url = `http://${target.host}:${String(target.port)}${request.url}`;
-
-    const headers = new Headers();
+    const headers: Record<string, string> = { 'accept-encoding': 'identity' };
     for (const [name, value] of Object.entries(request.headers)) {
-        if (!SKIP_REQUEST_HEADERS.has(name.toLowerCase())) headers.set(name, value);
+        if (!SKIP_REQUEST_HEADERS.has(name.toLowerCase())) headers[name] = value;
     }
 
     const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
     const body = hasBody ? await request.buffer() : undefined;
 
-    const upstream = await fetch(url, {
-        method: request.method === 'HEAD' ? 'GET' : request.method,
-        headers,
-        body: body && body.length > 0 ? new Uint8Array(body) : undefined,
-        // The browser follows redirects itself; pass them through untouched.
-        redirect: 'manual',
+    // Fetch rewrites Host to the internal target on supported Node versions.
+    // Preserve it so Vite plugins can apply policies for the actual browser origin.
+    const upstream = await new Promise<ViteReply>((resolve, reject) => {
+        const outgoing = httpRequest(
+            {
+                hostname: target.host,
+                port: target.port,
+                path: request.url,
+                method: request.method === 'HEAD' ? 'GET' : request.method,
+                headers,
+            },
+            (incoming) => {
+                const chunks: Buffer[] = [];
+                incoming.on('data', (chunk: Buffer) => chunks.push(chunk));
+                incoming.on('error', reject);
+                incoming.on('aborted', () => reject(new Error('Vite response aborted')));
+                incoming.on('end', () =>
+                    resolve({
+                        status: incoming.statusCode ?? 502,
+                        headers: incoming.headers,
+                        body: Buffer.concat(chunks),
+                    }),
+                );
+            },
+        );
+        outgoing.on('error', reject);
+        outgoing.end(body);
     });
 
     response.status(upstream.status);
-    upstream.headers.forEach((value, name) => {
-        if (!SKIP_RESPONSE_HEADERS.has(name)) writeResponseHeader(response, name, value);
-    });
+    for (const [name, value] of Object.entries(upstream.headers)) {
+        if (value === undefined || SKIP_RESPONSE_HEADERS.has(name)) continue;
+        if (name === 'set-cookie' && Array.isArray(value)) {
+            for (const cookie of value) writeResponseHeader(response, name, cookie);
+        } else writeResponseHeader(response, name, Array.isArray(value) ? value.join(', ') : value);
+    }
 
     // Buffer the full upstream body and send it with a content-length, instead
     // of streaming it. uWS/hyper-express chunked-streaming of a `fetch` body
@@ -78,10 +108,10 @@ export async function proxyToVite(
     // (net::ERR_INVALID_CHUNKED_ENCODING), so client modules failed to load. Dev
     // responses are finite (HMR rides the separate websocket), so buffering is
     // safe and sidesteps the chunked framing entirely.
-    const buf = Buffer.from(await upstream.arrayBuffer());
+    const buf = upstream.body;
     if (
-        upstream.headers.get('content-type')?.includes('text/html') &&
-        !upstream.headers.has('content-security-policy')
+        upstream.headers['content-type']?.includes('text/html') &&
+        !upstream.headers['content-security-policy']
     ) {
         const policy = builtContentSecurityPolicy(buf.toString('utf8'));
         if (policy !== null) response.header('content-security-policy', policy, true);

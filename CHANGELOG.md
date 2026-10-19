@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.131] - 2026-10-19
+
+- Preserve the browser Host header through the development Vite proxy so application origin-specific response policies, including localhost popup handoffs, receive the public origin instead of the internal loopback address. Retain multiple Set-Cookie headers, manual redirects, binary bodies, and HEAD handling.
+
 ## [v0.0.130] - 2026-10-19
 
 - Format browser security deployment instructions with colored headings and actions, aligned hosting guidance, and spaced rule blocks. Preserve complete copyable expressions and header values, generic project rules, and plain output when terminal colors are disabled.
