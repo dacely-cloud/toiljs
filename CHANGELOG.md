@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## [v0.0.129] - 2026-10-19
 
+- Print generic Cloudflare deployment instructions after successful client builds, using the final generated header rules, configured hostname, complete policy values, and project-defined route exceptions.
+- Support explicit `script-src` and `script-src-elem` overrides and an empty `require-trusted-types-for` array for script-injecting integrations such as Cloudflare analytics and challenges. Strict hash/nonce and Trusted Types defaults remain enabled unless explicitly overridden; document the reduced injection protection of compatibility settings.
 - Correct RegExp compile-error guidance, the framed and domain-separated user-id derivation, and startup Job permissions throughout the docs and API comments.
 - Ship the native auth vectors as a package JSON export and beside the generated protocol guide so its fixture link resolves.
 
