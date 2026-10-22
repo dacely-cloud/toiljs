@@ -1,5 +1,9 @@
 # Changelog
 
+## [v0.0.135] - 2026-10-22
+
+- Re-release the Google sign-in, authenticator security, and dependency updates from v0.0.134 with unchanged runtime behavior and ToilScript 0.1.66 compatibility.
+
 ## [v0.0.134] - 2026-10-22
 
 - Include Google sign-in, Google Authenticator, and hardened session management. Deploy the matching updated toil-backend first; session format 3 requires users to sign in again.
