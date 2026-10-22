@@ -10,6 +10,14 @@ export default defineConfig({
         auth: true
     },
     client: {
+        // Required for the Google Identity Services demo at /google-login.
+        coop: 'same-origin-allow-popups',
+        cspSources: {
+            'connect-src': ['https://accounts.google.com/gsi/'],
+            'frame-src': ['https://accounts.google.com/gsi/'],
+            'style-src': ['https://accounts.google.com/gsi/style'],
+            'require-trusted-types-for': [],
+        },
         // Animate page transitions (View Transitions API; respects prefers-reduced-motion).
         viewTransitions: false,
         // Build-time SEO: bakes these into the HTML <head> (for JS-less crawlers) and generates

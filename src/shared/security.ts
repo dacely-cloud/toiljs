@@ -1,5 +1,6 @@
 /** Browser security defaults shared by the compiler and HTTP hosts. */
-export const DEFAULT_COOP = 'same-origin';
+export type CoopPolicy = 'same-origin' | 'same-origin-allow-popups';
+export const DEFAULT_COOP: CoopPolicy = 'same-origin';
 
 /**
  * Script trust defaults to build-time hashes (production) or a fresh HTML
@@ -85,17 +86,24 @@ export function builtContentSecurityPolicy(html: string): string | null {
     );
 }
 
+/** Trusted build marker, validated before promotion to an HTTP header. */
+export function builtCrossOriginOpenerPolicy(html: string): CoopPolicy {
+    return /<meta name="toil-coop" content="same-origin-allow-popups">/.test(html)
+        ? 'same-origin-allow-popups' : DEFAULT_COOP;
+}
+
 /** Defaults fill absent headers; explicitly supplied application policies win. */
 export function withSecurityHeaders(
     headers: readonly (readonly [string, string])[],
     policy = DEFAULT_CSP,
+    coop: CoopPolicy = DEFAULT_COOP,
 ): (readonly [string, string])[] {
     const out = [...headers];
     if (!headers.some(([name]) => name.toLowerCase() === 'content-security-policy')) {
         out.push(['content-security-policy', policy]);
     }
     if (!headers.some(([name]) => name.toLowerCase() === 'cross-origin-opener-policy')) {
-        out.push(['cross-origin-opener-policy', DEFAULT_COOP]);
+        out.push(['cross-origin-opener-policy', coop]);
     }
     return out;
 }

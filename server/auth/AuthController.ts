@@ -1,8 +1,11 @@
+import { AuthRealm } from 'toiljs/server/auth/AuthRealm';
 import { Username, EmailKey, EmailOwner, TokenId, TokenRec, ChallengeId, AuthAccount, Challenge, TwoFaId, TwoFaChallenge, DeletedAccountKey, DeletedAccountMarker, AuthDb } from './AuthStore';
 import { AuthMaintenance } from './AuthMaintenance';
+import { GoogleIdentity } from './GoogleIdentity';
+import { Authenticator } from './Authenticator';
 import { FactorRepository } from './FactorSettings';
 import { SessionEpochs } from './SessionEpochs';
-import { Response, RouteContext } from 'toiljs/server/runtime';
+import { Response, RouteContext, base64UrlEncode } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
 
 /**
@@ -84,7 +87,7 @@ const ST_TWOFA_REQUIRED: u8 = 3;
 // the challenge lifecycle and the login wiring do NOT change.
 const TWOFA_NONE: u8 = 0;
 const TWOFA_EMAIL: u8 = 1;
-// Future (reserved, not yet implemented): TWOFA_TOTP: u8 = 2; TWOFA_SMS: u8 = 3;
+const TWOFA_TOTP: u8 = 2;
 
 // 2FA challenge tuning. The code is single-use, TTL'd, and attempt-limited (all
 // enforced against the stored challenge, independent of the per-IP @ratelimit).
@@ -107,6 +110,7 @@ const TWOFA_DIGITS: i32 = 6; // digits in an emailed numeric code
 // collide with the `@ratelimit` decorator's monotonic-from-0 routeIds.
 const TWOFA_VERIFY_RL_ROUTE: i32 = 2147483001;
 const TWOFA_SETUP_RL_ROUTE: i32 = 2147483002;
+const TOTP_ACCOUNT_RL_ROUTE: i32 = 2147483003;
 // The host strategy tag for SlidingWindow (matches `RateLimit.SlidingWindow` and
 // what the @ratelimit decorator lowers to). Used as a raw int because `RateLimit`
 // is a type-only ambient enum with no runtime backing in a handler body.
@@ -157,19 +161,7 @@ function authDomain(ctx: RouteContext): string {
  */
 function realm(ctx: RouteContext): string {
     const raw = ctx.request.header('host');
-    if (raw == null) return '';
-    let h = raw.toLowerCase();
-    if (h.startsWith('[')) {
-        // IPv6 literal `[addr]`(:port): keep through the closing bracket, drop the
-        // port. Bracket-aware so `[::1]` is not sliced to `[:` (which would collapse
-        // distinct IPv6 tenants). Mirrors the edge strip_port + the session tag.
-        const close = h.indexOf(']');
-        if (close >= 0) h = h.slice(0, close + 1);
-    } else {
-        const colon = h.lastIndexOf(':');
-        if (colon > 0) h = h.slice(0, colon); // drop :port
-    }
-    return h;
+    return raw == null ? '' : AuthRealm.normalize(raw);
 }
 
 /** A lenient truthy read of a plain env var, ALIGNED with the edge's HostConfig
@@ -382,7 +374,7 @@ function ctEqual(a: Uint8Array, b: Uint8Array): bool {
 /** Whether `m` is a 2FA method this build understands (TWOFA_NONE or a supported
  *  method). ADD A METHOD: also accept its enum value here. */
 function isKnownTwoFaMethod(m: u8): bool {
-    return m == TWOFA_NONE || m == TWOFA_EMAIL;
+    return m == TWOFA_NONE || m == TWOFA_EMAIL || m == TWOFA_TOTP;
     // >>> e.g. `|| m == TWOFA_TOTP || m == TWOFA_SMS` <<<
 }
 
@@ -416,6 +408,96 @@ function isValidEmail(email: string): bool {
 
 @rest('auth')
 class Auth {
+    /** GIS initialization: public client id + nonce, with an HttpOnly browser binding. */
+    @ratelimit(RateLimit.SlidingWindow, 10, 60)
+    @post('/google/start')
+    public googleStart(ctx: RouteContext): Response {
+        const id = GoogleIdentity.clientId();
+        if (id.length == 0) return fail();
+        const nonce = crypto.toHex(randomBytes(32));
+        const response = Response.bytes(new DataWriter().writeString(id).writeString(nonce).toBytes());
+        response.setCookie(GoogleIdentity.start(ctx, realm(ctx), nonce));
+        response.setHeader('cache-control', 'no-store');
+        return response;
+    }
+
+    /** Verify signature/claims before any account I/O; never link accounts by email. */
+    @ratelimit(RateLimit.SlidingWindow, 10, 60)
+    @post('/google/login')
+    public googleLogin(ctx: RouteContext): Response {
+        if (ctx.request.body.length > 16388) return fail();
+        const r = new DataReader(ctx.request.body);
+        const token = r.readBytes();
+        if (!r.ok) return fail();
+        const h = realm(ctx);
+        const claims = GoogleIdentity.verify(ctx, h, token);
+        if (claims == null || !isValidEmail(claims.email)) return fail();
+        const username = claims.sub.length <= 55 ? 'google_s_' + claims.sub :
+            'google_h_' + base64UrlEncode(crypto.sha256Text(claims.sub));
+        const key = new Username(h, username);
+        let observed = AuthDb.accounts.getCurrentSnapshot(key);
+        if (observed == null && Db.lastError() != DbError.None) return fail();
+        let acct: AuthAccount;
+        const fresh = observed == null;
+        if (observed == null) {
+            acct = new AuthAccount();
+            acct.username = username; acct.accountId = randomBytes(32); acct.registering = true;
+            acct.email = claims.email; acct.emailConfirmed = claims.emailAuthoritative; acct.googleSubject = claims.sub;
+            acct.toilUserId = ToilUserId.derive(crypto.sha256Text('google:' + claims.sub), username, authDomain(ctx)).toBytes();
+            if (!AuthDb.accounts.compareExchange(key, null, acct)) return fail();
+            observed = new DocumentSnapshot<AuthAccount>(acct, acct.encode());
+        } else acct = observed.value;
+        if (acct.deleting || (!fresh && this.wasDeleted(h, acct)) || acct.googleSubject != claims.sub) return fail();
+        const finishingRegistration = acct.registering;
+        if (acct.registering) {
+            if (!this.reserveEmail(new EmailKey(h, acct.email), acct)) {
+                AuthDb.accounts.compareDeleteSnapshot(key, observed);
+                return fail();
+            }
+            AuthMaintenance.index(h, acct);
+            AuthService.__initializeRegistration(ToilUserId.fromBytes(acct.toilUserId), username, acct.email);
+            acct.registering = false;
+        }
+        // Bounded replay protection: one account CAS, no nonce/token collection or per-login rows.
+        if (claims.issuedAt < acct.googleIssuedAt) return fail();
+        if (claims.issuedAt > acct.googleIssuedAt) acct.googleNonces = new Array<string>();
+        if (acct.googleNonces.includes(claims.nonce) || acct.googleNonces.length >= 16) return fail();
+        acct.googleIssuedAt = claims.issuedAt; acct.googleNonces.push(claims.nonce);
+        if (claims.emailAuthoritative && claims.email == acct.email) acct.emailConfirmed = true;
+        if (!AuthDb.accounts.compareExchangeSnapshot(key, observed, acct)) return fail();
+        if (requireConfirmation() && !acct.emailConfirmed) {
+            if (finishingRegistration) this.issueConfirmation(h, ctx, username, acct.email, acct);
+            const response = Response.bytes(new DataWriter().writeU8(ST_UNCONFIRMED).toBytes());
+            response.setCookie(GoogleIdentity.cookie(ctx, '', 0));
+            response.setHeader('cache-control', 'no-store');
+            return response;
+        }
+        const userData = __toilEncodeAuthUser(acct.toilUserId, username);
+        const state = SessionEpochs.read(SessionEpochs.key(userData));
+        const epoch = state.revision;
+        const settings = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod, state);
+        const w = new DataWriter();
+        if (settings.method != TWOFA_NONE) {
+            const raw = randomBytes(16);
+            const ch = new TwoFaChallenge();
+            ch.username = username; ch.accountId = acct.accountId; ch.method = settings.method;
+            ch.settingsRevision = settings.revision; ch.encryptedSecret = settings.encryptedSecret;
+            ch.exp = nowSecs() + TWOFA_TTL_SECS; ch.sessionVersion = 3; ch.sessionEpoch = epoch;
+            ch.codeHash = settings.method == TWOFA_TOTP ? new Uint8Array(1) :
+                this.twoFaDeliver(h, settings.method, username, acct.email, 'Your login code', 'sign in');
+            if (ch.codeHash.length == 0 || !AuthDb.twoFaLogins.create(new TwoFaId(h, raw), ch)) return fail();
+            w.writeU8(ST_TWOFA_REQUIRED).writeBytes(raw);
+        } else w.writeU8(ST_OK).writeBytes(userData);
+        const response = Response.bytes(w.toBytes());
+        if (settings.method == TWOFA_NONE) {
+            response.setCookie(AuthService.mintSession(userData, AuthService.DEFAULT_SESSION_TTL_SECS, epoch));
+            response.setCookie(AuthService.userCookie(userData));
+        }
+        response.setCookie(GoogleIdentity.cookie(ctx, '', 0));
+        response.setHeader('cache-control', 'no-store');
+        return response;
+    }
+
     /** POST /auth/register/start  body: str(username) bytes(blinded)
      *  resp: u8(status=0) u32(mem) u32(iters) u32(par) bytes(salt) bytes(evaluated)
      *  No taken-oracle: always succeeds; register/finish rejects a duplicate.
@@ -456,7 +538,7 @@ class Auth {
         const proof = r.readBytes();
         if (!r.ok) return fail();
         if (pk.length != AuthService.PUBLIC_KEY_LEN) return fail();
-        if (username.length == 0 || username.length > 64) return fail();
+        if (username.length == 0 || username.length > 64 || username.startsWith('google_')) return fail();
         if (!isValidEmail(email)) return fail(); // format + length; a bypassing client stores nothing garbage
 
         // Proof-of-possession FIRST (before any existence check): the client
@@ -610,7 +692,7 @@ class Auth {
             c.exp = exp;
             const account = known;
             c.sessionEpoch = SessionEpochs.current(__toilEncodeAuthUser(this.stableUserId(ctx, h, username, account), username));
-            c.sessionVersion = 2;
+            c.sessionVersion = 3;
             c.accountId = this.incarnation(account);
             AuthDb.challenges.create(new ChallengeId(h, cid), c);
         }
@@ -646,7 +728,7 @@ class Auth {
         //    The challenge is realm-keyed, so one minted on another domain misses.
         const ch = AuthDb.challenges.getDelete(new ChallengeId(h, cid));
         if (ch == null) return fail();
-        if (ch.sessionVersion != 2) return fail();
+        if (ch.sessionVersion != 3) return fail();
         if (nowSecs() >= ch.exp) return fail();
 
         // 2. Rebuild the message from OUR stored values + the client's ct (and
@@ -694,10 +776,12 @@ class Auth {
         //     never resetTokens/confirmTokens). This runs AFTER the signature
         //     verify above, so it is not an oracle, and the login `Challenge` was
         //     already consumed (getDelete) at the top of this handler.
-        const factorMethod = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod).method;
+        const loginSettings = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod,
+            SessionEpochs.read(crypto.toHex(this.stableUserId(ctx, h, ch.username, acct, false))));
+        const factorMethod = loginSettings.method;
         if (factorMethod != TWOFA_NONE) {
             const raw = randomBytes(16); // the twoFaId the client echoes to /2fa/verify
-            const codeHash = this.twoFaDeliver(
+            const codeHash = factorMethod == TWOFA_TOTP ? new Uint8Array(1) : this.twoFaDeliver(
                 h,
                 factorMethod,
                 ch.username,
@@ -710,11 +794,13 @@ class Auth {
             c2.username = ch.username;
             c2.accountId = ch.accountId;
             c2.method = factorMethod;
+            c2.settingsRevision = loginSettings.revision;
+            c2.encryptedSecret = loginSettings.encryptedSecret;
             c2.codeHash = codeHash;
             c2.exp = nowSecs() + TWOFA_TTL_SECS;
             c2.attempts = 0;
             c2.sessionEpoch = ch.sessionEpoch;
-            c2.sessionVersion = 2;
+            c2.sessionVersion = 3;
             c2.targetMethod = TWOFA_NONE; // a LOGIN challenge changes no method on success
             AuthDb.twoFaLogins.create(new TwoFaId(h, raw), c2);
 
@@ -755,7 +841,7 @@ class Auth {
         const h = realm(ctx);
         const owner = AuthDb.emails.get(new EmailKey(h, email));
         const resetAccount: AuthAccount | null = owner == null ? null : this.account(new Username(h, owner.username));
-        if (owner != null && resetAccount != null && resetAccount.email == email) {
+        if (owner != null && resetAccount != null && resetAccount.email == email && resetAccount.googleSubject.length == 0) {
             // Invalidate this user's previous reset token (bound to one outstanding).
             const prev = AuthDb.resetTokenOf.getDelete(this.secondaryKey(h, resetAccount));
             if (prev != null) AuthDb.resetTokens.delete(prev);
@@ -925,6 +1011,7 @@ class Auth {
     }
 
     private factorName(acct: AuthAccount): string {
+        if (acct.googleSubject.length != 0) return 'google:' + base64UrlEncode(acct.accountId);
         return acct.accountId.length == 0 || acct.legacyFactors ? acct.username : acct.username + '\x00' + crypto.toHex(acct.accountId);
     }
 
@@ -1008,12 +1095,26 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/verify')
     public twoFaVerify(ctx: RouteContext): Response {
+        if (ctx.request.body.length > 128) return fail();
         const r = new DataReader(ctx.request.body);
         const id = r.readBytes();
         const code = r.readString();
-        if (!r.ok || id.length == 0) return fail();
+        if (!r.ok || id.length != 16) return fail();
         const h = realm(ctx);
 
+        const key = new TwoFaId(h, id);
+        // PEEK (not consume): a wrong guess must NOT burn the challenge (a typo
+        // would otherwise lock the user out) until the attempt cap is reached.
+        const observed = AuthDb.twoFaLogins.getCurrentSnapshot(key);
+        if (observed == null) return fail();
+        const ch = observed.value;
+        if (ch.sessionVersion != 3) return fail(); // reject pre-upgrade pending logins
+        if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
+            AuthDb.twoFaLogins.compareDeleteSnapshot(key, observed); // never delete a replacement
+            return fail();
+        }
+        // Only extant, unexpired challenges allocate a keyed limiter entry.
+        // Random identifiers must not populate persistent limiter state.
         // RACE-FREE attempt cap: count this guess against a host-side EXACT
         // limiter keyed on THIS challenge (the twoFaId), not the peer IP. Unlike
         // the `ch.attempts` get+patch below, this is atomic across all workers,
@@ -1030,31 +1131,33 @@ class Auth {
         );
         if (rl != null) return rl;
 
-        const key = new TwoFaId(h, id);
-        // PEEK (not consume): a wrong guess must NOT burn the challenge (a typo
-        // would otherwise lock the user out) until the attempt cap is reached.
-        const ch = AuthDb.twoFaLogins.get(key);
-        if (ch == null) return fail();
-        if (ch.sessionVersion != 2) return fail(); // reject pre-upgrade pending logins
-        if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
-            AuthDb.twoFaLogins.delete(key); // burn an expired / exhausted challenge
-            return fail();
+        if (ch.method == TWOFA_TOTP) {
+            // Bound guesses across every pending login, even when source IPs differ.
+            const accountLimit = RateLimitService.guardKeyed(TOTP_ACCOUNT_RL_ROUTE, TWOFA_RL_STRATEGY,
+                5, 60, h + '\x00' + base64UrlEncode(ch.accountId));
+            if (accountLimit != null) return accountLimit;
         }
-        if (!this.twoFaVerifyCode(h, ch.username, code, ch)) {
+        const step = ch.method == TWOFA_TOTP ? Authenticator.match(this.totpBinding(h, ch.accountId), ch.encryptedSecret, code) : 0;
+        if (ch.method == TWOFA_TOTP ? step == 0 : !this.twoFaVerifyCode(h, ch.username, code, ch)) {
             // Wrong code: count the attempt; delete the challenge once the cap is
             // hit so a burned-out challenge cannot be ground further.
             ch.attempts = ch.attempts + 1;
-            if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaLogins.delete(key);
-            else AuthDb.twoFaLogins.patch(key, ch);
+            if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaLogins.compareDeleteSnapshot(key, observed);
+            else AuthDb.twoFaLogins.compareExchangeSnapshot(key, observed, ch);
             return fail();
         }
 
         // SUCCESS: consume-once, then mint the session EXACTLY like login/finish.
-        const consumed = AuthDb.twoFaLogins.getDelete(key);
-        if (consumed == null) return fail();
+        if (ch.method == TWOFA_TOTP && !Authenticator.consume(h, ch.encryptedSecret, step)) return fail();
+        if (!AuthDb.twoFaLogins.compareDeleteSnapshot(key, observed)) return fail();
+        const consumed = ch;
         const acct = this.account(new Username(h, ch.username));
         if (acct == null || !ctEqual(consumed.accountId, this.incarnation(acct))) return fail();
         const toilUserId = this.stableUserId(ctx, h, ch.username, acct);
+        const state = SessionEpochs.read(crypto.toHex(toilUserId));
+        const currentSettings = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod, state);
+        if (currentSettings.revision != consumed.settingsRevision || currentSettings.method != consumed.method ||
+            state.revision != ch.sessionEpoch) return fail();
         const userData = __toilEncodeAuthUser(toilUserId, ch.username);
         const w = new DataWriter();
         w.writeU8(ST_OK);
@@ -1076,6 +1179,7 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/setup')
     public twoFaSetup(_ctx: RouteContext): Response {
+        if (_ctx.request.body.length > 128) return fail();
         const r = new DataReader(_ctx.request.body);
         const targetMethod = r.readU8();
         if (!r.ok) return fail();
@@ -1086,7 +1190,18 @@ class Auth {
         const acct = this.account(new Username(h, u.username));
         if (acct == null) return fail();
 
-        const settings = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod);
+        const settings = FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod, AuthService.__sessionState());
+        // Switching an enabled factor also requires its proof; a stolen session is insufficient.
+        if (targetMethod != TWOFA_NONE && settings.method != TWOFA_NONE) {
+            const currentCode = r.readString();
+            if (settings.method == TWOFA_TOTP) {
+                const accountLimit = RateLimitService.guardKeyed(TOTP_ACCOUNT_RL_ROUTE, TWOFA_RL_STRATEGY,
+                    5, 60, h + '\x00' + base64UrlEncode(this.incarnation(acct)));
+                if (accountLimit != null) return accountLimit;
+            }
+            if (!r.ok || settings.method != TWOFA_TOTP || !Authenticator.consume(h, settings.encryptedSecret,
+                Authenticator.match(this.totpBinding(h, this.incarnation(acct)), settings.encryptedSecret, currentCode))) return fail();
+        }
         // Disabling when 2FA is already off: nothing to prove; generic ST_OK.
         if (targetMethod == TWOFA_NONE && settings.method == TWOFA_NONE) {
             return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
@@ -1103,7 +1218,7 @@ class Auth {
             targetMethod != TWOFA_NONE
                 ? 'enable two-factor authentication'
                 : 'turn off two-factor authentication';
-        const codeHash = this.twoFaDeliver(
+        const codeHash = deliverMethod == TWOFA_TOTP ? new Uint8Array(1) : this.twoFaDeliver(
             h,
             deliverMethod,
             u.username,
@@ -1117,17 +1232,27 @@ class Auth {
         c.username = u.username;
         c.accountId = this.incarnation(acct);
         c.settingsRevision = settings.revision;
-        c.sessionVersion = 2;
-        c.sessionEpoch = SessionEpochs.current(AuthService.getSessionBytes()!);
+        c.sessionVersion = 3;
+        c.sessionEpoch = AuthService.__sessionGeneration();
         c.method = deliverMethod;
+        let enrollmentSecret = '';
+        if (deliverMethod == TWOFA_TOTP) {
+            if (targetMethod == TWOFA_TOTP) {
+                const secret = randomBytes(20);
+                enrollmentSecret = Authenticator.base32(secret);
+                c.encryptedSecret = Authenticator.seal(this.totpBinding(h, c.accountId), secret);
+                secret.fill(0);
+            } else c.encryptedSecret = settings.encryptedSecret;
+        }
         c.codeHash = codeHash;
         c.exp = nowSecs() + TWOFA_TTL_SECS;
         c.attempts = 0;
         c.targetMethod = targetMethod; // what to set account.twoFactorMethod to on success
         // One outstanding setup challenge per user: overwrite any prior.
-        AuthDb.twoFaSetup.delete(this.secondaryKey(h, acct));
-        AuthDb.twoFaSetup.create(this.secondaryKey(h, acct), c);
-        return Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
+        AuthDb.twoFaSetup.upsert(this.secondaryKey(h, acct), c);
+        const response = Response.bytes(new DataWriter().writeU8(ST_OK).writeString(enrollmentSecret).toBytes());
+        response.setHeader('cache-control', 'no-store');
+        return response;
     }
 
     /** POST /auth/2fa/setup/verify  (@auth)  body: str(code)  resp: u8(ST_OK)
@@ -1139,6 +1264,7 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/setup/verify')
     public twoFaSetupVerify(_ctx: RouteContext): Response {
+        if (_ctx.request.body.length > 128) return fail();
         const r = new DataReader(_ctx.request.body);
         const code = r.readString();
         if (!r.ok) return fail();
@@ -1163,27 +1289,34 @@ class Auth {
         const current = this.account(accountKey);
         if (current == null) return fail();
         const key = this.secondaryKey(h, current);
-        const ch = AuthDb.twoFaSetup.get(key);
-        if (ch == null || ch.sessionVersion != 2 || !SessionEpochs.allowed(AuthService.getSessionBytes()!, ch.sessionEpoch)) return fail();
+        const observed = AuthDb.twoFaSetup.getCurrentSnapshot(key);
+        if (observed == null) return fail();
+        const ch = observed.value;
+        if (ch.sessionVersion != 3 || AuthService.__sessionGeneration() != ch.sessionEpoch) return fail();
         if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
-            AuthDb.twoFaSetup.delete(key);
+            AuthDb.twoFaSetup.compareDeleteSnapshot(key, observed);
             return fail();
         }
-        if (!this.twoFaVerifyCode(h, ch.username, code, ch)) {
+        const step = ch.method == TWOFA_TOTP ? Authenticator.match(this.totpBinding(h, ch.accountId), ch.encryptedSecret, code) : 0;
+        if (ch.method == TWOFA_TOTP ? step == 0 : !this.twoFaVerifyCode(h, ch.username, code, ch)) {
             ch.attempts = ch.attempts + 1;
-            if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaSetup.delete(key);
-            else AuthDb.twoFaSetup.patch(key, ch);
+            if (ch.attempts >= TWOFA_MAX_ATTEMPTS) AuthDb.twoFaSetup.compareDeleteSnapshot(key, observed);
+            else AuthDb.twoFaSetup.compareExchangeSnapshot(key, observed, ch);
             return fail();
         }
 
         // SUCCESS: consume-once + apply the method change.
-        const consumed = AuthDb.twoFaSetup.getDelete(key);
-        if (consumed == null || nowSecs() >= consumed.exp || !this.twoFaVerifyCode(h, consumed.username, code, consumed)) return fail();
-        const acct = this.account(accountKey);
-        if (acct == null || !ctEqual(consumed.accountId, this.incarnation(acct))) return fail();
-        if (!FactorRepository.save(h, this.factorName(acct), consumed.targetMethod, consumed.settingsRevision)) return fail();
-        const userData = __toilEncodeAuthUser(this.stableUserId(_ctx, h, u.username, acct), u.username);
-        AuthService.revokeUserSessions(userData);
+        if (ch.method == TWOFA_TOTP) {
+            const accepted = ch.targetMethod == TWOFA_TOTP ? Authenticator.initialize(h, ch.encryptedSecret, step) :
+                Authenticator.consume(h, ch.encryptedSecret, step);
+            if (!accepted) return fail();
+        }
+        if (!AuthDb.twoFaSetup.compareDeleteSnapshot(key, observed)) return fail();
+        const consumed = ch;
+        const acct = current;
+        if (!ctEqual(consumed.accountId, this.incarnation(acct))) return fail();
+        if (!AuthService.__changeFactor(h, this.factorName(acct), consumed.settingsRevision, consumed.targetMethod,
+            consumed.targetMethod == TWOFA_TOTP ? consumed.encryptedSecret : new Uint8Array(0))) return fail();
         const response = Response.bytes(new DataWriter().writeU8(ST_OK).toBytes());
         response.setCookie(AuthService.clearSession());
         response.setCookie(AuthService.clearUserCookie());
@@ -1200,7 +1333,7 @@ class Auth {
         const h = realm(_ctx);
         const acct = this.account(new Username(h, u.username));
         if (acct == null) return fail();
-        return Response.bytes(new DataWriter().writeU8(FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod).method).toBytes());
+        return Response.bytes(new DataWriter().writeU8(FactorRepository.read(h, this.factorName(acct), acct.twoFactorMethod, AuthService.__sessionState()).method).toBytes());
     }
 
     /**
@@ -1214,6 +1347,12 @@ class Auth {
      *     and pairs with a `case TWOFA_TOTP` in {@link twoFaVerifyCode}. The
      *     lifecycle and the login/setup wiring do NOT change. <<<
      */
+    private totpBinding(host: string, accountId: Uint8Array): Uint8Array {
+        const prefix = Uint8Array.wrap(String.UTF8.encode('toil-totp-v1:' + host + '\x00'));
+        const binding = new Uint8Array(prefix.length + accountId.length);
+        binding.set(prefix); binding.set(accountId, prefix.length); return binding;
+    }
+
     private twoFaDeliver(
         host: string,
         method: u8,
@@ -1233,7 +1372,7 @@ class Auth {
                 AuthEmail.twofa(email, code, subject, action);
                 return twoFaCodeHash(host, username, code);
             }
-            // >>> case TWOFA_TOTP: { return twoFaSecretBinding(username); } <<<
+            // Authenticator challenges carry an encrypted secret rather than a delivered code hash.
             default:
                 return new Uint8Array(0);
         }
@@ -1257,7 +1396,8 @@ class Auth {
             case TWOFA_EMAIL:
                 // Constant-time compare of the two 32-byte SHA-256 hashes.
                 return ctEqual(twoFaCodeHash(host, username, code), challenge.codeHash);
-            // >>> case TWOFA_TOTP: return totpVerify(challenge.codeHash, code); <<<
+            case TWOFA_TOTP:
+                return Authenticator.match(this.totpBinding(host, challenge.accountId), challenge.encryptedSecret, code) != 0;
             default:
                 return false;
         }

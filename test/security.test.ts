@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
     builtContentSecurityPolicy,
+    builtCrossOriginOpenerPolicy,
     contentSecurityPolicy,
     DEFAULT_CSP,
     withSecurityHeaders,
@@ -104,6 +105,18 @@ describe('default browser security', () => {
         expect(contentSecurityPolicy(["'sha384-YWJj'"], false, { 'script-src': [] })).toContain(
             "script-src 'none'",
         );
+    });
+
+    it('carries the popup opener policy through build markers, development and SSR', () => {
+        const secured = secureBuiltHtml('<head><script>window.ok=1</script></head>', {}, 'same-origin-allow-popups');
+        expect(builtCrossOriginOpenerPolicy(secured.html)).toBe('same-origin-allow-popups');
+        expect(builtCrossOriginOpenerPolicy('<head></head>')).toBe('same-origin');
+        const route = { test: () => true, entries: [], tmpl: new TextEncoder().encode(secured.html) };
+        const response = assembleRouteSsr(route, null, { method: 'GET', path: '/', headers: [], body: new Uint8Array() })!;
+        expect(response.headers).toContainEqual(['cross-origin-opener-policy', 'same-origin-allow-popups']);
+        const plugin = devSecurityPlugin({}, 'same-origin-allow-popups');
+        const hook = plugin.transformIndexHtml as { handler: (html: string) => string };
+        expect(builtCrossOriginOpenerPolicy(hook.handler('<head></head>'))).toBe('same-origin-allow-popups');
     });
 
     it('fills defaults case-insensitively while preserving explicit policies', () => {

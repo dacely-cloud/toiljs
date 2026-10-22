@@ -1,3 +1,5 @@
+import { devEnvGet } from '../config/env.js';
+import { prepareGoogleKeys } from './google.js';
 import { deriveChangesFrame, fullRescanFrame } from '../db/changes.js';
 import type { DbDevState } from '../db/types.js';
 import { deriveContinuationKey, deriveCheckpointKey } from '../db/derives.js';
@@ -126,6 +128,8 @@ interface DeriveExports {
 
 /** Host functions the dev server provides under `env` (see `host.ts`). */
 const PROVIDED_IMPORTS = new Set([
+    'codec.base64url_encode',
+    'codec.base64url_decode',
     'abort',
     'set_status',
     'set_header',
@@ -135,6 +139,7 @@ const PROVIDED_IMPORTS = new Set([
     'server_log',
     'client_ip',
     'ratelimit_check',
+    'google_verify',
     'email_send',
     'email_send_detached',
     'env_get',
@@ -156,6 +161,7 @@ const PROVIDED_IMPORTS = new Set([
     'crypto.verify',
     'crypto.derive_bits',
     'crypto.mldsa_verify',
+    'crypto.totp_verify',
     'crypto.mlkem_decapsulate',
     'crypto.voprf_evaluate',
     // ToilDB data API (see ./database.ts). Backed by persistent ToilDB on the production
@@ -218,6 +224,7 @@ const PROVIDED_IMPORTS = new Set([
 
 export class WasmServerModule {
     private module: WebAssembly.Module | null = null;
+    private usesGoogleVerification = false;
     private loadedMtimeMs = -1;
     private routeKinds: readonly RouteKindEntry[] = [];
     private rpcKinds: readonly RpcKindEntry[] = [];
@@ -248,6 +255,7 @@ export class WasmServerModule {
         } catch {
             unregisterMaterializer(this.wasmPath);
             this.module = null;
+            this.usesGoogleVerification = false;
             this.routeKinds = [];
             this.rpcKinds = [];
             this.derives = [];
@@ -269,6 +277,9 @@ export class WasmServerModule {
         this.rpcKinds = parseRpcKinds(bytes);
         this.derives = parseDerives(bytes);
         this.module = module;
+        this.usesGoogleVerification = WebAssembly.Module.imports(module).some(
+            entry => entry.module === 'env' && entry.name === 'google_verify',
+        );
         this.loadedMtimeMs = mtimeMs;
         // Rebuild materialized views from their sources on the first dispatch
         // (after persistence is configured), so a freshly-loaded box serves
@@ -299,6 +310,15 @@ export class WasmServerModule {
             persistDb();
             throw error;
         }
+    }
+
+    /** Network preparation stays outside synchronous guest execution on Node >=24. */
+    async dispatchWithNetwork(req: EnvelopeRequest): Promise<WasmDispatchResult> {
+        if (this.usesGoogleVerification && req.method === 'POST' &&
+            /^\/auth\/google\/login(?:\?|$)/.test(req.path) && devEnvGet('AUTH_GOOGLE_CLIENT_ID')) {
+            try { await prepareGoogleKeys(); } catch { /* verifier fails closed */ }
+        }
+        return this.dispatch(req);
     }
 
     /** Development race harness: suspend before/after chosen DB imports while

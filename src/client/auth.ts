@@ -641,7 +641,7 @@ export function isValidEmail(email: string): boolean {
 
 /** Whether `username` is a valid length (1 to 64), matching the server bound. */
 export function isValidUsername(username: string): boolean {
-    return username.length >= 1 && username.length <= 64;
+    return username.length >= 1 && username.length <= 64 && !username.startsWith('google_');
 }
 
 /** register/reset: the password failed the policy. `unmet` lists which rules failed so a
@@ -669,13 +669,29 @@ export class InvalidEmailError extends AuthError {
 /** register: the username is empty or too long ({@link AuthErrorCode.InvalidUsername}). */
 export class InvalidUsernameError extends AuthError {
     constructor() {
-        super(AuthErrorCode.InvalidUsername, 'Username must be 1 to 64 characters.');
+        super(AuthErrorCode.InvalidUsername, 'Username must be 1 to 64 characters and cannot begin with google_.');
         this.name = 'InvalidUsernameError';
     }
 }
 
+/** Initialize Google Identity Services with this nonce and client id before rendering its button. */
+export async function googleLoginStart(opts: AuthOptions = {}): Promise<{ clientId: string; nonce: string }> {
+    const r = await postBinary(opts.baseUrl ?? '/auth', '/google/start', new Uint8Array(0), opts);
+    return { clientId: r.readString(), nonce: r.readString() };
+}
+
+/** Submit the GIS callback credential; uses the same session and 2FA contract as password login. */
+export async function loginWithGoogle(credential: string, opts: AuthOptions = {}): Promise<Uint8Array> {
+    const r = await postBinary(opts.baseUrl ?? '/auth', '/google/login', new DataWriter().writeString(credential).toBytes(), opts);
+    const status = r.readU8();
+    if (status === 3) throw new TwoFactorRequiredError(toHex(r.readBytes()));
+    if (status === 2) throw new EmailNotConfirmedError();
+    if (status !== 0) throw new InvalidCredentialsError();
+    return r.readBytes();
+}
+
 /** The 2FA method values, mirroring the server enum (append-only). */
-export const TwoFactorMethod = { None: 0, Email: 1 } as const;
+export const TwoFactorMethod = { None: 0, Email: 1, Authenticator: 2 } as const;
 
 /**
  * Complete a 2FA login: submit the delivered `code` for the challenge `twoFaId`
@@ -694,6 +710,7 @@ export async function verifyTwoFactor(
         baseUrl,
         '/2fa/verify',
         new DataWriter().writeBytes(fromHex(twoFaId)).writeString(code).toBytes(),
+        opts,
     );
     if (res.readU8() !== 0) throw new TwoFactorCodeError();
     return res.readBytes(); // opaque session token
@@ -716,6 +733,16 @@ export async function setupTwoFactor(method: number, opts: AuthOptions = {}): Pr
     );
     if (res.readU8() !== 0)
         throw new AuthError(AuthErrorCode.TwoFactorSetupFailed, 'Enabling or disabling two-factor failed.');
+}
+
+/** Start Google Authenticator enrollment. Display the secret or encode the URI as a QR code locally. */
+export async function setupAuthenticator(issuer: string, account: string, opts: AuthOptions = {}, currentCode = ''): Promise<{ secret: string; uri: string }> {
+    const res = await postBinary(opts.baseUrl ?? '/auth', '/2fa/setup',
+        new DataWriter().writeU8(TwoFactorMethod.Authenticator).writeString(currentCode).toBytes(), opts);
+    if (res.readU8() !== 0) throw new TwoFactorCodeError();
+    const secret = res.readString();
+    if (!/^[A-Z2-7]{32}$/.test(secret)) throw new TwoFactorCodeError();
+    return { secret, uri: `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(account)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30` };
 }
 
 /**
@@ -869,6 +896,9 @@ export const Auth = {
     resetPassword,
     verifyTwoFactor,
     setupTwoFactor,
+    setupAuthenticator,
+    googleLoginStart,
+    loginWithGoogle,
     confirmTwoFactorSetup,
     twoFactorStatus,
     TwoFactorMethod,

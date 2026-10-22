@@ -28,6 +28,9 @@ export declare class Request {
     __authChecked: bool;
     __authBytes: Uint8Array | null;
     __authExpires: u64;
+    __authGeneration: u64;
+    __authEpochId: string;
+    __authEpochData: Uint8Array | null;
     private _cookies;
     constructor(method: Method, path: string, headers: Array<Header>, body: Uint8Array);
     /**

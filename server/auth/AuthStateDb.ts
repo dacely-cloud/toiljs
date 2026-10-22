@@ -12,6 +12,14 @@ export class SessionEpochKey {
 @data
 export class SessionEpoch {
     revision: u64 = 0;
+    claimNonce: Uint8Array = new Uint8Array(0);
+    // Factor changes and session fencing share this immutable commit.
+    // The account incarnation in factorName prevents inheritance after recreation.
+    factorHost: string = '';
+    factorName: string = '';
+    factorMethod: u8 = 0;
+    factorRevision: u64 = 0;
+    factorSecret: Uint8Array = new Uint8Array(0);
 }
 @data
 export class FactorKey {
@@ -30,6 +38,11 @@ export class FactorRevision {
 export class FactorSettings {
     method: u8 = 0;
     revision: u64 = 0;
+    encryptedSecret: Uint8Array = new Uint8Array(0);
+}
+@data
+export class TotpCounter {
+    step: u64 = 0;
 }
 @data
 export class SessionDigest {
@@ -46,6 +59,7 @@ export class AuthStateDb {
     @collection static revokedSessions: Unique<SessionDigest, RevokedSession>;
     @collection static epochHeads: Documents<SessionUserKey, SessionEpoch>;
     @collection static epochRevisions: Unique<SessionEpochKey, SessionEpoch>;
+    @collection static totpCounters: Documents<FactorKey, TotpCounter>;
     @collection static factorHeads: Documents<FactorKey, FactorSettings>;
     @collection static factorRevisions: Unique<FactorRevision, FactorSettings>;
 }

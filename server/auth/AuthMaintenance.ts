@@ -168,7 +168,7 @@ export class AuthMaintenance {
         AuthDb.twoFaSetup.delete(legacy);
         // Security epochs intentionally remain so copied cookies and in-flight
         // logins cannot become valid when the same identity signs up again.
-        SessionEpochs.revokeId(crypto.toHex(uid));
+        SessionEpochs.revokeId(crypto.toHex(uid), key.host);
         if (!AuthDb.accounts.compareDeleteSnapshot(key, observed)) return false;
         AuthMaintenance.unindex(uid, key.host, acct.username, AuthMaintenance.incarnation(acct));
         return true;

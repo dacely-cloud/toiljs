@@ -167,7 +167,7 @@ function stash(state: CryptoState, bytes: Buffer): number {
 export function buildCryptoImports(
     ref: MemoryRef,
     cs: CryptoState,
-): Record<string, ((...args: number[]) => number) | ((...args: number[]) => void)> {
+): Record<string, WebAssembly.ImportValue> {
     return {
         'crypto.fill_random': (outPtr: number, len: number): void => {
             if (len < 0 || len > MAX_OUTPUT) throw new Error('crypto.fill_random: bad length');
@@ -255,6 +255,24 @@ export function buildCryptoImports(
 
         'crypto.derive_bits': (h: number, pp: number, pl: number, lengthBits: number): number =>
             deriveBitsOp(cs, ref, h, pp, pl, lengthBits),
+
+        'crypto.totp_verify': (ptr: number, length: number, codePtr: number, codeLength: number, step: bigint): bigint => {
+            if (length !== 20 || codeLength !== 6 || step < 1n || step >= 0x7fffffffffffffffn) return 0n;
+            const secret = readBytes(ref, ptr, length);
+            const code = readBytes(ref, codePtr, codeLength);
+            try {
+                if (!code.every(byte => byte >= 48 && byte <= 57)) return 0n;
+                let matched = 0n;
+                for (let candidate = step - 1n; candidate <= step + 1n; candidate++) {
+                    const counter = Buffer.alloc(8); counter.writeBigUInt64BE(candidate);
+                    const hash = nodeCrypto.createHmac('sha1', secret).update(counter).digest();
+                    const value = (hash.readUInt32BE(hash[19] & 15) & 0x7fffffff) % 1000000;
+                    const expected = Buffer.from(value.toString().padStart(6, '0'));
+                    if (nodeCrypto.timingSafeEqual(code, expected)) matched = candidate;
+                }
+                return matched;
+            } finally { secret.fill(0); }
+        },
 
         // ML-DSA-44 (FIPS 204) verify for the auth primitive. Mirrors the edge
         // host (`mldsa_verify_import.rs`): same size asserts, 1/0/neg result.

@@ -1,3 +1,4 @@
+import { AuthRealm } from 'toiljs/server/auth/AuthRealm';
 import { AuthReads } from 'toiljs/server/auth/AuthReads';
 // AuthService: the server half of the post-quantum auth primitive, available
 // as a no-import global (registered via the toilscript `--lib` mechanism, the
@@ -13,7 +14,7 @@ import { AuthReads } from 'toiljs/server/auth/AuthReads';
 import { DataWriter, DataReader } from 'data';
 import { SessionEpochs } from 'toiljs/server/auth/SessionEpochs';
 import { toildbHost } from 'bindings/toildb';
-import { AuthStateDb, SessionDigest, RevokedSession } from 'toiljs/server/auth/AuthStateDb';
+import { AuthStateDb, SessionDigest, RevokedSession, SessionEpoch } from 'toiljs/server/auth/AuthStateDb';
 import { HmacImportParams, HmacParams, ALG_SHA_256, FMT_RAW, USAGE_SIGN, USAGE_VERIFY } from 'crypto';
 
 import {
@@ -137,23 +138,7 @@ function __resolveSessionSecretBase(): Uint8Array {
  *  request to one tenant and distinct across tenants. Used to bind a session to
  *  its tenant (below). */
 function __sessionTenantTag(): string {
-    const req = Server.currentRequest;
-    if (req == null) return '';
-    const raw = req.header('host');
-    if (raw == null) return '';
-    let h = raw.toLowerCase();
-    if (h.startsWith('[')) {
-        // IPv6 literal `[addr]` optionally + `:port`: keep through the closing
-        // bracket, drop any port after it. A naive lastIndexOf(':') would slice
-        // inside the address (`[::1]` -> `[:`), collapsing distinct IPv6 tenants
-        // to the same tag. Bracket-aware, matching the edge's strip_port.
-        const close = h.indexOf(']');
-        if (close >= 0) h = h.slice(0, close + 1);
-    } else {
-        const colon = h.lastIndexOf(':');
-        if (colon > 0) h = h.slice(0, colon); // drop :port (mirrors edge strip_port)
-    }
-    return h;
+    return AuthRealm.current();
 }
 
 /**
@@ -320,7 +305,7 @@ export namespace AuthService {
     }
 
     /** Session payload format version (first byte of the sealed payload). */
-    const SESSION_VERSION: u8 = 2;
+    const SESSION_VERSION: u8 = 3;
 
     /** Default session lifetime if `mintSession` is called without a ttl. */
     export const DEFAULT_SESSION_TTL_SECS: u64 = 604800; // 7 days
@@ -363,6 +348,9 @@ export namespace AuthService {
         req.__authChecked = false;
         req.__authBytes = null;
         req.__authExpires = 0;
+        req.__authGeneration = u64.MAX_VALUE;
+        req.__authEpochId = '';
+        req.__authEpochData = null;
     }
 
     function verifySession(req: Request): Uint8Array | null {
@@ -387,10 +375,41 @@ export namespace AuthService {
         if (!r.ok) return null;                          // truncated/malformed
 
         if (Time.nowSeconds() >= exp) return null;       // expired
-        if (!SessionEpochs.allowed(userBytes, generation)) return null;
+        const epochId = SessionEpochs.key(userBytes);
+        const state = SessionEpochs.read(epochId);
+        if (state.revision != generation) return null;
+        // Ordinary accounts avoid serialization; factors reuse the verified request snapshot.
+        req.__authEpochData = state.factorName.length == 0 ? null : state.encode();
 
         req.__authExpires = exp;
+        req.__authGeneration = generation;
+        req.__authEpochId = epochId;
         return userBytes;
+    }
+
+    /** @internal Generation already verified on this request; never a process cache. */
+    export function __sessionGeneration(): u64 {
+        if (getSessionBytes() == null) return u64.MAX_VALUE;
+        const req = Server.currentRequest;
+        return req == null ? u64.MAX_VALUE : req.__authGeneration;
+    }
+
+    /** @internal Security policy from the same snapshot that authorized this request. */
+    export function __sessionState(): SessionEpoch {
+        if (getSessionBytes() == null) throw new Error('Verified session required');
+        const req = Server.currentRequest!;
+        const state = new SessionEpoch();
+        if (req.__authEpochData != null) state.decodeInto(req.__authEpochData!);
+        else state.revision = req.__authGeneration;
+        return state;
+    }
+
+    /** @internal Atomic factor-policy change and session revocation. */
+    export function __changeFactor(host: string, name: string, expected: u64, method: u8, secret: Uint8Array): bool {
+        const state = __sessionState();
+        const id = Server.currentRequest!.__authEpochId;
+        invalidateSession();
+        return SessionEpochs.changeFactor(id, state, host, name, expected, method, secret);
     }
 
     /** Whether the current request carries a valid, unexpired session. The
@@ -479,6 +498,18 @@ export namespace AuthService {
     export function revokeUserSessions(userData: Uint8Array): void {
         invalidateSession();
         SessionEpochs.revoke(userData);
+    }
+
+    /** @internal Revoke the current verified identity after a factor mutation. */
+    export function __revokeVerifiedSessions(): void {
+        const data = getSessionBytes();
+        const req = Server.currentRequest;
+        if (data == null || req == null) throw new Error('Verified session required');
+        const generation = req.__authGeneration;
+        const id = req.__authEpochId;
+        const state = __sessionState();
+        invalidateSession();
+        SessionEpochs.revokeVerifiedId(id, generation, state);
     }
 
     /** Revoke the verified signed payload, including its unpredictable per-login nonce. */

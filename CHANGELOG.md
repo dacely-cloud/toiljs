@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Add Google Identity Services login and an official React sign-in button, with browser-bound nonces, offline token verification, bounded replay state, and existing sessions and two-factor controls.
+- Add Google Authenticator-compatible TOTP enrollment, encrypted binary secrets, account-wide attempt limits, single-use codes, and safe factor changes. Optimize auth database calls and native codecs without weakening revocation races.
+- Require owner-authoritative backend unique lookups so replication lag cannot hide revocation or factor claims.
+- Harden factor changes with an atomic policy/revocation commit, conditional challenge updates, account-wide replacement limits, independent third-party email confirmation, and optional JWT not-before validation. Session format 3 requires users to sign in again and isolates security state by Host.
+- Add `client.coop` for Google popup compatibility. Deploy the updated toil-backend first; see `docs/auth/google-and-authenticator.md` for configuration and runtime requirements.
+
 ## [v0.0.132] - 2026-10-19
 
 - Declare the compiler-provided `AuthUser` type and `__toildbResolve` collection resolver in the shipped server globals so editors recognize them without application shims or generated lint output. Preserve custom `@user` fields through the generated principal declarations.

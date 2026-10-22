@@ -1,3 +1,4 @@
+import { buildBase64Imports } from '../src/devserver/runtime/base64.js';
 // Runs the AssemblyScript specs in test/assembly/*.spec.ts by compiling each with toilscript and
 // executing its `_start` (which runs the describe/it bodies + the shim's asserts). A failed assert
 // aborts; this runner surfaces it as a vitest failure. Runs them via toilscript, no external runner.
@@ -40,8 +41,10 @@ describe('assembly specs (toilscript-compiled)', () => {
                 }
                 const wasm = readFileSync(out);
                 const holder: { mem: WebAssembly.Memory | null } = { mem: null };
+                const codecRef: { memory: WebAssembly.Memory | null } = { memory: null };
                 const { instance } = await WebAssembly.instantiate(wasm, {
                     env: {
+                        ...buildBase64Imports(codecRef),
                         abort(msg: number, _file: number, line: number): void {
                             const m = holder.mem ? liftString(msg >>> 0, holder.mem) : '';
                             throw new Error(`${spec}.spec.ts assertion failed: "${m}" (line ${line})`);
@@ -50,6 +53,7 @@ describe('assembly specs (toilscript-compiled)', () => {
                     },
                 });
                 holder.mem = instance.exports.memory as WebAssembly.Memory;
+                codecRef.memory = holder.mem;
                 (instance.exports._start as () => void)();
             } finally {
                 rmSync(tmp, { recursive: true, force: true });

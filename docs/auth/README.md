@@ -16,6 +16,9 @@ export default defineConfig({
 That is the whole setup. The build appends the framework's auth controller to your server, so `/auth/*`
 is live and `@auth` works everywhere.
 
+For [Google sign-in and Google Authenticator](./google-and-authenticator.md), see the setup,
+browser component, production configuration, and TOTP enrollment guide.
+
 ## Storage and request lifetime
 
 Authentication uses collections in two databases: `AuthDb` for accounts and
@@ -26,7 +29,13 @@ the cached result. Temporary failures reading revocations, generations, or
 two-factor state abort the request; they never mean that a restriction is absent.
 
 Session generations use immutable revocation claims and a conditional head update.
-Reads probe at most eight revisions beyond the head. Writable requests repair a
+Reads probe at most eight revisions beyond the head. Revocation claims include
+a random ownership nonce so separate revocations cannot coalesce as identical
+unique owners. A factor change stores the new factor policy in the same claim
+that advances the generation: request failure cannot leave an enabled factor
+with still-valid earlier sessions. A competing advance triggers a fresh scan;
+ordinary revocations preserve the factor policy. A successful fast claim leaves
+a single revision for the next writable request to repair. Writable requests repair a
 stale head without overwriting a concurrent advance; read-only queries never
 repair it. If a chain exceeds the probe limit, verification fails closed with
 `Session state recovering; retry`. A writable sign-in or revocation attempt still
@@ -40,8 +49,14 @@ readable user cookies, using their HTTP or HTTPS names and attributes. Storage
 failures abort verification instead of returning that 401, preserving credentials
 for a retry.
 
-The `AuthStateDb` layout replaces the separate session and factor database
-namespaces. It requires a fresh store or an explicit migration of existing security
+Session format 3 uses host-scoped generation keys, even when domains share a
+configured `TOIL_AUTH_DOMAIN`. Upgrading signs everyone out and rejects older
+pending login/setup challenges. Existing `AuthStateDb` factor records remain
+readable; new changes use atomic generation commits. All server instances must
+run the updated application before enabling the new authentication features.
+
+For deployments migrating from the earlier separate session and factor database
+namespaces, the `AuthStateDb` layout replaces those namespaces. It requires a fresh store or an explicit migration of existing security
 state; it does not read the previous namespaces. The Nerva rollout uses a database
 reset alongside the application schema change.
 

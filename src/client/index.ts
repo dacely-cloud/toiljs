@@ -12,6 +12,9 @@ export { mount } from './routing/mount.js';
 export { Router } from './routing/Router.js';
 export {
     Auth,
+    setupAuthenticator,
+    googleLoginStart,
+    loginWithGoogle,
     register as authRegister,
     login as authLogin,
     buildLoginMessage,
@@ -131,3 +134,5 @@ export { Hole, RawHtml, Repeat, Island, attr, __setSsrBuild, __isSsrBuild } from
 export type { HoleProps, RawHtmlProps, RepeatProps, IslandProps } from './ssr/markers.js';
 
 export { sanitizeHtml } from './html.js';
+export { GoogleSignIn } from './components/GoogleSignIn.js';
+export type { GoogleSignInProps } from './components/GoogleSignIn.js';

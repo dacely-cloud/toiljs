@@ -247,6 +247,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
     it('deletes accounts stored before incarnation fields were added', async () => {
         await Auth.register('legacydelete', 'original-password-A1', 'legacydelete@example.com');
         await login('legacydelete', 'original-password-A1');
+        // The appended Google fields add 16 bytes for password accounts.
         // The prior AuthAccount codec ended after toilUserId; EmailOwner ended
         // after username. Keep those exact stored bytes, rather than re-encoding
         // the values with new default fields before a conditional comparison.
@@ -255,7 +256,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         const emailEntry = [...store.entries()].find(([key]) => key.startsWith('AuthDb/emails\0'))!;
         expect(accountEntry).toBeDefined();
         expect(emailEntry).toBeDefined();
-        store.set(accountEntry[0], accountEntry[1].subarray(0, accountEntry[1].length - 39));
+        store.set(accountEntry[0], accountEntry[1].subarray(0, accountEntry[1].length - 55));
         store.set(emailEntry[0], emailEntry[1].subarray(0, emailEntry[1].length - 36));
         await Auth.deleteAccount();
         __resetRatelimitForTests();
@@ -267,7 +268,7 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         await Auth.register('legacyuid', 'original-password-A1', 'legacyuid@example.com');
         const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
         const old = [...store.entries()].find(([key]) => key.startsWith('AuthDb/accounts\0'))!;
-        store.set(old[0], old[1].subarray(0, old[1].length - 75)); // before toilUserId and incarnation fields
+        store.set(old[0], old[1].subarray(0, old[1].length - 91)); // before toilUserId and incarnation fields
         await login('legacyuid', 'original-password-A1');
         await Auth.requestPasswordReset('legacyuid@example.com');
         await Auth.resetPassword(tokenFromEmail('reset', 'legacyuid@example.com'), 'replacement-password-A1');
@@ -282,14 +283,14 @@ describe.skipIf(!haveWasm)('built-in auth: email verification + password reset (
         await login('legacyreplay', 'original-password-A1');
         const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
         const old = [...store.entries()].find(([key]) => key.startsWith('AuthDb/accounts\0'))!;
-        const oldBytes = Buffer.from(old[1].subarray(0, old[1].length - 39));
+        const oldBytes = Buffer.from(old[1].subarray(0, old[1].length - 55));
         store.set(old[0], oldBytes);
         await Auth.requestPasswordReset('legacyreplay@example.com');
         await Auth.resetPassword(tokenFromEmail('reset', 'legacyreplay@example.com'), 'replacement-password-A1');
         // Model a reset performed by the previous codec, before it persisted an
         // account incarnation: publicKey changed, the original stable ID remained.
         const reset = store.get(old[0])!;
-        store.set(old[0], reset.subarray(0, reset.length - 39));
+        store.set(old[0], reset.subarray(0, reset.length - 55));
         __resetRatelimitForTests();
         await login('legacyreplay', 'replacement-password-A1');
         await Auth.deleteAccount();

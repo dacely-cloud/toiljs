@@ -6,7 +6,7 @@ import { type Request, type Response, type Server } from '@dacely/hyper-express'
 import pc from 'picocolors';
 
 import { writeResponseHeader } from 'toiljs/backend';
-import { builtContentSecurityPolicy, DEFAULT_CSP, withSecurityHeaders } from 'toiljs/shared';
+import { builtContentSecurityPolicy, builtCrossOriginOpenerPolicy, DEFAULT_CSP, withSecurityHeaders } from 'toiljs/shared';
 
 import { type EnvelopeRequest, METHOD_CODES } from './envelope.js';
 import { applyCacheRule, lookupCache, type CacheableResult } from './cache.js';
@@ -319,14 +319,14 @@ export interface EnvelopeDispatchOutcome {
     readonly handled: boolean;
 }
 
-export function dispatchEnvelopeRequest(options: {
+export async function dispatchEnvelopeRequest(options: {
     readonly module: WasmServerModule;
     readonly envelopeReq: EnvelopeRequest;
     readonly method: string;
     readonly url: string;
     readonly cacheHost: string;
     readonly hasAuth: boolean;
-}): EnvelopeDispatchOutcome {
+}): Promise<EnvelopeDispatchOutcome> {
     const cached = lookupCache(
         options.cacheHost,
         options.method,
@@ -335,7 +335,7 @@ export function dispatchEnvelopeRequest(options: {
     );
     if (cached !== null) return { result: cached, handled: true };
 
-    const result = options.module.dispatch(options.envelopeReq);
+    const result = await options.module.dispatchWithNetwork(options.envelopeReq);
     if (result.unhandled) return { result: null, handled: false };
 
     return {
@@ -366,7 +366,7 @@ export async function dispatchWasmRequest(options: {
         options.request.headers.authorization !== undefined;
 
     try {
-        const dispatch = dispatchEnvelopeRequest({
+        const dispatch = await dispatchEnvelopeRequest({
             module: options.module,
             envelopeReq,
             method: options.request.method,
@@ -417,5 +417,5 @@ export function assembleRouteSsr(
               : assembleSsr(route, module.dispatchRender(envelopeReq));
     if (out === null) return null;
     // Derive trust from the immutable template, before any request data is spliced.
-    return { ...out, headers: withSecurityHeaders(out.headers, policy).map(([k, v]) => [k, v]) };
+    return { ...out, headers: withSecurityHeaders(out.headers, policy, builtCrossOriginOpenerPolicy(templateHtml)).map(([k, v]) => [k, v]) };
 }

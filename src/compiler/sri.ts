@@ -141,7 +141,7 @@ export function sriPlugin(cfg: ResolvedToilConfig): Plugin {
             let out = injectSri(html, outDir, cfg.base);
             const importMap = buildImportMapIntegrity(outDir, cfg.base, cache);
             if (importMap !== null) out = injectImportMap(out, importMap);
-            const secured = secureBuiltHtml(out, cfg.cspSources);
+            const secured = secureBuiltHtml(out, cfg.cspSources, cfg.coop);
             fs.writeFileSync(shell, secured.html);
             // Conventional static-host header artifact. The policy is inherited by
             // prerendered/SSG/SSR pages from this shell; native hosts must apply it too.
@@ -150,7 +150,7 @@ export function sriPlugin(cfg: ResolvedToilConfig): Plugin {
             fs.writeFileSync(
                 headersFile,
                 existing +
-                    `\n/*\n  Content-Security-Policy: ${secured.policy}\n  Cross-Origin-Opener-Policy: same-origin\n`,
+                    `\n/*\n  Content-Security-Policy: ${secured.policy}\n  Cross-Origin-Opener-Policy: ${cfg.coop ?? 'same-origin'}\n`,
             );
         },
     };

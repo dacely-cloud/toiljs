@@ -86,6 +86,9 @@ export class AuthAccount {
     deleting: bool = false;
     registering: bool = false;
     legacyFactors: bool = false;
+    googleSubject: string = '';
+    googleIssuedAt: u64 = 0;
+    googleNonces: string[] = new Array<string>();
 }
 
 @data
@@ -132,6 +135,7 @@ export class TwoFaChallenge {
     sessionEpoch: u64 = 0;
     sessionVersion: u8 = 0;
     settingsRevision: u64 = 0;
+    encryptedSecret: Uint8Array = new Uint8Array(0);
     accountId: Uint8Array = new Uint8Array(0);
 }
 

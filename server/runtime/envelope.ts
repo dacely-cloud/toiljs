@@ -27,8 +27,7 @@ import {
     utf8Length,
     writeBytes,
     writeU16,
-    writeU32,
-    writeUtf8
+    writeU32
 } from './memory';
 import { Header, Method, Request } from './request';
 import { Response, ensureSecurityHeaders } from './response';
@@ -145,11 +144,14 @@ export function encodeResponse(resp: Response, dst_ofs: usize): u32 {
     if (resp.headers.length > 0xffff) {
         return encodeFallback500(dst_ofs);
     }
+    const lengths = new Uint32Array(resp.headers.length * 2);
     for (let i = 0; i < resp.headers.length; i++) {
         const h = resp.headers[i];
-        if (utf8Length(h.name) > 0xffff || utf8Length(h.value) > 0xffff) {
+        const nameLen = utf8Length(h.name), valLen = utf8Length(h.value);
+        if (nameLen > 0xffff || valLen > 0xffff) {
             return encodeFallback500(dst_ofs);
         }
+        lengths[i * 2] = nameLen; lengths[i * 2 + 1] = valLen;
     }
     if (<u64>resp.body.length > <u64>0xffffffff) {
         return encodeFallback500(dst_ofs);
@@ -165,14 +167,14 @@ export function encodeResponse(resp: Response, dst_ofs: usize): u32 {
 
     for (let i = 0; i < resp.headers.length; i++) {
         const h = resp.headers[i];
-        const nameLen = utf8Length(h.name);
-        const valLen = utf8Length(h.value);
+        const nameLen = lengths[i * 2];
+        const valLen = lengths[i * 2 + 1];
         writeU16(cur, <u16>nameLen);
         cur += 2;
         writeU16(cur, <u16>valLen);
         cur += 2;
-        cur += writeUtf8(cur, h.name);
-        cur += writeUtf8(cur, h.value);
+        cur += String.UTF8.encodeUnsafe(changetype<usize>(h.name), h.name.length, cur);
+        cur += String.UTF8.encodeUnsafe(changetype<usize>(h.value), h.value.length, cur);
     }
 
     const bodyLen = <u32>resp.body.length;

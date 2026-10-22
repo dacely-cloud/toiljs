@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { type InlineConfig } from 'vite';
-import { type EmailBackendConfig } from 'toiljs/shared';
+import { type EmailBackendConfig, type CoopPolicy } from 'toiljs/shared';
 
 import { type SeoConfig } from './seo.js';
 
@@ -69,6 +69,8 @@ export interface ClientConfig {
      * `@font-face` font so it loads in parallel with the CSS (faster text paint). Default `true`.
      */
     readonly fonts?: boolean;
+    /** Google popup fallback requires same-origin-allow-popups. Default same-origin. */
+    readonly coop?: CoopPolicy;
     /** Additional resource origins or Trusted Types policy names, keyed by CSP directive.
      * Explicit script-src/script-src-elem arrays replace generated script trust.
      * An empty require-trusted-types-for array disables DOM sink enforcement.
@@ -210,6 +212,8 @@ export interface ResolvedToilConfig {
     readonly images: boolean;
     /** Whether build-time font preloading is enabled. */
     readonly fonts: boolean;
+    /** Google popup fallback requires same-origin-allow-popups. Default same-origin. */
+    readonly coop?: CoopPolicy;
     readonly cspSources?: Readonly<Record<string, readonly string[]>>;
     /** Whether animated View Transitions are enabled for navigation. */
     readonly viewTransitions: boolean;
@@ -276,6 +280,8 @@ export async function loadConfig(
     }
 
     const client = user.client ?? {};
+    if (client.coop !== undefined && !['same-origin', 'same-origin-allow-popups'].includes(client.coop))
+        throw new Error('client.coop must be same-origin or same-origin-allow-popups');
     const srcDir = client.srcDir ?? 'client';
     const routesDir = client.routesDir ?? 'routes';
     const clientAbsDir = path.join(root, srcDir);
@@ -299,6 +305,7 @@ export async function loadConfig(
         host: opts.host ?? envHost() ?? client.host ?? '127.0.0.1',
         images: client.images ?? true,
         fonts: client.fonts ?? true,
+        coop: client.coop ?? 'same-origin',
         cspSources: client.cspSources ?? {},
         viewTransitions: client.viewTransitions ?? false,
         transitions: client.transitions ?? false,

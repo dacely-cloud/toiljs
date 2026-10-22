@@ -314,7 +314,7 @@ function startBuiltDaemon(
     });
 }
 
-function handleBuiltRuntimeRequest(runtime: BuiltRuntime, request: ThreadedRequest): ThreadedReply {
+async function handleBuiltRuntimeRequest(runtime: BuiltRuntime, request: ThreadedRequest): Promise<ThreadedReply> {
     const envelopeReq = {
         method: request.method,
         path: request.url,
@@ -328,7 +328,7 @@ function handleBuiltRuntimeRequest(runtime: BuiltRuntime, request: ThreadedReque
             headerValue(request.headers, 'cookie') !== undefined ||
             headerValue(request.headers, 'authorization') !== undefined;
         try {
-            const dispatch = dispatchEnvelopeRequest({
+            const dispatch = await dispatchEnvelopeRequest({
                 module: runtime.module,
                 envelopeReq,
                 method: request.method,
@@ -505,7 +505,7 @@ async function startBuiltServerSingle(options: BuiltServerOptions): Promise<Runn
     const daemon = startBuiltDaemon(options, paths);
     try {
         const server = await startBuiltHttpServer(options, paths, async (request, response) => {
-            const reply = handleBuiltRuntimeRequest(runtime, await toThreadedRequest(request, 0));
+            const reply = await handleBuiltRuntimeRequest(runtime, await toThreadedRequest(request, 0));
             return sendThreadedReply(response, reply);
         });
         return {

@@ -31,6 +31,9 @@ function hexVal(c: i32): i32 {
 
 /** Percent-encode `s` (UTF-8) into a cookie-safe value. */
 export function percentEncode(s: string): string {
+    let safe = true;
+    for (let i = 0; i < s.length; i++) if (!isUnreserved(s.charCodeAt(i))) { safe = false; break; }
+    if (safe) return s;
     const bytes = Uint8Array.wrap(String.UTF8.encode(s));
     let out = '';
     for (let i = 0; i < bytes.length; i++) {
@@ -52,6 +55,7 @@ export function percentEncode(s: string): string {
  * form-encoded, so `+` is not a space).
  */
 export function percentDecode(s: string): string {
+    if (s.indexOf('%') < 0) return s;
     const input = Uint8Array.wrap(String.UTF8.encode(s));
     const n = input.length;
     const bytes = new Array<u8>();

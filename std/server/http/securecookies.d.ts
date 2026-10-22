@@ -1,7 +1,7 @@
 // Generated from server/runtime by scripts/gen-server-types.mjs.
 /**
  * `SecureCookies` — tamper-proof and confidential cookie values, built on the
- * ambient `crypto` global (no new host functions).
+ * ambient `crypto` global and bounded native base64 codecs.
  *
  *  - `SecureCookies.signed(key)` — HMAC-SHA256. The value stays readable but is
  *    bound to the cookie name, so it cannot be tampered with or moved to another

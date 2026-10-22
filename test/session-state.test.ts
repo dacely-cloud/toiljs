@@ -9,6 +9,8 @@ import { WasmServerModule } from '../src/devserver/runtime/module.js';
 const root = mkdtempSync(join(tmpdir(), 'toil-session-state-'));
 let module: WasmServerModule;
 const store = (devDb as unknown as { store: Map<string, Buffer> }).store;
+// @data's u32 boundary precedes revision; appended ownership bytes follow it.
+const EPOCH_REVISION_OFFSET = 4;
 const fnv = (s: string): string => {
     let n = 0x811c9dc5;
     for (const c of s) n = Math.imul(n ^ c.charCodeAt(0), 0x01000193) >>> 0;
@@ -48,7 +50,7 @@ function seedChain(length: number): string {
         const k = Buffer.from(key);
         const v = Buffer.from(value);
         k.writeBigUInt64LE(BigInt(revision), k.length - 8);
-        v.writeBigUInt64LE(BigInt(revision), v.length - 8);
+        v.writeBigUInt64LE(BigInt(revision), EPOCH_REVISION_OFFSET);
         store.set('AuthStateDb/epochRevisions\0' + k.toString('latin1'), v);
     }
     store.delete(headKey);
@@ -56,7 +58,7 @@ function seedChain(length: number): string {
 }
 function revision(headKey: string): bigint {
     const value = store.get(headKey)!;
-    return value.readBigUInt64LE(value.length - 8);
+    return value.readBigUInt64LE(EPOCH_REVISION_OFFSET);
 }
 
 beforeAll(() => {
@@ -205,7 +207,7 @@ describe('compiled session security under native operation limits', () => {
             const key = Buffer.from(claimKey.slice(claimKey.indexOf('\0') + 1), 'latin1');
             const newer = Buffer.from(value);
             key.writeBigUInt64LE(3n, key.length - 8);
-            newer.writeBigUInt64LE(3n, newer.length - 8);
+            newer.writeBigUInt64LE(3n, EPOCH_REVISION_OFFSET);
             store.set('AuthStateDb/epochRevisions\0' + key.toString('latin1'), newer);
             store.set(head, newer);
             return original(...args);
@@ -223,7 +225,7 @@ describe('compiled session security under native operation limits', () => {
                     key.startsWith('AuthStateDb/epochRevisions\0'),
                 )![1],
             );
-            newer.writeBigUInt64LE(4n, newer.length - 8);
+            newer.writeBigUInt64LE(4n, EPOCH_REVISION_OFFSET);
             store.set(head, newer);
             return original(...args);
         });

@@ -1,15 +1,16 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Plugin } from 'vite';
-import { contentSecurityPolicy, DEFAULT_COOP } from 'toiljs/shared';
+import { contentSecurityPolicy, DEFAULT_COOP, type CoopPolicy } from 'toiljs/shared';
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 /** The marker lets HTTP hosts send this same policy in enforcement mode. */
-export function injectSecurityPolicy(html: string, policy: string): string {
+export function injectSecurityPolicy(html: string, policy: string, coop: CoopPolicy = DEFAULT_COOP): string {
     const tags =
+        (coop === DEFAULT_COOP ? '' : `<meta name="toil-coop" content="${coop}">\n`) +
         `<meta name="toil-csp" content="${escapeAttr(policy)}">\n` +
         // frame-ancestors is header-only; omit it from the meta policy.
         `<meta http-equiv="Content-Security-Policy" content="${escapeAttr(policy.replace(/frame-ancestors [^;]+; /, ''))}">`;
@@ -30,6 +31,7 @@ export function injectSecurityPolicy(html: string, policy: string): string {
 export function secureBuiltHtml(
     html: string,
     extraSources: Readonly<Record<string, readonly string[]>> = {},
+    coop: CoopPolicy = DEFAULT_COOP,
 ): { html: string; policy: string } {
     const sources = new Set<string>();
     for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
@@ -57,12 +59,13 @@ export function secureBuiltHtml(
         }
     }
     const policy = contentSecurityPolicy([...sources], false, extraSources);
-    return { html: injectSecurityPolicy(html, policy), policy };
+    return { html: injectSecurityPolicy(html, policy, coop), policy };
 }
 
 /** Runs after Vite/React have inserted their development scripts. */
 export function devSecurityPlugin(
     extraSources: Readonly<Record<string, readonly string[]>> = {},
+    coop: CoopPolicy = DEFAULT_COOP,
 ): Plugin {
     const requestNonce = new AsyncLocalStorage<string>();
     return {
@@ -75,7 +78,7 @@ export function devSecurityPlugin(
                     'Content-Security-Policy',
                     contentSecurityPolicy([`'nonce-${nonce}'`], true, extraSources),
                 );
-                response.setHeader('Cross-Origin-Opener-Policy', DEFAULT_COOP);
+                response.setHeader('Cross-Origin-Opener-Policy', coop);
                 requestNonce.run(nonce, next);
             });
         },
@@ -93,6 +96,7 @@ export function devSecurityPlugin(
                 return injectSecurityPolicy(
                     out,
                     contentSecurityPolicy([`'nonce-${nonce}'`], true, extraSources),
+                    coop,
                 );
             },
         },

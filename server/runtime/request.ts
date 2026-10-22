@@ -38,6 +38,9 @@ export class Request {
     __authChecked: bool = false;
     __authBytes: Uint8Array | null = null;
     __authExpires: u64 = 0;
+    __authGeneration: u64 = u64.MAX_VALUE;
+    __authEpochId: string = '';
+    __authEpochData: Uint8Array | null = null;
 
     // Lazily parsed `Cookie` header, cached for the life of the request.
     private _cookies: CookieMap | null = null;

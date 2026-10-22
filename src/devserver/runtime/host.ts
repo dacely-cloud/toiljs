@@ -1,3 +1,5 @@
+import { buildBase64Imports } from './base64.js';
+import { googleVerifyImport } from './google.js';
 import { buildImageImports, freshImageState, type ImageDevState } from '../images/index.js';
 /**
  * The host import surface the dev server exposes to the guest, mirroring the
@@ -290,6 +292,7 @@ export function buildEnvImports(
     _state: { crypto: CryptoState; db: DbDevState; images: ImageDevState },
 ): Record<string, (...a: never[]) => unknown> {
     return {
+        ...buildBase64Imports(ref),
         ...buildLogImports(ref, _state.db),
         ...buildImageImports(ref, _state.images, () => _state.db.functionKind),
         abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
@@ -317,6 +320,7 @@ export function buildEnvImports(
         // `env::email_send` / `email_send_detached`: the FULL email pipeline in
         // dev. A daemon may send mail, so this stays in the shared subset (00 B2 /
         // doc 08 AN-8). Both map to the same fire-and-forget dev path.
+        google_verify: (tp: number, tl: number, ap: number, al: number, np: number, nl: number, out: number, cap: number): number => googleVerifyImport(ref, tp, tl, ap, al, np, nl, out, cap),
         email_send: (reqPtr: number, reqLen: number): number => devEmailSend(ref, reqPtr, reqLen),
         email_send_detached: (reqPtr: number, reqLen: number): number =>
             devEmailSend(ref, reqPtr, reqLen),
@@ -330,6 +334,7 @@ export function buildEnvImports(
 export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssembly.Imports {
     return {
         env: {
+            ...buildBase64Imports(ref),
             ...buildLogImports(ref, state.db),
             ...buildImageImports(ref, state.images, () => state.db.functionKind),
             abort: (msgPtr: number, filePtr: number, line: number, col: number): void => {
@@ -412,6 +417,7 @@ export function buildHostImports(ref: MemoryRef, state: DispatchState): WebAssem
             // (non-suspending on the edge): the FULL dev email pipeline. Both map
             // to the same fire-and-forget dev path (a sync wasm import can't await
             // the provider send), and BOTH feed `__sentEmails`. See devEmailSend.
+            google_verify: (tp: number, tl: number, ap: number, al: number, np: number, nl: number, out: number, cap: number): number => googleVerifyImport(ref, tp, tl, ap, al, np, nl, out, cap),
             email_send: (reqPtr: number, reqLen: number): number =>
                 devEmailSend(ref, reqPtr, reqLen),
             email_send_detached: (reqPtr: number, reqLen: number): number =>

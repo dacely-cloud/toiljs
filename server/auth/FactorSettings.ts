@@ -1,7 +1,14 @@
 import { AuthReads } from 'toiljs/server/auth/AuthReads';
-import { AuthStateDb, FactorKey, FactorRevision, FactorSettings } from './AuthStateDb';
+import { AuthStateDb, FactorKey, FactorRevision, FactorSettings, SessionEpoch } from 'toiljs/server/auth/AuthStateDb';
 export class FactorRepository {
-    public static read(host: string, username: string, legacy: u8): FactorSettings {
+    public static read(host: string, username: string, legacy: u8, epoch: SessionEpoch): FactorSettings {
+        if (epoch.factorHost == host && epoch.factorName == username) {
+            const settings = new FactorSettings();
+            settings.method = epoch.factorMethod; settings.revision = epoch.factorRevision;
+            settings.encryptedSecret = epoch.factorSecret;
+            return settings;
+        }
+        // Read-only compatibility with security state written before atomic epoch commits.
         let settings = AuthReads.document(AuthStateDb.factorHeads, new FactorKey(host, username));
         if (settings == null) { settings = new FactorSettings(); settings.method = legacy; }
         for (let i: i32 = 0; i < 64; i++) {
@@ -10,11 +17,5 @@ export class FactorRepository {
             settings = next;
         }
         throw new Error('Two-factor settings unavailable');
-    }
-    public static save(host: string, username: string, method: u8, expected: u64): bool {
-        const settings = new FactorSettings(); settings.method = method; settings.revision = expected + 1;
-        if (!AuthStateDb.factorRevisions.claim(new FactorRevision(host, username, settings.revision), settings).claimed) return false;
-        AuthStateDb.factorHeads.upsert(new FactorKey(host, username), settings);
-        return true;
     }
 }

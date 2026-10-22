@@ -50,5 +50,8 @@ export {
     DEFAULT_CSP,
     contentSecurityPolicy,
     builtContentSecurityPolicy,
+    builtCrossOriginOpenerPolicy,
     withSecurityHeaders,
 } from './security.js';
+
+export type { CoopPolicy } from './security.js';

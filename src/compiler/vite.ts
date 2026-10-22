@@ -206,7 +206,7 @@ export async function createViteConfig(cfg: ResolvedToilConfig): Promise<InlineC
             react(),
             sharedResolverPlugin(cfg),
             toilPlugin(cfg),
-            devSecurityPlugin(cfg.cspSources),
+            devSecurityPlugin(cfg.cspSources, cfg.coop),
         ],
         resolve: {
             alias: {
