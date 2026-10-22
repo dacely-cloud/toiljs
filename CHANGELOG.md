@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [v0.0.133] - 2026-10-22
 
 - Add Google Identity Services login and an official React sign-in button, with browser-bound nonces, offline token verification, bounded replay state, and existing sessions and two-factor controls.
 - Add Google Authenticator-compatible TOTP enrollment, encrypted binary secrets, account-wide attempt limits, single-use codes, and safe factor changes. Optimize auth database calls and native codecs without weakening revocation races.
