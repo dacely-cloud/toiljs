@@ -153,9 +153,9 @@ function scaffold(
         ...TEST_DEPENDENCIES,
         '@types/react': '^19.3.0',
         '@types/react-dom': '^19.3.0',
-        oxlint: '^1.87.0',
-        'oxlint-tsgolint': '^7.0.2003',
-        prettier: '^3.9.9',
+        oxlint: '^1.89.0',
+        'oxlint-tsgolint': '^7.0.2004',
+        prettier: '^3.9.10',
         toilscript: '>=0.1.66',
         typescript: '^7.0.2',
     };
@@ -178,8 +178,8 @@ function scaffold(
         },
         dependencies: {
             toiljs: `^${toilVersion}`,
-            react: '^19.3.0',
-            'react-dom': '^19.3.0',
+            react: '^19.3.1',
+            'react-dom': '^19.3.1',
         },
         devDependencies,
     };

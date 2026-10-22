@@ -1,9 +1,9 @@
 /** Shared testing dependencies, scripts, and examples for every project template and legacy setup. */
 export const TEST_DEPENDENCIES: Readonly<Record<string, string>> = {
-    vitest: '^5.0.3',
+    vitest: '^5.0.5',
     '@vitest/browser-webdriverio': '^5.0.0',
-    '@vitest/coverage-v8': '^5.0.3',
-    webdriverio: '^10.0.2',
+    '@vitest/coverage-v8': '^5.0.5',
+    webdriverio: '^10.1.0',
 };
 
 /** The default test command runs unit tests; real-browser and combined runs have explicit scripts. */

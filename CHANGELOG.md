@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.134] - 2026-10-22
+
+- Include Google sign-in, Google Authenticator, and hardened session management. Deploy the matching updated toil-backend first; session format 3 requires users to sign in again.
+- Upgrade all available runtime and development dependencies to current stable versions, refresh root and example lockfiles, and align generated app defaults and optional Sass tooling.
+- Publish version tags using npm trusted publishing through GitHub OIDC, with the current npm toolchain and no token-based registry configuration.
+
 ## [v0.0.133] - 2026-10-22
 
 - Add Google Identity Services login and an official React sign-in button, with browser-bound nonces, offline token verification, bounded replay state, and existing sessions and two-factor controls.

@@ -19,11 +19,13 @@ export default function GoogleLogin(): React.JSX.Element {
             setMessage('Enter the six-digit code from your authenticator or email.');
         } else setMessage('Sign-in failed. Check the application configuration or retry.');
     };
+
     const success = (): void => {
         setSignedIn(true);
         setChallenge(null);
         setMessage('Signed in.');
     };
+
     const verify = async (): Promise<void> => {
         setBusy(true);
         try {
@@ -38,6 +40,7 @@ export default function GoogleLogin(): React.JSX.Element {
                 setRetry((n) => n + 1);
                 setMessage('Authenticator setting saved. Sign in again using a fresh code.');
             }
+
             setCode('');
         } catch {
             setMessage('Code invalid, expired, or already used. Try a fresh code.');
@@ -45,6 +48,7 @@ export default function GoogleLogin(): React.JSX.Element {
             setBusy(false);
         }
     };
+
     const enroll = async (): Promise<void> => {
         setBusy(true);
         try {
@@ -58,6 +62,7 @@ export default function GoogleLogin(): React.JSX.Element {
             setBusy(false);
         }
     };
+
     const disable = async (): Promise<void> => {
         setBusy(true);
         try {
@@ -71,6 +76,7 @@ export default function GoogleLogin(): React.JSX.Element {
             setBusy(false);
         }
     };
+
     return (
         <main>
             <h1>Google sign-in and Authenticator</h1>

@@ -122,7 +122,7 @@ describe('update testing setup', () => {
         await runUpdate({ cwd: root });
         expect(read(root).devDependencies.vitest).toBe('^5.1.0');
         expect(read(root).devDependencies['@vitest/coverage-v8']).toBe('^5.1.0');
-        expect(read(root).devDependencies.webdriverio).toBe('^10.0.2');
+        expect(read(root).devDependencies.webdriverio).toBe('^10.1.0');
     });
     it('holds back a future Vitest major instead of breaking the native preset', async () => {
         const root = project({ typescript: '^7.0.2', ...TEST_DEPENDENCIES });
