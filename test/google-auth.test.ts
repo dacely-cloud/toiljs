@@ -200,6 +200,77 @@ async function googleLogin() {
     return Auth.loginWithGoogle(token);
 }
 
+describe('Google configuration isolation', () => {
+    it.each([
+        ['neither setting', false, ''],
+        ['client id alone', true, ''],
+        ['secret alone', false, 'a'.repeat(64)],
+        ['client id and a short secret', true, 'short'],
+    ])(
+        'fails closed with %s, without cookies or account access',
+        async (_label, clientId, secret) => {
+            restoreEnvironment();
+            restoreEnvironment = installDevBlobEnvironment({
+                vars: new Map(clientId ? [['AUTH_GOOGLE_CLIENT_ID', 'test-client']] : []),
+                secrets: new Map(secret ? [['AUTH_SESSION_SECRET', secret]] : []),
+            });
+            const get = vi.spyOn(devDb, 'get');
+            const lookup = vi.spyOn(devDb, 'uniqueLookup');
+            for (const path of ['/auth/google/start', '/auth/google/login']) {
+                const response = await dispatch(
+                    path,
+                    new DataWriter().writeString('credential').toBytes(),
+                );
+                expect(response.status).toBe(401);
+                expect(Buffer.from(response.body).toString()).toBe('auth: request failed\n');
+                expect(
+                    response.headers.filter(([key]) => key.toLowerCase() === 'set-cookie'),
+                ).toEqual([]);
+            }
+            expect(get).not.toHaveBeenCalled();
+            expect(lookup).not.toHaveBeenCalled();
+            expect((devDb as unknown as { store: Map<string, Buffer> }).store.size).toBe(0);
+        },
+    );
+});
+
+describe('AccountDeadCookies: an authenticated action can refuse a live session', () => {
+    it.each([false, true])(
+        'keeps both cookies after action and public-route 401s (HTTPS=%s)',
+        async (secure) => {
+            if (secure) {
+                restoreEnvironment();
+                restoreEnvironment = installDevBlobEnvironment({
+                    vars: new Map([
+                        ['AUTH_GOOGLE_CLIENT_ID', 'test-client'],
+                        ['PUBLIC_BASE_URL', 'https://localhost'],
+                    ]),
+                    secrets: new Map([['AUTH_SESSION_SECRET', 'a'.repeat(64)]]),
+                });
+            }
+            await googleLogin();
+            const sessionName = secure ? '__Host-toil_sess' : 'toil_sess';
+            const userName = secure ? '__Secure-toil_user' : 'toil_user';
+            const cookies = [jar.get(sessionName), jar.get(userName)];
+            expect(cookies.every(Boolean)).toBe(true);
+            for (const [path, body] of [
+                ['/auth/2fa/setup', new Uint8Array([255])],
+                ['/auth/confirm', new Uint8Array()],
+            ] as const) {
+                expect((await dispatch('/auth/me', new Uint8Array(), 'GET')).status).toBe(200);
+                const response = await dispatch(path, body);
+                expect(response.status).toBe(401);
+                expect(Buffer.from(response.body).toString()).toBe('auth: request failed\n');
+                expect(
+                    response.headers.filter(([key]) => key.toLowerCase() === 'set-cookie'),
+                ).toEqual([]);
+                expect([jar.get(sessionName), jar.get(userName)]).toEqual(cookies);
+                expect((await dispatch('/auth/me', new Uint8Array(), 'GET')).status).toBe(200);
+            }
+        },
+    );
+});
+
 describe('Google signature verification', () => {
     it('verifies RSA signature and required claims', () => {
         expect(verifyGoogleToken(jwt('nonce'), 'test-client', 'nonce')?.sub).toBe('12345');

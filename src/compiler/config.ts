@@ -133,9 +133,16 @@ export interface DaemonConfig {
     readonly maxTasks?: number;
 }
 
-/**
- * Server-side (toilscript → WASM) configuration.
- */
+/** Optional built-in auth routes, configured per application. */
+export interface AuthRoutesConfig {
+    /** Allow Google initialization and login. Default `true`. */
+    readonly google?: boolean;
+    /** Allow second-factor enrollment, replacement, and removal (email and TOTP).
+     * Default `true`. Existing factors still apply to login when this is `false`. */
+    readonly twoFactorSetup?: boolean;
+}
+
+/** Server-side (toilscript → WASM) configuration. */
 export interface ServerConfig {
     /** Server source directory, relative to root. Default `server`. */
     readonly srcDir?: string;
@@ -162,6 +169,9 @@ export interface ServerConfig {
      * NOT declare its own `@user` — the built-in owns the single per-program one.
      */
     readonly auth?: boolean;
+    /** Built-in auth route policy, baked into Wasm for every host. Disabled routes return 404.
+     * Also applies when auth is enabled by a side-effect import. Rebuild after changes. */
+    readonly authRoutes?: AuthRoutesConfig;
     /** Daemon (L4) config mirror (dev / self-host). */
     readonly daemon?: DaemonConfig;
     /**
@@ -231,6 +241,7 @@ export interface ResolvedToilConfig {
     readonly nodeMode: DevNodeMode;
     /** Whether the built-in `/auth/*` PQ-login controller is compiled + mounted. */
     readonly auth: boolean;
+    readonly authRoutes: AuthRoutesConfig;
     /** Daemon (L4) config mirror (dev / self-host), every field resolved. */
     readonly daemon: ResolvedDaemonConfig;
     /** Self-host HTTP worker count for `toiljs start`. */
@@ -280,7 +291,22 @@ export async function loadConfig(
     }
 
     const client = user.client ?? {};
-    if (client.coop !== undefined && !['same-origin', 'same-origin-allow-popups'].includes(client.coop))
+    const authRoutes = user.server?.authRoutes ?? {};
+    if (typeof authRoutes !== 'object' || Array.isArray(authRoutes))
+        throw new Error('server.authRoutes must be an object');
+    for (const key of Object.keys(authRoutes)) {
+        if (
+            !['google', 'twoFactorSetup'].includes(key) ||
+            typeof authRoutes[key as keyof AuthRoutesConfig] !== 'boolean'
+        )
+            throw new Error(
+                'server.authRoutes accepts only boolean google and twoFactorSetup settings',
+            );
+    }
+    if (
+        client.coop !== undefined &&
+        !['same-origin', 'same-origin-allow-popups'].includes(client.coop)
+    )
         throw new Error('client.coop must be same-origin or same-origin-allow-popups');
     const srcDir = client.srcDir ?? 'client';
     const routesDir = client.routesDir ?? 'routes';
@@ -318,6 +344,7 @@ export async function loadConfig(
         email: user.server?.email ?? null,
         nodeMode: resolveNodeMode(user.server?.nodeMode),
         auth: user.server?.auth === true,
+        authRoutes,
         daemon: resolveDaemonConfig(user.server?.daemon),
         threads: resolveThreads(user.server?.threads),
         runtimePath: resolveRuntimePath(),

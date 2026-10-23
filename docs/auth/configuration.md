@@ -130,6 +130,47 @@ knob lands you can raise them server-side with **no client change**.
 
 The CLI doctor warns when `server.auth` is on and the secrets are missing, run it before you ship.
 
+## Restrict built-in auth routes
+
+Applications can refuse optional auth routes in `toil.config.ts`:
+
+```ts
+export default defineConfig({
+    server: {
+        auth: true,
+        authRoutes: {
+            google: false,
+            twoFactorSetup: false,
+        },
+    },
+});
+```
+
+Both switches default to `true`, preserving the existing API. `google: false`
+returns 404 from `POST /auth/google/start` and `/auth/google/login`, even when
+the Google client ID and session secret are configured. `twoFactorSetup: false`
+returns 404 from authenticated `POST /auth/2fa/setup` and
+`/auth/2fa/setup/verify`. It blocks enrollment, replacement, and removal for
+**both email (method 1) and authenticator (method 2)**. It also refuses unknown
+method bytes. Authentication and rate limits still apply to protected routes.
+
+Existing factors remain required at sign-in: `/auth/2fa/verify` and
+`/auth/2fa/status` stay available. Password registration/login, email confirmation,
+reset, sessions, and deletion keep their existing behavior. An action returning
+401 after its session guard succeeds does not clear either browser cookie;
+the next authenticated request can still use the session.
+
+These settings also apply to `import 'toiljs/server/auth'`. They are compiled into
+the application Wasm for development, Node production workers, and the native
+edge. Rebuild and deploy the server artifact after changing them; restart
+`toiljs dev` after editing config. Environment settings cannot override a disabled
+route. Enabling a route later requires an explicit config change and rebuild.
+
+To run the route-policy proofs, use `npx vitest run test/proof`. To include the
+real Chrome cookie checks through `toiljs dev` and `toiljs start`, first run
+`npm run build`, then `TOILJS_BROWSER_TESTS=1 npx vitest run test/proof`.
+Set `CHROME_BIN` if Chrome is installed outside `/usr/bin/google-chrome`.
+
 ## Upgrading to 0.0.118
 
 Login now requires `AuthOptions.serverKemPublicKey`, the 1184-byte public key matching

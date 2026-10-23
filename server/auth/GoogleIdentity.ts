@@ -14,6 +14,10 @@ export class GoogleClaims {
 
 /** Browser-bound, short-lived nonce. Startup costs zero database operations. */
 export class GoogleIdentity {
+    static configured(): bool {
+        const secret = Environment.getSecure('AUTH_SESSION_SECRET');
+        return GoogleIdentity.clientId().length > 0 && secret != null && secret.length >= 32;
+    }
     static clientId(): string {
         const id = Environment.get('AUTH_GOOGLE_CLIENT_ID');
         return id == null ? '' : id;

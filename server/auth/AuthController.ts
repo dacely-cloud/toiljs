@@ -8,6 +8,17 @@ import { SessionEpochs } from './SessionEpochs';
 import { Response, RouteContext, base64UrlEncode } from 'toiljs/server/runtime';
 import { DataReader, DataWriter } from 'data';
 
+// Direct toilscript consumers retain the default policy without generated authlib.
+// toiljs builds supply constant policies from server.authRoutes, before any action I/O.
+@inline function googleRoutesEnabled(): bool {
+    if (isDefined(__toilAuthGoogleEnabled)) return __toilAuthGoogleEnabled();
+    return true;
+}
+@inline function twoFactorSetupEnabled(): bool {
+    if (isDefined(__toilAuthTwoFactorSetupEnabled)) return __toilAuthTwoFactorSetupEnabled();
+    return true;
+}
+
 /**
  * Built-in Toil PQ-Auth controller: the full post-quantum password-login API
  * (`/auth/register|login/start|finish`) plus sessions (`/auth/me`, `/auth/logout`),
@@ -412,6 +423,8 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 10, 60)
     @post('/google/start')
     public googleStart(ctx: RouteContext): Response {
+        if (!googleRoutesEnabled()) return Response.text('not found\n', 404);
+        if (!GoogleIdentity.configured()) return fail();
         const id = GoogleIdentity.clientId();
         if (id.length == 0) return fail();
         const nonce = crypto.toHex(randomBytes(32));
@@ -425,6 +438,8 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 10, 60)
     @post('/google/login')
     public googleLogin(ctx: RouteContext): Response {
+        if (!googleRoutesEnabled()) return Response.text('not found\n', 404);
+        if (!GoogleIdentity.configured()) return fail();
         if (ctx.request.body.length > 16388) return fail();
         const r = new DataReader(ctx.request.body);
         const token = r.readBytes();
@@ -1179,6 +1194,7 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/setup')
     public twoFaSetup(_ctx: RouteContext): Response {
+        if (!twoFactorSetupEnabled()) return Response.text('not found\n', 404);
         if (_ctx.request.body.length > 128) return fail();
         const r = new DataReader(_ctx.request.body);
         const targetMethod = r.readU8();
@@ -1264,6 +1280,7 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/setup/verify')
     public twoFaSetupVerify(_ctx: RouteContext): Response {
+        if (!twoFactorSetupEnabled()) return Response.text('not found\n', 404);
         if (_ctx.request.body.length > 128) return fail();
         const r = new DataReader(_ctx.request.body);
         const code = r.readString();

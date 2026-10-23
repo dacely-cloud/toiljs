@@ -13,6 +13,11 @@ Authorized JavaScript origins. Configure branding/consent and publish the consen
 screen as appropriate. This implementation uses the GIS JavaScript credential
 callback; it does not need a client secret or redirect URI.
 
+Applications can disable Google routes or all second-factor setup routes using
+[`server.authRoutes`](./configuration.md#restrict-built-in-auth-routes). Disabling
+setup blocks email and authenticator changes together while keeping existing
+factors required at sign-in.
+
 ```dotenv
 # .env (and the tenant's plain environment on toil-backend)
 AUTH_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
@@ -24,6 +29,9 @@ require an explicitly configured `AUTH_SESSION_SECRET` of at least 32 characters
 in `.env.secrets` (or the tenant secure environment). Never expose it to Vite.
 Keep it stable across workers and deployments. Rotating it invalidates sessions,
 pending Google nonces, and existing encrypted authenticator secrets.
+With only the client ID, only the session secret, or a secret shorter than 32
+characters, Google initialization and login return the generic 401 response
+without setting cookies or accessing accounts.
 
 Render the official button:
 
