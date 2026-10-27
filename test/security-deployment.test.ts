@@ -80,6 +80,7 @@ describe('generic security deployment instructions', () => {
                 '  ! Cross-Origin-Opener-Policy',
             ].join('\r\n'),
             'https://shop.example.org',
+            false,
         );
         expect(output).toContain('http.request.uri.path strict wildcard "/App/Workers/*"');
         expect(output).toContain(
