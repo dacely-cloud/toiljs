@@ -45,7 +45,7 @@ import {
     extractFromHtml,
 } from './template.js';
 import { createViteConfig } from './vite.js';
-import { extractStaticMetadata } from './prerender.js';
+import { extractStaticMetadata, mayExport } from './prerender.js';
 import { escapeAttr, escapeHtml, injectSeoHtml, routeSeo, type SeoConfig } from './seo.js';
 
 /** Marker element the client `mount` looks for to switch to `hydrateRoot`. */
@@ -354,7 +354,9 @@ interface RenderedRoute {
  * skipped with a warning and omitted from the result, so it falls back to client rendering.
  */
 async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<RenderedRoute[]> {
-    const routes = scanRoutes(cfg.routesAbsDir).filter((r) => r.slot === undefined && !r.intercept);
+    const routes = scanRoutes(cfg.routesAbsDir).filter(
+        (r) => r.slot === undefined && !r.intercept && mayExport(r.file, 'ssr'),
+    );
     if (routes.length === 0) return [];
 
     // Load TypeScript once (same as prerender.ts) to read each route's static `metadata` for the
@@ -370,40 +372,40 @@ async function renderSsrRoutes(cfg: ResolvedToilConfig, shell: string): Promise<
         logLevel: 'silent',
     });
 
-    const client = (await server.ssrLoadModule('toiljs/client')) as unknown as {
-        __setSsrBuild: (on: boolean) => void;
-        __setSsrLocation: (path: string | null) => void;
-        __drainSsrHead: () => SsrHead;
-        LoaderDataContext: Context<unknown>;
-    };
-
-    // Install the ambient `Toil` global (+ registered pages / transitions) exactly
-    // as the client entry does, by evaluating the generated globals module. Without
-    // it, any layout or component using `Toil` (e.g. `<Toil.Head>`, `<Toil.Link>`)
-    // throws "Toil is not defined" during extraction, so the route is silently
-    // skipped and falls back to client rendering.
-    const globalsModule = path.join(cfg.toilDir, 'globals.ts');
-    if (fs.existsSync(globalsModule)) {
-        await server.ssrLoadModule(globalsModule);
-    }
-
-    // Render with the SAME React the components import. Vite externalizes react
-    // (CommonJS) for SSR and resolves it from the app root, so resolve it the same
-    // way (from cfg.root) rather than using the compiler's own copy. Two React
-    // copies leave the hook dispatcher null, so a layout/component hook
-    // (`useLocation` -> `useRef`) throws. (`ssrLoadModule('react')` can't be used:
-    // Vite's SSR runner cannot evaluate the CJS module -> "module is not defined".)
-    const appRequire = createRequire(path.join(cfg.root, 'package.json'));
-    const react = appRequire('react') as {
-        createElement: typeof createElement;
-        Suspense: typeof Suspense;
-    };
-    const reactDomServer = appRequire('react-dom/server') as {
-        renderToString: typeof renderToString;
-    };
-
     const rendered: RenderedRoute[] = [];
     try {
+        const client = (await server.ssrLoadModule('toiljs/client')) as unknown as {
+            __setSsrBuild: (on: boolean) => void;
+            __setSsrLocation: (path: string | null) => void;
+            __drainSsrHead: () => SsrHead;
+            LoaderDataContext: Context<unknown>;
+        };
+
+        // Install the ambient `Toil` global (+ registered pages / transitions) exactly
+        // as the client entry does, by evaluating the generated globals module. Without
+        // it, any layout or component using `Toil` (e.g. `<Toil.Head>`, `<Toil.Link>`)
+        // throws "Toil is not defined" during extraction, so the route is silently
+        // skipped and falls back to client rendering.
+        const globalsModule = path.join(cfg.toilDir, 'globals.ts');
+        if (fs.existsSync(globalsModule)) {
+            await server.ssrLoadModule(globalsModule);
+        }
+
+        // Render with the SAME React the components import. Vite externalizes react
+        // (CommonJS) for SSR and resolves it from the app root, so resolve it the same
+        // way (from cfg.root) rather than using the compiler's own copy. Two React
+        // copies leave the hook dispatcher null, so a layout/component hook
+        // (`useLocation` -> `useRef`) throws. (`ssrLoadModule('react')` can't be used:
+        // Vite's SSR runner cannot evaluate the CJS module -> "module is not defined".)
+        const appRequire = createRequire(path.join(cfg.root, 'package.json'));
+        const react = appRequire('react') as {
+            createElement: typeof createElement;
+            Suspense: typeof Suspense;
+        };
+        const reactDomServer = appRequire('react-dom/server') as {
+            renderToString: typeof renderToString;
+        };
+
         for (const r of routes) {
             let mod: RouteModule;
             try {

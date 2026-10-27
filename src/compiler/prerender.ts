@@ -10,6 +10,15 @@ import { injectSeoHtml, routeSeo } from './seo.js';
 
 const UNRESOLVED = Symbol('unresolved');
 
+function hasCommonJsReference(node: unknown): boolean {
+    if (Array.isArray(node)) return node.some(hasCommonJsReference);
+    if (node === null || typeof node !== 'object') return false;
+    const entry = node as Record<string, unknown>;
+    if (entry.type === 'Identifier' && (entry.name === 'module' || entry.name === 'exports'))
+        return true;
+    return Object.values(entry).some(hasCommonJsReference);
+}
+
 /** Read literals without executing route code or loading a compiler API. */
 function evalNode(node: Expression): unknown {
     switch (node.type) {
@@ -129,6 +138,51 @@ export function extractStaticMetadata(filePath: string): Record<string, unknown>
 
 export function exportsTrue(filePath: string, name: string): boolean {
     return staticExports(filePath, [name])[name] === true;
+}
+
+/**
+ * Rule out routes with no matching runtime export before evaluating their module graph.
+ * Star re-exports, computed declarations, and unreadable/invalid files remain candidates;
+ * the runtime loader still decides their value and reports its usual diagnostics.
+ */
+export function mayExport(filePath: string, name: string): boolean {
+    let source: string;
+    try {
+        source = fs.readFileSync(filePath, 'utf8');
+    } catch {
+        return true;
+    }
+    const parsed = parseSync(filePath, source);
+    if (parsed.errors.length) return true;
+    for (const statement of parsed.program.body) {
+        if (statement.type === 'TSExportAssignment') return true;
+        if (statement.type === 'ExportAllDeclaration') {
+            if (!statement.exported) return true;
+            const exported = statement.exported;
+            if (('name' in exported ? exported.name : exported.value) === name) return true;
+        }
+        if (statement.type !== 'ExportNamedDeclaration') continue;
+        for (const specifier of statement.specifiers) {
+            const exported = specifier.exported;
+            if (('name' in exported ? exported.name : exported.value) === name) return true;
+        }
+        const declaration = statement.declaration;
+        if (declaration?.type === 'VariableDeclaration') {
+            for (const entry of declaration.declarations) {
+                if (entry.id.type !== 'Identifier' || entry.id.name === name) return true;
+            }
+        } else if (
+            declaration &&
+            'id' in declaration &&
+            declaration.id &&
+            'name' in declaration.id &&
+            declaration.id.name === name
+        ) {
+            return true;
+        }
+    }
+    // Preserve evaluation of CommonJS-style routes whose exports are assigned at runtime.
+    return /\b(?:module|exports)\b/.test(source) && hasCommonJsReference(parsed.program);
 }
 
 /**

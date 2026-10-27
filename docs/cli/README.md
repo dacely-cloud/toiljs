@@ -236,6 +236,37 @@ flowchart LR
 
 A client-only project (no `toilconfig.json`) skips step 1 and just bundles the client.
 
+### Build performance
+
+Request, stream, and daemon compilation run in separate processes, with at most
+three jobs and no more jobs than available CPUs. Each tier owns its Wasm, WAT,
+source maps, bindings, and editor declarations. The compiler stages and validates
+all tier outputs before publishing them; failures and cancellation stop and drain
+the remaining workers. Builds targeting the same project serialize the complete
+pipeline, including code generation and client bundling, across processes too.
+
+Unchanged server tiers are reused in both `build` and dev rebuilds. The cache
+checks file contents, actual imported dependencies, failed import lookups, library
+directory listings, compiler implementation, options, and output contents.
+Deleting or modifying an output triggers recompilation. Only small dependency
+manifests are kept in `.toil/compiler`; compiled artifacts are not duplicated.
+
+Client-only routes are excluded from SSR/SSG evaluation before their module graph
+loads. Actual SSR rendering stays serial because its rendering context is shared.
+Custom compiler transforms and extended `toilconfig.json` files retain serial,
+uncached CLI compilation to preserve their potentially untracked side effects.
+
+For a forced server recompile, or to limit resource use:
+
+```bash
+TOILJS_BUILD_CACHE=0 npx toiljs build
+TOILJS_BUILD_JOBS=1 npx toiljs build
+```
+
+The default job limit is three. Binaryen's CPU budget is divided among active
+jobs; an explicit `BINARYEN_CORES` environment variable overrides that budget.
+These settings preserve the configured optimization level and assertions.
+
 ## `toiljs start`
 
 Self-hosts the app you just built, on a fast production HTTP server (hyper-express, backed by uWebSockets.js). It serves your static client, runs your `server.wasm` for dynamic requests, does server-side rendering, supports daemons, and exposes a `/_toil` websocket channel. Use it to run your app on your own machine or server instead of deploying to the Dacely edge.

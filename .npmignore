@@ -11,6 +11,9 @@ tests
 .idea
 .DS_Store
 
+# Local compiler workspaces and temporary build/test fixtures.
+.toil*
+
 # Examples: ship basic/client + basic/server (the `toiljs create` starters), not build artifacts.
 examples/*
 !examples/basic

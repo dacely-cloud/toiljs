@@ -1,5 +1,14 @@
 # Changelog
 
+## [v0.0.137] - 2026-10-27
+
+- Compile request, stream, and daemon tiers in bounded parallel processes, dividing Binaryen's CPU budget among active jobs while preserving configured optimization levels and assertions.
+- Reuse unchanged server tiers after checking actual dependency contents, failed import lookups, library listings, compiler implementation, options, and output hashes. Keep dependency manifests in `.toil/compiler` without duplicating compiled artifacts.
+- Stage and validate tier outputs before publishing, isolate WAT, maps, bindings, and editor declarations, drain workers after failures or cancellation, and serialize complete builds of the same project across processes.
+- Skip SSR/SSG module evaluation for routes with no matching exports and skip generic email rendering when every template is an auth override. Preserve re-exported and dynamic rendering opt-ins.
+- Add `TOILJS_BUILD_CACHE=0` for forced recompilation and `TOILJS_BUILD_JOBS` to limit concurrent compiler jobs. Custom transforms and extended compiler configs keep serial, uncached CLI behavior.
+- On `/root/nerva-ui`, full recompilation improved from 28.6 seconds to 13.7 seconds and builds with unchanged server inputs took 2.6 seconds. All three Wasm artifacts were identical across full, cached, and forced-recompile runs. Validation includes 796 passing tests, framework build, typecheck, and lint.
+
 ## [v0.0.136] - 2026-10-27
 
 - Enable application server logging by default in development and keep production logs disabled unless `server.logging: true` is configured. Compile the policy into request, stream, and daemon Wasm artifacts, including edge deployments; rebuild after changing it.

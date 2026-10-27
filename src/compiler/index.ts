@@ -1,5 +1,4 @@
 import { readDeriveCatalog, deriveIdentity } from 'toiljs/io';
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import net from 'node:net';
@@ -30,6 +29,8 @@ import {
 } from './template-build.js';
 import { createViteConfig } from './vite.js';
 import { logSecurityDeployment } from './security-deployment.js';
+import { runCompilerPasses, type CompilerPass } from './compiler-build.js';
+import { withCompilerLock } from './compiler-lock.js';
 
 /**
  * A surface declaration - a file with one defines client and/or server surface, so it must be
@@ -224,7 +225,18 @@ export async function buildServer(
     logging: boolean = false,
 ): Promise<void> {
     if (!fs.existsSync(path.join(root, 'toilconfig.json'))) return;
+    await withCompilerLock(root, () =>
+        buildServerLocked(path.resolve(root), auth, authRoutes, logging),
+    );
+}
 
+async function buildServerLocked(
+    root: string,
+    auth: boolean,
+    authRoutes: AuthRoutesConfig,
+    logging: boolean,
+): Promise<void> {
+    if (!fs.existsSync(path.join(root, 'toilconfig.json'))) return;
     // Regenerate the editor-only server-globals d.ts each build (the same way
     // `generate` rewrites `toil-env.d.ts`), so an existing project auto-migrates
     // to the current shapes without re-scaffolding or running doctor. Best
@@ -286,8 +298,8 @@ export async function buildServer(
     //   - DAEMON  (L4)   `@daemon`/`@scheduled`                            -> `release-cold.wasm`
     // toilscript's gating matrix HARD-ERRORS a class compiled under the wrong --targetMode, so each
     // pass is handed only the files eligible for its tier (`@data`/`@database`/plain helpers are
-    // SHARED into every pass). The request pass runs LAST because it (re)writes shared/server.ts via
-    // --rpcModule, which the downstream client build imports.
+    // SHARED into every pass). Each tier owns its outputs. Publish them together before the client
+    // build consumes shared/server.ts; never let a failed or unfinished tier publish partial bytes.
     const split = splitSurfaceFiles(root, files);
     assertNoStreamInRequestTier(root, split);
     // A removed tier must not leave stale codec declarations in the editor.
@@ -309,54 +321,73 @@ export async function buildServer(
     }
     if (split.hasDaemon || split.hasStream) {
         const artifacts = serverArtifacts(root);
+        const passes: CompilerPass[] = [];
         // DAEMON (cold) pass: --targetMode cold, no client RPC surface.
         if (split.hasDaemon)
-            await runToilscriptPass(root, binJs, split.cold, {
-                mode: 'cold',
-                outFile: artifacts.cold,
-                withRpc: false,
-                authUser: authOn,
-                logging,
-            });
+            passes.push(
+                toilscriptPass(root, split.cold, {
+                    mode: 'cold',
+                    outFile: artifacts.cold,
+                    withRpc: false,
+                    authUser: authOn,
+                    logging,
+                }),
+            );
         // STREAM pass: --targetMode hot into its OWN `release-stream.wasm`, no client RPC surface
         // (a resident stream box exposes `stream_dispatch`, not the request client surface). Driven
         // by `server/main.stream.ts` + the `@stream` classes; the request box never loads it.
         if (split.hasStream && split.stream.length > 0)
-            await runToilscriptPass(root, binJs, split.stream, {
-                mode: 'hot',
-                outFile: artifacts.stream,
-                withRpc: false,
-                authUser: authOn,
-                logging,
-            });
+            passes.push(
+                toilscriptPass(root, split.stream, {
+                    mode: 'hot',
+                    outFile: artifacts.stream,
+                    withRpc: false,
+                    authUser: authOn,
+                    logging,
+                }),
+            );
         // REQUEST pass: the L1 artifact (= `outFile`), WITH the client RPC surface.
         // A pure daemon/stream project (no request files) skips it so toilscript is not handed an
         // empty entry set; the request path then stays idle (no `handle` export), correct for a
         // background-only worker.
         if (split.request.length > 0)
-            await runToilscriptPass(root, binJs, split.request, {
-                mode: 'hot',
-                outFile: serverWasmFile(root),
-                withRpc: true,
-                // Fold the @stream tier's classes into this pass's client surface so toilscript emits
-                // the typed `Server.Stream` (class names, message-type encoders, merged @rest type)
-                // WITHOUT compiling stream code into release.wasm.
-                rpcSurfaceFiles: split.hasStream ? split.stream : undefined,
-                authUser: authOn,
-                logging,
-            });
-        if (split.request.length > 0)
-            validateDeriveContinuationArtifacts(
-                fs.readFileSync(serverWasmFile(root)),
-                split.hasDaemon ? fs.readFileSync(artifacts.cold) : null,
+            passes.push(
+                toilscriptPass(root, split.request, {
+                    mode: 'hot',
+                    outFile: serverWasmFile(root),
+                    withRpc: true,
+                    // Fold the @stream tier's classes into this pass's client surface so toilscript emits
+                    // the typed `Server.Stream` (class names, message-type encoders, merged @rest type)
+                    // WITHOUT compiling stream code into release.wasm.
+                    rpcSurfaceFiles: split.hasStream ? split.stream : undefined,
+                    authUser: authOn,
+                    logging,
+                }),
             );
-        if (split.hasDaemon)
-            validateDeriveContinuationArtifacts(null, fs.readFileSync(artifacts.cold));
         // The stream pass carries no client RPC surface (withRpc:false), so toilscript never emits the
         // `Server.Stream` client into shared/server.ts. Append it here from the compiled stream
         // artifact's `toilstream.catalog` (the origin stays runtime-resolved, so this is origin-agnostic).
-        if (split.hasStream && split.stream.length > 0)
-            emitStreamClientSurface(root, artifacts.stream, split.stream);
+        await runCompilerPasses(
+            root,
+            binJs,
+            passes,
+            () => {
+                migrateRpcFile(root);
+                if (split.hasStream && split.stream.length > 0)
+                    emitStreamClientSurface(root, artifacts.stream, split.stream);
+            },
+            {
+                validate: (readOutput) => {
+                    if (split.hasDaemon)
+                        validateDeriveContinuationArtifacts(null, readOutput(artifacts.cold));
+                    if (split.request.length > 0)
+                        validateDeriveContinuationArtifacts(
+                            readOutput(serverWasmFile(root)),
+                            split.hasDaemon ? readOutput(artifacts.cold) : null,
+                        );
+                },
+            },
+        );
         return;
     }
 
@@ -370,14 +401,25 @@ export async function buildServer(
     // project that has a surface; it only stops the section from going missing for one that
     // doesn't. (`@daemon`/`@scheduled` are the only decorators `hot` rejects, and this branch runs
     // exactly when the tree has neither.)
-    await runToilscriptPass(root, binJs, files, {
+    const pass = toilscriptPass(root, files, {
         mode: 'hot',
         outFile: null,
         withRpc: true,
         authUser: authOn,
         logging,
     });
-    validateDeriveContinuationArtifacts(fs.readFileSync(serverWasmFile(root)), null);
+    await runCompilerPasses(
+        root,
+        binJs,
+        [pass],
+        () => {
+            migrateRpcFile(root);
+        },
+        {
+            validate: (readOutput) =>
+                validateDeriveContinuationArtifacts(readOutput(serverWasmFile(root)), null),
+        },
+    );
 }
 
 /** Fail a framework build before emitting a continuation that has no background executor. */
@@ -632,17 +674,12 @@ interface PassOptions {
     readonly authUser?: boolean;
 }
 
-/** Run one toilscript pass. The toilscript CLI flag is `--targetMode` (camelCase). */
-async function runToilscriptPass(
-    root: string,
-    binJs: string,
-    files: string[],
-    opts: PassOptions,
-): Promise<void> {
+/** Describe one isolated pass. The toilscript CLI flag is `--targetMode` (camelCase). */
+function toilscriptPass(root: string, files: string[], opts: PassOptions): CompilerPass {
     // Suppress AS235 ("only variables/functions/enums become wasm exports"): a `@data`/`@rest`
     // class is intentionally `export class` (so other server files import it), but never a wasm
     // export — the warning is pure noise here.
-    const args = [binJs, ...files, '--target', 'release'];
+    const args = [...files, '--target', 'release'];
     const logLib = path.resolve(
         path.dirname(fileURLToPath(import.meta.url)),
         '../../server/globals/toil-log.ts',
@@ -665,6 +702,20 @@ async function runToilscriptPass(
     if (opts.mode === 'cold') args.push('--runtime', 'incremental');
     if (opts.outFile !== null) args.push('--outFile', opts.outFile);
     if (opts.withRpc) args.push('--rpcModule', 'shared/server.ts');
+    else {
+        // Configured text/map/RPC filenames otherwise collide across tier processes.
+        args.push('--rpcModule', '');
+        const config = JSON.parse(fs.readFileSync(path.join(root, 'toilconfig.json'), 'utf8')) as {
+            options?: { textFile?: string; sourceMap?: boolean | string };
+            targets?: { release?: { textFile?: string; sourceMap?: boolean | string } };
+        };
+        const target = config.targets?.release;
+        const text = target?.textFile ?? config.options?.textFile;
+        if (text && opts.outFile)
+            args.push('--textFile', opts.outFile.replace(/\.[^.]+$/, '') + path.extname(text));
+        if ((target?.sourceMap ?? config.options?.sourceMap) && opts.outFile)
+            args.push('--sourceMap', path.basename(opts.outFile) + '.map');
+    }
     if (opts.rpcSurfaceFiles)
         for (const surfaceFile of opts.rpcSurfaceFiles) args.push('--rpcSurfaceFiles', surfaceFile);
     if (opts.authUser) args.push('--authUser');
@@ -680,27 +731,15 @@ async function runToilscriptPass(
     args.push('--noConfigEntries');
     args.push('--disableWarning', '235');
 
-    await new Promise<void>((resolve, reject) => {
-        const child = spawn(process.execPath, args, { cwd: root, stdio: 'inherit' });
-        child.on('error', reject);
-        child.on('close', (code) =>
-            code === 0
-                ? resolve()
-                : reject(
-                      new Error(
-                          `toilscript ${opts.mode ?? 'release'} build failed (exit ${String(code)})`,
-                      ),
-                  ),
-        );
-    });
-    if (opts.withRpc) {
-        const generated = path.join(root, 'shared/server.ts');
-        if (fs.existsSync(generated)) {
-            const source = fs.readFileSync(generated, 'utf8');
-            const updated = migrateGeneratedRpcClient(source);
-            if (source !== updated) fs.writeFileSync(generated, updated);
-        }
-    }
+    return { name: editorTier, args };
+}
+
+function migrateRpcFile(root: string): void {
+    const generated = path.join(root, 'shared/server.ts');
+    if (!fs.existsSync(generated)) return;
+    const source = fs.readFileSync(generated, 'utf8');
+    const updated = migrateGeneratedRpcClient(source);
+    if (source !== updated) fs.writeFileSync(generated, updated);
 }
 
 /** DataWriter.toBytes() owns an ArrayBuffer; preserve that type at the generated fetch boundary. */
@@ -739,9 +778,11 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
         // Recompile emails/*.tsx -> the generated module before the server build,
         // so editing an email template hot-reloads like any other server change.
         const authOn = serverAuthEnabled(root, cfg.auth);
-        renderEmails(cfg, authOn)
-            .then(() => renderAuthEmails(cfg, authOn))
-            .then(() => buildServer(root, cfg.auth, cfg.authRoutes, cfg.logging ?? true))
+        withCompilerLock(root, async () => {
+            await renderEmails(cfg, authOn);
+            await renderAuthEmails(cfg, authOn);
+            await buildServerLocked(root, cfg.auth, cfg.authRoutes, cfg.logging ?? true);
+        })
             .then(() => process.stdout.write(pc.green('  ✓ ') + pc.dim('server rebuilt') + '\n'))
             .catch((e: unknown) =>
                 process.stdout.write(pc.red(`  ✗ server rebuild failed: ${String(e)}`) + '\n'),
@@ -1019,6 +1060,10 @@ function isExposedHost(host: string): boolean {
 }
 
 export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer> {
+    return withCompilerLock(path.resolve(opts.root ?? process.cwd()), () => devLocked(opts));
+}
+
+async function devLocked(opts: ToilCommandOptions): Promise<ViteDevServer> {
     const cfg = await loadConfig(opts);
     // Server first: build it (regenerating shared/server.ts) before the client dev server starts.
     const hasServer = fs.existsSync(path.join(cfg.root, 'toilconfig.json'));
@@ -1036,7 +1081,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     // documented fail-safe 500 until the next full `build`. A no-op without an `ssr = true` route.
     generate(cfg);
     if (hasServer) await extractServerSlots(cfg);
-    await buildServer(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? true);
+    await buildServerLocked(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? true);
     if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
 
     if (!hasServer) {
@@ -1148,6 +1193,10 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
 /** Produces an optimized production SPA bundle in the configured `outDir`. With `serverOnly`,
  *  builds just the server (regenerates `shared/server.ts` + the wasm) and skips the client. */
 export async function build(opts: ToilCommandOptions = {}): Promise<void> {
+    await withCompilerLock(path.resolve(opts.root ?? process.cwd()), () => buildLocked(opts));
+}
+
+async function buildLocked(opts: ToilCommandOptions): Promise<void> {
     const cfg = await loadConfig(opts);
     // The server is always built first so the client's generated `shared/server.ts` is current.
     // toilscript is quiet on success, so announce the step explicitly (otherwise it looks skipped).
@@ -1171,7 +1220,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     // server compiles. (The `HASH` is finalized by the post-Vite `extractTemplates` below, which
     // recompiles the server only if it rotated.) A no-op for a project with no `ssr = true` route.
     const priorServerSlots = hasServer ? await extractServerSlots(cfg) : new Map<string, string>();
-    await buildServer(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
+    await buildServerLocked(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
     if (opts.serverOnly) return;
     if (hasServer)
         process.stdout.write(
@@ -1206,7 +1255,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
         process.stdout.write(
             pc.dim('  SSR template changed; recompiling the server with the new hash…') + '\n',
         );
-        await buildServer(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
+        await buildServerLocked(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
     }
     logSecurityDeployment(cfg);
 }
@@ -1504,5 +1553,6 @@ function emitStreamClientSurface(
         (typeBlock.length > 0 ? '\n' + typeBlock : '');
 
     fs.mkdirSync(path.dirname(rpcModule), { recursive: true });
-    fs.writeFileSync(rpcModule, out);
+    if (!fs.existsSync(rpcModule) || fs.readFileSync(rpcModule, 'utf8') !== out)
+        fs.writeFileSync(rpcModule, out);
 }

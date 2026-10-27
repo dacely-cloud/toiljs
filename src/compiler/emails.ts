@@ -333,6 +333,13 @@ export async function renderEmails(cfg: ResolvedToilConfig, authOn = false): Pro
     const files = fs
         .readdirSync(emailsDir)
         .filter((f) => /\.(tsx|jsx)$/.test(f))
+        .filter(
+            (f) =>
+                !authOn ||
+                !RESERVED_AUTH_EMAIL_NAMES.has(
+                    toPascal(path.basename(f).replace(/\.(tsx|jsx)$/, '')),
+                ),
+        )
         .sort();
     if (files.length === 0) {
         if (fs.existsSync(generatedPath)) fs.rmSync(generatedPath);
@@ -353,17 +360,6 @@ export async function renderEmails(cfg: ResolvedToilConfig, authOn = false): Pro
     const rendered: RenderedEmail[] = [];
     try {
         for (const file of files) {
-            // Reserved auth-override templates (emails/auth-confirm.tsx, …) are
-            // consumed by the auth pipeline, not surfaced as generic `Emails.*`.
-            // Only reserved WHEN AUTH IS ON: a non-auth project keeping an email
-            // by that name still gets its normal `Emails.<Name>.send(...)`.
-            if (
-                authOn &&
-                RESERVED_AUTH_EMAIL_NAMES.has(
-                    toPascal(path.basename(file).replace(/\.(tsx|jsx)$/, '')),
-                )
-            )
-                continue;
             try {
                 const r = await renderEmailFile(
                     server,

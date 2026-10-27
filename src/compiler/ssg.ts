@@ -14,7 +14,7 @@ import path from 'node:path';
 import { createServer } from 'vite';
 
 import { type ResolvedToilConfig } from './config.js';
-import { extractStaticMetadata } from './prerender.js';
+import { extractStaticMetadata, mayExport } from './prerender.js';
 import { scanRoutes } from './routes.js';
 import { injectSeoHtml, joinUrl, type LlmsPage, llmsTxt, routeSeo, sitemapXml } from './seo.js';
 import { createViteConfig } from './vite.js';
@@ -67,7 +67,11 @@ export async function prerenderStaticParams(cfg: ResolvedToilConfig): Promise<st
 
     const allRoutes = scanRoutes(cfg.routesAbsDir);
     const dynamic = allRoutes.filter(
-        (r) => r.slot === undefined && !r.intercept && /[:*]/.test(r.pattern),
+        (r) =>
+            r.slot === undefined &&
+            !r.intercept &&
+            /[:*]/.test(r.pattern) &&
+            mayExport(r.file, 'generateStaticParams'),
     );
     if (dynamic.length === 0) return [];
 
