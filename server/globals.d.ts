@@ -20,6 +20,14 @@ type Cookies = import('toiljs/server/runtime/http/cookies').Cookies;
 declare const SecureCookies: typeof import('toiljs/server/runtime/http/securecookies').SecureCookies;
 type SecureCookies = import('toiljs/server/runtime/http/securecookies').SecureCookies;
 declare const Time: typeof import('toiljs/server/runtime/time').Time;
+// Merge generic values and convenience methods into toilscript's ambient Log.
+declare namespace Log {
+    function log<T>(value: T): bool;
+    function debug<T>(value: T): bool;
+    function info<T>(value: T): bool;
+    function warn<T>(value: T): bool;
+    function error<T>(value: T): bool;
+}
 // Email, rate-limit, 2FA, and auth globals (server/globals/*), hand-declared
 // because their AssemblyScript source can't be type-aliased from tsc.
 declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, TryLater, BadRecipient, ProviderError }

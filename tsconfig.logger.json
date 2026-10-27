@@ -4,6 +4,7 @@
         "module": "ESNext",
         "target": "ESNext",
         "moduleResolution": "bundler",
+        "types": ["node"],
         "rootDir": "src/logger",
         "outDir": "build/logger",
         "tsBuildInfoFile": "build/logger/.tsbuildinfo"

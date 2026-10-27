@@ -39,8 +39,11 @@ export class StreamRouter {
     private readonly host: StreamDevHost;
     private connSeq = 0;
 
-    constructor(private readonly streamWasmPath: string) {
-        this.host = new StreamDevHost(streamWasmPath);
+    constructor(
+        private readonly streamWasmPath: string,
+        logging = true,
+    ) {
+        this.host = new StreamDevHost(streamWasmPath, logging);
         this.refreshCatalog();
     }
 

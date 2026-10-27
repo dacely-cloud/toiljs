@@ -79,6 +79,8 @@ export interface DevServerOptions {
     readonly nodeMode?: string;
     /** Daemon (L4) config mirror (drives the dev scheduler's budgets/caps). */
     readonly daemon?: ResolvedDaemonConfig;
+    /** Emit application `Log` messages. Default true in dev. */
+    readonly logging?: boolean;
     /** The internal Vite dev server to proxy unclaimed traffic to. */
     readonly vite: ViteTarget;
     /** Max request body bytes. Default 8 MB. */
@@ -130,7 +132,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         process.stdout.write(pc.yellow('  ! ') + pc.dim(`email off: ${emailInit.note}`) + '\n');
     }
 
-    const module = new WasmServerModule(options.wasmFile);
+    const module = new WasmServerModule(options.wasmFile, options.logging ?? true);
 
     // Edge-SSR routes (extracted against the live dev shell at startup). When a
     // GET/HEAD matches one, the dev server runs the guest `render`, splices the
@@ -180,7 +182,11 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
     // serves streams, route `@stream`-route WebSocket upgrades to the resident-box stream router and
     // proxy everything else (Vite HMR) upstream; otherwise the plain Vite proxy (existing behaviour).
     if (options.streamWasmFile !== undefined && streamEmulationEnabled(nodeMode)) {
-        wireStreams(app, options.vite, new StreamRouter(options.streamWasmFile));
+        wireStreams(
+            app,
+            options.vite,
+            new StreamRouter(options.streamWasmFile, options.logging ?? true),
+        );
     } else {
         wireWebsocketProxy(app, options.vite);
     }
@@ -190,6 +196,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         coldWasmFile: options.coldWasmFile,
         nodeMode,
         daemon: options.daemon,
+        logging: options.logging ?? true,
     });
 
     app.any('/*', async (request, response) => {

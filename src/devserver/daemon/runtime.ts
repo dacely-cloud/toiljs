@@ -7,6 +7,7 @@ export interface DaemonRuntimeOptions {
     readonly coldWasmFile?: string;
     readonly nodeMode?: string;
     readonly daemon?: ResolvedDaemonConfig;
+    readonly logging?: boolean;
     readonly pollMs?: number;
 }
 
@@ -26,7 +27,9 @@ export function startDaemonRuntime(options: DaemonRuntimeOptions): RunningDaemon
         return null;
     }
 
-    const host = new DaemonHost(options.coldWasmFile, options.daemon, nodeMode);
+    const host = new DaemonHost(options.coldWasmFile, options.daemon, nodeMode, undefined, {
+        logging: options.logging,
+    });
     const pollDaemon = (): void => {
         try {
             host.refresh();

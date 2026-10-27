@@ -144,6 +144,8 @@ export interface AuthRoutesConfig {
 
 /** Server-side (toilscript → WASM) configuration. */
 export interface ServerConfig {
+    /** Emit application `Log` messages. Default true in dev, false in production. */
+    readonly logging?: boolean;
     /** Server source directory, relative to root. Default `server`. */
     readonly srcDir?: string;
     /** Server build output directory, relative to root. Default `build/server`. */
@@ -206,6 +208,8 @@ export interface ToilConfig {
 
 /** Fully-resolved config with absolute paths, used internally by the compiler. */
 export interface ResolvedToilConfig {
+    /** Undefined uses the mode default: dev on, production off. */
+    readonly logging?: boolean;
     readonly root: string;
     readonly srcDir: string;
     readonly clientAbsDir: string;
@@ -291,6 +295,8 @@ export async function loadConfig(
     }
 
     const client = user.client ?? {};
+    if (user.server?.logging !== undefined && typeof user.server.logging !== 'boolean')
+        throw new Error('server.logging must be a boolean');
     const authRoutes = user.server?.authRoutes ?? {};
     if (typeof authRoutes !== 'object' || Array.isArray(authRoutes))
         throw new Error('server.authRoutes must be an object');
@@ -342,6 +348,7 @@ export async function loadConfig(
                 : null,
         seo: client.seo ?? null,
         email: user.server?.email ?? null,
+        logging: user.server?.logging,
         nodeMode: resolveNodeMode(user.server?.nodeMode),
         auth: user.server?.auth === true,
         authRoutes,

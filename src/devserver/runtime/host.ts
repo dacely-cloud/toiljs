@@ -90,6 +90,8 @@ export function freshDispatchState(): DispatchState {
  */
 export interface MemoryRef {
     memory: WebAssembly.Memory | null;
+    /** Emit guest logs. Dev/test hosts default to true; production passes false unless enabled. */
+    logging?: boolean;
     /** Optional per-instance clock; never changes the process clock. */
     now?: () => number;
 }
@@ -278,6 +280,7 @@ function buildLogImports(
             const message = new TextDecoder('utf-8', { fatal: true }).decode(
                 readBytes(ref, ptr, len),
             );
+            if (ref.logging === false) return 0;
             if (db.logMessages >= 32) return 0;
             db.logMessages++;
             const write = level === 0 ? console.info : level === 1 ? console.warn : console.error;

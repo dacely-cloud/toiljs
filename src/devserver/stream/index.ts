@@ -17,6 +17,7 @@ import { resetImageState } from '../images/index.js';
  */
 
 import { parseSurface } from '../wasm/surface.js';
+import type { MemoryRef } from '../runtime/host.js';
 import { buildStreamImports, freshStreamBoxState, type StreamBoxState } from './host.js';
 
 // --- the stream_dispatch ABI (toil-backend src/wasm/stream/section.rs) ---
@@ -97,12 +98,12 @@ export class DevStreamBox {
 
     /** Compile + instantiate a resident stream box from a HOT `release-stream.wasm`. Fails closed: a
      *  cold artifact, a missing `stream_dispatch`/`memory`, or a bad module throws. */
-    static load(wasm: Buffer): DevStreamBox {
+    static load(wasm: Buffer, logging = true): DevStreamBox {
         const surface = parseSurface(wasm);
         if (surface === 'invalid' || surface.targetMode !== 'hot' || !surface.flags.stream) {
             throw new Error('stream box requires a hot stream artifact with a valid toil.surface');
         }
-        const ref: { memory: WebAssembly.Memory | null } = { memory: null };
+        const ref: MemoryRef = { memory: null, logging };
         const state = freshStreamBoxState();
         const module = new WebAssembly.Module(new Uint8Array(wasm));
         const instance = new WebAssembly.Instance(module, buildStreamImports(ref, state));
@@ -170,6 +171,7 @@ export class DevStreamBox {
 
     private dispatch(eventKind: number, streamId: bigint): bigint {
         resetImageState(this._state.images);
+        this._state.db.logMessages = 0;
         const lo = Number(streamId & 0xffff_ffffn) | 0;
         const hi = Number((streamId >> 32n) & 0xffff_ffffn) | 0;
         return this.exports.stream_dispatch(eventKind, lo, hi);

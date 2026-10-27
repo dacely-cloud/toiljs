@@ -53,7 +53,10 @@ export class StreamDevHost {
     /** Host-assigned stream id source: monotonic, never 0 (05 section 2.2). */
     private nextStreamId = 1n;
 
-    constructor(private readonly streamWasmPath: string) {}
+    constructor(
+        private readonly streamWasmPath: string,
+        private readonly logging = true,
+    ) {}
 
     /** Number of live stream connections. */
     get activeConnections(): number {
@@ -81,7 +84,7 @@ export class StreamDevHost {
         if (!this.bytes) return { kind: 'rejected', code: STREAM_REJECTED, initialEgress: [] };
         let box: DevStreamBox;
         try {
-            box = DevStreamBox.load(this.bytes);
+            box = DevStreamBox.load(this.bytes, this.logging);
         } catch {
             return { kind: 'rejected', code: STREAM_REJECTED, initialEgress: [] };
         }

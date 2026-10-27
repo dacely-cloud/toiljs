@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.0.136] - 2026-10-27
+
+- Enable application server logging by default in development and keep production logs disabled unless `server.logging: true` is configured. Compile the policy into request, stream, and daemon Wasm artifacts, including edge deployments; rebuild after changing it.
+- Support scalars, arrays, typed arrays, generated `@data` JSON, and errors through the ambient `Log` API, with `log` and `debug` convenience methods and matching editor declarations.
+- Reset the log allowance for every stream event so resident connections continue logging after their first 32 messages. Preserve the per-call host limits.
+- Extend the Node/SSR `Logger` with every log level, multiple values, object and error inspection, console formatting, and explicit production opt-in.
+- Add configurable built-in auth route restrictions and cookie regression coverage from the previously unreleased changes on `main`.
+
 ## [v0.0.135] - 2026-10-22
 
 - Re-release the Google sign-in, authenticator security, and dependency updates from v0.0.134 with unchanged runtime behavior and ToilScript 0.1.66 compatibility.

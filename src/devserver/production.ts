@@ -69,6 +69,8 @@ export interface BuiltServerOptions {
     readonly nodeMode?: string;
     /** Daemon (L4) config mirror used by the self-host daemon runtime. */
     readonly daemon?: ResolvedDaemonConfig;
+    /** Emit application `Log` messages. Default false in production. */
+    readonly logging?: boolean;
     /** Listening port. Default `3000`. */
     readonly port?: number;
     /** Bind host. Default `127.0.0.1`. */
@@ -281,7 +283,7 @@ function createBuiltRuntime(options: BuiltServerOptions, paths: BuiltServerPaths
 
     const module =
         options.wasmFile !== undefined && fs.existsSync(options.wasmFile)
-            ? new WasmServerModule(options.wasmFile)
+            ? new WasmServerModule(options.wasmFile, options.logging === true)
             : null;
     if (module !== null) {
         try {
@@ -311,6 +313,7 @@ function startBuiltDaemon(
         coldWasmFile: options.coldWasmFile,
         nodeMode: options.nodeMode,
         daemon: options.daemon,
+        logging: options.logging === true,
     });
 }
 

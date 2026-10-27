@@ -88,6 +88,7 @@ export function daemonEmulationEnabled(nodeMode: string): boolean {
 export interface DaemonHostOptions {
     readonly clock?: () => number;
     readonly httpMock?: DaemonHttpMock;
+    readonly logging?: boolean;
 }
 
 export interface DaemonTaskResult {
@@ -265,7 +266,11 @@ export class DaemonHost implements DaemonRuntime {
     /** Instantiate the cold box, run daemon_start once, register the tasks. */
     private start(): void {
         if (this.module === null || this.catalog === null) return;
-        const ref: MemoryRef = { memory: null, now: () => this.now() };
+        const ref: MemoryRef = {
+            memory: null,
+            now: () => this.now(),
+            logging: this.options.logging,
+        };
         this.state = freshDaemonState();
         this.state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         this.state.db.functionKind = DbFunctionKind.Action;

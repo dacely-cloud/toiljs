@@ -179,6 +179,7 @@ Configures the backend: which platform features to compile in, and how the dev s
 | Field | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `auth` | `boolean` | `false` | Opt into the framework's built-in post-quantum login. See [`server.auth`](#serverauth) below. |
+| `logging` | `boolean` | dev: `true`, production: `false` | Emit application `Log` messages in every server tier. Set `true` to enable production logs; rebuild before deploying. See [Server logging](../backend/README.md#server-logging). |
 | `email` | object | (off) | The non-secret email backend config for the dev server and self-host. See [`server.email`](#serveremail) below. |
 | `daemon` | object | (defaults) | Background-job (L4 daemon) settings for dev and self-host. See [`server.daemon`](#serverdaemon) below. |
 | `nodeMode` | string | `"all"` | Which compute layer the single dev/self-host process emulates. See [`server.nodeMode`](#servernodemode) below. |

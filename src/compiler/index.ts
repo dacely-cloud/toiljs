@@ -215,11 +215,13 @@ function serverAuthEnabled(root: string, configAuth: boolean): boolean {
  * client build. A no-op for client-only projects. Compiles every server `.ts` file (not just the
  * toilconfig entries) so dropped-in `@data`/`@rest` files are picked up. Runs the locally
  * installed `toilscript`, resolved + invoked via Node (no `.bin` shim / PATH assumptions).
+ * Application logging defaults to off for production artifacts; dev explicitly enables it.
  */
 export async function buildServer(
     root: string,
     auth: boolean = false,
     authRoutes: AuthRoutesConfig = {},
+    logging: boolean = false,
 ): Promise<void> {
     if (!fs.existsSync(path.join(root, 'toilconfig.json'))) return;
 
@@ -314,6 +316,7 @@ export async function buildServer(
                 outFile: artifacts.cold,
                 withRpc: false,
                 authUser: authOn,
+                logging,
             });
         // STREAM pass: --targetMode hot into its OWN `release-stream.wasm`, no client RPC surface
         // (a resident stream box exposes `stream_dispatch`, not the request client surface). Driven
@@ -324,6 +327,7 @@ export async function buildServer(
                 outFile: artifacts.stream,
                 withRpc: false,
                 authUser: authOn,
+                logging,
             });
         // REQUEST pass: the L1 artifact (= `outFile`), WITH the client RPC surface.
         // A pure daemon/stream project (no request files) skips it so toilscript is not handed an
@@ -339,6 +343,7 @@ export async function buildServer(
                 // WITHOUT compiling stream code into release.wasm.
                 rpcSurfaceFiles: split.hasStream ? split.stream : undefined,
                 authUser: authOn,
+                logging,
             });
         if (split.request.length > 0)
             validateDeriveContinuationArtifacts(
@@ -370,6 +375,7 @@ export async function buildServer(
         outFile: null,
         withRpc: true,
         authUser: authOn,
+        logging,
     });
     validateDeriveContinuationArtifacts(fs.readFileSync(serverWasmFile(root)), null);
 }
@@ -610,6 +616,7 @@ export function assertNoStreamInRequestTier(root: string, split: SurfaceSplit): 
 }
 
 interface PassOptions {
+    readonly logging: boolean;
     /** `--targetMode` value; `null` keeps the default request-artifact invocation (no flag). */
     readonly mode: 'hot' | 'cold' | null;
     /** Explicit `--outFile` for a two-pass build; `null` uses the toilconfig default. */
@@ -636,6 +643,18 @@ async function runToilscriptPass(
     // class is intentionally `export class` (so other server files import it), but never a wasm
     // export — the warning is pure noise here.
     const args = [binJs, ...files, '--target', 'release'];
+    const logLib = path.resolve(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../server/globals/toil-log.ts',
+    );
+    args.push(
+        '--lib',
+        logLib,
+        '--use',
+        'Log=ToilLog',
+        '--use',
+        `__TOIL_LOGGING=${opts.logging ? '1' : '0'}`,
+    );
     // TS 7 cannot load our JS language-service plugin. Plain declaration merging
     // gives WebStorm the generated codec methods without changing application code.
     const editorTier = opts.mode === 'cold' ? 'cold' : opts.withRpc ? 'request' : 'stream';
@@ -722,7 +741,7 @@ function watchServer(cfg: ResolvedToilConfig, watcher: ViteDevServer['watcher'])
         const authOn = serverAuthEnabled(root, cfg.auth);
         renderEmails(cfg, authOn)
             .then(() => renderAuthEmails(cfg, authOn))
-            .then(() => buildServer(root, cfg.auth, cfg.authRoutes))
+            .then(() => buildServer(root, cfg.auth, cfg.authRoutes, cfg.logging ?? true))
             .then(() => process.stdout.write(pc.green('  ✓ ') + pc.dim('server rebuilt') + '\n'))
             .catch((e: unknown) =>
                 process.stdout.write(pc.red(`  ✗ server rebuild failed: ${String(e)}`) + '\n'),
@@ -1017,7 +1036,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
     // documented fail-safe 500 until the next full `build`. A no-op without an `ssr = true` route.
     generate(cfg);
     if (hasServer) await extractServerSlots(cfg);
-    await buildServer(cfg.root, cfg.auth, cfg.authRoutes);
+    await buildServer(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? true);
     if (hasServer) process.stdout.write(pc.green('  ✓ ') + pc.dim('server built') + '\n');
 
     if (!hasServer) {
@@ -1090,6 +1109,7 @@ export async function dev(opts: ToilCommandOptions = {}): Promise<ViteDevServer>
         streamWasmFile: serverArtifacts(cfg.root).stream,
         nodeMode: cfg.nodeMode,
         daemon: cfg.daemon,
+        logging: cfg.logging,
         vite: { host: '127.0.0.1', port: vitePort },
         email: cfg.email ?? undefined,
         ssrTemplates,
@@ -1151,7 +1171,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
     // server compiles. (The `HASH` is finalized by the post-Vite `extractTemplates` below, which
     // recompiles the server only if it rotated.) A no-op for a project with no `ssr = true` route.
     const priorServerSlots = hasServer ? await extractServerSlots(cfg) : new Map<string, string>();
-    await buildServer(cfg.root, cfg.auth, cfg.authRoutes);
+    await buildServer(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
     if (opts.serverOnly) return;
     if (hasServer)
         process.stdout.write(
@@ -1186,7 +1206,7 @@ export async function build(opts: ToilCommandOptions = {}): Promise<void> {
         process.stdout.write(
             pc.dim('  SSR template changed; recompiling the server with the new hash…') + '\n',
         );
-        await buildServer(cfg.root, cfg.auth, cfg.authRoutes);
+        await buildServer(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
     }
     logSecurityDeployment(cfg);
 }
@@ -1212,6 +1232,7 @@ export async function start(opts: ToilCommandOptions = {}): Promise<RunningBacke
         coldWasmFile: artifacts.cold,
         nodeMode: cfg.nodeMode,
         daemon: cfg.daemon,
+        logging: cfg.logging,
         threads: opts.threads ?? cfg.threads,
         port: cfg.port,
         // `cfg.host` already folds in the `--host` flag, `HOST` env, and `client.host`

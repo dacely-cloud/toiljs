@@ -235,7 +235,10 @@ export class WasmServerModule {
     private envelopeWindow: number | null = null;
     private readonly pendingDerives = new Set<number>();
 
-    constructor(private readonly wasmPath: string) {}
+    constructor(
+        private readonly wasmPath: string,
+        private readonly logging = true,
+    ) {}
 
     /** Whether a compiled module is currently available to dispatch into. */
     get available(): boolean {
@@ -406,7 +409,7 @@ export class WasmServerModule {
 
         const envelope = this.requestEnvelope(req);
 
-        const ref: MemoryRef = { memory: null };
+        const ref: MemoryRef = { memory: null, logging: this.logging };
         const state = freshDispatchState();
         state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         state.clientIp = req.clientIp ?? '';
@@ -498,7 +501,7 @@ export class WasmServerModule {
 
         this.rebuildDerivedViewsIfStale();
         const envelope = this.requestEnvelope(req);
-        const ref: MemoryRef = { memory: null };
+        const ref: MemoryRef = { memory: null, logging: this.logging };
         const state = freshDispatchState();
         state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         state.clientIp = req.clientIp ?? '';
@@ -583,7 +586,7 @@ export class WasmServerModule {
      *  store via the `data.*` imports; the caller's persistDb() flushes them). */
     private runDerive(deriveId: number, changes = fullRescanFrame()): void {
         if (this.module === null) return;
-        const ref: MemoryRef = { memory: null };
+        const ref: MemoryRef = { memory: null, logging: this.logging };
         const state = freshDispatchState();
         state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         state.db.functionKind = DbFunctionKind.Derive;

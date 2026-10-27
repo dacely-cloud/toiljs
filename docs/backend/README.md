@@ -19,6 +19,58 @@ The hot request path keeps outbound network I/O out by design so it stays respon
 
 > New to decorators? A **decorator** is the `@name` you write just above a class or method. It attaches meaning to that code without changing what the code does line by line. toiljs uses decorators to say "this class is an HTTP controller" or "this method is callable from the browser." See [Decorators](../concepts/decorators.md).
 
+## Server logging
+
+Use the ambient `Log` API in server code, with no import. Logs appear in the
+terminal during `toiljs dev`, including request handlers, SSR, streams, and daemon
+jobs:
+
+```ts
+Log.info('handler started');
+Log.debug(42);
+Log.warn(['retry', 'timeout']);
+Log.error('request failed');
+Log.log(record); // @data objects use their generated JSON codec
+```
+
+Each call accepts one value. Strings print directly; scalars and arrays print
+as JSON, `@data` values use `toJSON()`, and other objects use `toString()`.
+`Log.log` and `Log.debug` use the host's info level.
+
+Production application logs are disabled by default. Enable them in
+`toil.config.ts`, then run `toiljs build` again before starting or deploying:
+
+```ts
+export default defineConfig({
+    server: { logging: true },
+});
+```
+
+This policy is compiled into every Wasm artifact, including artifacts deployed
+to the edge. `server.logging: false` also disables application logs in dev.
+Framework startup messages and errors remain available.
+
+Messages are limited to 4096 UTF-8 bytes and 32 messages per server call.
+Methods return `false` when logging is disabled or the message allowance is
+exhausted. An oversized message traps when logging is enabled. Edge logs include
+the tenant identity.
+
+For Node/SSR JavaScript, `toiljs/logger` provides a separate scoped logger that
+accepts multiple values, including objects and errors:
+
+```ts
+import { Logger } from 'toiljs/logger';
+
+const logger = new Logger('app');
+logger.info('request', { path: '/items' });
+logger.error('failed', new Error('timeout'));
+```
+
+It supports `debug`, `info`, `warn`, `error`, and `log(LogLevel, ...values)`.
+It defaults to disabled when `NODE_ENV=production`; use
+`new Logger('app', { enabled: true })` to enable production output, or
+`{ enabled: false }` to silence it explicitly.
+
 ## The request lifecycle
 
 Here is what happens, end to end, when a browser talks to your backend.
