@@ -147,16 +147,18 @@ describe('generic security deployment instructions', () => {
         const root = project();
         const finalHeaders =
             "/*\n  Content-Security-Policy: default-src 'none'\n/consent\n  Cross-Origin-Opener-Policy: unsafe-none\n";
-        const file = path.join(root, 'dist/site/_headers');
         fs.writeFileSync(
             path.join(root, 'toil.config.mjs'),
             `
             import fs from 'node:fs';
+            import path from 'node:path';
+            let output;
             export default { client: {
                 outDir: 'dist/site', images: false, fonts: false,
                 seo: { url: 'https://fixture.example.org' },
                 vite: { logLevel: 'silent', plugins: [{ name: 'custom-response-headers', enforce: 'post',
-                    closeBundle() { fs.writeFileSync(${JSON.stringify(file)}, ${JSON.stringify(finalHeaders)}); }
+                    configResolved(config) { output = config.build.outDir; },
+                    closeBundle() { fs.writeFileSync(path.join(output, '_headers'), ${JSON.stringify(finalHeaders)}); }
                 }] }
             } };
         `,

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Build the client in isolated staging through integrity generation, prerendering and SSR extraction. Publish assets before HTML, then prune obsolete output. Compilation failures and cancellation preserve the previous client output instead of exposing missing or partially written chunks.
+
 ## [v0.0.138] - 2026-10-28
 
 - Erase historical two-factor settings and replay counters during account deletion, with bounded retryable cleanup, raw-byte release of old schemas, and generation fences that preserve session revocation across account recreation.

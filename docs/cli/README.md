@@ -203,6 +203,16 @@ Press `Ctrl+C` to stop. toiljs restores your terminal and force-exits even if a 
 
 Produces the optimized production build. Run this before you deploy or before `toiljs start`.
 
+Client output is built in temporary staging under `.toil/compiler`. The previous output stays
+readable until bundling, integrity generation, prerendering and SSR extraction finish. A successful
+build publishes scripts and styles before HTML, then removes obsolete output. Compilation failure
+or cancellation removes staging without replacing the prior client output. Builds retain only the
+current generation by default; staging is not a release archive. An external deployment still needs
+to publish its complete output together.
+
+Vite plugins should read the resolved `build.outDir` in `configResolved`; it points to staging
+during the build. Hard-coded output paths bypass publication and can still expose partial files.
+
 ```bash
 npm run build
 # or build only the server:

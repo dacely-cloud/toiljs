@@ -31,6 +31,7 @@ import { createViteConfig } from './vite.js';
 import { logSecurityDeployment } from './security-deployment.js';
 import { runCompilerPasses, type CompilerPass } from './compiler-build.js';
 import { withCompilerLock } from './compiler-lock.js';
+import { ClientPublication } from './client-publication.js';
 
 /**
  * A surface declaration - a file with one defines client and/or server surface, so it must be
@@ -1235,30 +1236,32 @@ async function buildLocked(opts: ToilCommandOptions): Promise<void> {
     // branch is dead-code-eliminated, then restore NODE_ENV so a later in-process `dev()` (which must
     // stay a development build, devtools on) is unaffected. `createViteConfig` is shared with `dev`.
     const prevNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'production';
-    try {
-        await viteBuild(mergeConfig(await createViteConfig(cfg), { mode: 'production' }));
-    } finally {
-        if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
-        else process.env.NODE_ENV = prevNodeEnv;
-    }
-    // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
-    await prerenderStaticParams(cfg);
-    // Edge SSR: render `export const ssr = true` routes to template-with-holes
-    // (`_ssr/*.tmpl|slots` + the guest `Slot` module), copied into the edge host
-    // bundle. This also rewrites the server-importable slots module against the REAL built shell
-    // (authoritative `HASH`). No-op when no route opts in.
-    const ssr = await extractTemplates(cfg, 'edge', priorServerSlots);
-    // If the authoritative `HASH` (or `Slot` ids) rotated since the pre-pass the server was
-    // compiled against, recompile the server ONCE so the guest bakes the deployed hash; otherwise
-    // the host rejects the response as a deploy skew. The common case (an unchanged rebuild) reuses
-    // the prior shell in the pre-pass, so the hashes already match and this is skipped.
-    if (ssr.serverSlotsChanged) {
-        process.stdout.write(
-            pc.dim('  SSR template changed; recompiling the server with the new hash…') + '\n',
-        );
-        await buildServerLocked(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
-    }
+    await ClientPublication.run(cfg, async (staged: ResolvedToilConfig): Promise<void> => {
+        process.env.NODE_ENV = 'production';
+        try {
+            await viteBuild(mergeConfig(await createViteConfig(staged), { mode: 'production' }));
+        } finally {
+            if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
+            else process.env.NODE_ENV = prevNodeEnv;
+        }
+        // SSG: bake per-URL HTML + sitemap for dynamic routes that opt in via `generateStaticParams`.
+        await prerenderStaticParams(staged);
+        // Edge SSR: render `export const ssr = true` routes to template-with-holes
+        // (`_ssr/*.tmpl|slots` + the guest `Slot` module), copied into the edge host
+        // bundle. This also rewrites the server-importable slots module against the REAL built shell
+        // (authoritative `HASH`). No-op when no route opts in.
+        const ssr = await extractTemplates(staged, 'edge', priorServerSlots);
+        // If the authoritative `HASH` (or `Slot` ids) rotated since the pre-pass the server was
+        // compiled against, recompile the server ONCE so the guest bakes the deployed hash; otherwise
+        // the host rejects the response as a deploy skew. The common case (an unchanged rebuild) reuses
+        // the prior shell in the pre-pass, so the hashes already match and this is skipped.
+        if (ssr.serverSlotsChanged) {
+            process.stdout.write(
+                pc.dim('  SSR template changed; recompiling the server with the new hash…') + '\n',
+            );
+            await buildServerLocked(cfg.root, cfg.auth, cfg.authRoutes, cfg.logging ?? false);
+        }
+    });
     logSecurityDeployment(cfg);
 }
 
