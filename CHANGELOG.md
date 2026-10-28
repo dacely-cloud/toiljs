@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [v0.0.139] - 2026-10-28
 
 - Build the client in isolated staging through integrity generation, prerendering and SSR extraction. Publish assets before HTML, then prune obsolete output. Compilation failures and cancellation preserve the previous client output instead of exposing missing or partially written chunks.
 
