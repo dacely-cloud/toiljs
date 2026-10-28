@@ -57,6 +57,7 @@ import {
 } from './host.js';
 
 interface ColdExports {
+    __collect?: () => void;
     readonly memory: WebAssembly.Memory;
     readonly daemon_start: () => number;
     readonly scheduled_tick: (taskId: number) => bigint;
@@ -474,6 +475,7 @@ export class DaemonHost implements DaemonRuntime {
         this.state.db.changesOverflow = false;
         const startedAt = performance.now();
         try {
+            this.exports.__collect?.();
             result.returnCode = this.exports.scheduled_tick(task.taskIndex);
             if (result.returnCode < 0n) {
                 result.status = 'failed';
@@ -534,6 +536,7 @@ export class DaemonHost implements DaemonRuntime {
                     resetDbLimits(db);
                     db.pendingCheckpoints.clear();
                     try {
+                        this.exports.__collect?.();
                         const rc = this.exports.derive_run(derive.deriveId);
                         if (rc !== 0n) throw new Error(`derive_run returned ${String(rc)}`);
                         commitDeriveCheckpoints(db);

@@ -48,6 +48,8 @@ export enum RateLimit {
     FixedWindow = 0,
     SlidingWindow = 1,
     TokenBucket = 2,
+    /** Exact trailing interval (now - window, now], storing accepted timestamps. */
+    TrailingWindow = 3,
 }
 
 export namespace RateLimitService {

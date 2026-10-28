@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildServer } from '../../src/compiler/index.js';
@@ -11,6 +11,7 @@ import { installDevBlobEnvironment } from '../../src/devserver/config/env.js';
 import { __resetDbForTests, devDb } from '../../src/devserver/db/index.js';
 import { __resetRatelimitForTests } from '../../src/devserver/config/ratelimit.js';
 import { clearEnvCache } from '../../src/devserver/config/dotenv.js';
+import { __sentEmails, __clearSentEmails } from '../../src/devserver/email/index.js';
 import { DataWriter } from '../../src/io/codec.js';
 import { scaffoldAuthApp } from './auth-fixture.js';
 
@@ -19,6 +20,7 @@ const variants: Record<string, AuthRoutesConfig> = {
     defaults: {},
     googleOff: { google: false },
     setupOff: { twoFactorSetup: false },
+    deleteOff: { deleteAccount: false },
     bothOff: { google: false, twoFactorSetup: false },
 };
 let module: WasmServerModule;
@@ -73,6 +75,10 @@ beforeAll(async () => {
         const cfg = await loadConfig({ root: dir });
         await renderAuthEmails(cfg, true);
         await buildServer(dir, cfg.auth, cfg.authRoutes);
+        const artifact = join(dir, 'build/server/release.wasm');
+        const modified = statSync(artifact, { bigint: true }).mtimeNs;
+        await buildServer(dir, cfg.auth, cfg.authRoutes);
+        expect(statSync(artifact, { bigint: true }).mtimeNs).toBe(modified);
     }
 }, 30000);
 afterAll(() => rmSync(root, { recursive: true, force: true }));
@@ -81,6 +87,7 @@ beforeEach(() => {
     __resetRatelimitForTests();
     clearEnvCache();
     jar.clear();
+    __clearSentEmails();
     vi.spyOn(Date, 'now').mockReturnValue(Math.floor(Date.now() / 30000) * 30000 + 5000);
     restoreEnvironment = installDevBlobEnvironment({
         vars: new Map([['AUTH_GOOGLE_CLIENT_ID', 'test-client']]),
@@ -116,21 +123,17 @@ describe('compiled auth route policy', () => {
                 dispatch('/auth/google/login', new DataWriter().writeString('invalid').toBytes())
                     .status,
             ).toBe(policy.google === false ? 404 : 401);
-            expect(dispatch('/auth/2fa/setup', new Uint8Array([0])).status).toBe(
-                policy.twoFactorSetup === false ? 404 : 200,
-            );
-            expect(dispatch('/auth/2fa/setup/verify').status).toBe(
-                policy.twoFactorSetup === false ? 404 : 401,
-            );
+            expect(dispatch('/auth/2fa/setup', new Uint8Array([0])).status).toBe(200);
+            expect(dispatch('/auth/2fa/setup/verify').status).toBe(401);
             expect(dispatch('/auth/me', new Uint8Array(), 'GET').status).toBe(200);
         },
     );
 
-    it('refuses every setup method without changing state or either live cookie', async () => {
+    it('refuses enrollment and replacement without changing state or either live cookie', async () => {
         await signIn();
         const cookies = new Map(jar);
         const before = new Map(store);
-        for (const method of [0, 1, 2, 255]) {
+        for (const method of [1, 2, 255]) {
             const response = dispatch('/auth/2fa/setup', new Uint8Array([method]));
             expect(response.status).toBe(404);
             expect(response.headers.filter(([key]) => key.toLowerCase() === 'set-cookie')).toEqual(
@@ -181,6 +184,78 @@ describe('compiled auth route policy', () => {
         await Auth.verifyTwoFactor(challenge!.twoFaId, totp(enrollment.secret));
         expect(dispatch('/auth/me', new Uint8Array(), 'GET').status).toBe(200);
         expect(await Auth.twoFactorStatus()).toBe(2);
+    });
+
+    it('allows proving and removing an existing authenticator after setup is disabled', async () => {
+        useVariant('defaults');
+        await signIn();
+        const enrollment = await Auth.setupAuthenticator('Policy proof', 'policy@example.com');
+        await Auth.confirmTwoFactorSetup(totp(enrollment.secret));
+        vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 30000);
+        let challenge: TwoFactorRequiredError | undefined;
+        try {
+            await Auth.login('policyuser', 'Strong-password-A1', {
+                serverKemPublicKey: SERVER_KEM_PUBLIC_KEY,
+            });
+        } catch (error) {
+            expect(error).toBeInstanceOf(TwoFactorRequiredError);
+            challenge = error as TwoFactorRequiredError;
+        }
+        await Auth.verifyTwoFactor(challenge!.twoFaId, totp(enrollment.secret));
+        useVariant('setupOff');
+        await Auth.setupTwoFactor(0);
+        await expect(Auth.confirmTwoFactorSetup('invalid')).rejects.toThrow();
+        expect(await Auth.twoFactorStatus()).toBe(2);
+        vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 30000);
+        await Auth.confirmTwoFactorSetup(totp(enrollment.secret));
+        await Auth.login('policyuser', 'Strong-password-A1', {
+            serverKemPublicKey: SERVER_KEM_PUBLIC_KEY,
+        });
+        expect(await Auth.twoFactorStatus()).toBe(0);
+    });
+
+    it('allows proving and removing an existing email factor after setup is disabled', async () => {
+        const latestCode = () => {
+            const email = [...__sentEmails]
+                .reverse()
+                .find((message) => message.to === 'policy@example.com');
+            expect(email).toBeDefined();
+            return /\b(\d{6})\b/.exec(email!.text)?.[1] ?? /\b(\d{6})\b/.exec(email!.html)![1];
+        };
+        useVariant('defaults');
+        await signIn();
+        await Auth.setupTwoFactor(1);
+        await Auth.confirmTwoFactorSetup(latestCode());
+        let challenge: TwoFactorRequiredError | undefined;
+        try {
+            await Auth.login('policyuser', 'Strong-password-A1', {
+                serverKemPublicKey: SERVER_KEM_PUBLIC_KEY,
+            });
+        } catch (error) {
+            expect(error).toBeInstanceOf(TwoFactorRequiredError);
+            challenge = error as TwoFactorRequiredError;
+        }
+        await Auth.verifyTwoFactor(challenge!.twoFaId, latestCode());
+        useVariant('setupOff');
+        await Auth.setupTwoFactor(0);
+        await Auth.confirmTwoFactorSetup(latestCode());
+        await Auth.login('policyuser', 'Strong-password-A1', {
+            serverKemPublicKey: SERVER_KEM_PUBLIC_KEY,
+        });
+        expect(await Auth.twoFactorStatus()).toBe(0);
+    });
+
+    it('can disable built-in account deletion independently of all other auth routes', async () => {
+        useVariant('deleteOff');
+        await signIn();
+        const before = new Map(store);
+        const cookies = new Map(jar);
+        expect(dispatch('/auth/delete').status).toBe(404);
+        expect(store).toEqual(before);
+        expect(jar).toEqual(cookies);
+        expect(dispatch('/auth/me', new Uint8Array(), 'GET').status).toBe(200);
+        useVariant('defaults');
+        expect(dispatch('/auth/delete').status).toBe(200);
     });
 
     it('cannot confirm an earlier pending enrollment after setup is disabled', async () => {

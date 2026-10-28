@@ -141,22 +141,26 @@ export default defineConfig({
         authRoutes: {
             google: false,
             twoFactorSetup: false,
+            deleteAccount: false,
         },
     },
 });
 ```
 
-Both switches default to `true`, preserving the existing API. `google: false`
+All switches default to `true`, preserving the existing API. `google: false`
 returns 404 from `POST /auth/google/start` and `/auth/google/login`, even when
 the Google client ID and session secret are configured. `twoFactorSetup: false`
-returns 404 from authenticated `POST /auth/2fa/setup` and
-`/auth/2fa/setup/verify`. It blocks enrollment, replacement, and removal for
-**both email (method 1) and authenticator (method 2)**. It also refuses unknown
-method bytes. Authentication and rate limits still apply to protected routes.
+refuses enrollment and replacement through authenticated `POST /auth/2fa/setup`
+and `/auth/2fa/setup/verify` for **both email (method 1) and authenticator (method 2)**.
+Removing an existing factor (method 0) stays available and requires proof of the
+current factor. Pending enrollments cannot be confirmed after setup is disabled.
+`deleteAccount: false` returns 404 from authenticated `POST /auth/delete`, so an
+application can require its own data-cleanup workflow before calling
+`AuthService.deleteUser`. Authentication and rate limits still apply to protected routes.
 
 Existing factors remain required at sign-in: `/auth/2fa/verify` and
 `/auth/2fa/status` stay available. Password registration/login, email confirmation,
-reset, sessions, and deletion keep their existing behavior. An action returning
+reset and sessions keep their existing behavior. An action returning
 401 after its session guard succeeds does not clear either browser cookie;
 the next authenticated request can still use the session.
 
@@ -166,10 +170,11 @@ edge. Rebuild and deploy the server artifact after changing them; restart
 `toiljs dev` after editing config. Environment settings cannot override a disabled
 route. Enabling a route later requires an explicit config change and rebuild.
 
-To run the route-policy proofs, use `npx vitest run test/proof`. To include the
-real Chrome cookie checks through `toiljs dev` and `toiljs start`, first run
-`npm run build`, then `TOILJS_BROWSER_TESTS=1 npx vitest run test/proof`.
-Set `CHROME_BIN` if Chrome is installed outside `/usr/bin/google-chrome`.
+Framework contributors can run the route-policy proofs **from a toiljs repository
+checkout** with `npx vitest run test/proof`. These test files are not shipped in
+application projects. In that checkout, run `npm run build`, then
+`TOILJS_BROWSER_TESTS=1 npx vitest run test/proof` for Chrome cookie checks through
+`toiljs dev` and `toiljs start`. Set `CHROME_BIN` if needed.
 
 ## Upgrading to 0.0.118
 
@@ -210,7 +215,12 @@ finishes an interrupted deletion before claiming the username. Conditional
 writes prevent an overlapping request from removing or modifying a replacement
 account. Confirm/reset links and pending logins bind to an account incarnation;
 links issued before this upgrade are rejected and can be requested again.
-A re-registered account starts with fresh factor settings. Revocation epochs and opaque deletion-incarnation guards
+Deletion erases the historical factor names and sealed secrets in session epochs,
+legacy factor heads/revisions, and enrollment replay counters. Large histories
+are processed in bounded slices; retry an incomplete deletion. During cleanup,
+the original deletion session can only resume `POST /auth/delete`; it cannot
+access other authenticated endpoints. A re-registered account starts with fresh
+factor settings. Anonymous numeric epoch fences and opaque incarnation guards
 remain to reject copied cookies and delayed replays of old account rows; random login challenges expire and cannot
 be redeemed against a replacement account.
 

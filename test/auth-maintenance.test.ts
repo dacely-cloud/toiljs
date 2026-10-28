@@ -61,6 +61,12 @@ AuthService.onRegistered((id:ToilUserId,username:string,email:string):void=>{
   const state=new State(); state.id=id.toBytes(); TestState.state.upsert(new StateKey(),state);
 });
 @rest('test') class Tests {
+ @post('/cookie') cookie(ctx:RouteContext):Response {
+   const state=TestState.state.require(new StateKey());
+   const response=Response.text('test session');
+   response.setCookie(AuthService.mintSession(__toilEncodeAuthUser(state.id,'cleanupuser')));
+   return response;
+ }
  @post('/delete') remove(ctx:RouteContext):Response {
    const state=TestState.state.require(new StateKey());
    return Response.text(AuthService.deleteUser(ToilUserId.fromBytes(state.id))?'yes':'no');
@@ -75,7 +81,29 @@ export * from 'toiljs/server/runtime/exports';
     compile(
         'cold',
         `
+import { AuthDb, Username } from 'toiljs/server/auth/AuthStore';
+import { AuthStateDb, SessionUserKey, SessionEpochKey, SessionEpoch, FactorKey, FactorRevision, FactorSettings, TotpCounter } from 'toiljs/server/auth/AuthStateDb';
+import { base64UrlEncode } from 'toiljs/server/runtime';
 @daemon class Cleanup {
+ @scheduled('1h') @job seed():void {
+   const state=TestState.state.require(new StateKey());
+   const account=AuthDb.accounts.require(new Username('localhost','cleanupuser'));
+   const name=account.username+'\\x00'+crypto.toHex(account.accountId);
+   const epochId='3:localhost\\x00'+crypto.toHex(state.id);
+   for(let i:i32=1;i<=24;i++) {
+     const secret=new Uint8Array(48); secret.fill(<u8>i);
+     const epoch=new SessionEpoch(); epoch.revision=<u64>i;
+     epoch.factorHost='localhost'; epoch.factorName=name; epoch.factorMethod=2;
+     epoch.factorRevision=<u64>i; epoch.factorSecret=secret;
+     AuthStateDb.epochRevisions.claim(new SessionEpochKey(epochId,<u64>i),epoch);
+     AuthStateDb.epochHeads.upsert(new SessionUserKey(epochId),epoch);
+     const factor=new FactorSettings(); factor.method=2; factor.revision=<u64>i; factor.encryptedSecret=secret;
+     AuthStateDb.factorRevisions.claim(new FactorRevision('localhost',name,<u64>i),factor);
+     AuthStateDb.factorHeads.upsert(new FactorKey('localhost',name),factor);
+     AuthStateDb.totpCounters.upsert(new FactorKey('localhost',base64UrlEncode(secret.subarray(12,44))),new TotpCounter());
+   }
+ }
+
  @scheduled('1h') @job remove():void {
    const state=TestState.state.require(new StateKey());
    state.result=AuthService.deleteUser(ToilUserId.fromBytes(state.id));
@@ -237,3 +265,121 @@ it('resumes deletion after a cleanup trap without re-enabling the marked account
     expect(result()).toBe(true);
     expect(accounts()).toHaveLength(0);
 }, 60000);
+
+function expectErasedFactors() {
+    for (const collection of ['factorHeads', 'factorRevisions', 'totpCounters'])
+        expect(
+            [...store().keys()].filter((key) => key.startsWith('AuthStateDb/' + collection + '\0')),
+        ).toHaveLength(0);
+    const epochs = [...store().entries()].filter(([key]) =>
+        /^AuthStateDb\/epoch(?:Heads|Revisions)\0/.test(key),
+    );
+    expect(epochs.length).toBeGreaterThan(0);
+    for (const [, bytes] of epochs) {
+        const reader = new DataReader(bytes);
+        reader.readU32();
+        reader.readU64();
+        reader.readBytes();
+        expect(reader.readString()).toBe('');
+        expect(reader.readString()).toBe('');
+        expect(reader.readU8()).toBe(0);
+        expect(reader.readU64()).toBe(0n);
+        expect(reader.readBytes()).toHaveLength(0);
+    }
+}
+it('erases every historical sealed factor and replay counter from a deletion Job', async () => {
+    await Auth.register('cleanupuser', 'Original-password-A1', 'cleanup@example.com');
+    expect(run('seed')).toMatchObject({ status: 'ok' });
+    expect(
+        [...store().keys()].filter((key) => key.startsWith('AuthStateDb/totpCounters\0')),
+    ).toHaveLength(24);
+    // Old stored epochs predate the appended deletion-fence fields. Their raw
+    // owner bytes must be used for release, including after a restart.
+    for (const [key, bytes] of store())
+        if (
+            key.startsWith('AuthStateDb/epochRevisions\0') ||
+            key.startsWith('AuthStateDb/epochHeads\0')
+        )
+            store().set(key, bytes.subarray(0, bytes.length - 17));
+    expect(run('remove')).toMatchObject({ status: 'ok' });
+    expect(result()).toBe(true);
+    expectErasedFactors();
+    await Auth.register('cleanupuser', 'Original-password-A1', 'cleanup@example.com');
+    await expect(
+        Auth.login('cleanupuser', 'Original-password-A1', {
+            serverKemPublicKey: SERVER_KEM_PUBLIC_KEY,
+        }),
+    ).resolves.toBeTruthy();
+});
+it('resumes bounded HTTP factor erasure with the original deletion session only', async () => {
+    await Auth.register('cleanupuser', 'Original-password-A1', 'cleanup@example.com');
+    expect(run('seed')).toMatchObject({ status: 'ok' });
+    const session = request('/test/cookie')
+        .headers.find(([name]) => name.toLowerCase() === 'set-cookie')![1]
+        .split(';')[0];
+    expect(request('/auth/me', session).status).toBe(200);
+    let complete = false;
+    let retries = 0;
+    for (let attempt = 0; attempt < 30; attempt++) {
+        try {
+            const response = request('/auth/delete', session);
+            expect(response.status).toBe(200);
+            complete = true;
+            break;
+        } catch (error) {
+            expect(String(error)).toMatch(/cleanup incomplete/);
+            retries++;
+            expect(request('/auth/me', session).status).toBe(401);
+        }
+    }
+    expect(complete).toBe(true);
+    expect(retries).toBeGreaterThan(0);
+    expectErasedFactors();
+    await Auth.register('cleanupuser', 'Original-password-A1', 'cleanup@example.com');
+    await Auth.login('cleanupuser', 'Original-password-A1', {
+        serverKemPublicKey: SERVER_KEM_PUBLIC_KEY,
+    });
+    expect(request('/auth/delete', session).status).toBe(401);
+    expect(accounts()).toHaveLength(1);
+});
+
+it('keeps already-erased revision claims occupied when cleanup resumes after a crash', async () => {
+    await Auth.register('cleanupuser', 'Original-password-A1', 'cleanup@example.com');
+    expect(run('seed')).toMatchObject({ status: 'ok' });
+    const session = request('/test/cookie')
+        .headers.find(([name]) => name.toLowerCase() === 'set-cookie')![1]
+        .split(';')[0];
+    const releases = vi.spyOn(devDb, 'uniqueRelease');
+    let claims = 0;
+    await expect(
+        hot.dispatchAsync(
+            {
+                method: 'POST',
+                path: '/auth/delete',
+                headers: [
+                    ['host', 'localhost'],
+                    ['cookie', session],
+                ],
+                body: new Uint8Array(),
+            },
+            {
+                afterDatabaseOperation(point) {
+                    if (
+                        point.collection === 'AuthStateDb/epochRevisions' &&
+                        point.operation === 'data.unique_claim' &&
+                        ++claims === 2
+                    )
+                        throw new Error('crash after erasing a revision');
+                },
+            },
+        ),
+    ).rejects.toThrow('crash after erasing a revision');
+    expect(run('remove')).toMatchObject({ status: 'ok' });
+    expect(result()).toBe(true);
+    expectErasedFactors();
+    expect(
+        releases.mock.calls.filter(
+            ([, state, handle]) => state.handles[handle]?.name === 'AuthStateDb/epochRevisions',
+        ),
+    ).toHaveLength(24);
+});

@@ -14,6 +14,7 @@
 export const STRATEGY_FIXED = 0;
 export const STRATEGY_SLIDING = 1;
 export const STRATEGY_TOKEN_BUCKET = 2;
+export const STRATEGY_TRAILING = 3;
 
 interface KeyState {
     /** Token bucket: tokens * 1000 (sub-token refill without floats). */
@@ -23,6 +24,8 @@ interface KeyState {
     cur: number;
     prev: number;
     lastMs: number;
+    events?: number[];
+    first?: number;
 }
 
 interface RouteLimiter {
@@ -67,6 +70,7 @@ export function ratelimitCheck(
         rl = { strategy, a: Math.max(1, limit), b: Math.max(1, window), keys: new Map() };
         registry.set(routeId, rl);
     }
+    if (rl.strategy === STRATEGY_TRAILING) return checkTrailing(rl, identity, now);
     if (rl.strategy === STRATEGY_TOKEN_BUCKET) return checkBucket(rl, identity, now);
     return checkWindow(rl, identity, now, rl.strategy === STRATEGY_SLIDING);
 }
@@ -120,4 +124,31 @@ function checkWindow(rl: RouteLimiter, key: string, now: number, sliding: boolea
     }
     const waitMs = windowMs - posInWindow;
     return { allowed: false, retryAfterSecs: Math.max(1, Math.ceil(waitMs / 1000)) };
+}
+
+/** Exact (now - window, now] count. Expired prefixes are compacted amortized O(1). */
+function checkTrailing(rl: RouteLimiter, key: string, now: number): DevDecision {
+    let st = rl.keys.get(key);
+    if (st === undefined) {
+        st = { tokensMilli: 0, window: 0, cur: 0, prev: 0, lastMs: now, events: [], first: 0 };
+        rl.keys.set(key, st);
+    }
+    now = Math.max(now, st.lastMs);
+    st.lastMs = now;
+    const events = st.events ?? (st.events = []);
+    let first = st.first ?? 0;
+    const windowMs = rl.b * 1000;
+    while (first < events.length && events[first] <= now - windowMs) first++;
+    if (first > 0 && first * 2 >= events.length) {
+        events.splice(0, first);
+        first = 0;
+    }
+    st.first = first;
+    if (events.length - first >= rl.a)
+        return {
+            allowed: false,
+            retryAfterSecs: Math.max(1, Math.ceil((events[first] + windowMs - now) / 1000)),
+        };
+    events.push(now);
+    return { allowed: true, retryAfterSecs: 0 };
 }

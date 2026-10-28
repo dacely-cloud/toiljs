@@ -20,6 +20,7 @@ import { HmacImportParams, HmacParams, ALG_SHA_256, FMT_RAW, USAGE_SIGN, USAGE_V
 import {
     Server,
     Request,
+    Method,
     SecureCookies,
     Cookie,
     SameSite,
@@ -377,9 +378,13 @@ export namespace AuthService {
         if (Time.nowSeconds() >= exp) return null;       // expired
         const epochId = SessionEpochs.key(userBytes);
         const state = SessionEpochs.read(epochId);
-        if (state.revision != generation) return null;
+        if (state.deleting) {
+            // Only the session generation that authorized deletion can resume
+            // cleanup, only on this endpoint, while that incarnation is fenced.
+            if (req.method != Method.POST || req.path != '/auth/delete' || generation != state.deletionGeneration) return null;
+        } else if (state.revision != generation) return null;
         // Ordinary accounts avoid serialization; factors reuse the verified request snapshot.
-        req.__authEpochData = state.factorName.length == 0 ? null : state.encode();
+        req.__authEpochData = state.factorName.length == 0 && state.factorFence == 0 ? null : state.encode();
 
         req.__authExpires = exp;
         req.__authGeneration = generation;

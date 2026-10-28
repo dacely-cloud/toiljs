@@ -71,6 +71,12 @@ export class Authenticator {
     // An authenticated, randomized 256-bit ciphertext prefix identifies the enrollment.
     // No extra hash or per-verification token row is needed.
 
+    /** Idempotent erasure of an enrollment's replay counter. */
+    static eraseCounter(host: string, sealed: Uint8Array): void {
+        if (sealed.length != 48) return;
+        AuthStateDb.totpCounters.delete(new FactorKey(host, base64UrlEncode(sealed.subarray(12, 44))));
+    }
+
     /** Fresh randomized enrollment ciphertext: reserve its first step without a preceding read. */
     static initialize(host: string, sealed: Uint8Array, step: u64): bool {
         if (step == 0) return false;

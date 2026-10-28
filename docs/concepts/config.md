@@ -179,6 +179,7 @@ Configures the backend: which platform features to compile in, and how the dev s
 | Field | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `auth` | `boolean` | `false` | Opt into the framework's built-in post-quantum login. See [`server.auth`](#serverauth) below. |
+| `authRoutes` | `{ google?: boolean; twoFactorSetup?: boolean; deleteAccount?: boolean }` | all `true` | Built-in auth route policy compiled into Wasm; see [auth configuration](../auth/configuration.md#restrict-built-in-auth-routes). |
 | `logging` | `boolean` | dev: `true`, production: `false` | Emit application `Log` messages in every server tier. Set `true` to enable production logs; rebuild before deploying. See [Server logging](../backend/README.md#server-logging). |
 | `email` | object | (off) | The non-secret email backend config for the dev server and self-host. See [`server.email`](#serveremail) below. |
 | `daemon` | object | (defaults) | Background-job (L4 daemon) settings for dev and self-host. See [`server.daemon`](#serverdaemon) below. |
@@ -464,3 +465,12 @@ One toilscript flag is worth knowing even though it lives in your npm scripts, n
 - [Daemons and scheduled jobs](../background/daemons.md): the background layer behind `server.daemon`.
 - [Compute tiers (L1 to L4)](../concepts/tiers.md): what `server.nodeMode` selects.
 - [Images](../frontend/images.md) and [Styling](../frontend/styling.md): the features `client.images` and `toiljs configure` control.
+
+### Server build reuse diagnostics
+
+`TOILJS_BUILD_CACHE_DEBUG=1 toiljs build --server` prints a hit or a concrete
+miss reason for each tier (changed input, library listing, output, compiler,
+options, or environment). Cache comparisons hash content; timestamps alone do
+not invalidate a tier. Library listings are sorted before comparison. A missing
+or edited generated RPC client, Wasm, source map, binding, or editor declaration
+rebuilds its owning tier. `TOILJS_BUILD_CACHE=0` disables reuse.

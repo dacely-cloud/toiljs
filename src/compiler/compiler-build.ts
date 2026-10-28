@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
     compilerFingerprint,
+    compilerCacheMiss,
     digest,
     fileDigest,
     inputsCurrent,
@@ -128,8 +129,12 @@ export async function runCompilerPasses(
             const cache = path.join(home, `${pass.name}.json`);
             const key = digest(JSON.stringify({ version: 1, root, fingerprint, args: pass.args }));
             const saved = cacheable ? readCompilerManifest(cache) : null;
-            const cached =
-                saved?.key === key && inputsCurrent(saved) && outputsCurrent(saved) ? saved : null;
+            const miss = compilerCacheMiss(saved, key);
+            const cached = cacheable && miss === null ? saved : null;
+            if (process.env.TOILJS_BUILD_CACHE_DEBUG === '1')
+                process.stdout.write(
+                    `  server cache ${pass.name}: ${cached ? 'hit' : !cacheable ? 'disabled' : miss}\n`,
+                );
             return { pass, cache, key, cached };
         });
         const concurrency = Math.max(

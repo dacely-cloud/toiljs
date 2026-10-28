@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
     CollectionFamily,
@@ -167,6 +167,11 @@ afterEach(() => {
 });
 
 describe('toildb dev emulator (record family)', () => {
+    // Raw ABI tests exercise the 2 MiB storage format independently of request
+    // admission. The explicit budget tests below enable native caps themselves.
+    beforeEach(() => vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '0'));
+    afterEach(() => vi.unstubAllEnvs());
+
     it('parses route-kind metadata and only tightens matching mutating routes', () => {
         const wasm = wasmWithSection(
             'toildb.route_kinds',

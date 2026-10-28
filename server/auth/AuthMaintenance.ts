@@ -1,6 +1,22 @@
 import { AuthDb, AuthAccount, Username, EmailKey, DeletedAccountKey, DeletedAccountMarker,
     AuthUserKey, AuthUserAccount, AuthUserAccounts } from './AuthStore';
+import { AuthStateDb, SessionEpochKey, SessionEpoch, FactorKey, FactorRevision, FactorSettings } from './AuthStateDb';
+import { AuthReads } from './AuthReads';
+import { Authenticator } from './Authenticator';
+import { __toildbResolve } from 'toildb';
+import { base64UrlEncode } from 'toiljs/server/runtime';
 import { SessionEpochs } from './SessionEpochs';
+
+@lazy let epochHandle: u32 = u32.MAX_VALUE;
+@lazy let factorHandle: u32 = u32.MAX_VALUE;
+function epochHistoryHandle(): u32 {
+    if (epochHandle == u32.MAX_VALUE) epochHandle = __toildbResolve('AuthStateDb/epochRevisions');
+    return epochHandle;
+}
+function factorHistoryHandle(): u32 {
+    if (factorHandle == u32.MAX_VALUE) factorHandle = __toildbResolve('AuthStateDb/factorRevisions');
+    return factorHandle;
+}
 
 function sameBytes(a: Uint8Array, b: Uint8Array): bool {
     if (a.length != b.length) return false;
@@ -128,6 +144,109 @@ export class AuthMaintenance {
         }
         return page.cursor;
     }
+    /** Bounded, restartable erasure. Only opaque progress and generation fences
+     * survive; immutable epoch history must not retain old names or secrets. */
+    private static eraseFactors(key: Username, acct: AuthAccount, uid: Uint8Array,
+        markerKey: DeletedAccountKey): void {
+        let marker = AuthDb.deletedAccounts.getCurrentSnapshot(markerKey);
+        if (marker == null) throw new Error('Account deletion marker unavailable');
+        if (marker.value.factorsErased) return;
+        const epoch = SessionEpochs.beginDeletion(crypto.toHex(uid), key.host);
+        const progress = marker.value;
+        // Publish progress on any budget boundary. Replaying a partially erased
+        // entry is safe: counters are deleted before the containing revision.
+        let steps: i32 = 0;
+        while (progress.epochCursor < epoch.revision) {
+            const budget = Db.budget();
+            if (budget.remainingOps < 28 || budget.remainingWrites < 20 || steps++ >= 128) {
+                if (!AuthDb.deletedAccounts.compareExchangeSnapshot(markerKey, marker, progress))
+                    throw new Error('Account cleanup conflicted; retry');
+                throw new Error('Account cleanup incomplete; retry deletion');
+            }
+            const revisionKey = new SessionEpochKey('3:' + key.host + '\x00' + crypto.toHex(uid), progress.epochCursor);
+            const previous = AuthReads.ownerSnapshot<SessionEpochKey, SessionEpoch>(epochHistoryHandle(), revisionKey);
+            if (previous != null && previous.value.factorHost.length == 0 && previous.value.factorName.length == 0 &&
+                previous.value.factorMethod == 0 && previous.value.factorRevision == 0 && previous.value.factorSecret.length == 0) {
+                // Keep an existing anonymous owner occupied, including when a
+                // concurrent cleanup still has an older progress snapshot.
+                progress.epochCursor++;
+                continue;
+            }
+            if (previous != null) {
+                Authenticator.eraseCounter(previous.value.factorHost, previous.value.factorSecret);
+                AuthReads.releaseSnapshot(epochHistoryHandle(), revisionKey, previous);
+            }
+            // Keep an anonymous owner at every old revision. A delayed claim
+            // must not repopulate a released slot with an old sealed factor.
+            const erased = new SessionEpoch();
+            erased.revision = progress.epochCursor; erased.factorFence = epoch.factorFence;
+            erased.deleting = true; erased.deletionGeneration = epoch.deletionGeneration;
+            if (!AuthStateDb.epochRevisions.claim(revisionKey, erased).claimed)
+                throw new Error('Factor history cleanup conflicted; retry deletion');
+            progress.epochCursor++;
+        }
+        const currentName = acct.googleSubject.length != 0 ? 'google:' + base64UrlEncode(acct.accountId) :
+            acct.accountId.length == 0 || acct.legacyFactors ? acct.username : acct.username + '\x00' + crypto.toHex(acct.accountId);
+        while (progress.factorPhase < 2) {
+            const name = progress.factorPhase == 0 ? currentName : acct.username;
+            if (progress.factorPhase == 1 && name == currentName) { progress.factorPhase++; continue; }
+            const factorKey = new FactorKey(key.host, name);
+            if (!progress.factorPrepared) {
+                if (!progress.factorDiscovering) {
+                    const head = AuthStateDb.factorHeads.getCurrentSnapshot(factorKey);
+                    if (head == null && Db.lastError() != DbError.None) throw new Error('Factor cleanup unavailable');
+                    progress.factorMax = head == null ? 0 : head.value.revision;
+                    progress.factorDiscovering = true;
+                }
+                // Discover unpublished legacy revisions in bounded slices too.
+                while (true) {
+                    const budget = Db.budget();
+                    if (budget.remainingOps < 28 || budget.remainingWrites < 20 || steps++ >= 128) {
+                        if (!AuthDb.deletedAccounts.compareExchangeSnapshot(markerKey, marker, progress))
+                            throw new Error('Account cleanup conflicted; retry');
+                        throw new Error('Account cleanup incomplete; retry deletion');
+                    }
+                    if (progress.factorMax == u64.MAX_VALUE) throw new Error('Factor revision exhausted');
+                    const next = AuthReads.owner(AuthStateDb.factorRevisions,
+                        new FactorRevision(key.host, name, progress.factorMax + 1));
+                    if (next == null) break;
+                    progress.factorMax++;
+                }
+                progress.factorPrepared = true;
+                // Save the bound before deleting the head that supplied it.
+                if (!AuthDb.deletedAccounts.compareExchangeSnapshot(markerKey, marker, progress))
+                    throw new Error('Account cleanup conflicted; retry');
+                marker = new DocumentSnapshot<DeletedAccountMarker>(progress, progress.encode());
+
+            }
+            const remainingHead = AuthStateDb.factorHeads.getCurrentSnapshot(factorKey);
+            if (remainingHead == null && Db.lastError() != DbError.None) throw new Error('Factor cleanup unavailable');
+            if (remainingHead != null) {
+                Authenticator.eraseCounter(key.host, remainingHead.value.encryptedSecret);
+                AuthStateDb.factorHeads.delete(factorKey);
+            }
+            while (progress.factorCursor <= progress.factorMax) {
+                const budget = Db.budget();
+                if (budget.remainingOps < 28 || budget.remainingWrites < 20 || steps++ >= 128) {
+                    if (!AuthDb.deletedAccounts.compareExchangeSnapshot(markerKey, marker, progress))
+                        throw new Error('Account cleanup conflicted; retry');
+                    throw new Error('Account cleanup incomplete; retry deletion');
+                }
+                const revisionKey = new FactorRevision(key.host, name, progress.factorCursor);
+                const previous = AuthReads.ownerSnapshot<FactorRevision, FactorSettings>(factorHistoryHandle(), revisionKey);
+                if (previous != null) {
+                    Authenticator.eraseCounter(key.host, previous.value.encryptedSecret);
+                    AuthReads.releaseSnapshot(factorHistoryHandle(), revisionKey, previous);
+                }
+                progress.factorCursor++;
+            }
+            progress.factorPhase++; progress.factorPrepared = false; progress.factorDiscovering = false;
+            progress.factorCursor = 1; progress.factorMax = 0;
+        }
+        progress.factorsErased = true;
+        if (!AuthDb.deletedAccounts.compareExchangeSnapshot(markerKey, marker, progress))
+            throw new Error('Account cleanup conflicted; retry');
+    }
     static finishDeletion(key: Username, observed: DocumentSnapshot<AuthAccount>, uid: Uint8Array): bool {
         const acct = observed.value;
         if (!acct.deleting) return false;
@@ -141,6 +260,7 @@ export class AuthMaintenance {
                 if (legacy == null) throw new Error('Legacy deletion state temporarily unavailable');
             }
         }
+        AuthMaintenance.eraseFactors(key, acct, uid, deletedKey);
         const emailKey = new EmailKey(key.host, acct.email);
         const email = AuthDb.emails.getCurrentSnapshot(emailKey);
         if (email == null && Db.lastError() != DbError.None) throw new Error('Email index temporarily unavailable');
@@ -155,6 +275,9 @@ export class AuthMaintenance {
         const reset = AuthDb.resetTokenOf.getDelete(secondary);
         if (reset == null && Db.lastError() != DbError.None) throw new Error('Reset token temporarily unavailable');
         if (reset != null) AuthDb.resetTokens.delete(reset);
+        const pendingFactor = AuthDb.twoFaSetup.getCurrentSnapshot(secondary);
+        if (pendingFactor == null && Db.lastError() != DbError.None) throw new Error('Factor setup cleanup unavailable');
+        if (pendingFactor != null) Authenticator.eraseCounter(key.host, pendingFactor.value.encryptedSecret);
         AuthDb.twoFaSetup.delete(secondary);
         // Pre-incarnation heads use the plain username. New accounts never use
         // these keys, so cleaning them cannot touch a later registration.
@@ -165,6 +288,9 @@ export class AuthMaintenance {
         const legacyReset = AuthDb.resetTokenOf.getDelete(legacy);
         if (legacyReset == null && Db.lastError() != DbError.None) throw new Error('Reset token temporarily unavailable');
         if (legacyReset != null) AuthDb.resetTokens.delete(legacyReset);
+        const legacyFactor = AuthDb.twoFaSetup.getCurrentSnapshot(legacy);
+        if (legacyFactor == null && Db.lastError() != DbError.None) throw new Error('Legacy factor cleanup unavailable');
+        if (legacyFactor != null) Authenticator.eraseCounter(key.host, legacyFactor.value.encryptedSecret);
         AuthDb.twoFaSetup.delete(legacy);
         // Security epochs intentionally remain so copied cookies and in-flight
         // logins cannot become valid when the same identity signs up again.

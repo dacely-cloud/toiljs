@@ -9,7 +9,15 @@ afterEach(() => {
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-it.each([false, [], 'false', { google: 'false' }, { twoFactorSetup: 0 }, { typo: false }])(
+it.each([
+    false,
+    [],
+    'false',
+    { google: 'false' },
+    { twoFactorSetup: 0 },
+    { deleteAccount: 'false' },
+    { typo: false },
+])(
     'rejects malformed auth route policy instead of silently enabling routes (%j)',
     async (authRoutes) => {
         const dir = mkdtempSync(join(tmpdir(), 'toil-auth-config-'));

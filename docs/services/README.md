@@ -58,3 +58,5 @@ The order of guards is fixed by the framework: rate limiting runs first (so floo
 - [Compute tiers (where your code runs)](../concepts/tiers.md)
 - [Backend overview](../backend/README.md) and [HTTP routes](../backend/rest.md)
 - [Auth, sessions, and `@user`](../auth/README.md)
+
+- [Native gas and database accounting](./gas.md): local measurement, the weighted cost schedule, invocation budgets, and native database/scheduler behavior.

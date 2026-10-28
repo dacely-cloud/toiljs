@@ -249,6 +249,27 @@ describe('compiler cache correctness', () => {
         clean();
     });
 
+    it('explains content-based misses without rebuilding on timestamp-only edits', async () => {
+        vi.stubEnv('TOILJS_BUILD_CACHE_DEBUG', '1');
+        const outputLog = vi.spyOn(process.stdout, 'write');
+        await run();
+        await run();
+        expect(calls()).toBe(1);
+        expect(
+            outputLog.mock.calls.some(([value]) =>
+                String(value).includes('server cache request: hit'),
+            ),
+        ).toBe(true);
+        fs.writeFileSync(join(root, 'input.ts'), 'changed');
+        await run();
+        expect(calls()).toBe(2);
+        expect(
+            outputLog.mock.calls.some(([value]) =>
+                String(value).includes('input changed: ' + join(root, 'input.ts')),
+            ),
+        ).toBe(true);
+    });
+
     it('does not cache custom transforms or extended configs with untracked side effects', async () => {
         for (const config of [
             { options: { transform: ['./custom.mjs'] } },

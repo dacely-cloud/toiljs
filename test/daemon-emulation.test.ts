@@ -47,10 +47,24 @@ const DAEMON_CFG: ResolvedDaemonConfig = {
 };
 
 /** Compile `src` to `outWasm` with the installed toilscript under `--targetMode cold`. */
-function compileCold(src: string, outWasm: string, runtime = 'stub'): { ok: boolean; output: string } {
+function compileCold(
+    src: string,
+    outWasm: string,
+    runtime = 'stub',
+): { ok: boolean; output: string } {
     const r = spawnSync(
         'node',
-        [TOILSCRIPT_BIN, src, '-o', outWasm, '--runtime', runtime, '--targetMode', 'cold'],
+        [
+            TOILSCRIPT_BIN,
+            src,
+            '-o',
+            outWasm,
+            '--runtime',
+            runtime,
+            '--targetMode',
+            'cold',
+            ...(runtime === 'minimal' ? ['--exportRuntime'] : []),
+        ],
         { encoding: 'utf8' },
     );
     return {
@@ -83,17 +97,59 @@ const counter = (host: DaemonHost, name: string): number => host.callI32Export(`
 
 // The compiler is a required dependency; a missing binary fails these tests.
 describe('dev daemon emulation', () => {
+    it('collects minimal-runtime scratch after success and traps while preserving resident roots', () => {
+        const source = join(tmp, 'minimal.ts');
+        const artifact = join(tmp, 'minimal.wasm');
+        writeFileSync(
+            source,
+            `
+let ticks: i32 = 0;
+let retained: string[] = ['started'];
+@daemon class Jobs {
+  @scheduled('1h') tick(): void {
+    const scratch = 'x'.repeat(65536);
+    ticks++;
+    retained[0] = 'tick:' + ticks.toString();
+    assert(scratch.length == 65536);
+    if (ticks % 7 == 0) throw new Error('test trap');
+  }
+}
+export function tickCount(): i32 { return ticks; }
+export function retainedCount(): i32 { return retained[0] == 'tick:' + ticks.toString() ? 1 : 0; }
+export function pagesCount(): i32 { return memory.size(); }
+`,
+        );
+        const compiled = compileCold(source, artifact, 'minimal');
+        expect(compiled.ok, compiled.output).toBe(true);
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', () => {});
+        try {
+            expect(host.refresh()).toBe(true);
+            for (let i = 0; i < 20; i++) host.runTask('tick');
+            const pages = counter(host, 'pages');
+            for (let i = 0; i < 500; i++) host.runTask('tick');
+            expect(counter(host, 'tick')).toBe(520);
+            expect(counter(host, 'retained')).toBe(1);
+            expect(counter(host, 'pages')).toBe(pages);
+        } finally {
+            host.close();
+        }
+    });
+
     it('grants scheduled jobs scans, publishing and Job limits while plain ticks stay Action', async () => {
         __resetDbForTests();
         vi.useFakeTimers();
         vi.stubEnv('TOIL_DEV_CHECK_DB_LIMITS', '1');
         const artifact = join(tmp, 'jobs.wasm');
         const snapshot = join(tmp, 'jobs.json');
-        const compiled = compileCold(join(here, 'fixtures', 'daemon-job-app.ts'), artifact, 'incremental');
+        const compiled = compileCold(
+            join(here, 'fixtures', 'daemon-job-app.ts'),
+            artifact,
+            'incremental',
+        );
         expect(compiled.ok, compiled.output).toBe(true);
         configureDbPersistence(snapshot);
         const messages: string[] = [];
-        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', s => messages.push(s));
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', (s) => messages.push(s));
         const savedPage = (): number => {
             const state = JSON.parse(readFileSync(snapshot, 'utf8')) as {
                 views: Record<string, { v: string }>;
@@ -103,7 +159,12 @@ describe('dev daemon emulation', () => {
         };
         try {
             expect(host.refresh()).toBe(true);
-            expect(host.tasks.map(t => t.functionKind)).toEqual(['job', 'action', 'action', 'action']);
+            expect(host.tasks.map((t) => t.functionKind)).toEqual([
+                'job',
+                'action',
+                'action',
+                'action',
+            ]);
             await vi.advanceTimersByTimeAsync(1000);
             expect(savedPage()).toBe(67);
             expect(counter(host, 'tick')).toBe(1);
@@ -135,7 +196,9 @@ describe('dev daemon emulation', () => {
         const source = join(tmp, 'idle-derive.ts');
         const artifact = join(tmp, 'idle-derive.wasm');
         const snapshot = join(tmp, 'idle-derive.json');
-        writeFileSync(source, `
+        writeFileSync(
+            source,
+            `
 let failNext: bool = true;
 @data class Key { id: i32 = 0; }
 @data class Row { value: i32 = 0; constructor(value: i32 = 0) { this.value = value; } }
@@ -148,17 +211,19 @@ let failNext: bool = true;
   }
 }
 @daemon class Jobs { onStart(): void { App.rows.upsert(new Key(), new Row(7)); } }
-`);
+`,
+        );
         const compiled = compileCold(source, artifact);
         expect(compiled.ok, compiled.output).toBe(true);
         configureDbPersistence(snapshot);
         const messages: string[] = [];
-        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', s => messages.push(s));
+        const host = new DaemonHost(artifact, DAEMON_CFG, 'all', (s) => messages.push(s));
         try {
             host.refresh();
             expect(host.active).toBe(true);
             expect(messages.join('')).toContain('temporary materializer failure');
-            const saved = (): { views: Record<string, { v: string }> } => JSON.parse(readFileSync(snapshot, 'utf8'));
+            const saved = (): { views: Record<string, { v: string }> } =>
+                JSON.parse(readFileSync(snapshot, 'utf8'));
             expect(Object.values(saved().views)).toHaveLength(0);
             await vi.advanceTimersByTimeAsync(1000);
             expect(Object.values(saved().views)).toHaveLength(1);

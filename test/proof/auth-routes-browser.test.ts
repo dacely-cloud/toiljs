@@ -73,7 +73,7 @@ describe.runIf(process.env.TOILJS_BROWSER_TESTS === '1')(
 
         beforeAll(async () => {
             root = mkdtempSync(resolve('.toil-auth-browser-proof-'));
-            scaffoldAuthApp(root, { google: false, twoFactorSetup: false });
+            scaffoldAuthApp(root, { google: false, twoFactorSetup: false, deleteAccount: false });
             writeFileSync(join(root, '.env'), 'AUTH_GOOGLE_CLIENT_ID=test-client\n');
             writeFileSync(join(root, '.env.secrets'), `AUTH_SESSION_SECRET=${'a'.repeat(64)}\n`, {
                 mode: 0o600,
@@ -156,7 +156,8 @@ export default function Proof() {
                         ['/auth/google/login', [0, 0, 0, 0], 404],
                         ['/auth/2fa/setup', [1], 404],
                         ['/auth/2fa/setup', [2], 404],
-                        ['/auth/2fa/setup/verify', [], 404],
+                        ['/auth/2fa/setup/verify', [], 401],
+                        ['/auth/delete', [], 404],
                     ] as const) {
                         // Check the actual HTTP response, including HttpOnly cookies.
                         const response = await fetch(running.origin + path, {
@@ -197,6 +198,16 @@ export default function Proof() {
                             user?.value,
                         );
                     }
+                    // Enrollment probes above use four of the route's five
+                    // allowed calls. Exercise removal once in the browser.
+                    const removal = await browser.execute(async () => {
+                        const response = await fetch('/auth/2fa/setup', {
+                            method: 'POST',
+                            body: new Uint8Array([0]),
+                        });
+                        return [response.status, (await fetch('/auth/me')).status];
+                    });
+                    expect(removal).toEqual([200, 200]);
                 } finally {
                     await browser.url('about:blank');
                     await stop(running.child);

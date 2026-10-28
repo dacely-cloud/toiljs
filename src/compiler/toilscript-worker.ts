@@ -14,7 +14,8 @@ function libraryEntries(dir: string): string[] | null {
     try {
         return fs
             .readdirSync(dir)
-            .filter((name) => name.endsWith('.ts') && !name.endsWith('.d.ts'));
+            .filter((name) => name.endsWith('.ts') && !name.endsWith('.d.ts'))
+            .sort();
     } catch {
         return null;
     }

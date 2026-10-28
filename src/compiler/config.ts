@@ -137,9 +137,11 @@ export interface DaemonConfig {
 export interface AuthRoutesConfig {
     /** Allow Google initialization and login. Default `true`. */
     readonly google?: boolean;
-    /** Allow second-factor enrollment, replacement, and removal (email and TOTP).
+    /** Allow second-factor enrollment and replacement (email and TOTP).
      * Default `true`. Existing factors still apply to login when this is `false`. */
     readonly twoFactorSetup?: boolean;
+    /** Allow POST /auth/delete. Default `true`; use app-owned deletion workflows when false. */
+    readonly deleteAccount?: boolean;
 }
 
 /** Server-side (toilscript → WASM) configuration. */
@@ -302,11 +304,11 @@ export async function loadConfig(
         throw new Error('server.authRoutes must be an object');
     for (const key of Object.keys(authRoutes)) {
         if (
-            !['google', 'twoFactorSetup'].includes(key) ||
+            !['google', 'twoFactorSetup', 'deleteAccount'].includes(key) ||
             typeof authRoutes[key as keyof AuthRoutesConfig] !== 'boolean'
         )
             throw new Error(
-                'server.authRoutes accepts only boolean google and twoFactorSetup settings',
+                'server.authRoutes accepts only boolean google, twoFactorSetup and deleteAccount settings',
             );
     }
     if (

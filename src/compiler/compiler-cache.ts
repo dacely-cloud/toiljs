@@ -43,7 +43,8 @@ export function libraryEntries(dir: string): string[] | null {
     try {
         return fs
             .readdirSync(dir)
-            .filter((name) => name.endsWith('.ts') && !name.endsWith('.d.ts'));
+            .filter((name) => name.endsWith('.ts') && !name.endsWith('.d.ts'))
+            .sort();
     } catch {
         return null;
     }
@@ -57,6 +58,23 @@ export function inputsCurrent(manifest: CompilerManifest): boolean {
             (dir) => JSON.stringify(libraryEntries(dir.path)) === JSON.stringify(dir.entries),
         )
     );
+}
+
+/** Content-based diagnostics; never include source text or environment values. */
+export function compilerCacheMiss(manifest: CompilerManifest | null, key: string): string | null {
+    if (!manifest) return 'manifest missing or invalid';
+    if (manifest.key !== key) return 'compiler, options, or build environment changed';
+    if (!manifest.stable) return 'inputs changed while the previous compiler was reading them';
+    for (const input of manifest.inputs)
+        if (fileDigest(input.path) !== input.hash) return `input changed: ${input.path}`;
+    for (const dir of manifest.directories)
+        if (JSON.stringify(libraryEntries(dir.path)) !== JSON.stringify(dir.entries))
+            return `library entries changed: ${dir.path}`;
+    if (manifest.outputs.length === 0) return 'no recorded outputs';
+    for (const output of manifest.outputs)
+        if (fileDigest(output.path) !== output.hash)
+            return `output changed or missing: ${output.path}`;
+    return null;
 }
 
 export function outputsCurrent(manifest: CompilerManifest): boolean {

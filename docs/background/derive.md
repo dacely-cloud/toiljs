@@ -86,9 +86,15 @@ A `@derive` runs under a special **derive** mode that is more powerful than a ro
 | Ability                                      | Query (`@get`) | Action (`@post` ...) | Derive       |
 | -------------------------------------------- | :------------: | :------------------: | :----------: |
 | Keyed reads (`.get`, counter total)          | yes            | yes                  | yes          |
-| Writes (`create`, `patch`, `add`, `append`)  | no             | yes                  | yes          |
+| Document writes (`create`, `patch`, `delete`) | no | yes | no |
+| Event append / counter add | no | yes | yes |
+| Membership / sorted-index add or remove | no | yes | no |
 | **Scans** (`events.latest`, membership list) | **no**         | **no**               | **yes**      |
 | `view.publish` / `view.append`               | no             | no                   | yes          |
+
+A derive may publish or append to Views, append events and add to counters.
+It cannot create, patch or delete Documents, or call `Membership.add/remove` and `SortedIndex.add/remove`; those writes
+belong in an Action or Job. The compiler and both hosts enforce this restriction.
 
 So a derive is exactly the place to do the reads and scans a route cannot, and to publish the result.
 

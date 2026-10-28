@@ -1,7 +1,7 @@
 {
     "name": "toiljs",
     "type": "module",
-    "version": "0.0.137",
+    "version": "0.0.138",
     "author": "Dacely",
     "description": "The modern React framework: a file-based React frontend and a ToilScript-compiled WebAssembly backend.",
     "repository": {
@@ -166,7 +166,7 @@
         "picocolors": "^1.1.1",
         "semver": "^7.8.5",
         "sharp": "^0.35.5",
-        "toilscript": ">=0.1.66",
+        "toilscript": ">=0.1.67",
         "vite": "^8.3.5",
         "vite-imagetools": "^12.0.1",
         "vite-plugin-node-polyfills": "^0.28.0"
@@ -175,7 +175,7 @@
         "prettier": ">=3.0.0",
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
-        "toilscript": ">=0.1.66",
+        "toilscript": ">=0.1.67",
         "vitest": "^5.0.5",
         "@vitest/browser-webdriverio": "^5.0.0",
         "@vitest/coverage-v8": "^5.0.5",

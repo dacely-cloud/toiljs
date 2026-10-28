@@ -19,6 +19,11 @@ import { DataReader, DataWriter } from 'data';
     return true;
 }
 
+@inline function deleteAccountEnabled(): bool {
+    if (isDefined(__toilAuthDeleteAccountEnabled)) return __toilAuthDeleteAccountEnabled();
+    return true;
+}
+
 /**
  * Built-in Toil PQ-Auth controller: the full post-quantum password-login API
  * (`/auth/register|login/start|finish`) plus sessions (`/auth/me`, `/auth/logout`),
@@ -469,6 +474,7 @@ class Auth {
                 AuthDb.accounts.compareDeleteSnapshot(key, observed);
                 return fail();
             }
+            SessionEpochs.activate(crypto.toHex(acct.toilUserId), h);
             AuthMaintenance.index(h, acct);
             AuthService.__initializeRegistration(ToilUserId.fromBytes(acct.toilUserId), username, acct.email);
             acct.registering = false;
@@ -614,6 +620,7 @@ class Auth {
             return Response.bytes(new DataWriter().writeU8(ST_EMAIL_TAKEN).toBytes());
         }
 
+        SessionEpochs.activate(crypto.toHex(a.toilUserId), h);
         AuthMaintenance.index(h, a);
         AuthService.__initializeRegistration(ToilUserId.fromBytes(a.toilUserId), username, email);
         a.registering = false;
@@ -1044,6 +1051,7 @@ class Auth {
     @auth
     @post('/delete')
     public deleteAccount(ctx: RouteContext): Response {
+        if (!deleteAccountEnabled()) return Response.text('not found\n', 404);
         const user = AuthService.getUser();
         if (user == null) return fail();
         const h = realm(ctx);
@@ -1194,10 +1202,11 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/setup')
     public twoFaSetup(_ctx: RouteContext): Response {
-        if (!twoFactorSetupEnabled()) return Response.text('not found\n', 404);
         if (_ctx.request.body.length > 128) return fail();
         const r = new DataReader(_ctx.request.body);
         const targetMethod = r.readU8();
+        if (!twoFactorSetupEnabled() && (!r.ok || targetMethod != TWOFA_NONE))
+            return Response.text('not found\n', 404);
         if (!r.ok) return fail();
         if (!isKnownTwoFaMethod(targetMethod)) return fail();
         const u = AuthService.getUser();
@@ -1280,7 +1289,6 @@ class Auth {
     @ratelimit(RateLimit.SlidingWindow, 5, 60)
     @post('/2fa/setup/verify')
     public twoFaSetupVerify(_ctx: RouteContext): Response {
-        if (!twoFactorSetupEnabled()) return Response.text('not found\n', 404);
         if (_ctx.request.body.length > 128) return fail();
         const r = new DataReader(_ctx.request.body);
         const code = r.readString();
@@ -1289,6 +1297,15 @@ class Auth {
         if (u == null) return fail();
         const h = realm(_ctx);
 
+        const accountKey = new Username(h, u.username);
+        const current = this.account(accountKey);
+        if (current == null) return fail();
+        const key = this.secondaryKey(h, current);
+        const observed = AuthDb.twoFaSetup.getCurrentSnapshot(key);
+        if (observed == null) return twoFactorSetupEnabled() ? fail() : Response.text('not found\n', 404);
+        const ch = observed.value;
+        if (!twoFactorSetupEnabled() && ch.targetMethod != TWOFA_NONE)
+            return Response.text('not found\n', 404);
         // RACE-FREE attempt cap for the setup challenge (same rationale as
         // /2fa/verify): an atomic host-side limiter keyed on the session user, so
         // the `ch.attempts` get+patch below cannot be out-raced by concurrent
@@ -1302,13 +1319,6 @@ class Auth {
         );
         if (srl != null) return srl;
 
-        const accountKey = new Username(h, u.username);
-        const current = this.account(accountKey);
-        if (current == null) return fail();
-        const key = this.secondaryKey(h, current);
-        const observed = AuthDb.twoFaSetup.getCurrentSnapshot(key);
-        if (observed == null) return fail();
-        const ch = observed.value;
         if (ch.sessionVersion != 3 || AuthService.__sessionGeneration() != ch.sessionEpoch) return fail();
         if (nowSecs() >= ch.exp || ch.attempts >= TWOFA_MAX_ATTEMPTS) {
             AuthDb.twoFaSetup.compareDeleteSnapshot(key, observed);

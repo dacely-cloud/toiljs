@@ -29,8 +29,8 @@ class Auth {
 
 The shape is `@ratelimit(strategy, limit, window)`:
 
-- **`strategy`** is a `RateLimit` value: `RateLimit.FixedWindow`, `RateLimit.SlidingWindow`, or `RateLimit.TokenBucket`. It is an ambient global, so you do not import it.
-- **`limit`** and **`window`** are two whole numbers. Their exact meaning depends on the strategy (see the table below). For the window strategies, it reads as "at most `limit` requests per `window` seconds".
+- **`strategy`** is a `RateLimit` value: `RateLimit.FixedWindow`, `RateLimit.SlidingWindow`, `RateLimit.TokenBucket`, or `RateLimit.TrailingWindow`. It is an ambient global, so you do not import it.
+- **`limit`** and **`window`** are two whole numbers. Their exact meaning depends on the strategy (see the table below). Fixed and sliding windows count aligned buckets; `TrailingWindow` enforces the exact trailing period.
 
 Both numbers must be plain integer literals. A malformed decorator emits no guard at all (it fails safe) rather than compiling something wrong, the same rule as [`@cache`](./caching.md).
 
@@ -47,14 +47,15 @@ flowchart TD
 
 A `429` is the standard "slow down" status. A well-behaved client library will read `Retry-After` and back off automatically.
 
-## The three strategies
+## The four strategies
 
 A **window** is a slice of time the limiter counts within. The strategies differ in how they draw those slices.
 
 | Strategy | `limit`, `window` mean | Behavior |
 | --- | --- | --- |
 | `FixedWindow` | `limit` events per `window` seconds | Cheapest. Counts in fixed wall-clock buckets (for example, each minute on the clock). A caller who times a burst around a bucket boundary can briefly get up to ~2x `limit` across two adjacent buckets. |
-| `SlidingWindow` | `limit` events per `window` seconds | Smooths that boundary spike by weighting the previous window. **The best general choice** for "N per period". |
+| `TrailingWindow` | Exact count in the preceding `window` seconds | Strict trailing bound; stores accepted timestamps. |
+| `SlidingWindow` | `limit` events per `window` seconds | Smooths that boundary spike by weighting the previous window. An approximation: it can exceed N in a trailing period. |
 | `TokenBucket` | `limit` = burst size, `window` = refill rate **per second** | Allows an initial burst of up to `limit`, then refills at a steady `window` tokens per second. Good for APIs that are bursty but must stay bounded on average. |
 
 Examples:
@@ -70,7 +71,21 @@ Examples:
 @ratelimit(RateLimit.FixedWindow, 3, 3600)
 ```
 
-If you are unsure, use `SlidingWindow`. It behaves the way people intuitively expect "N per period" to behave.
+Use `TrailingWindow` when the requirement is at most N accepted events in every
+trailing period, such as ten posts per hour. `SlidingWindow` uses two weighted
+buckets in both development and the native host; it smooths bursts but does not
+enforce that exact bound.
+
+```ts
+@ratelimit(RateLimit.TrailingWindow, 10, 3600)
+```
+
+`TrailingWindow` counts accepted timestamps in `(now - window, now]`. Denials do
+not extend the interval, and `Retry-After` reports when the earliest counted
+event expires, rounded up to seconds. It uses O(limit) timestamps per identity.
+On the native host, active histories are retained when the key table is full;
+unseen identities are refused until a history expires. Deploy the updated native
+host and ToilScript compiler together before using strategy tag 3.
 
 ## How a client is identified
 

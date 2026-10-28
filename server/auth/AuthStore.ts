@@ -152,6 +152,13 @@ export class DeletedAccountKey {
 @data
 export class DeletedAccountMarker {
     deleted: bool = true;
+    epochCursor: u64 = 1;
+    factorPhase: u8 = 0;
+    factorCursor: u64 = 1;
+    factorMax: u64 = 0;
+    factorPrepared: bool = false;
+    factorDiscovering: bool = false;
+    factorsErased: bool = false;
 }
 
 @database

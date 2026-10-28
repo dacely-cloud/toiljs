@@ -131,7 +131,11 @@ writes. Dev has a complete local store. Native ToilDB indexes only hashes in a s
 failed-create hashes can remain as directory entries, so storage grows with
 distinct historical keys. Existing keyspaces require the operator's record-directory
 backfill after **all writers** have been upgraded; scans fail with
-`SchemaUnavailable` until the backfill finishes.
+`SchemaUnavailable` until the backfill finishes. With Scylla storage this also
+applies to fresh keyspaces: an empty backfill publishes the readiness marker.
+The native in-memory engine needs no backfill. See [native accounting and host
+behavior](../services/gas.md#native-database-details) for routing, byte charges,
+and conditional-write budgets.
 
 ### Size limits and file uploads
 

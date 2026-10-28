@@ -1,5 +1,16 @@
 # Changelog
 
+## [v0.0.138] - 2026-10-28
+
+- Erase historical two-factor settings and replay counters during account deletion, with bounded retryable cleanup, raw-byte release of old schemas, and generation fences that preserve session revocation across account recreation.
+- Add `server.authRoutes.deleteAccount`; disabling factor setup still allows proof-backed removal of an existing factor.
+- Build cold artifacts with the minimal collector and collect between resident calls on updated Node/native hosts, preserving daemon state without incremental barriers.
+- Add exact `RateLimit.TrailingWindow` on Node and native hosts. Require ToilScript 0.1.67; deploy toil-backend 0.1.1 before using the new strategy or minimal cold runtime.
+- Sort build-cache library listings and expose per-tier miss reasons with `TOILJS_BUILD_CACHE_DEBUG=1`.
+- Correct auth/config and derive permission documentation; document native gas prices, measurement, routing, byte/write accounting, continuation polling and fresh Scylla keyspace readiness.
+
+Validation: 808 framework tests pass with normal and strict database limits, alongside browser auth checks, both example builds/typechecks/lints, and a clean starter installation from a cached older CLI. See [the release audit](docs/release-audit-2026-10-28.md) for all sixteen report items, additional regression fixes, and verification limits.
+
 ## [v0.0.137] - 2026-10-27
 
 - Compile request, stream, and daemon tiers in bounded parallel processes, dividing Binaryen's CPU budget among active jobs while preserving configured optimization levels and assertions.

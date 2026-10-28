@@ -72,13 +72,16 @@ export class SessionEpochs {
         next.factorHost = epoch.factorHost; next.factorName = epoch.factorName;
         next.factorMethod = epoch.factorMethod; next.factorRevision = epoch.factorRevision;
         next.factorSecret = epoch.factorSecret;
+        next.factorFence = epoch.factorFence; next.deleting = epoch.deleting;
+        next.deletionGeneration = epoch.deletionGeneration;
         return next;
     }
     /** One unique claim commits the factor policy AND invalidates every earlier session. */
     public static changeFactor(id: string, verified: SessionEpoch, host: string, name: string,
         expected: u64, method: u8, secret: Uint8Array): bool {
-        let epoch = verified;
+        let epoch = SessionEpochs.read(id);
         for (let attempt = 0; attempt < 3; attempt++) {
+            if (epoch.deleting || epoch.factorFence != verified.factorFence) return false;
             if (epoch.factorHost == host && epoch.factorName == name && epoch.factorRevision != expected) return false;
             if (expected == u64.MAX_VALUE) throw new Error('Factor revision exhausted');
             const next = SessionEpochs.successor(epoch);
@@ -88,6 +91,46 @@ export class SessionEpochs {
             epoch = SessionEpochs.read(id);
         }
         throw new Error('Factor change conflicted; retry');
+    }
+    /** Commit an empty factor policy before erasing history. A competing factor
+     * claim either precedes this fence (and is erased) or observes the fence. */
+    public static beginDeletion(id: string, host: string): SessionEpoch {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const epoch = SessionEpochs.read(id, host);
+            if (epoch.deleting) { SessionEpochs.publishDeletion(id, host, epoch); return epoch; }
+            const next = new SessionEpoch();
+            if (epoch.revision == u64.MAX_VALUE || epoch.factorFence == u64.MAX_VALUE)
+                throw new Error('Session generation exhausted');
+            next.revision = epoch.revision + 1;
+            next.factorFence = epoch.factorFence + 1;
+            next.deleting = true; next.deletionGeneration = epoch.revision;
+            next.claimNonce = new Uint8Array(16); crypto.getRandomValues(next.claimNonce);
+            if (!AuthStateDb.epochRevisions.claim(new SessionEpochKey('3:' + host + '\x00' + id, next.revision), next).claimed) continue;
+            SessionEpochs.publishDeletion(id, host, next);
+            return next;
+        }
+        throw new Error('Account deletion conflicted; retry');
+    }
+    private static publishDeletion(id: string, host: string, epoch: SessionEpoch): void {
+        const key = new SessionUserKey('3:' + host + '\x00' + id);
+        for (let i = 0; i < 3; i++) {
+            const head = AuthStateDb.epochHeads.getCurrentSnapshot(key);
+            if (head == null && Db.lastError() != DbError.None) throw new Error('Session state unavailable');
+            if (head != null && head.value.revision >= epoch.revision) return;
+            if (AuthStateDb.epochHeads.compareExchangeSnapshot(key, head, epoch)) return;
+        }
+        throw new Error('Session cleanup head conflicted; retry');
+    }
+    /** A new incarnation keeps the deletion fence but cannot accept old cookies. */
+    public static activate(id: string, host: string): void {
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const epoch = SessionEpochs.read(id, host);
+            if (!epoch.deleting) return;
+            const next = SessionEpochs.successor(epoch);
+            next.deleting = false; next.deletionGeneration = 0;
+            if (AuthStateDb.epochRevisions.claim(new SessionEpochKey('3:' + host + '\x00' + id, next.revision), next).claimed) return;
+        }
+        throw new Error('Account activation conflicted; retry');
     }
     /** The stable 32-byte user id as hex; no request or @user encoder needed. */
     public static revokeId(id: string, host: string = AuthRealm.current()): void {

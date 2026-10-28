@@ -20,6 +20,10 @@ export class SessionEpoch {
     factorMethod: u8 = 0;
     factorRevision: u64 = 0;
     factorSecret: Uint8Array = new Uint8Array(0);
+    // Append-only deletion fence; retained across account recreation.
+    factorFence: u64 = 0;
+    deleting: bool = false;
+    deletionGeneration: u64 = 0;
 }
 @data
 export class FactorKey {
