@@ -275,6 +275,41 @@ describe('buildServer two-pass (daemon project)', () => {
         expect(existsSync(join(tmp, 'build/server/release-cold.wasm'))).toBe(false);
     }, 60_000);
 
+    it('discovers server surfaces after more than 500 source files', async () => {
+        scaffold(LEGACY_SRC, BASE_TOILCONFIG);
+        for (let i = 0; i < 512; i++) {
+            writeFileSync(
+                join(tmp, 'server', `helper-${String(i).padStart(3, '0')}.ts`),
+                'export const value: i32 = 1;\n',
+            );
+        }
+        writeFileSync(join(tmp, 'server/z-jobs.ts'), DAEMON_SRC);
+
+        await buildServer(tmp);
+
+        const cold = readFileSync(join(tmp, 'build/server/release-cold.wasm'));
+        expect(parseDaemonCatalog(cold)?.tasks.map((task) => task.name)).toEqual([
+            'fast',
+            'nightly',
+        ]);
+        expect(existsSync(join(tmp, 'build/server/release.wasm'))).toBe(true);
+    }, 60_000);
+
+    it('discovers server surfaces nested more than 16 directories deep', async () => {
+        scaffold(LEGACY_SRC, BASE_TOILCONFIG);
+        const nested = join(tmp, 'server', ...Array<string>(20).fill('nested'));
+        mkdirSync(nested, { recursive: true });
+        writeFileSync(join(nested, 'jobs.ts'), DAEMON_SRC);
+
+        await buildServer(tmp);
+
+        const cold = readFileSync(join(tmp, 'build/server/release-cold.wasm'));
+        expect(parseDaemonCatalog(cold)?.tasks.map((task) => task.name)).toEqual([
+            'fast',
+            'nightly',
+        ]);
+    }, 60_000);
+
     it('makes generated codecs visible to TypeScript 7 after an ordinary build', async () => {
         scaffold(
             `@data

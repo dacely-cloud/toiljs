@@ -1,5 +1,10 @@
 # Changelog
 
+## [v0.0.140] - 2026-11-08
+
+- Remove the 500-file and directory-depth limits from server source discovery so all server surfaces are compiled.
+- Upgrade runtime and development dependencies to the latest stable releases, refresh root and example lockfiles, and update starter testing, linting, Sass, and Tailwind versions.
+
 ## [v0.0.139] - 2026-10-28
 
 - Build the client in isolated staging through integrity generation, prerendering and SSR extraction. Publish assets before HTML, then prune obsolete output. Compilation failures and cancellation preserve the previous client output instead of exposing missing or partially written chunks.

@@ -85,10 +85,7 @@ function serverEntryFiles(root: string): string[] {
 
     const dirs = serverDirs(root);
 
-    let scanned = 0;
-    const cap = 500;
-    const visit = (dir: string, depth: number): void => {
-        if (scanned >= cap || depth > 16) return;
+    const visit = (dir: string): void => {
         let listing: fs.Dirent[];
         try {
             listing = fs.readdirSync(dir, { withFileTypes: true });
@@ -96,12 +93,10 @@ function serverEntryFiles(root: string): string[] {
             return;
         }
         for (const entry of listing) {
-            if (scanned >= cap) break;
             const full = path.join(dir, entry.name);
             if (entry.isDirectory()) {
-                if (entry.name !== 'node_modules') visit(full, depth + 1);
+                if (entry.name !== 'node_modules') visit(full);
             } else if (entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
-                scanned++;
                 try {
                     if (SURFACE_DECORATOR.test(fs.readFileSync(full, 'utf8'))) {
                         result.add(path.relative(root, full));
@@ -112,7 +107,7 @@ function serverEntryFiles(root: string): string[] {
             }
         }
     };
-    for (const dir of dirs) visit(dir, 0);
+    for (const dir of dirs) visit(dir);
     return [...result].sort();
 }
 

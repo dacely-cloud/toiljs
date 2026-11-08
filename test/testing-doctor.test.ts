@@ -22,10 +22,10 @@ function project(): string {
 const healthy: TestingFacts = {
     dependencies: TEST_DEPENDENCIES,
     installed: {
-        vitest: '5.0.5',
-        '@vitest/coverage-v8': '5.0.5',
+        vitest: '5.1.0',
+        '@vitest/coverage-v8': '5.1.0',
         '@vitest/browser-webdriverio': '5.0.0',
-        webdriverio: '10.1.0',
+        webdriverio: '10.2.0',
     },
     scripts: TEST_SCRIPTS,
     configuration: { file: 'vitest.config.ts', native: true },
