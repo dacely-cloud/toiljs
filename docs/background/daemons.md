@@ -218,6 +218,10 @@ The caps the edge enforces, which `httpCall` checks in the guest so an over-cap 
 
 In `toiljs dev` the emulator returns `CallFailed` for every `httpCall` rather than reaching the network, so a daemon that polls an external service does nothing locally. Everything else behaves as it does on the edge.
 
+This behavior can be changed if needed by setting the environment variable `TOIL_DEV_DAEMON_HTTP` to `real` before running `toiljs dev`.  In this case, real http calls will be done instead of a mocks one.  Note that each call should be fast as they are synchronous and limited to 10 seconds before being cancelled.
+
+
+
 ## The `main.daemon.ts` file (a separate tier)
 
 Like streams, daemons live in their **own entry file**, `server/main.daemon.ts`, and compile into their **own artifact**, `build/server/release-cold.wasm`. Importing your `@daemon` module there pulls it into that artifact.
