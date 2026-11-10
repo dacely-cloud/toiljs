@@ -155,10 +155,12 @@ function manualChunks(id: string): string | undefined {
  */
 function brandedLogger(): Logger {
     const logger = createLogger();
+    // oxlint-disable no-control-regex -- Match Vite's ANSI colors before replacing them.
     const recolor = (msg: string): string =>
         msg
             .replace(/(?:\[[0-9;]*m)*\(ssr\)(?:\[[0-9;]*m)*/g, pc.magenta('(ssr)'))
             .replace(/(?:\[[0-9;]*m)*\(client\)(?:\[[0-9;]*m)*/g, pc.cyan('(client)'));
+    // oxlint-enable no-control-regex
     const info = logger.info.bind(logger);
     const warn = logger.warn.bind(logger);
     logger.info = (msg, opts) => info(recolor(msg), opts);
