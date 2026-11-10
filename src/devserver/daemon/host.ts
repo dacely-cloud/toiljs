@@ -1,5 +1,5 @@
 import { freshImageState, type ImageDevState } from '../images/index.js';
-import { mockDaemonHttp, type DaemonHttpMock } from './http.js';
+import { daemonHttpCall, type DaemonHttpMock } from './http.js';
 /**
  * Host-import surface for the dev daemon (cold) box, mirroring the production
  * edge's `daemon.*` imports. DAEMON path only (streams are Phase 4).
@@ -80,7 +80,13 @@ type HostFnMap = Record<string, (...args: number[]) => number | bigint>;
 /** Build the `daemon` namespace, closing over the resident `DaemonRuntime`. The names
  *  are BARE (`is_leader`, not `daemon.is_leader`): they are keyed under the `daemon`
  *  wasm module, matching the edge. These imports do not read guest memory (they answer
- *  from the resident scheduler state), so they take no `MemoryRef`. */
+ *  from the resident scheduler state), so they take no `MemoryRef`.
+ *
+ * `http_call` routes through `daemonHttpCall`, which picks the transport: an
+ * installed `httpMock` wins, otherwise `TOIL_DEV_DAEMON_HTTP` selects the mock
+ * (default) or a real outbound request. An unbound box keeps reporting
+ * `DaemonCallFailed` without touching the wire, as before.
+*/
 export function buildDaemonNamespace(rt: DaemonRuntime, ref?: MemoryRef): HostFnMap {
     return {
         is_leader: (): number => (rt.isLeader() ? 1 : 0),
@@ -99,7 +105,7 @@ export function buildDaemonNamespace(rt: DaemonRuntime, ref?: MemoryRef): HostFn
         http_call: (reqPtr: number, reqLen: number, outPtr: number, outCap: number): bigint =>
             ref === undefined
                 ? BigInt(encodeAbiError(AbiError.DaemonCallFailed))
-                : mockDaemonHttp(ref, rt.httpMock, reqPtr, reqLen, outPtr, outCap),
+                : daemonHttpCall(ref, rt.httpMock, reqPtr, reqLen, outPtr, outCap),
     };
 }
 
