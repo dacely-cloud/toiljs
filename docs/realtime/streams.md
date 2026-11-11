@@ -288,6 +288,10 @@ export function abort(message: string, fileName: string, line: u32, column: u32)
 }
 ```
 
+You can list as many `@stream` modules there as you like, in as many files as you like. They all compile into the one `release-stream.wasm`, and each class keeps its own route and its own resident box: a connection to `/Chat` runs `Chat`'s hooks and a connection to `/Echo` runs `Echo`'s. The box is chosen from the `stream_index` that the artifact's own `toilstream.catalog` records for the route you connected to, so a second stream is a second file plus a second import, not a second artifact.
+
+> **Status of several `@stream` classes.** That per-route selection is implemented and covered by tests in the dev server, so `npm run dev` reaches each box correctly. The production edge does not yet call the selection export, so an artifact with more than one `@stream` class currently dispatches every connection to the first box once deployed. Until the edge adopts it, keep to one `@stream` class per project in production, or gate the extra classes behind your own routing.
+
 Why a separate file? A stream box and a request handler are **different kinds of program** that run on different parts of the edge (see [Compute tiers](../concepts/tiers.md)). toiljs compiles each into its own `.wasm`:
 
 ```sh

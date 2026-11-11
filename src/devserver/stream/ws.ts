@@ -30,6 +30,8 @@ export class StreamWsSession {
         private readonly authority: string,
         private readonly path: string,
         private readonly transport: StreamWsTransport,
+        /** Which `@stream` box this connection drives, from the catalog entry for its route. */
+        private readonly streamIndex = 0,
     ) {}
 
     /** Whether the connection is accepted + live. */
@@ -43,7 +45,7 @@ export class StreamWsSession {
      * whether the connection was accepted.
      */
     onOpen(): boolean {
-        const up = this.host.acceptUpgrade(this.connId, this.authority, this.path);
+        const up = this.host.acceptUpgrade(this.connId, this.authority, this.path, this.streamIndex);
         if (up.kind === 'rejected') {
             for (const frame of up.initialEgress) this.transport.send(frame);
             this.transport.close(up.code);

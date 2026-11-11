@@ -58,6 +58,14 @@ export function decodeRejectCode(rc: bigint): number {
 interface StreamExports {
     readonly memory: WebAssembly.Memory;
     readonly stream_dispatch: (eventKind: number, lo: number, hi: number) => bigint;
+    /**
+     * Selects which registered `@stream` box the next `stream_dispatch` routes to, by the
+     * `toilstream.catalog` `stream_index` of the connection's route. OPTIONAL by design: an
+     * artifact built before the compiler emitted it exports nothing here, and the host then
+     * leaves the guest's own default (index 0) in force, which is the only box such an
+     * artifact has. The guest bounds-checks the index, so a stale value is a no-op, not a trap.
+     */
+    readonly stream_set_active?: (index: number) => void;
     readonly stream_ring_offset?: () => number;
     readonly stream_ring_capacity?: () => number;
     readonly stream_egress_offset?: () => number;
@@ -89,6 +97,9 @@ export type StreamConnectOutcome =
     | { readonly kind: 'reject'; readonly code: number; readonly initialEgress: Buffer[] };
 
 export class DevStreamBox {
+    /** The box index this connection drives (see {@link select}), re-applied on every event. */
+    private activeIndex = 0;
+
     private constructor(
         private readonly exports: StreamExports,
         private readonly _state: StreamBoxState,
@@ -120,6 +131,16 @@ export class DevStreamBox {
         const box = new DevStreamBox(exports, state, rings, streamInfo);
         if (rings) box.stampRings();
         return box;
+    }
+
+    /**
+     * Choose which registered `@stream` box this connection drives, by the `stream_index`
+     * its route has in `toilstream.catalog`. Call before `onConnect` so `@connect` itself
+     * reaches that box. A no-op on an artifact that predates the selection export: such an
+     * artifact has exactly one box, so index 0 is the only correct answer anyway.
+     */
+    select(index: number): void {
+        this.activeIndex = index;
     }
 
     /** Whether the box carries the ring runtime (a pre-bridge fixture omits the exports). */
@@ -174,6 +195,9 @@ export class DevStreamBox {
         this._state.db.logMessages = 0;
         const lo = Number(streamId & 0xffff_ffffn) | 0;
         const hi = Number((streamId >> 32n) & 0xffff_ffffn) | 0;
+        // Re-apply the selection on every event: the guest holds it in a global, and an
+        // artifact without the export (pre-selection) must keep working at its default 0.
+        this.exports.stream_set_active?.(this.activeIndex);
         return this.exports.stream_dispatch(eventKind, lo, hi);
     }
 

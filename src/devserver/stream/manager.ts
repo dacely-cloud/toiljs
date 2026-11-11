@@ -76,8 +76,18 @@ export class StreamDevHost {
      * (no connection registered, box dropped) on a missing/unreadable artifact (`0x0208`), a
      * `@connect` reject (the guest's code), or a load/connect trap (`0x0200`). Throws only on a
      * duplicate `connId`.
+     *
+     * `streamIndex` selects WHICH `@stream` box the new connection drives: the caller passes the
+     * `stream_index` the artifact's `toilstream.catalog` records for the requested route, so an app
+     * with several `@stream` classes routes each connection to its own box instead of every one
+     * landing on handler 0. It defaults to 0, which is the only box a single-`@stream` artifact has.
      */
-    acceptUpgrade(connId: string, authority: string, path: string): StreamUpgradeOutcome {
+    acceptUpgrade(
+        connId: string,
+        authority: string,
+        path: string,
+        streamIndex = 0,
+    ): StreamUpgradeOutcome {
         if (this.conns.has(connId))
             throw new Error(`stream connection '${connId}' is already open`);
         this.refresh();
@@ -88,6 +98,8 @@ export class StreamDevHost {
         } catch {
             return { kind: 'rejected', code: STREAM_REJECTED, initialEgress: [] };
         }
+        // Select before `@connect` so the connect hook itself runs on the chosen box.
+        box.select(streamIndex);
         const streamId = this.allocStreamId();
         let outcome;
         try {

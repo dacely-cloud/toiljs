@@ -5,9 +5,16 @@
  * (echo / reject / empty), the `@connect` info-block bridge (path-based accept/reject + egress clear),
  * and the session driver (accept / dispatch / trap-close / lifecycle). The dev mirror of toil-backend's
  * message_bridge + @connect + hostile-isolation tests.
+ *
+ * Also covers MULTI-`@stream` runtime selection: an app with several `@stream` classes compiles to ONE
+ * artifact whose `toilstream.catalog` gives each route its own `stream_index`, and the dev host must
+ * drive each connection to the box its route names (`stream_set_active`), not always to handler 0. The
+ * two-box program is compiled the way `toiljs` really invokes the compiler (EVERY tier file as a
+ * positional entry, see `src/compiler/index.ts` `toilscriptPass`), and a pre-selection artifact (built
+ * by the compiler before `stream_set_active` existed) is loaded to pin the back-compat path.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -17,7 +24,11 @@ import { Server } from '@dacely/hyper-express';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { makeStreamClient } from '../src/client/stream/client.js';
-import { matchStreamRoute, parseStreamCatalog } from '../src/devserver/stream/catalog.js';
+import {
+    matchStreamRoute,
+    parseStreamCatalog,
+    type StreamDef,
+} from '../src/devserver/stream/catalog.js';
 import { buildStreamImports, freshStreamBoxState } from '../src/devserver/stream/host.js';
 import { wireStreams } from '../src/devserver/stream/wire.js';
 import { DevStreamBox } from '../src/devserver/stream/index.js';
@@ -42,33 +53,108 @@ let TRAP_PATH: string;
 let ECHO: Buffer;
 let GATE: Buffer;
 let TYPED: Buffer;
+/** The two-`@stream` program (stream-alpha.ts + stream-beta.ts), compiled as ONE unit. */
+let TWO_PATH: string;
+let TWO: Buffer;
+/** An artifact built by the compiler BEFORE `stream_set_active` existed (committed fixture). */
+const PREPATCH_PATH = join(here, 'fixtures', 'stream-echo-prepatch.wasm');
+let PREPATCH: Buffer;
 
-function compile(srcName: string): { path: string; wasm: Buffer } {
-    const src = join(here, 'fixtures', srcName);
-    const out = join(tmp, srcName.replace(/\.ts$/, '.wasm'));
-    const r = spawnSync(
-        'node',
-        [LOCAL_TOILSCRIPT_BIN, src, '-o', out, '--targetMode', 'hot', '--runtime', 'stub'],
-        { encoding: 'utf8' },
-    );
-    if (r.status !== 0) {
-        throw new Error(
-            `toilscript compile ${srcName} failed (${String(r.status)}):\n${r.stderr}${r.stdout}`,
-        );
-    }
-    return { path: out, wasm: readFileSync(out) };
+/**
+ * Launch one toilscript compilation as a NON-BLOCKING child process and resolve with its artifact.
+ *
+ * The hook used to call `spawnSync` five times back to back, so its wall time was the SUM of five
+ * node+compiler launches and the worker thread could not even observe a timeout until all five had
+ * already run. Alone that fits vitest's default 10s hook budget (~4s), but under the full suite's
+ * worker contention the same serial hook measured 12.5-15.8s and the whole file was reported as
+ * `Hook timed out in 10000ms` with all 29 tests skipped. Every program reads only committed fixtures
+ * and writes its own artifact under `tmp`, so there is no shared state to serialize: launched together
+ * the hook costs the SLOWEST single compile instead of the sum of five.
+ *
+ * A MULTI-FILE `@stream` program is invoked the way `toiljs` really invokes the compiler: EVERY tier
+ * file is a positional entry (see `src/compiler/index.ts` `toilscriptPass`: `const args = [...files,
+ * '--target', 'release']`). Passing only one entry (what `compile` below does for a single-class
+ * fixture) makes the other `@stream` class a plain import, and then the once-per-program selection
+ * preamble + the second catalog row do not surface - a misleading failure, not a missing feature.
+ */
+function compileProgram(
+    outName: string,
+    srcNames: string[],
+): Promise<{ path: string; wasm: Buffer }> {
+    const srcs = srcNames.map((n) => join(here, 'fixtures', n));
+    const out = join(tmp, outName);
+    return new Promise((resolve, reject) => {
+        const child = spawn('node', [
+            LOCAL_TOILSCRIPT_BIN,
+            ...srcs,
+            '-o',
+            out,
+            '--targetMode',
+            'hot',
+            '--runtime',
+            'stub',
+        ]);
+        let stdout = '';
+        let stderr = '';
+        child.stdout.on('data', (chunk: Buffer) => {
+            stdout += chunk.toString();
+        });
+        child.stderr.on('data', (chunk: Buffer) => {
+            stderr += chunk.toString();
+        });
+        child.on('error', reject);
+        child.on('close', (status) => {
+            if (status !== 0) {
+                reject(
+                    new Error(
+                        `toilscript compile ${srcNames.join(' + ')} failed (${String(status)}):\n${stderr}${stdout}`,
+                    ),
+                );
+                return;
+            }
+            resolve({ path: out, wasm: readFileSync(out) });
+        });
+    });
 }
 
-beforeAll(() => {
+/** Compile a single-class `@stream` fixture; the artifact name follows the source, as before. */
+function compile(srcName: string): Promise<{ path: string; wasm: Buffer }> {
+    return compileProgram(srcName.replace(/\.ts$/, '.wasm'), [srcName]);
+}
+
+/** The wasm export names of an artifact, read straight off the module (no toiljs code involved). */
+function exportedNames(wasm: Buffer): string[] {
+    return WebAssembly.Module.exports(new WebAssembly.Module(new Uint8Array(wasm))).map(
+        (e) => e.name,
+    );
+}
+
+beforeAll(async () => {
     tmp = mkdtempSync(join(tmpdir(), 'toiljs-stream-'));
-    const echo = compile('stream-echo.ts');
+    // An artifact from the compiler BEFORE stream_set_active existed, committed as a fixture so the
+    // back-compat case does not depend on a scratchpad bundle backup. Read up front, while the
+    // compilations below are in flight: it shares nothing with them.
+    PREPATCH = readFileSync(PREPATCH_PATH);
+    // The five programs share NOTHING but the temp dir (each writes its own artifact, each reads only
+    // committed fixtures), so they compile CONCURRENTLY. Run serially the hook cost the SUM of five
+    // node+compiler launches, which is what overran vitest's default 10s hook budget once the two-file
+    // alpha+beta program was added; concurrently it costs the SLOWEST single compile.
+    const [echo, gate, trap, typed, two] = await Promise.all([
+        compile('stream-echo.ts'),
+        compile('stream-gate.ts'),
+        compile('stream-trap.ts'),
+        compile('stream-typed.ts'),
+        // Two @stream classes in ONE program: both files are positional entries, as the real build does.
+        compileProgram('release-stream-two.wasm', ['stream-alpha.ts', 'stream-beta.ts']),
+    ]);
     ECHO_PATH = echo.path;
     ECHO = echo.wasm;
-    const gate = compile('stream-gate.ts');
     GATE_PATH = gate.path;
     GATE = gate.wasm;
-    TRAP_PATH = compile('stream-trap.ts').path;
-    TYPED = compile('stream-typed.ts').wasm;
+    TRAP_PATH = trap.path;
+    TYPED = typed.wasm;
+    TWO_PATH = two.path;
+    TWO = two.wasm;
 });
 
 afterAll(() => {
@@ -373,6 +459,243 @@ describe('dev stream router (doc 08 4.1/4.2)', () => {
         router.onUpgrade(ws, { kind: 'stream', route, url: '/blocked', authority: 'acme.toil' });
         expect(ws.closed).toEqual([0x0211]);
         expect(router.activeConnections).toBe(0); // rejected -> no resident box
+    });
+});
+
+/**
+ * MULTI-`@stream` runtime selection (cases `devhost-two-routes`, `devhost-old-artifact-compat`).
+ *
+ * An app with several `@stream` classes compiles to ONE artifact whose `toilstream.catalog` gives each
+ * route its own `stream_index`; every connection must reach the box its route names, not always
+ * handler 0. The expected reply bytes come from the two fixtures' OWN hook bodies (`stream-alpha.ts`
+ * prefixes 0x41 'A', `stream-beta.ts` prefixes 0x42 'B'), never from the host code under test, so a
+ * host that always selects box 0 cannot satisfy both assertions at once.
+ */
+describe('dev stream multi-box selection (two @stream classes in one artifact)', () => {
+    const IN = Buffer.from('ping');
+
+    /** The catalog entries of the two-file program, looked up by the declared `@stream` name. */
+    function twoBoxes(): { alpha: StreamDef; beta: StreamDef } {
+        const defs = [...parseStreamCatalog(TWO).values()];
+        const alpha = defs.find((d) => d.name === 'alpha');
+        const beta = defs.find((d) => d.name === 'beta');
+        if (alpha === undefined || beta === undefined) {
+            throw new Error(
+                `two-box artifact must catalog alpha + beta, got: ${JSON.stringify(defs.map((d) => d.name))}`,
+            );
+        }
+        return { alpha, beta };
+    }
+
+    it('devhost-two-routes: catalog records both routes with distinct stream_index values', () => {
+        const { alpha, beta } = twoBoxes();
+        expect(parseStreamCatalog(TWO).size).toBe(2);
+        expect(alpha.route).toBe('/alpha');
+        expect(beta.route).toBe('/beta');
+        // The premise of every case below: the two routes really name DIFFERENT boxes. If both were
+        // 0 the selection assertions would pass for the wrong reason.
+        expect(alpha.streamIndex).not.toBe(beta.streamIndex);
+        expect(exportedNames(TWO)).toContain('stream_set_active');
+    });
+
+    it('devhost-two-routes: routes each connection to its own box through the real StreamRouter', () => {
+        const { alpha, beta } = twoBoxes();
+        const router = new StreamRouter(TWO_PATH);
+        const wsA = new MockWs();
+        const wsB = new MockWs();
+        // The upgrade context exactly as `wireStreams` stamps it: the matched route + its catalog index.
+        router.onUpgrade(wsA, {
+            kind: 'stream',
+            route: alpha.route,
+            url: alpha.route,
+            authority: 'acme.toil',
+            streamIndex: alpha.streamIndex,
+        });
+        router.onUpgrade(wsB, {
+            kind: 'stream',
+            route: beta.route,
+            url: beta.route,
+            authority: 'acme.toil',
+            streamIndex: beta.streamIndex,
+        });
+        expect(router.activeConnections).toBe(2);
+        wsA.emitMessage(IN);
+        wsB.emitMessage(IN);
+        expect(wsA.sent).toEqual([Buffer.from(`A${IN.toString()}`)]);
+        expect(wsB.sent).toEqual([Buffer.from(`B${IN.toString()}`)]);
+        // The selection is re-applied on EVERY event, not just at connect: a second frame on each
+        // connection must still be answered by that connection's own box.
+        wsA.emitMessage(IN);
+        wsB.emitMessage(IN);
+        expect(wsA.sent).toEqual([
+            Buffer.from(`A${IN.toString()}`),
+            Buffer.from(`A${IN.toString()}`),
+        ]);
+        expect(wsB.sent).toEqual([
+            Buffer.from(`B${IN.toString()}`),
+            Buffer.from(`B${IN.toString()}`),
+        ]);
+    });
+
+    it('devhost-two-routes: the router resolves the box from the catalog when the context omits streamIndex', () => {
+        const { alpha, beta } = twoBoxes();
+        const router = new StreamRouter(TWO_PATH);
+        const wsA = new MockWs();
+        const wsB = new MockWs();
+        // A hand-built context carries no streamIndex: `onUpgrade` must re-resolve it from the catalog
+        // (the `ctx.streamIndex ?? this.matchRoute(path)?.streamIndex ?? 0` branch).
+        router.onUpgrade(wsA, {
+            kind: 'stream',
+            route: alpha.route,
+            url: alpha.route,
+            authority: 'acme.toil',
+        });
+        router.onUpgrade(wsB, {
+            kind: 'stream',
+            route: beta.route,
+            url: beta.route,
+            authority: 'acme.toil',
+        });
+        wsA.emitMessage(IN);
+        wsB.emitMessage(IN);
+        expect(wsA.sent).toEqual([Buffer.from(`A${IN.toString()}`)]);
+        expect(wsB.sent).toEqual([Buffer.from(`B${IN.toString()}`)]);
+    });
+
+    it('devhost-two-routes known-bad control: forcing stream_index 0 makes the /beta route answer as Alpha', () => {
+        const { beta } = twoBoxes();
+        const router = new StreamRouter(TWO_PATH);
+        const ws = new MockWs();
+        // The pre-plumbing behavior: every connection landed on handler 0 whatever its route.
+        router.onUpgrade(ws, {
+            kind: 'stream',
+            route: beta.route,
+            url: beta.route,
+            authority: 'acme.toil',
+            streamIndex: 0,
+        });
+        ws.emitMessage(IN);
+        // If this DIDN'T happen the artifact would hold only one box, and the passing selection case
+        // above would prove nothing.
+        expect(ws.sent).toEqual([Buffer.from(`A${IN.toString()}`)]);
+    });
+
+    it('devhost-two-routes boundary: an out-of-range selection is a no-op, never a trap', () => {
+        const router = new StreamRouter(TWO_PATH);
+        const ws = new MockWs();
+        router.onUpgrade(ws, {
+            kind: 'stream',
+            route: '/beta',
+            url: '/beta',
+            authority: 'acme.toil',
+            streamIndex: 7, // this artifact registers exactly two boxes: 0 and 1
+        });
+        expect(router.activeConnections).toBe(1); // @connect itself is still accepted
+        expect(() => ws.emitMessage(IN)).not.toThrow();
+        // The guest bounds-checks the index and runs NO handler, so the dispatch succeeds with zero
+        // egress frames rather than trapping or closing.
+        expect(ws.sent).toEqual([]);
+        expect(ws.closed).toEqual([]);
+    });
+
+    it('devhost-two-routes live: wireStreams stamps each route own index over a real WebSocket', async () => {
+        // The full production chain, no mocks: a real upgrade -> `wireStreams` (which stamps
+        // `streamIndex: def.streamIndex`) -> StreamRouter -> StreamWsSession -> StreamDevHost ->
+        // DevStreamBox -> the guest's `stream_set_active` + `stream_dispatch`.
+        const router = new StreamRouter(TWO_PATH);
+        const app = new Server();
+        // A dummy Vite target: a @stream-route upgrade never touches it.
+        wireStreams(app, { host: '127.0.0.1', port: 65535 }, router);
+
+        await app.listen(0, '127.0.0.1');
+        const PORT = app.port;
+        try {
+            const roundTrip = (route: string): Promise<Buffer> =>
+                new Promise<Buffer>((resolve, reject) => {
+                    const ws = new WebSocket(`ws://127.0.0.1:${String(PORT)}${route}`);
+                    ws.binaryType = 'arraybuffer';
+                    const timer = setTimeout(() => {
+                        reject(new Error(`no reply from ${route} within 3s`));
+                    }, 3000);
+                    ws.onopen = (): void => {
+                        ws.send(new Uint8Array([0x70, 0x69, 0x6e, 0x67])); // "ping"
+                    };
+                    ws.onmessage = (ev: MessageEvent): void => {
+                        clearTimeout(timer);
+                        resolve(Buffer.from(ev.data as ArrayBuffer));
+                        ws.close();
+                    };
+                    ws.onerror = (): void => {
+                        clearTimeout(timer);
+                        reject(new Error(`websocket error on ${route}`));
+                    };
+                });
+            const [alpha, beta] = await Promise.all([roundTrip('/alpha'), roundTrip('/beta')]);
+            expect(alpha).toEqual(Buffer.from('Aping'));
+            expect(beta).toEqual(Buffer.from('Bping'));
+        } finally {
+            app.close();
+        }
+    });
+
+    it('devhost-old-artifact-compat: a pre-selection artifact loads and works at index 0', () => {
+        // PERMITTED BEHAVIOR: an artifact built before `stream_set_active` existed loads, treats
+        // select() as a no-op, and dispatches normally (its only box is index 0).
+        const box = DevStreamBox.load(PREPATCH);
+        expect(box.hasRings).toBe(true);
+        box.select(0);
+        expect(box.onConnect(0x31n, 'acme.toil', '/').kind).toBe('accept');
+        // The echo fixture's own hook body: the reply is exactly the inbound bytes.
+        expect(box.onMessage(0x31n, IN)).toEqual({ kind: 'reply', frames: [IN] });
+        // An out-of-range selection cannot trap either: with no export to set, the guest keeps its own
+        // default and the single box keeps answering.
+        box.select(3);
+        expect(box.onMessage(0x31n, Buffer.from('after'))).toEqual({
+            kind: 'reply',
+            frames: [Buffer.from('after')],
+        });
+
+        // The same artifact through the session driver (the real dev-server consumer), including a
+        // caller that passes a non-zero index for a one-box artifact.
+        const host = new StreamDevHost(PREPATCH_PATH);
+        expect(host.acceptUpgrade('c1', 'acme.toil', '/echo', 0).kind).toBe('accepted');
+        expect(host.acceptUpgrade('c2', 'acme.toil', '/echo', 5).kind).toBe('accepted');
+        expect(host.dispatch('c1', IN)).toEqual({ kind: 'reply', frames: [IN] });
+        expect(host.dispatch('c2', IN)).toEqual({ kind: 'reply', frames: [IN] });
+
+        // And through the router, with a context that omits streamIndex entirely.
+        const router = new StreamRouter(PREPATCH_PATH);
+        const ws = new MockWs();
+        router.onUpgrade(ws, {
+            kind: 'stream',
+            route: '/echo',
+            url: '/echo',
+            authority: 'acme.toil',
+        });
+        ws.emitMessage(IN);
+        expect(ws.sent).toEqual([IN]);
+        expect(ws.closed).toEqual([]);
+    });
+
+    it('devhost-old-artifact-compat non-vacuous control: the pristine artifact really lacks the export', () => {
+        // Without this the compat case could pass while exercising nothing: the missing export must be
+        // genuinely absent, so the host's optional-call handling is what keeps the load working.
+        expect(exportedNames(PREPATCH)).not.toContain('stream_set_active');
+        expect(exportedNames(PREPATCH)).toContain('stream_dispatch');
+        const ref: { memory: WebAssembly.Memory | null } = { memory: null };
+        const inst = new WebAssembly.Instance(
+            new WebAssembly.Module(new Uint8Array(PREPATCH)),
+            buildStreamImports(ref, freshStreamBoxState()),
+        );
+        const ex = inst.exports as unknown as Record<string, ((i: number) => void) | undefined>;
+        expect(ex['stream_set_active']).toBeUndefined();
+        // EFFECTIVE KNOWN-BAD CONTROL: the prohibited host shape (calling the export unconditionally,
+        // i.e. without the `?.` in DevStreamBox.dispatch) throws on exactly this artifact.
+        expect(() => {
+            const call = ex['stream_set_active'];
+            if (call === undefined) throw new TypeError('stream_set_active is not a function');
+            call(0);
+        }).toThrow(TypeError);
     });
 });
 
