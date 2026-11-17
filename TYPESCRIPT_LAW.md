@@ -12111,6 +12111,13 @@ function experimentalFeature(): void {
 
 ### 12.1.1 Module Syntax
 
+Use static ESM imports grouped at the top of every file, immediately after its license
+header and module documentation. Use `import type { Name } from './module.js'` for
+types and refer to `Name` in annotations. Inline import types such as
+`import('./module.js').Name` and dynamic `import()` expressions are forbidden.
+Do not place imports after declarations or inside functions, and do not use dynamic
+loading to avoid declaring a module dependency at the top of the file.
+
 ```typescript
 /**
  * Use ESM exclusively. CommonJS prevents tree-shaking.
