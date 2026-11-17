@@ -97,7 +97,30 @@ separate 512,000,000 gas allowance; scheduled ticks use the host's tick gas
 setting. A startup trap or nonzero `init`/`daemon_start` result is reported as a
 failed start and tasks are not registered.
 
-Use `Log.info('cleanup started')`, `Log.warn(...)`, or `Log.error(...)` for server logging. These work in request handlers, streams, and daemons. Logs are enabled in dev and disabled in production by default; set `server.logging: true` and rebuild to enable production logs. Messages pass UTF-8 bytes to the host and include the tenant identity in edge logs. A message may contain at most 4096 UTF-8 bytes; at most 32 messages are emitted per call. Each method returns `false` when logging is disabled or the message allowance is spent. Invalid arguments abort the call when logging is enabled. Avoid secrets and personal data in log messages. `console` imports are rejected when compiling a cold daemon artifact. See [Server logging](../backend/README.md#server-logging).
+Use `console.log`, `console.info`, `console.debug`, `console.warn`, or
+`console.error` for daemon output, with no import. Each method accepts one value,
+or no arguments for an empty message. Strings print directly; arrays, `@data`
+objects, and values with `toJSON()` print as JSON. Standard ANSI color/reset
+sequences are supported:
+
+```ts
+console.log('\u001b[32mcleanup finished\u001b[0m');
+```
+
+The host escapes terminal commands, newlines, carriage returns, and
+bidirectional controls, and resets colors before the next record. This policy
+also covers custom formatters and direct guest log imports.
+
+Startup and scheduled-job messages appear in the server terminal, including when
+the daemon runs on its dedicated worker. These methods also work in request
+handlers and streams. Logs are enabled in dev and disabled in production by
+default; set `server.logging: true` and rebuild to enable production logs.
+Messages pass UTF-8 bytes to the host and include the tenant identity in edge
+logs. A message may contain at most 4096 UTF-8 bytes; at most 32 messages are
+emitted per call. The `Log` API is also available and its methods return `false`
+when logging is disabled or the allowance is spent. Invalid arguments abort the
+call when logging is enabled. Avoid secrets and personal data in log messages.
+See [Server logging](../backend/README.md#server-logging).
 
 ```ts
 @daemon

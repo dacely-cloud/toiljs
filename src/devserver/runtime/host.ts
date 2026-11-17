@@ -1,5 +1,6 @@
 import { buildBase64Imports } from './base64.js';
 import { googleVerifyImport } from './google.js';
+import { sanitizeServerLog } from './logging.js';
 import { buildImageImports, freshImageState, type ImageDevState } from '../images/index.js';
 /**
  * The host import surface the dev server exposes to the guest, mirroring the
@@ -284,7 +285,7 @@ function buildLogImports(
             if (db.logMessages >= 32) return 0;
             db.logMessages++;
             const write = level === 0 ? console.info : level === 1 ? console.warn : console.error;
-            write('[toil guest]', message);
+            write('[toil guest]', sanitizeServerLog(message));
             return 1;
         },
     };

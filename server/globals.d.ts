@@ -28,6 +28,14 @@ declare namespace Log {
     function warn<T>(value: T): bool;
     function error<T>(value: T): bool;
 }
+// Server console accepts the same values as Log, with optional empty calls.
+declare namespace console {
+    function log<T = string>(value?: T): void;
+    function debug<T = string>(value?: T): void;
+    function info<T = string>(value?: T): void;
+    function warn<T = string>(value?: T): void;
+    function error<T = string>(value?: T): void;
+}
 // Email, rate-limit, 2FA, and auth globals (server/globals/*), hand-declared
 // because their AssemblyScript source can't be type-aliased from tsc.
 declare enum EmailStatus { Sent, Disabled, Budget, RecipientCapped, Deduped, TryLater, BadRecipient, ProviderError }

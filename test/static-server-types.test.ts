@@ -49,12 +49,18 @@ it.each([false, true])(
                 join(root, 'main.ts'),
                 `
 import { Response } from 'toiljs/server/runtime';
+@data class ConsoleDetails { answer: i32 = 42; }
 export function collectionHandle(name: string): u32 { return __toildbResolve(name); }
 export function me(): Response {
     Log.info('request started');
     Log.debug(42);
     Log.warn(['retry', 'timeout']);
     Log.log({ path: '/me' });
+    console.log();
+    console.debug(42);
+    console.info(['retry', 'timeout']);
+    console.warn(new ConsoleDetails());
+    console.error(new Error('timeout'));
     const user: AuthUser | null = AuthService.getUser();
     const env = Environment.get('PUBLIC_BASE_URL');
     if (user != null) { const id: Uint8Array = user.toilUserId; return Response.text(user.username + id.length.toString()); }

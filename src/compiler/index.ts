@@ -687,6 +687,8 @@ function toilscriptPass(root: string, files: string[], opts: PassOptions): Compi
         '--use',
         'Log=ToilLog',
         '--use',
+        'console=ToilConsole',
+        '--use',
         `__TOIL_LOGGING=${opts.logging ? '1' : '0'}`,
     );
     // TS 7 cannot load our JS language-service plugin. Plain declaration merging

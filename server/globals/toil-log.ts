@@ -46,3 +46,24 @@ export class ToilLog {
         return ToilLog.write<T>(2, value);
     }
 }
+
+// The standard console uses browser string-pointer imports, which cold artifacts
+// deliberately reject. Keep server console output on the bounded UTF-8 log ABI.
+@global
+export class ToilConsole {
+    static log<T = string>(value: T = ''): void {
+        ToilLog.log<T>(value);
+    }
+    static debug<T = string>(value: T = ''): void {
+        ToilLog.debug<T>(value);
+    }
+    static info<T = string>(value: T = ''): void {
+        ToilLog.info<T>(value);
+    }
+    static warn<T = string>(value: T = ''): void {
+        ToilLog.warn<T>(value);
+    }
+    static error<T = string>(value: T = ''): void {
+        ToilLog.error<T>(value);
+    }
+}

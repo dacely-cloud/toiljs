@@ -21,21 +21,69 @@ The hot request path keeps outbound network I/O out by design so it stays respon
 
 ## Server logging
 
-Use the ambient `Log` API in server code, with no import. Logs appear in the
+Use the ambient `console` or `Log` API in server code, with no import. Logs appear in the
 terminal during `toiljs dev`, including request handlers, SSR, streams, and daemon
 jobs:
 
 ```ts
-Log.info('handler started');
-Log.debug(42);
-Log.warn(['retry', 'timeout']);
-Log.error('request failed');
-Log.log(record); // @data objects use their generated JSON codec
+console.info('handler started');
+console.debug(42);
+console.warn(['retry', 'timeout']);
+console.error('request failed');
+console.log(record); // @data objects use their generated JSON codec
+Log.info('also available');
 ```
 
-Each call accepts one value. Strings print directly; scalars and arrays print
+Each call accepts one value; `console` methods also accept no arguments to print
+an empty message. Use a template string to combine values:
+
+```ts
+console.log(`processed ${count} items`);
+```
+
+Strings print directly; scalars and arrays print
 as JSON, `@data` values use `toJSON()`, and other objects use `toString()`.
-`Log.log` and `Log.debug` use the host's info level.
+You can also log a `JSON` value directly, or provide a custom `toJSON()` method
+that returns a `JSON` value or JSON text:
+
+```ts
+console.log(JSON.parse('{"status":"ready","items":[1,null,3]}'));
+console.log(JSON.obj().set('status', JSON.of<string>('ready')));
+
+class Bob {
+    toJSON(): JSON {
+        return JSON.obj().set('processed', JSON.of<i32>(42));
+    }
+}
+console.log(new Bob()); // {"processed":42}
+```
+
+The method is detected on the class itself: no base class, interface, or decorator
+is required. A custom `toString()` also works as a fallback.
+
+The `log`, `debug`, and `info` methods use the host's info level; `warn` and
+`error` use their corresponding levels. On Node, info writes to stdout, and
+warnings and errors write to stderr. Daemon output appears in the same terminal
+as the server, including output from startup and scheduled jobs on the dedicated
+worker.
+
+Standard ANSI foreground/background colors render in terminals that support
+them, including 256-color and RGB forms. For example:
+
+```ts
+console.log('\u001b[32mcleanup finished\u001b[0m');
+console.warn('\u001b[33mretrying soon\u001b[0m');
+```
+
+The host permits only validated color/reset SGR sequences and adds a final
+`\u001b[0m` reset when needed, so colors cannot affect the next log record.
+Cursor movement, screen clearing, OSC clipboard/title/hyperlink commands, and
+other terminal controls print as visible escapes. C0/C1 controls, including
+newlines and carriage returns, print as `\xNN`; bidirectional controls and
+Unicode line separators print as `\uNNNN`. This also applies to controls in
+formatted object fields and direct guest log imports. Browser `%c` styling and
+Node's multiple-argument format substitutions are not supported in compiled
+server code.
 
 Production application logs are disabled by default. Enable them in
 `toil.config.ts`, then run `toiljs build` again before starting or deploying:
@@ -50,10 +98,16 @@ This policy is compiled into every Wasm artifact, including artifacts deployed
 to the edge. `server.logging: false` also disables application logs in dev.
 Framework startup messages and errors remain available.
 
-Messages are limited to 4096 UTF-8 bytes and 32 messages per server call.
-Methods return `false` when logging is disabled or the message allowance is
+Messages are limited to 4096 UTF-8 bytes before terminal escaping and 32 messages
+per server call. On Node, escaping has a fixed bound of 16,388 output bytes per message,
+including an added color reset. Color sequences have at most 64 bytes and 16
+numeric parameters, with at most three digits per parameter.
+`Log` methods return `false` when logging is disabled or the message allowance is
 exhausted. An oversized message traps when logging is enabled. Edge logs include
-the tenant identity.
+the tenant identity. `console` methods return `void` and share the same limits
+and logging policy.
+Formatting runs inside the guest; a production build with logging disabled
+skips custom formatters entirely. It does not evaluate object text as host code.
 
 For Node/SSR JavaScript, `toiljs/logger` provides a separate scoped logger that
 accepts multiple values, including objects and errors:
