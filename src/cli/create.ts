@@ -153,10 +153,10 @@ function scaffold(
         ...TEST_DEPENDENCIES,
         '@types/react': '^19.3.0',
         '@types/react-dom': '^19.3.0',
-        oxlint: '^1.92.0',
-        'oxlint-tsgolint': '^7.0.2006',
-        prettier: '^3.9.10',
-        toilscript: '>=0.1.67',
+        oxlint: '^1.94.0',
+        'oxlint-tsgolint': '^7.0.2007',
+        prettier: '^3.10.1',
+        toilscript: '>=0.1.68',
         typescript: '^7.0.2',
     };
     for (const dep of requiredPackages(features).sort()) {
@@ -210,9 +210,9 @@ function scaffold(
         // Generated files don't need formatting. (toilscript server decorators like @main /
         // @remote-on-functions are handled by the toiljs/prettier-plugin, so server/ is not ignored.)
         '.prettierignore':
-            'node_modules\nbuild\n.toil\ncoverage\n.vitest\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/_ssr/\nserver/toil-server-env.d.ts\n',
+            'node_modules\nbuild\n.toil\ncoverage\n.vitest\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_emails.ts\nserver/_ssr/\nserver/toil-server-env.d.ts\nserver/toilscript.*.generated.d.ts\n',
         '.gitignore':
-            'node_modules\nbuild\n.toil\ncoverage\n.vitest\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_ssr/\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
+            'node_modules\nbuild\n.toil\ncoverage\n.vitest\nshared/server.ts\ntoil-env.d.ts\ntoil-routes.d.ts\nserver/_ssr/\nserver/toilscript.*.generated.d.ts\nhosts/*/_tmpl/\n# Local dev env vars/secrets (never commit)\n.env\n.env.secrets\n',
         // Use the native TypeScript 7 language server.
         '.vscode/settings.json':
             JSON.stringify(

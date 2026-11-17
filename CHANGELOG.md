@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.0.141] - 2026-11-17
+
+- Run L4 in a dedicated worker thread alongside L1 with `server.daemon.enabled`, sharing the server database while keeping daemon startup, scheduled jobs, reloads, and background materializers off the request event loop.
+- Support `console.log`, `info`, `debug`, `warn`, and `error` across compiled server tiers, including ordinary classes with `toJSON()` or `toString()`, JSON values, arrays, and safe terminal colors. No base class or decorator is required for custom serializers.
+- Escape terminal commands, control characters, bidirectional markers, and forged line breaks at the logging host boundary; validate color sequences and close colors before later records. Preserve message and invocation limits. Native deployments should include the matching toil-backend console hardening.
+- Upgrade runtime, development, peer, example, and generated starter dependencies to current stable versions, refresh lockfiles, and require ToilScript 0.1.68 with stable Binaryen 132 and the current AssemblyScript changes.
+- Use patched glob matching in repository browser tooling and exclude generated editor declarations from starter packages and version control.
+
 ## [v0.0.140] - 2026-11-08
 
 - Remove the 500-file and directory-depth limits from server source discovery so all server surfaces are compiled.

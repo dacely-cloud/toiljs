@@ -82,7 +82,7 @@ jobs:
       - name: Install the latest npm toolchain
         # A local install retains npm's bundled provenance dependencies.
         run: |
-          npm install --prefix "$RUNNER_TEMP/toil-npm" npm@12.2.1
+          npm install --prefix "$RUNNER_TEMP/toil-npm" npm@12.2.2
           echo "$RUNNER_TEMP/toil-npm/node_modules/.bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
