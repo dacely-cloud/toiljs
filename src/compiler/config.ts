@@ -112,13 +112,17 @@ export interface ClientConfig {
  * Dev node mode: which layer the single dev process emulates. `hot` runs only the
  * request path (today's behavior); `regional`/`continental` would run streams off
  * `release-hot.wasm` (Phase 4); `daemon` runs `release-cold.wasm`; `all` runs every
- * surface in one process (the default for a full local run). DEV / self-host knob;
+ * surface (the default for a full local run), with L4 on a dedicated worker thread.
+ * `daemon.enabled` overrides the daemon selection. DEV / self-host knob;
  * the production edge reads the authoritative role from per-host TCF + the plan.
  */
 export type DevNodeMode = 'hot' | 'regional' | 'continental' | 'daemon' | 'all';
 
 /** Daemon (L4) config mirror (dev / self-host). All optional. */
 export interface DaemonConfig {
+    /** Run L4 in this server process on a dedicated worker thread, including on hot nodes.
+     * False disables L4; omitted follows nodeMode (`all` / `daemon`). */
+    readonly enabled?: boolean;
     /** Region the daemon is pinned to (informational in dev; the dev process is leader). */
     readonly region?: string;
     /** Warm standby region (informational in dev). */
@@ -185,8 +189,9 @@ export interface ServerConfig {
     readonly threads?: number | 'auto';
 }
 
-/** Fully-resolved {@link DaemonConfig}; every field non-optional, defaults applied. */
+/** Resolved daemon budgets; enabled stays optional to inherit nodeMode. */
 export interface ResolvedDaemonConfig {
+    readonly enabled?: boolean;
     readonly region: string | null;
     readonly standbyRegion: string | null;
     readonly defaultIntervalMs: number;
@@ -299,6 +304,8 @@ export async function loadConfig(
     const client = user.client ?? {};
     if (user.server?.logging !== undefined && typeof user.server.logging !== 'boolean')
         throw new Error('server.logging must be a boolean');
+    if (user.server?.daemon?.enabled !== undefined && typeof user.server.daemon.enabled !== 'boolean')
+        throw new Error('server.daemon.enabled must be a boolean');
     const authRoutes = user.server?.authRoutes ?? {};
     if (typeof authRoutes !== 'object' || Array.isArray(authRoutes))
         throw new Error('server.authRoutes must be an object');
@@ -403,6 +410,7 @@ function resolveDaemonConfig(d: DaemonConfig | undefined): ResolvedDaemonConfig 
     let maxTasks = d?.maxTasks ?? 64;
     if (maxTasks <= 0 || maxTasks > 1024) maxTasks = Math.min(1024, Math.max(1, maxTasks || 64));
     return {
+        enabled: d?.enabled,
         region: d?.region ?? null,
         standbyRegion: d?.standbyRegion ?? null,
         defaultIntervalMs,

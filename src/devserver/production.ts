@@ -23,7 +23,7 @@ import { installSecurityHeaders, sendSecureStaticFile, writeResponseHeader } fro
 import type { EmailBackendConfig } from 'toiljs/shared';
 
 import type { ResolvedDaemonConfig } from './daemon/host.js';
-import { startDaemonRuntime } from './daemon/runtime.js';
+import { startDaemonWorker, type RunningDaemonWorker } from './daemon/runtime.js';
 import { configureDbPersistence } from './db/index.js';
 import { initEmailService } from './email/index.js';
 import {
@@ -88,6 +88,7 @@ export interface BuiltServerOptions {
     /**
      * Number of production HTTP workers for `toiljs start`. Default `auto`
      * (`os.availableParallelism()`). Set `1` to run a single in-process server.
+     * L4 uses a separate worker thread regardless of this count.
      */
     readonly threads?: number | 'auto';
 }
@@ -307,10 +308,11 @@ function createBuiltRuntime(options: BuiltServerOptions, paths: BuiltServerPaths
 function startBuiltDaemon(
     options: BuiltServerOptions,
     paths: BuiltServerPaths,
-): { close(): void } | null {
+): RunningDaemonWorker | null {
     configureDbPersistence(path.join(paths.projectRoot, '.toil', 'devdata.json'));
-    return startDaemonRuntime({
+    return startDaemonWorker({
         coldWasmFile: options.coldWasmFile,
+        hotWasmFile: options.wasmFile,
         nodeMode: options.nodeMode,
         daemon: options.daemon,
         logging: options.logging === true,
@@ -514,12 +516,12 @@ async function startBuiltServerSingle(options: BuiltServerOptions): Promise<Runn
         return {
             ...server,
             close: async (): Promise<void> => {
-                daemon?.close();
+                await daemon?.close();
                 await server.close();
             },
         };
     } catch (e) {
-        daemon?.close();
+        await daemon?.close();
         throw e;
     }
 }
@@ -677,7 +679,7 @@ async function startThreadedBuiltServer(
         await Promise.all(Array.from({ length: threads }, (_, i) => spawnWorker(i + 1, true)));
     } catch (e) {
         closing = true;
-        daemon?.close();
+        await daemon?.close();
         await Promise.all([...workers.values()].map((worker) => stopWorker(worker)));
         throw e;
     }
@@ -700,7 +702,7 @@ async function startThreadedBuiltServer(
         },
         close: async (): Promise<void> => {
             closing = true;
-            daemon?.close();
+            await daemon?.close();
             await Promise.all([...workers.values()].map((worker) => stopWorker(worker)));
         },
     };

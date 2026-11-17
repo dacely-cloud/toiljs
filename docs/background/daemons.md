@@ -246,6 +246,25 @@ build/server/release-cold.wasm     # L4 daemon     (@daemon)
 
 There is **at most one** `@daemon` class per project, and it is a compile error to put a `@daemon` in the request build. See [Compute tiers](../concepts/tiers.md) for how one source tree becomes three artifacts.
 
+## Running L1 and L4 together
+
+For `toiljs dev` and self-hosted `toiljs start`, enable L4 alongside L1 in `toil.config.ts`:
+
+```ts
+export default defineConfig({
+    server: {
+        nodeMode: 'hot',
+        daemon: { enabled: true },
+    },
+});
+```
+
+L4 runs in one dedicated Node worker thread in the server process. Its resident WASM instance, startup hook, scheduler, and artifact reloads use a separate event loop from L1. With multiple HTTP workers, the primary process owns the single L4 worker. Setting `server.threads: 1` also keeps L4 on its own thread.
+
+Both tiers use the same server-owned database and email service; the daemon does not load or write a separate database snapshot. Guest computation is isolated, while database operations and the machine's CPU and memory capacity remain shared. Scheduled guest traps are logged and later ticks can continue. A worker failure is logged without automatically replaying startup; restart the server to recover it. Shutdown allows a short graceful stop, then terminates a stuck worker.
+
+Set `daemon.enabled: false` to disable L4. If omitted, L4 follows `nodeMode`: enabled for `all` and `daemon`, disabled for the other modes. A cold artifact with a daemon surface is still required. Each self-host server is its own leader; run only one enabled server per app when you need a single scheduler. Managed edge leader election remains controlled by the deployment platform.
+
 ## Worked example: a periodic rollup
 
 A common daemon job: every hour, read a running total and store a small summary so pages can show it with one cheap read. This reads a [counter](../database/counters.md) and writes a summary [document](../database/documents.md); the write only takes effect on the leader.

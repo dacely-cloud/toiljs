@@ -5,6 +5,20 @@ const counters = new WeakMap<
     DbDevState,
     { kind: DbFunctionKind; ops: number; writes: number; bytes: number }
 >();
+
+/** Internal worker bridge: preserve nested operation charges across storage calls. */
+export function dbLimitUsage(db: DbDevState) {
+    return counters.get(db);
+}
+
+export function restoreDbLimitUsage(db: DbDevState, usage: ReturnType<typeof dbLimitUsage>): void {
+    if (usage === undefined) counters.delete(db);
+    else {
+        const existing = counters.get(db);
+        if (existing === undefined) counters.set(db, usage);
+        else Object.assign(existing, usage);
+    }
+}
 const exempt = new Set([
     'data.resolve_collection',
     'data.take_result',

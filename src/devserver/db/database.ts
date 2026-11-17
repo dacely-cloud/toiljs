@@ -2086,7 +2086,12 @@ export class DevDatabase {
 }
 
 /** The single process-lifetime dev database (one store per dev/self-host process). */
-export const devDb = new DevDatabase();
+export let devDb = new DevDatabase();
+
+/** Internal: a daemon worker delegates storage to the server's single database. */
+export function installDatabaseBackend(backend: DevDatabase): void {
+    devDb = backend;
+}
 
 /** (Re)load the collection -> current schema_version map from a server wasm. */
 export function setDbCatalog(wasm: Buffer, merge = false): void {

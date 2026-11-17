@@ -29,7 +29,7 @@ import { installSecurityHeaders } from 'toiljs/backend';
 import type { EmailBackendConfig } from 'toiljs/shared';
 
 import type { ResolvedDaemonConfig } from './daemon/host.js';
-import { startDaemonRuntime } from './daemon/runtime.js';
+import { startDaemonWorker } from './daemon/runtime.js';
 import { configureDbPersistence } from './db/index.js';
 import { initEmailService } from './email/index.js';
 import { proxyToVite, type ViteTarget, wireWebsocketProxy } from './http/proxy.js';
@@ -192,8 +192,9 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
     }
 
     const blobs = await startDevBlobStorage(root);
-    const daemon = startDaemonRuntime({
+    const daemon = startDaemonWorker({
         coldWasmFile: options.coldWasmFile,
+        hotWasmFile: options.wasmFile,
         nodeMode,
         daemon: options.daemon,
         logging: options.logging ?? true,
@@ -252,7 +253,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
     try {
         await app.listen(options.port, host);
     } catch (error) {
-        daemon?.close();
+        await daemon?.close();
         await blobs?.close();
         throw error;
     }
@@ -261,7 +262,7 @@ export async function startDevServer(options: DevServerOptions): Promise<Running
         port: options.port,
         host,
         close: async (): Promise<void> => {
-            daemon?.close();
+            await daemon?.close();
             await blobs?.close();
             await app.shutdown();
         },

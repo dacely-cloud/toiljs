@@ -2,6 +2,18 @@
 const runners = new Map<string, (written: ReadonlySet<string>) => void>();
 const pending = new Set<string>();
 let scheduled = false;
+let schedulingSuppressed = false;
+
+/** A remote L4 operation schedules its materializers in the daemon's thread. */
+export function withoutMaterializationScheduling<T>(run: () => T): T {
+    const previous = schedulingSuppressed;
+    schedulingSuppressed = true;
+    try {
+        return run();
+    } finally {
+        schedulingSuppressed = previous;
+    }
+}
 
 export function registerMaterializer(
     key: string,
@@ -15,6 +27,7 @@ export function unregisterMaterializer(key: string): void {
 }
 
 export function queueMaterialization(collection: string): void {
+    if (schedulingSuppressed) return;
     pending.add(collection);
     if (scheduled) return;
     scheduled = true;

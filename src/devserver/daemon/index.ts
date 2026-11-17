@@ -90,6 +90,8 @@ export interface DaemonHostOptions {
     readonly clock?: () => number;
     readonly httpMock?: DaemonHttpMock;
     readonly logging?: boolean;
+    /** Internal: bridge process-owned services while guest computation stays in its worker. */
+    readonly sharedImports?: (ref: MemoryRef) => Record<string, (...args: number[]) => number | bigint>;
 }
 
 export interface DaemonTaskResult {
@@ -276,6 +278,7 @@ export class DaemonHost implements DaemonRuntime {
         this.state.db.knownDerives = new Set(this.derives.map(deriveContinuationKey));
         this.state.db.functionKind = DbFunctionKind.Action;
         const imports = buildDaemonImports(ref, this.state, this);
+        Object.assign(imports.env, this.options.sharedImports?.(ref));
 
         // Fail-closed up front, with names, when the cold box imports anything outside its allowed
         // surface (the request env subset + crypto + @data, and the separate `daemon` module; NO

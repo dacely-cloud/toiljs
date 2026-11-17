@@ -36,6 +36,7 @@ import { buildEnvImports, type MemoryRef } from '../runtime/host.js';
  * `src/devserver`). The compiler's resolved config is passed in verbatim.
  */
 export interface ResolvedDaemonConfig {
+    readonly enabled?: boolean;
     readonly region: string | null;
     readonly standbyRegion: string | null;
     readonly defaultIntervalMs: number;

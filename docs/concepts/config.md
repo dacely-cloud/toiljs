@@ -183,7 +183,7 @@ Configures the backend: which platform features to compile in, and how the dev s
 | `logging` | `boolean` | dev: `true`, production: `false` | Emit application `Log` messages in every server tier. Set `true` to enable production logs; rebuild before deploying. See [Server logging](../backend/README.md#server-logging). |
 | `email` | object | (off) | The non-secret email backend config for the dev server and self-host. See [`server.email`](#serveremail) below. |
 | `daemon` | object | (defaults) | Background-job (L4 daemon) settings for dev and self-host. See [`server.daemon`](#serverdaemon) below. |
-| `nodeMode` | string | `"all"` | Which compute layer the single dev/self-host process emulates. See [`server.nodeMode`](#servernodemode) below. |
+| `nodeMode` | string | `"all"` | Which compute layers the dev/self-host server emulates. See [`server.nodeMode`](#servernodemode) below. |
 | `threads` | `number` or `"auto"` | `"auto"` | HTTP worker count for `toiljs start`. `"auto"` uses one per CPU; `1` disables the worker pool. `--threads` on the CLI overrides it. |
 | `srcDir` | `string` | `"server"` | Declarative: your server source directory. See the note below. |
 | `outDir` | `string` | `"build/server"` | Declarative: the server build output directory. See the note below. |
@@ -244,6 +244,7 @@ Settings for the daemon (L4) background layer, used by the dev process and self-
 export default defineConfig({
     server: {
         daemon: {
+            enabled: true,
             defaultIntervalMs: 60000,
             maxTasks: 64,
         },
@@ -253,6 +254,7 @@ export default defineConfig({
 
 | Field | Type | Default | What it does |
 | --- | --- | --- | --- |
+| `enabled` | `boolean` | follows `nodeMode` | `true` runs L4 in a dedicated worker thread in the server process, including when `nodeMode` is `"hot"`. `false` disables L4. Omit to enable it for `"all"` and `"daemon"` modes only. |
 | `region` | `string` | (none) | Region the daemon is pinned to (informational in dev). |
 | `standbyRegion` | `string` | (none) | Warm standby region (informational in dev). |
 | `defaultIntervalMs` | `number` | `60000` | Default interval for a `@scheduled` task that declares none. Values below `1000` are clamped up to `1000` (a sub-second loop would flood the console). |
@@ -260,11 +262,13 @@ export default defineConfig({
 | `gasTick` | `number` | `0` | Per-tick gas cap (a dev stub: charged then ignored). |
 | `maxTasks` | `number` | `64` | Maximum number of `@scheduled` tasks. Clamped to the range 1 to 1024. |
 
-See [Daemons and scheduled jobs](../background/daemons.md).
+The worker runs the cold artifact's startup, scheduled jobs, and reloads on its own event loop. There is one L4 worker per server, independent of `server.threads`, including with `threads: 1`. L1 and L4 share the server's database and email service. This isolates guest computation; CPU capacity, memory bandwidth, and storage work are still shared resources. A stuck guest is forcibly terminated during server shutdown.
+
+See [Daemons and scheduled jobs](../background/daemons.md#running-l1-and-l4-together).
 
 ### `server.nodeMode`
 
-Which compute layer the single local process emulates. This is a dev and self-host knob only; in production the Dacely edge decides each server's role. Valid values are `hot`, `regional`, `continental`, `daemon`, and `all`. The default, `all`, runs every surface (requests, streams, and daemons) in one process, which is what you want for a full local run. An invalid value falls back to `all` with a warning rather than failing. See [Compute tiers (L1 to L4)](../concepts/tiers.md) for what each layer means.
+Which compute layers the local server emulates. This is a dev and self-host knob only; in production the Dacely edge decides each server's role. Valid values are `hot`, `regional`, `continental`, `daemon`, and `all`. The default, `all`, enables requests, streams, and daemons. L4 runs in a dedicated worker thread; production HTTP workers are controlled by `server.threads`. `server.daemon.enabled` overrides the daemon selection, so a `hot` server can also host L4 without enabling streams. An invalid mode falls back to `all` with a warning. See [Compute tiers (L1 to L4)](../concepts/tiers.md) for what each layer means.
 
 ```ts
 export default defineConfig({
