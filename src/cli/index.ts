@@ -183,7 +183,7 @@ function printHelp(): void {
             cmd('--target <t>', 'update: latest | minor | patch | newest | greatest'),
             cmd('-v, --version', 'print the toiljs version'),
             '',
-            dim('  Every command checks npm for a newer toiljs and warns when outdated.'),
+            dim('  Commands other than help and version check npm for a newer toiljs.'),
             dim('  Set TOILJS_NO_UPDATE_CHECK=1 to opt out.'),
             '',
         ].join('\n') + '\n',
@@ -191,10 +191,16 @@ function printHelp(): void {
 }
 
 async function main(): Promise<void> {
-    const [command, ...rest] = process.argv.slice(2);
+    const args: string[] = process.argv.slice(2);
+    const [command, ...rest] = args[0] === '--' ? args.slice(1) : args;
 
     if (command === '--version' || command === '-v') {
         process.stdout.write(version() + '\n');
+        return;
+    }
+    if (command === undefined || command === 'help' || command === '--help' || command === '-h') {
+        banner();
+        printHelp();
         return;
     }
 
@@ -323,14 +329,6 @@ async function main(): Promise<void> {
             runDb(action, fileArg, { root: flags.root });
             break;
         }
-
-        case 'help':
-        case '--help':
-        case '-h':
-        case undefined:
-            banner();
-            printHelp();
-            break;
 
         default:
             banner();

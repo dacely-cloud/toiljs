@@ -1,6 +1,5 @@
 /**
- * Automatic update check, run on every CLI invocation (so `npm run dev` / `npm run build`,
- * which call the toiljs CLI, are covered too). Asks the npm registry for the latest toiljs
+ * Automatic update check, run for CLI commands other than help and version. Asks the npm registry for the latest toiljs
  * release (answer cached for an hour in the user's cache dir, network capped at 2 seconds),
  * then warns on stderr when the project's installed toiljs or the running CLI is behind.
  * Never throws and never fails the command. Opt out with TOILJS_NO_UPDATE_CHECK=1 (also

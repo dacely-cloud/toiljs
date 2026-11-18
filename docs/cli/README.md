@@ -38,7 +38,7 @@ Run `toiljs help` any time to see this list in your terminal.
 A few things apply to every command.
 
 - **`--root <dir>`**: run the command against a project in another directory instead of the current one. Every command accepts it.
-- **Automatic update check**: on every run (including `npm run dev`, which calls the CLI under the hood), toiljs quietly asks the npm registry whether a newer `toiljs` exists and prints a one-line notice on stderr if you are behind. It never blocks or slows the command in a meaningful way (the answer is cached for an hour and the network call is capped at two seconds). To turn it off, set the environment variable `TOILJS_NO_UPDATE_CHECK=1`. It also respects the common `NO_UPDATE_NOTIFIER` and `CI` variables.
+- **Automatic update check**: for commands other than help and version, toiljs checks the npm registry and writes a notice to stderr if you are behind. It caches the result for an hour and caps the network call at two seconds. Set `TOILJS_NO_UPDATE_CHECK=1`, `NO_UPDATE_NOTIFIER`, or `CI` to disable it.
 
 ```bash
 # Run any command against a project in another folder.
