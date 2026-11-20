@@ -31,6 +31,10 @@ export interface StreamUpgradeContext {
     readonly route: string;
     readonly url: string;
     readonly authority: string;
+    /** Which `@stream` box owns this connection: the `stream_index` of the matched catalog
+     *  entry. Optional so a hand-built context still works; `onUpgrade` then resolves it from
+     *  the catalog, and finally falls back to 0 (the only box a single-`@stream` app has). */
+    readonly streamIndex?: number;
 }
 
 export class StreamRouter {
@@ -66,14 +70,26 @@ export class StreamRouter {
         const connId = `s${String(++this.connSeq)}`;
         const q = ctx.url.indexOf('?');
         const path = q >= 0 ? ctx.url.slice(0, q) : ctx.url;
-        const session = new StreamWsSession(this.host, connId, ctx.authority, path, {
-            send: (frame) => {
-                ws.send(frame, true);
+        // Route -> box selection. `wireStreams` stamps the matched entry's index; re-resolve it
+        // here so a hand-built context still reaches the right box, and fall back to 0 (which is
+        // the only box an artifact with a single `@stream` class has, and what every pre-existing
+        // caller already expects).
+        const streamIndex = ctx.streamIndex ?? this.matchRoute(path)?.streamIndex ?? 0;
+        const session = new StreamWsSession(
+            this.host,
+            connId,
+            ctx.authority,
+            path,
+            {
+                send: (frame) => {
+                    ws.send(frame, true);
+                },
+                close: (code) => {
+                    ws.close(code);
+                },
             },
-            close: (code) => {
-                ws.close(code);
-            },
-        });
+            streamIndex,
+        );
         if (!session.onOpen()) return; // rejected -> socket closed, nothing resident
         ws.on('message', (message: Buffer) => {
             session.onMessage(message);

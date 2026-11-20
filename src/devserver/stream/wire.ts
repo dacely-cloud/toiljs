@@ -28,6 +28,9 @@ export function wireStreams(app: Server, vite: ViteTarget, router: StreamRouter)
                 route: def.route,
                 url: request.url,
                 authority: request.headers['host'] ?? '',
+                // The catalog position of THIS route, so the box the connection drives is the
+                // one it connected to rather than always the first registered `@stream` class.
+                streamIndex: def.streamIndex,
             });
         } else {
             // Anything else (Vite HMR): the existing proxy context, unchanged.
