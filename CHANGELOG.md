@@ -1,5 +1,11 @@
 # Changelog
 
+## [v0.0.142] - 2026-11-22
+
+- Upgrade Babel, Juice, Nodemailer, Oxlint's TypeScript checker, and the Vitest test stack. Refresh the root and example lockfiles.
+- Handle the npm argument separator in the CLI and keep help available offline.
+- Require static imports at the top of TypeScript files.
+
 ## [v0.0.141] - 2026-11-17
 
 - Run L4 in a dedicated worker thread alongside L1 with `server.daemon.enabled`, sharing the server database while keeping daemon startup, scheduled jobs, reloads, and background materializers off the request event loop.
