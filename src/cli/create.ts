@@ -154,7 +154,7 @@ function scaffold(
         '@types/react': '^19.3.0',
         '@types/react-dom': '^19.3.0',
         oxlint: '^1.94.0',
-        'oxlint-tsgolint': '^7.0.2007',
+        'oxlint-tsgolint': '^7.0.2008',
         prettier: '^3.10.1',
         toilscript: '>=0.1.68',
         typescript: '^7.0.2',

@@ -1,8 +1,8 @@
 /** Shared testing dependencies, scripts, and examples for every project template and legacy setup. */
 export const TEST_DEPENDENCIES: Readonly<Record<string, string>> = {
-    vitest: '^5.1.0',
+    vitest: '^5.1.1',
     '@vitest/browser-webdriverio': '^5.0.0',
-    '@vitest/coverage-v8': '^5.1.0',
+    '@vitest/coverage-v8': '^5.1.1',
     webdriverio: '^10.2.0',
 };
 
